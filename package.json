@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "start": "node app.js",
-    "build": "cd packages/shared && npx tsc && cd ../.. && cd packages/database && npx tsc && cd ../.. && cd apps/api && npx tsc && cd ../.. && cd apps/mobile && npx expo export --platform web && cd ../..",
+    "build": "cd packages/shared && npx -p typescript tsc && cd ../.. && cd packages/database && npx -p typescript tsc && cd ../.. && cd apps/api && npx -p typescript tsc && cd ../.. && cd apps/mobile && npx expo export --platform web && cd ../..",
     "api:dev": "npm run dev --workspace=apps/api",
     "api:build": "npm run build --workspace=apps/api",
     "api:start": "npm run start --workspace=apps/api",

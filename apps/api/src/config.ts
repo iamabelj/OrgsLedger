@@ -49,6 +49,13 @@ export const config = {
     googleCredentials: process.env.GOOGLE_APPLICATION_CREDENTIALS || '',
   },
 
+  // AI Gateway proxy — when set, AI requests go through orgsledger.com
+  // instead of calling Google / OpenAI directly.
+  aiProxy: {
+    url: process.env.AI_PROXY_URL || '',   // e.g. https://orgsledger.com
+    apiKey: process.env.AI_PROXY_KEY || '', // client API key from the gateway
+  },
+
   email: {
     host: process.env.SMTP_HOST || '',
     port: parseInt(process.env.SMTP_PORT || '587', 10),

@@ -1,0 +1,313 @@
+// ============================================================
+// Admin API Routes — Client Management & Usage Monitoring
+// ============================================================
+
+const express = require('express');
+const crypto = require('crypto');
+
+module.exports = function (pool) {
+  const router = express.Router();
+
+  // ── Dashboard Stats ─────────────────────────────────────
+  router.get('/stats', async (req, res) => {
+    try {
+      const [clientsResult, usageResult, dailyResult, topClientsResult] = await Promise.all([
+        // Client counts
+        pool.query(`
+          SELECT 
+            COUNT(*) as total_clients,
+            COUNT(*) FILTER (WHERE active = true) as active_clients,
+            COUNT(*) FILTER (WHERE created_at >= date_trunc('month', NOW())) as new_this_month
+          FROM ai_clients
+        `),
+        // This month's usage totals
+        pool.query(`
+          SELECT 
+            COALESCE(SUM(audio_seconds), 0) as total_audio_seconds,
+            COALESCE(SUM(tokens_used), 0) as total_tokens,
+            COALESCE(SUM(estimated_cost), 0) as total_cost,
+            COUNT(*) as total_requests,
+            COUNT(*) FILTER (WHERE status = 'success') as success_count,
+            COUNT(*) FILTER (WHERE status = 'error') as error_count,
+            COUNT(DISTINCT client_id) as active_users
+          FROM ai_usage_logs
+          WHERE created_at >= date_trunc('month', NOW())
+        `),
+        // Daily usage (last 30 days)
+        pool.query(`
+          SELECT 
+            DATE(created_at) as date,
+            COUNT(*) as requests,
+            COALESCE(SUM(audio_seconds), 0) as audio_seconds,
+            COALESCE(SUM(tokens_used), 0) as tokens,
+            COALESCE(SUM(estimated_cost), 0) as cost,
+            COUNT(*) FILTER (WHERE service = 'speech-to-text') as speech_requests,
+            COUNT(*) FILTER (WHERE service = 'openai') as openai_requests
+          FROM ai_usage_logs
+          WHERE created_at >= NOW() - INTERVAL '30 days'
+          GROUP BY DATE(created_at)
+          ORDER BY date
+        `),
+        // Top clients by usage
+        pool.query(`
+          SELECT 
+            c.id, c.name, c.email, c.plan,
+            COUNT(l.id) as request_count,
+            COALESCE(SUM(l.audio_seconds), 0) as audio_seconds,
+            COALESCE(SUM(l.tokens_used), 0) as tokens_used,
+            COALESCE(SUM(l.estimated_cost), 0) as total_cost
+          FROM ai_clients c
+          LEFT JOIN ai_usage_logs l ON c.id = l.client_id 
+            AND l.created_at >= date_trunc('month', NOW())
+          GROUP BY c.id, c.name, c.email, c.plan
+          ORDER BY total_cost DESC
+          LIMIT 10
+        `),
+      ]);
+
+      res.json({
+        clients: clientsResult.rows[0],
+        usage: usageResult.rows[0],
+        daily: dailyResult.rows,
+        topClients: topClientsResult.rows,
+      });
+    } catch (err) {
+      console.error('Stats error:', err);
+      res.status(500).json({ error: 'Failed to fetch stats' });
+    }
+  });
+
+  // ── List Clients ────────────────────────────────────────
+  router.get('/clients', async (req, res) => {
+    try {
+      const result = await pool.query(`
+        SELECT 
+          c.*,
+          COALESCE(u.request_count, 0) as monthly_requests,
+          COALESCE(u.audio_seconds, 0) as monthly_audio_seconds,
+          COALESCE(u.tokens_used, 0) as monthly_tokens,
+          COALESCE(u.total_cost, 0) as monthly_cost
+        FROM ai_clients c
+        LEFT JOIN (
+          SELECT 
+            client_id,
+            COUNT(*) as request_count,
+            SUM(audio_seconds) as audio_seconds,
+            SUM(tokens_used) as tokens_used,
+            SUM(estimated_cost) as total_cost
+          FROM ai_usage_logs
+          WHERE created_at >= date_trunc('month', NOW())
+            AND status = 'success'
+          GROUP BY client_id
+        ) u ON c.id = u.client_id
+        ORDER BY c.created_at DESC
+      `);
+
+      res.json({ clients: result.rows });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch clients' });
+    }
+  });
+
+  // ── Create Client ───────────────────────────────────────
+  router.post('/clients', async (req, res) => {
+    try {
+      const { name, email, plan, monthly_quota_minutes, monthly_quota_tokens, notes } = req.body;
+      if (!name) return res.status(400).json({ error: 'Name is required' });
+
+      const apiKey = 'ols_' + crypto.randomBytes(32).toString('hex');
+
+      const result = await pool.query(`
+        INSERT INTO ai_clients (name, email, api_key, plan, monthly_quota_minutes, monthly_quota_tokens, notes)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING *
+      `, [
+        name,
+        email || null,
+        apiKey,
+        plan || 'standard',
+        monthly_quota_minutes || 120,
+        monthly_quota_tokens || 500000,
+        notes || null,
+      ]);
+
+      res.json({ client: result.rows[0] });
+    } catch (err) {
+      console.error('Create client error:', err);
+      res.status(500).json({ error: 'Failed to create client' });
+    }
+  });
+
+  // ── Update Client ───────────────────────────────────────
+  router.put('/clients/:id', async (req, res) => {
+    try {
+      const { name, email, plan, active, monthly_quota_minutes, monthly_quota_tokens, notes } = req.body;
+
+      const result = await pool.query(`
+        UPDATE ai_clients SET
+          name = COALESCE($2, name),
+          email = COALESCE($3, email),
+          plan = COALESCE($4, plan),
+          active = COALESCE($5, active),
+          monthly_quota_minutes = COALESCE($6, monthly_quota_minutes),
+          monthly_quota_tokens = COALESCE($7, monthly_quota_tokens),
+          notes = COALESCE($8, notes),
+          updated_at = NOW()
+        WHERE id = $1
+        RETURNING *
+      `, [req.params.id, name, email, plan, active, monthly_quota_minutes, monthly_quota_tokens, notes]);
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Client not found' });
+      }
+
+      res.json({ client: result.rows[0] });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to update client' });
+    }
+  });
+
+  // ── Delete Client ───────────────────────────────────────
+  router.delete('/clients/:id', async (req, res) => {
+    try {
+      await pool.query('DELETE FROM ai_clients WHERE id = $1', [req.params.id]);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to delete client' });
+    }
+  });
+
+  // ── Regenerate API Key ──────────────────────────────────
+  router.post('/clients/:id/regenerate-key', async (req, res) => {
+    try {
+      const newKey = 'ols_' + crypto.randomBytes(32).toString('hex');
+      const result = await pool.query(
+        'UPDATE ai_clients SET api_key = $2, updated_at = NOW() WHERE id = $1 RETURNING *',
+        [req.params.id, newKey]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Client not found' });
+      }
+
+      res.json({ client: result.rows[0] });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to regenerate key' });
+    }
+  });
+
+  // ── Toggle Client Active/Inactive ──────────────────────
+  router.post('/clients/:id/toggle', async (req, res) => {
+    try {
+      const result = await pool.query(
+        'UPDATE ai_clients SET active = NOT active, updated_at = NOW() WHERE id = $1 RETURNING *',
+        [req.params.id]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Client not found' });
+      }
+
+      res.json({ client: result.rows[0] });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to toggle client' });
+    }
+  });
+
+  // ── Usage Logs ──────────────────────────────────────────
+  router.get('/logs', async (req, res) => {
+    try {
+      const { client_id, service, status, limit: lim, offset: off } = req.query;
+      const limit = parseInt(lim) || 50;
+      const offset = parseInt(off) || 0;
+
+      let query = `
+        SELECT l.*, c.name as client_name, c.email as client_email
+        FROM ai_usage_logs l
+        JOIN ai_clients c ON l.client_id = c.id
+        WHERE 1=1
+      `;
+      const params = [];
+
+      if (client_id) {
+        params.push(client_id);
+        query += ` AND l.client_id = $${params.length}`;
+      }
+      if (service) {
+        params.push(service);
+        query += ` AND l.service = $${params.length}`;
+      }
+      if (status) {
+        params.push(status);
+        query += ` AND l.status = $${params.length}`;
+      }
+
+      // Count total
+      const countResult = await pool.query(
+        query.replace('SELECT l.*, c.name as client_name, c.email as client_email', 'SELECT COUNT(*)'),
+        params
+      );
+      const total = parseInt(countResult.rows[0].count);
+
+      // Fetch page
+      params.push(limit);
+      query += ` ORDER BY l.created_at DESC LIMIT $${params.length}`;
+      params.push(offset);
+      query += ` OFFSET $${params.length}`;
+
+      const result = await pool.query(query, params);
+
+      res.json({
+        logs: result.rows,
+        total,
+        limit,
+        offset,
+      });
+    } catch (err) {
+      console.error('Logs error:', err);
+      res.status(500).json({ error: 'Failed to fetch logs' });
+    }
+  });
+
+  // ── Client Detail with Usage History ────────────────────
+  router.get('/clients/:id/usage', async (req, res) => {
+    try {
+      const [clientResult, monthlyResult, recentLogs] = await Promise.all([
+        pool.query('SELECT * FROM ai_clients WHERE id = $1', [req.params.id]),
+        pool.query(`
+          SELECT 
+            DATE(created_at) as date,
+            service,
+            COUNT(*) as requests,
+            COALESCE(SUM(audio_seconds), 0) as audio_seconds,
+            COALESCE(SUM(tokens_used), 0) as tokens,
+            COALESCE(SUM(estimated_cost), 0) as cost
+          FROM ai_usage_logs
+          WHERE client_id = $1 AND created_at >= date_trunc('month', NOW())
+          GROUP BY DATE(created_at), service
+          ORDER BY date
+        `, [req.params.id]),
+        pool.query(`
+          SELECT * FROM ai_usage_logs
+          WHERE client_id = $1
+          ORDER BY created_at DESC
+          LIMIT 20
+        `, [req.params.id]),
+      ]);
+
+      if (clientResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Client not found' });
+      }
+
+      res.json({
+        client: clientResult.rows[0],
+        daily: monthlyResult.rows,
+        recentLogs: recentLogs.rows,
+      });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch client usage' });
+    }
+  });
+
+  return router;
+};

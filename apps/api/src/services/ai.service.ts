@@ -201,8 +201,35 @@ export class AIService {
 
   /**
    * Transcribe audio using Google Cloud Speech-to-Text.
+   * When AI_PROXY_URL is configured, routes through the OrgsLedger AI Gateway
+   * so clients never need Google credentials locally.
    */
   private async transcribeAudio(audioUrl: string): Promise<TranscriptSegment[]> {
+    // ── Proxy mode: forward to AI Gateway ──────────────
+    if (config.aiProxy.url && config.aiProxy.apiKey) {
+      try {
+        logger.info('Transcribing via AI Gateway proxy');
+        const res = await fetch(`${config.aiProxy.url}/api/ai/transcribe`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': config.aiProxy.apiKey,
+          },
+          body: JSON.stringify({ audioUri: audioUrl }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error((err as any).error || `Proxy returned ${res.status}`);
+        }
+        const data = await res.json() as any;
+        return data.transcript || [];
+      } catch (err) {
+        logger.error('AI Gateway transcription failed, falling back to mock', err);
+        return this.getMockTranscript();
+      }
+    }
+
+    // ── Direct mode: call Google API directly ──────────
     if (!config.ai.googleCredentials) {
       logger.warn('Google credentials not configured, returning mock transcript');
       return this.getMockTranscript();
@@ -270,11 +297,64 @@ export class AIService {
 
   /**
    * Generate structured minutes using OpenAI.
+   * When AI_PROXY_URL is configured, routes through the OrgsLedger AI Gateway
+   * so clients never need an OpenAI key locally.
    */
   private async generateMinutes(
     transcript: TranscriptSegment[],
     meeting: any
   ): Promise<ProcessedMinutes> {
+    // ── Proxy mode: forward to AI Gateway ──────────────
+    if (config.aiProxy.url && config.aiProxy.apiKey) {
+      try {
+        logger.info('Generating minutes via AI Gateway proxy');
+
+        const transcriptText = transcript
+          .map((s) => `[${s.speakerName}] (${this.formatTime(s.startTime)}): ${s.text}`)
+          .join('\n');
+
+        const agendaItems = await db('agenda_items')
+          .where({ meeting_id: meeting.id })
+          .orderBy('order');
+
+        const res = await fetch(`${config.aiProxy.url}/api/ai/summarize`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': config.aiProxy.apiKey,
+          },
+          body: JSON.stringify({
+            transcript: transcriptText,
+            meetingTitle: meeting.title,
+            meetingDescription: meeting.description || '',
+            agenda: agendaItems.map((a: any) => `${a.order}. ${a.title}`),
+          }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error((err as any).error || `Proxy returned ${res.status}`);
+        }
+
+        const data = await res.json() as any;
+        return {
+          transcript,
+          summary: data.summary || '',
+          decisions: data.decisions || [],
+          motions: data.motions || [],
+          actionItems: (data.actionItems || []).map((item: any) => ({
+            ...item,
+            status: item.status || 'pending',
+          })),
+          contributions: data.contributions || [],
+        };
+      } catch (err) {
+        logger.error('AI Gateway summarization failed, falling back to mock', err);
+        return this.getMockMinutes(transcript);
+      }
+    }
+
+    // ── Direct mode: call OpenAI directly ──────────────
     if (!config.ai.openaiApiKey) {
       logger.warn('OpenAI API key not configured, returning mock minutes');
       return this.getMockMinutes(transcript);
