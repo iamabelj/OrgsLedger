@@ -223,10 +223,13 @@ app.post('/api/license/activate', async (req, res) => {
 });
 
 // ── Serve Web Frontend (production) ──────────────────────
-const webDir = path.resolve(__dirname, '../../mobile/dist');
-if (config.env === 'production' && fs.existsSync(webDir)) {
+// __dirname = apps/api/dist in production, web build is at apps/api/web
+const webDir = path.resolve(__dirname, '../web');
+if (fs.existsSync(webDir)) {
   app.use(express.static(webDir));
   logger.info(`Serving web frontend from ${webDir}`);
+} else {
+  logger.warn(`Web frontend directory not found: ${webDir}`);
 }
 
 // ── Auth Rate Limiting (login/register brute force protection) ──
@@ -264,10 +267,15 @@ app.all('/api/*', (_req, res) => {
   res.status(404).json({ success: false, error: 'Route not found' });
 });
 
-// SPA fallback — serve web frontend for all other routes (production)
-if (config.env === 'production' && fs.existsSync(webDir)) {
+// SPA fallback — serve web frontend for all other routes
+if (fs.existsSync(webDir)) {
   app.get('*', (_req, res) => {
     res.sendFile(path.join(webDir, 'index.html'));
+  });
+} else {
+  // Fallback: return a basic JSON status page
+  app.get('/', (_req, res) => {
+    res.json({ name: 'OrgsLedger API', status: 'ok', version: '1.0.0', docs: '/api' });
   });
 }
 

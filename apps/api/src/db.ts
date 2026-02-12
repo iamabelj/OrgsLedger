@@ -38,10 +38,8 @@ db.raw('SELECT 1')
   .then(() => logger.info('Database connected successfully'))
   .catch((err) => {
     logger.error('Database connection failed on startup', { error: err.message });
-    // Don't crash in development — the app may start before the DB
-    if (config.env === 'production') {
-      process.exit(1);
-    }
+    // Log but don't crash — let the fallback server handle diagnostics
+    logger.error('App will continue but database queries will fail');
   });
 
 export default db;
