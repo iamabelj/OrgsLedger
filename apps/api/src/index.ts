@@ -37,11 +37,7 @@ import { startScheduler } from './services/scheduler.service';
 async function verifyLicense(): Promise<boolean> {
   const { license } = config;
   if (!license.key) {
-    logger.warn('No LICENSE_KEY set — running in unlicensed mode');
-    if (config.env === 'production') {
-      logger.error('LICENSE_KEY is required in production. Get one at https://orgsledger.com/admin');
-      process.exit(1);
-    }
+    logger.warn('No LICENSE_KEY set — running in unlicensed mode. Set LICENSE_KEY env var to activate.');
     return false;
   }
 
@@ -52,21 +48,16 @@ async function verifyLicense(): Promise<boolean> {
     }, { timeout: 10000 });
 
     if (data.valid) {
-      logger.info(`License verified \u2714 — ${data.client.name} (${data.client.domain || 'no domain'})`);
+      logger.info(`License verified ✔ — ${data.client.name} (${data.client.domain || 'no domain'})`);
       logger.info(`AI hours: ${data.client.hoursRemaining.toFixed(1)}h remaining of ${data.client.hoursBalance.toFixed(1)}h`);
       return true;
     } else {
-      logger.error(`License invalid: ${data.error}`);
-      if (config.env === 'production') process.exit(1);
+      logger.warn(`License invalid: ${data.error}`);
       return false;
     }
   } catch (err: any) {
     const msg = err.response?.data?.error || err.message;
-    logger.error(`License verification failed: ${msg}`);
-    if (config.env === 'production') {
-      logger.error('Cannot start without a valid license in production.');
-      process.exit(1);
-    }
+    logger.warn(`License verification failed: ${msg} — continuing without license`);
     return false;
   }
 }
