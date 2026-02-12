@@ -150,33 +150,7 @@ app.use('/uploads', (req, res, next) => {
   }
 }, express.static(path.resolve(config.upload.dir)));
 
-// ── Serve Web Frontend ────────────────────────────────────
-// Expo web build is in apps/api/web/ (committed to git)
-const webDir = path.resolve(__dirname, '../web');
-if (fs.existsSync(webDir)) {
-  app.use(express.static(webDir));
-  logger.info(`Serving web frontend from ${webDir}`);
-}
-
-// ── Root & Health Check ───────────────────────────────────
-app.get('/', (_req, res) => {
-  const webIndex = path.join(webDir, 'index.html');
-  if (fs.existsSync(webIndex)) {
-    return res.sendFile(webIndex);
-  }
-  // Fallback status page if no web build
-  const publicIndex = path.resolve(__dirname, '../public/index.html');
-  if (fs.existsSync(publicIndex)) {
-    return res.sendFile(publicIndex);
-  }
-  res.json({
-    name: 'OrgsLedger API',
-    status: 'ok',
-    version: '1.0.0',
-    docs: '/health',
-  });
-});
-
+// ── Health Check ──────────────────────────────────────────
 app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
@@ -249,7 +223,11 @@ app.post('/api/license/activate', async (req, res) => {
 });
 
 // ── Serve Web Frontend (production) ──────────────────────
-// (Already served from web/ above)
+const webDir = path.resolve(__dirname, '../../mobile/dist');
+if (config.env === 'production' && fs.existsSync(webDir)) {
+  app.use(express.static(webDir));
+  logger.info(`Serving web frontend from ${webDir}`);
+}
 
 // ── Auth Rate Limiting (login/register brute force protection) ──
 const authLimiter = rateLimit({
@@ -286,8 +264,8 @@ app.all('/api/*', (_req, res) => {
   res.status(404).json({ success: false, error: 'Route not found' });
 });
 
-// SPA fallback — serve web frontend for all other routes
-if (fs.existsSync(webDir)) {
+// SPA fallback — serve web frontend for all other routes (production)
+if (config.env === 'production' && fs.existsSync(webDir)) {
   app.get('*', (_req, res) => {
     res.sendFile(path.join(webDir, 'index.html'));
   });

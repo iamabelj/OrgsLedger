@@ -1,11 +1,12 @@
 // ============================================================
-// OrgsLedger Mobile — Join Organization Screen
+// OrgsLedger Mobile — Join Organization (Royal Design)
 // ============================================================
 
 import React, { useState } from 'react';
 import {
   View,
   Text,
+  TouchableOpacity,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
@@ -16,7 +17,7 @@ import { Stack, router } from 'expo-router';
 import { useAuthStore } from '../src/stores/auth.store';
 import { api } from '../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../src/theme';
-import { Card, Button, Input } from '../src/components/ui';
+import { Card, Button, Input, SectionHeader, PoweredByFooter } from '../src/components/ui';
 import { showAlert } from '../src/utils/alert';
 
 export default function OrganizationScreen() {
@@ -34,12 +35,14 @@ export default function OrganizationScreen() {
 
     setLoading(true);
     try {
+      // Look up org by slug
       const lookupRes = await api.orgs.lookupBySlug(inviteCode.trim().toLowerCase());
       const org = lookupRes.data.data;
 
       if (org) {
+        // Join the organization
         await api.orgs.join(org.id);
-        await loadUser();
+        await loadUser(); // Refresh memberships
         setCurrentOrg(org.id);
         showAlert('Joined', `You are now part of "${org.name}"`, [
           { text: 'OK', onPress: () => router.replace('/(tabs)/home') },
@@ -76,13 +79,14 @@ export default function OrganizationScreen() {
           <View style={styles.heroIcon}>
             <Ionicons name="key" size={48} color={Colors.highlight} />
           </View>
-          <Text style={styles.heroTitle}>Join Your Organization</Text>
+          <Text style={styles.heroTitle}>Join an Organization</Text>
           <Text style={styles.heroSubtitle}>
             Enter the organization slug or invite code provided by your admin to join.
           </Text>
         </View>
 
         <Card style={styles.formCard}>
+          <SectionHeader title="Organization Details" />
           <Input
             label="Organization Slug or Invite Code"
             value={inviteCode}
@@ -97,6 +101,8 @@ export default function OrganizationScreen() {
             variant="primary"
           />
         </Card>
+
+        <PoweredByFooter />
       </ScrollView>
     </KeyboardAvoidingView>
   );

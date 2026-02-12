@@ -30,6 +30,7 @@ import {
   StatCard,
   ScreenWrapper,
   LoadingScreen,
+  PoweredByFooter,
 } from '../../src/components/ui';
 import { useResponsive } from '../../src/hooks/useResponsive';
 
@@ -385,7 +386,7 @@ export default function ReportsScreen() {
         </Card>
       </View>
 
-      <View style={{ height: 60 }} />
+      <PoweredByFooter />
     </ScrollView>
   );
 }

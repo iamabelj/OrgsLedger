@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
-import { Card, SectionHeader, StatCard, LoadingScreen } from '../../src/components/ui';
+import { Card, SectionHeader, StatCard, LoadingScreen, PoweredByFooter } from '../../src/components/ui';
 import { useResponsive } from '../../src/hooks/useResponsive';
 
 export default function AnalyticsScreen() {
@@ -182,7 +182,7 @@ export default function AnalyticsScreen() {
         </View>
       )}
 
-      <View style={{ height: Spacing.xxl }} />
+      <PoweredByFooter />
     </ScrollView>
   );
 }

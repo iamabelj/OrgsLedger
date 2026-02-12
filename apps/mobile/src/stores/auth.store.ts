@@ -95,6 +95,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       organization_id: m.organization_id || m.organizationId,
       organizationId: m.organizationId || m.organization_id,
     }));
+    console.log('[AuthStore] Registration memberships:', memberships);
 
     set({
       user: result.user,

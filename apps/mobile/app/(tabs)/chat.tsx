@@ -16,7 +16,7 @@ import { router } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useChatStore } from '../../src/stores/chat.store';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
-import { SearchBar, EmptyState, Avatar, Badge, PoweredByFooter } from '../../src/components/ui';
+import { SearchBar, EmptyState, Avatar, Badge } from '../../src/components/ui';
 
 export default function ChatScreen() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
@@ -95,7 +95,6 @@ export default function ChatScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.highlight} />
         }
         contentContainerStyle={{ paddingBottom: Spacing.xxl }}
-        ListFooterComponent={<PoweredByFooter />}
         ListEmptyComponent={
           <EmptyState
             icon="chatbubbles-outline"

@@ -19,7 +19,7 @@ import { Stack } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
-import { Card, Badge, Avatar, SearchBar, EmptyState, SectionHeader } from '../../src/components/ui';
+import { Card, Badge, Avatar, SearchBar, EmptyState, SectionHeader, PoweredByFooter } from '../../src/components/ui';
 import { useResponsive } from '../../src/hooks/useResponsive';
 import { showAlert } from '../../src/utils/alert';
 
@@ -275,6 +275,7 @@ export default function MembersScreen() {
             subtitle={search ? 'Try a different search term' : 'This organization has no members yet'}
           />
         }
+        ListFooterComponent={<PoweredByFooter />}
       />
     </View>
   );

@@ -27,6 +27,7 @@ import {
   Divider,
   ScreenWrapper,
   LoadingScreen,
+  PoweredByFooter,
 } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
 
@@ -449,6 +450,8 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
+
+      <PoweredByFooter />
     </ScrollView>
   );
 }

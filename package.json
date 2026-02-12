@@ -6,13 +6,13 @@
   "description": "Cross-platform operational hub for associations, organizations, clubs, and communities",
   "license": "UNLICENSED",
   "workspaces": [
-    "apps/api",
-    "packages/*"
+    "apps/*",
+    "packages/*",
+    "landing"
   ],
   "scripts": {
     "start": "node app.js",
-    "build": "node_modules/.bin/tsc -p packages/shared/tsconfig.json && node_modules/.bin/tsc -p packages/database/tsconfig.json && node_modules/.bin/tsc -p apps/api/tsconfig.json",
-    "postinstall": "node -e \"if(process.env.SITE_MODE==='landing'){require('child_process').execSync('cd landing && npm install --omit=dev',{stdio:'inherit'})}\"",
+    "build": "node_modules/.bin/tsc -p packages/shared/tsconfig.json && node_modules/.bin/tsc -p packages/database/tsconfig.json && node_modules/.bin/tsc -p apps/api/tsconfig.json && cd apps/mobile && npx expo export --platform web && cd ../..",
     "api:dev": "npm run dev --workspace=apps/api",
     "api:build": "npm run build --workspace=apps/api",
     "api:start": "npm run start --workspace=apps/api",

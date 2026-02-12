@@ -75,28 +75,35 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
     if (orgSlug) {
       const org = await db('organizations').where({ slug: orgSlug }).first();
       if (org) {
-        const existing = await db('memberships')
+        // Check not already a member (shouldn't be for new registration, but just in case)
+        const existingMembership = await db('memberships')
           .where({ user_id: user.id, organization_id: org.id })
           .first();
-        if (!existing) {
+
+        if (!existingMembership) {
           await db('memberships').insert({
             user_id: user.id,
             organization_id: org.id,
             role: 'member',
+            is_active: true,
+            joined_at: db.fn.now(),
           });
 
-          // Add to general channel
-          const generalChannel = await db('channels')
-            .where({ organization_id: org.id, type: 'general' })
+          // Add to general channel if it exists
+          const generalChannel = await db('chat_channels')
+            .where({ organization_id: org.id, name: 'General' })
             .first();
           if (generalChannel) {
-            await db('channel_members')
-              .insert({ channel_id: generalChannel.id, user_id: user.id })
-              .onConflict(['channel_id', 'user_id'])
-              .ignore();
+            await db('chat_channel_members').insert({
+              channel_id: generalChannel.id,
+              user_id: user.id,
+            }).onConflict(['channel_id', 'user_id']).ignore();
           }
+
+          logger.info(`User ${email} auto-joined org ${org.slug}`);
         }
 
+        // Load memberships
         memberships = await db('memberships')
           .join('organizations', 'memberships.organization_id', 'organizations.id')
           .where({ 'memberships.user_id': user.id, 'memberships.is_active': true })
@@ -120,7 +127,7 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
       userAgent: req.headers['user-agent'] || '',
     });
 
-    logger.info(`User registered: ${email}${orgSlug ? ` (org: ${orgSlug})` : ''}`);
+    logger.info(`User registered: ${email}`);
 
     res.status(201).json({
       success: true,

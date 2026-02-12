@@ -30,7 +30,6 @@ import {
   SectionHeader,
   Divider,
   EmptyState,
-  PoweredByFooter,
 } from '../../src/components/ui';
 import { useResponsive } from '../../src/hooks/useResponsive';
 
@@ -426,7 +425,7 @@ export default function HomeScreen() {
         )}
       </View>
 
-      <PoweredByFooter />
+      <View style={{ height: Spacing.xxl }} />
     </ScrollView>
 
     {/* Org Switcher Modal */}

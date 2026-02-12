@@ -24,7 +24,7 @@ import {
 } from '../../src/theme';
 import {
   Card, Badge, Input, Button, Avatar,
-  Divider, SectionHeader, PoweredByFooter,
+  Divider, SectionHeader,
 } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
 
@@ -100,7 +100,7 @@ export default function ProfileScreen() {
       if (enabled) {
         const { status } = await Notifications.requestPermissionsAsync();
         if (status !== 'granted') {
-          showAlert('Permission Denied', 'Enable notifications from your device settings.');
+          Alert.alert('Permission Denied', 'Enable notifications from your device settings.');
           setNotificationsEnabled(false);
           return;
         }
@@ -122,17 +122,17 @@ export default function ProfileScreen() {
         lastName: lastName.trim(),
         phone: phone.trim() || undefined,
       });
-      showAlert('Success', 'Profile updated');
+      Alert.alert('Success', 'Profile updated');
       setEditing(false);
     } catch (err: any) {
-      showAlert('Error', err.response?.data?.error || 'Failed to update profile');
+      Alert.alert('Error', err.response?.data?.error || 'Failed to update profile');
     } finally {
       setSaving(false);
     }
   };
 
   const handleLogout = () => {
-    showAlert('Sign Out', 'Are you sure you want to sign out?', [
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign Out',
@@ -253,7 +253,7 @@ export default function ProfileScreen() {
         <SettingLink icon="lock-closed" color={Colors.highlight} bg={Colors.highlightSubtle} label="Change Password" onPress={() => router.push('/change-password')} />
         <SettingLink icon="shield-checkmark" color={Colors.success} bg={Colors.successSubtle} label="Privacy Policy" onPress={() => Linking.openURL('https://orgsledger.com/privacy')} />
         <SettingLink icon="document-text" color={Colors.warning} bg={Colors.warningSubtle} label="Terms of Service" onPress={() => Linking.openURL('https://orgsledger.com/terms')} />
-        <SettingLink icon="information-circle" color={Colors.highlight} bg={Colors.highlightSubtle} label="About OrgsLedger" onPress={() => showAlert('OrgsLedger', 'Version 1.0.0\n\nOrganization management platform.\n\n\u00a9 2026 OrgsLedger')} last />
+        <SettingLink icon="information-circle" color={Colors.highlight} bg={Colors.highlightSubtle} label="About OrgsLedger" onPress={() => Alert.alert('OrgsLedger', 'Version 1.0.0\n\nOrganization management platform.\n\n\u00a9 2026 OrgsLedger')} last />
       </Card>
 
       {/* Danger Zone */}
@@ -269,7 +269,7 @@ export default function ProfileScreen() {
         <Ionicons name="shield-checkmark" size={14} color={Colors.textLight} />
         <Text style={styles.version}>OrgsLedger v1.0.0</Text>
       </View>
-      <PoweredByFooter />
+      <View style={{ height: Spacing.xxl * 2 }} />
     </ScrollView>
   );
 }

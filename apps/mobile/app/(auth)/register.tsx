@@ -2,7 +2,7 @@
 // OrgsLedger Mobile — Register Screen (Royal Design)
 // ============================================================
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -21,7 +21,7 @@ import { Input, Button, PoweredByFooter } from '../../src/components/ui';
 import { useResponsive } from '../../src/hooks/useResponsive';
 
 export default function RegisterScreen() {
-  const { org } = useLocalSearchParams<{ org?: string }>();
+  const params = useLocalSearchParams<{ org?: string }>();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -32,6 +32,22 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
   const register = useAuthStore((s) => s.register);
   const responsive = useResponsive();
+
+  // Detect org slug from URL params or web window location
+  const orgSlug = useMemo(() => {
+    // First check route params
+    if (params.org) return params.org;
+    // On web, check URL search params and pathname
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const orgParam = urlParams.get('org');
+      if (orgParam) return orgParam;
+      // Also check for /join/<slug> pattern in path
+      const pathMatch = window.location.pathname.match(/\/join\/([a-z0-9-]+)/i);
+      if (pathMatch) return pathMatch[1];
+    }
+    return undefined;
+  }, [params.org]);
 
   const handleRegister = async () => {
     console.log('[Register] Starting registration...');
@@ -50,14 +66,14 @@ export default function RegisterScreen() {
 
     setLoading(true);
     try {
-      console.log('[Register] Calling auth register...');
+      console.log('[Register] Calling auth register with orgSlug:', orgSlug);
       await register({
         email: email.trim().toLowerCase(),
         password,
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         phone: phone.trim() || undefined,
-        orgSlug: org || undefined,
+        orgSlug: orgSlug || undefined,
       });
       console.log('[Register] Registration successful, navigating to home...');
       // Use setTimeout to ensure state update completes before navigation

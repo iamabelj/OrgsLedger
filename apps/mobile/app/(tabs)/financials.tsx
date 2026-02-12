@@ -28,7 +28,7 @@ import {
 } from '../../src/theme';
 import {
   Card, Badge, StatCard, EmptyState, LoadingScreen,
-  SectionHeader, Divider, PoweredByFooter,
+  SectionHeader, Divider,
 } from '../../src/components/ui';
 
 type TabKey = 'ledger' | 'dues' | 'fines' | 'donations';
@@ -493,7 +493,7 @@ export default function FinancialsScreen() {
           </View>
         )}
 
-        <PoweredByFooter />
+        <View style={{ height: Spacing.xxl * 2 }} />
       </ScrollView>
 
       {/* Pending payments FAB */}
