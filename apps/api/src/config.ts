@@ -83,9 +83,13 @@ export const config = {
 // Validate critical config in production
 if (config.env === 'production') {
   if (config.jwt.secret === 'CHANGE_ME_IN_PRODUCTION') {
-    throw new Error('JWT_SECRET must be set in production!');
+    console.error('[OrgsLedger] FATAL: JWT_SECRET must be set in production!');
+    console.error('[OrgsLedger] Set the JWT_SECRET environment variable on your hosting provider.');
+    process.exit(1);
   }
   if (!process.env.DATABASE_URL && config.db.password === 'orgsledger_dev') {
-    throw new Error('DB_PASSWORD must be changed from default in production!');
+    console.error('[OrgsLedger] FATAL: DATABASE_URL or DB_PASSWORD must be set in production!');
+    console.error('[OrgsLedger] Set DATABASE_URL (Neon.tech connection string) as an environment variable.');
+    process.exit(1);
   }
 }
