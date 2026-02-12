@@ -126,16 +126,18 @@ module.exports = function (pool) {
       if (!name) return res.status(400).json({ error: 'Name is required' });
 
       const apiKey = 'ols_' + crypto.randomBytes(32).toString('hex');
+      const licenseKey = 'OLS-' + crypto.randomBytes(4).toString('hex').toUpperCase() + '-' + crypto.randomBytes(4).toString('hex').toUpperCase() + '-' + crypto.randomBytes(4).toString('hex').toUpperCase() + '-' + crypto.randomBytes(4).toString('hex').toUpperCase();
 
       const result = await pool.query(`
-        INSERT INTO ai_clients (name, email, domain, api_key, hours_balance, hours_used, notes)
-        VALUES ($1, $2, $3, $4, $5, 0, $6)
+        INSERT INTO ai_clients (name, email, domain, api_key, license_key, hours_balance, hours_used, notes)
+        VALUES ($1, $2, $3, $4, $5, $6, 0, $7)
         RETURNING *
       `, [
         name,
         email || null,
         domain || null,
         apiKey,
+        licenseKey,
         parseFloat(hours_balance) || 0,
         notes || null,
       ]);

@@ -339,8 +339,8 @@
       <div class="table-card">
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Client</th><th>Domain</th><th>API Key</th><th>Status</th><th>Hours (Balance / Used)</th><th>Usage (month)</th><th>Cost</th><th>Actions</th></tr></thead>
-            <tbody id="clients-body"><tr><td colspan="8" class="loading">Loading...</td></tr></tbody>
+            <thead><tr><th>Client</th><th>Domain</th><th>License Key</th><th>API Key</th><th>Status</th><th>Hours (Balance / Used)</th><th>Usage (month)</th><th>Cost</th><th>Actions</th></tr></thead>
+            <tbody id="clients-body"><tr><td colspan="9" class="loading">Loading...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -678,7 +678,7 @@ async function fetchClients() {
 function renderClients(clients) {
   const tbody = document.getElementById('clients-body');
   if (clients.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><p>No clients yet. Add your first client above.</p></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><p>No clients yet. Add your first client above.</p></td></tr>';
     return;
   }
   tbody.innerHTML = clients.map(c => {
@@ -690,9 +690,15 @@ function renderClients(clients) {
     const usageTok = Number(c.monthly_tokens || 0).toLocaleString();
     const hoursPercent = c.hours_balance > 0 ? Math.round((c.hours_used / c.hours_balance) * 100) : 0;
     const barColor = hoursPercent > 80 ? 'var(--danger)' : hoursPercent > 50 ? 'var(--warning)' : 'var(--accent)';
+    const licMasked = c.license_key ? c.license_key.slice(0, 8) + '••••' + c.license_key.slice(-4) : '—';
     return `<tr>
       <td><strong style="color:var(--white)">${esc(c.name)}</strong><br><span style="font-size:0.75rem;color:var(--gray-500)">${esc(c.email || '—')}</span></td>
       <td style="font-size:0.8rem;color:var(--gray-400)">${esc(c.domain || '—')}</td>
+      <td><span class="api-key" title="${esc(c.license_key || '')}">${esc(licMasked)}</span>
+        <button class="icon-btn" style="margin-left:6px;width:24px;height:24px" title="Copy License" onclick="copyKey('${esc(c.license_key || '')}')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </button>
+      </td>
       <td><span class="api-key" title="${esc(c.api_key)}">${esc(masked)}</span>
         <button class="icon-btn" style="margin-left:6px;width:24px;height:24px" title="Copy" onclick="copyKey('${esc(c.api_key)}')">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -819,7 +825,7 @@ async function saveClient() {
     } else {
       const data = await api('/api/admin/clients', 'POST', body);
       toast('Client created', 'success');
-      alert('API Key for ' + name + ':\n\n' + data.client.api_key + '\n\nCopy it now — this is the only time it will be shown in full.');
+      alert('Credentials for ' + name + ':\n\nLicense Key:\n' + data.client.license_key + '\n\nAPI Key:\n' + data.client.api_key + '\n\nCopy them now — they won\'t be shown in full again.');
     }
     closeModal();
     fetchClients();

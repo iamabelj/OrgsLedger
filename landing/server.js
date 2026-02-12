@@ -49,6 +49,7 @@ async function initDB() {
         domain VARCHAR(255),
         email VARCHAR(255),
         api_key VARCHAR(255) UNIQUE NOT NULL,
+        license_key VARCHAR(255) UNIQUE,
         active BOOLEAN DEFAULT true,
         hours_balance DECIMAL(10,2) DEFAULT 0,
         hours_used DECIMAL(10,2) DEFAULT 0,
@@ -90,6 +91,7 @@ async function initDB() {
     // Safe migration: add columns if they don't exist (for existing tables)
     const migrations = [
       `ALTER TABLE ai_clients ADD COLUMN IF NOT EXISTS domain VARCHAR(255)`,
+      `ALTER TABLE ai_clients ADD COLUMN IF NOT EXISTS license_key VARCHAR(255) UNIQUE`,
       `ALTER TABLE ai_clients ADD COLUMN IF NOT EXISTS hours_balance DECIMAL(10,2) DEFAULT 0`,
       `ALTER TABLE ai_clients ADD COLUMN IF NOT EXISTS hours_used DECIMAL(10,2) DEFAULT 0`,
       `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS hours_deducted DECIMAL(10,4) DEFAULT 0`,
