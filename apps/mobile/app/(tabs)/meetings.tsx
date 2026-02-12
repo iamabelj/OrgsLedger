@@ -23,7 +23,7 @@ import {
 } from '../../src/theme';
 import {
   Card, Badge, SearchBar, EmptyState, LoadingScreen,
-  SectionHeader, StatCard,
+  SectionHeader, StatCard, PoweredByFooter,
 } from '../../src/components/ui';
 
 type MeetingStatus = 'scheduled' | 'live' | 'ended' | 'cancelled';
@@ -179,6 +179,7 @@ export default function MeetingsScreen() {
         data={filtered}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingBottom: 100 }}
+        ListFooterComponent={<PoweredByFooter />}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

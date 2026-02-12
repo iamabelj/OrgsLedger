@@ -3,26 +3,16 @@
 // ============================================================
 
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Linking, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import { Colors, Spacing, FontSize, FontWeight } from '../../theme';
 
-const WHATSAPP_NUMBER = '+2349051936094';
-const WHATSAPP_URL = Platform.OS === 'web'
-  ? `https://wa.me/${WHATSAPP_NUMBER.replace('+', '')}`
-  : `whatsapp://send?phone=${WHATSAPP_NUMBER}`;
-
+const GLOBULL_URL = 'https://globull.dev';
 const currentYear = new Date().getFullYear();
 
 export function PoweredByFooter() {
   const handlePress = async () => {
     try {
-      const canOpen = await Linking.canOpenURL(WHATSAPP_URL);
-      if (canOpen) {
-        await Linking.openURL(WHATSAPP_URL);
-      } else {
-        // Fallback to web WhatsApp
-        await Linking.openURL(`https://wa.me/${WHATSAPP_NUMBER.replace('+', '')}`);
-      }
+      await Linking.openURL(GLOBULL_URL);
     } catch {
       // Silent fail
     }

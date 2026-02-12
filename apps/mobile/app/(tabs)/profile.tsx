@@ -24,7 +24,7 @@ import {
 } from '../../src/theme';
 import {
   Card, Badge, Input, Button, Avatar,
-  Divider, SectionHeader,
+  Divider, SectionHeader, PoweredByFooter,
 } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
 
@@ -269,7 +269,7 @@ export default function ProfileScreen() {
         <Ionicons name="shield-checkmark" size={14} color={Colors.textLight} />
         <Text style={styles.version}>OrgsLedger v1.0.0</Text>
       </View>
-      <View style={{ height: Spacing.xxl * 2 }} />
+      <PoweredByFooter />
     </ScrollView>
   );
 }
