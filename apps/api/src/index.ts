@@ -11,6 +11,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { config } from './config';
 import { logger } from './logger';
+import db from './db';
 import { auditContext } from './middleware';
 import { setupSocketIO } from './socket';
 import { AIService } from './services/ai.service';
@@ -35,6 +36,27 @@ import { startScheduler } from './services/scheduler.service';
 
 // ── License Verification ──────────────────────────────────
 async function verifyLicense(): Promise<boolean> {
+  // Ensure app_settings table exists
+  try {
+    await db.raw(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key VARCHAR(255) PRIMARY KEY,
+        value TEXT,
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+  } catch (e) { /* table may already exist */ }
+
+  // Check database for stored license first
+  try {
+    const row = await db('app_settings').where('key', 'license_key').first();
+    if (row?.value) {
+      logger.info('License key found in database');
+      return true;
+    }
+  } catch (e) { /* table may not exist yet */ }
+
+  // Fall back to env var
   const { license } = config;
   if (!license.key) {
     logger.warn('No LICENSE_KEY set — running in unlicensed mode. Set LICENSE_KEY env var to activate.');
@@ -50,6 +72,8 @@ async function verifyLicense(): Promise<boolean> {
     if (data.valid) {
       logger.info(`License verified ✔ — ${data.client.name} (${data.client.domain || 'no domain'})`);
       logger.info(`AI hours: ${data.client.hoursRemaining.toFixed(1)}h remaining of ${data.client.hoursBalance.toFixed(1)}h`);
+      // Store in DB so it persists
+      await db('app_settings').insert({ key: 'license_key', value: license.key }).onConflict('key').merge();
       return true;
     } else {
       logger.warn(`License invalid: ${data.error}`);
@@ -134,6 +158,68 @@ app.get('/health', (_req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
   });
+});
+
+// ── License Status (public — no auth needed) ──────────────
+app.get('/api/license/status', async (_req, res) => {
+  try {
+    const row = await db('app_settings').where('key', 'license_key').first();
+    if (row?.value) {
+      // Fetch stored client info if available
+      let clientInfo = null;
+      try {
+        const infoRow = await db('app_settings').where('key', 'license_client').first();
+        if (infoRow?.value) clientInfo = JSON.parse(infoRow.value);
+      } catch (e) { /* ignore */ }
+      return res.json({ licensed: true, client: clientInfo });
+    }
+    res.json({ licensed: false });
+  } catch {
+    res.json({ licensed: false });
+  }
+});
+
+// ── License Activate (public — one-time setup by admin) ───
+app.post('/api/license/activate', async (req, res) => {
+  try {
+    // Check if already activated
+    const existing = await db('app_settings').where('key', 'license_key').first();
+    if (existing?.value) {
+      return res.json({ success: true, message: 'License already activated' });
+    }
+
+    const { license_key } = req.body;
+    if (!license_key) {
+      return res.status(400).json({ success: false, error: 'License key is required' });
+    }
+
+    // Verify with gateway
+    const gatewayUrl = config.license.gatewayUrl;
+    const axios = require('axios');
+    const { data } = await axios.post(`${gatewayUrl}/api/license/verify`, {
+      license_key,
+    }, { timeout: 10000 });
+
+    if (!data.valid) {
+      return res.status(400).json({ success: false, error: data.error || 'Invalid license key' });
+    }
+
+    // Store license in database
+    await db('app_settings').insert({ key: 'license_key', value: license_key }).onConflict('key').merge();
+    await db('app_settings').insert({ key: 'license_client', value: JSON.stringify(data.client) }).onConflict('key').merge();
+
+    logger.info(`License activated: ${data.client.name} (${data.client.domain || 'no domain'})`);
+
+    res.json({
+      success: true,
+      message: 'License activated successfully',
+      client: data.client,
+    });
+  } catch (err: any) {
+    const msg = err.response?.data?.error || err.message;
+    logger.error('License activation error:', msg);
+    res.status(500).json({ success: false, error: msg || 'Activation failed' });
+  }
 });
 
 // ── Serve Web Frontend (production) ──────────────────────

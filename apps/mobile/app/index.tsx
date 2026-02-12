@@ -8,7 +8,10 @@ import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../src/stores/auth.store';
 import { Colors, FontSize, FontWeight, Spacing } from '../src/theme';
-import storage from '../src/utils/storage';
+
+const API_BASE_URL = __DEV__
+  ? 'http://localhost:3000'
+  : 'https://test.orgsledger.com';
 
 export default function Index() {
   const { isAuthenticated, isLoading } = useAuthStore();
@@ -16,11 +19,17 @@ export default function Index() {
   const [licenseChecked, setLicenseChecked] = useState(false);
   const [hasLicense, setHasLicense] = useState(false);
 
-  // Check license key on mount
+  // Check license status from the API server (not local storage)
   useEffect(() => {
     (async () => {
-      const licenseKey = await storage.getItemAsync('licenseKey');
-      setHasLicense(!!licenseKey);
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/license/status`);
+        const data = await res.json();
+        setHasLicense(data.licensed === true);
+      } catch {
+        // If API is unreachable, skip license gate (don't block users)
+        setHasLicense(true);
+      }
       setLicenseChecked(true);
     })();
   }, []);

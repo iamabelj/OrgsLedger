@@ -18,9 +18,10 @@ import {
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontSize, FontWeight, Spacing, BorderRadius } from '../src/theme';
-import storage from '../src/utils/storage';
 
-const GATEWAY_URL = process.env.EXPO_PUBLIC_GATEWAY_URL || 'https://orgsledger.com';
+const API_BASE_URL = __DEV__
+  ? 'http://localhost:3000'
+  : 'https://test.orgsledger.com';
 
 export default function ActivateScreen() {
   const [licenseKey, setLicenseKey] = useState('');
@@ -44,7 +45,7 @@ export default function ActivateScreen() {
     setError('');
 
     try {
-      const res = await fetch(`${GATEWAY_URL}/api/license/verify`, {
+      const res = await fetch(`${API_BASE_URL}/api/license/activate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ license_key: key }),
@@ -52,18 +53,19 @@ export default function ActivateScreen() {
 
       const data = await res.json();
 
-      if (data.valid) {
-        // Save license key and client info
-        await storage.setItemAsync('licenseKey', key);
-        await storage.setItemAsync('licenseClient', JSON.stringify(data.client));
+      if (data.success) {
+        const clientName = data.client?.name || 'your organization';
+        const hoursInfo = data.client?.hoursRemaining != null
+          ? `\nAI Hours: ${data.client.hoursRemaining.toFixed(1)}h remaining`
+          : '';
 
         // Show success
         if (Platform.OS === 'web') {
-          window.alert(`License activated!\n\nWelcome, ${data.client.name}.\nAI Hours: ${data.client.hoursRemaining.toFixed(1)}h remaining`);
+          window.alert(`License activated!\n\nWelcome, ${clientName}.${hoursInfo}`);
         } else {
           Alert.alert(
             'License Activated!',
-            `Welcome, ${data.client.name}.\nAI Hours: ${data.client.hoursRemaining.toFixed(1)}h remaining`,
+            `Welcome, ${clientName}.${hoursInfo}`,
             [{ text: 'Continue', onPress: () => router.replace('/') }]
           );
           return;
