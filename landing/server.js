@@ -41,16 +41,17 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 async function initDB() {
   const client = await pool.connect();
   try {
+    // Migrate: add new columns if table already exists
     await client.query(`
       CREATE TABLE IF NOT EXISTS ai_clients (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         name VARCHAR(255) NOT NULL,
+        domain VARCHAR(255),
         email VARCHAR(255),
         api_key VARCHAR(255) UNIQUE NOT NULL,
-        plan VARCHAR(50) DEFAULT 'standard',
         active BOOLEAN DEFAULT true,
-        monthly_quota_minutes INTEGER DEFAULT 120,
-        monthly_quota_tokens INTEGER DEFAULT 500000,
+        hours_balance DECIMAL(10,2) DEFAULT 0,
+        hours_used DECIMAL(10,2) DEFAULT 0,
         notes TEXT,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
@@ -63,6 +64,7 @@ async function initDB() {
         endpoint VARCHAR(100),
         audio_seconds INTEGER DEFAULT 0,
         tokens_used INTEGER DEFAULT 0,
+        hours_deducted DECIMAL(10,4) DEFAULT 0,
         estimated_cost DECIMAL(10,6) DEFAULT 0,
         status VARCHAR(20) DEFAULT 'success',
         error_message TEXT,
@@ -71,10 +73,30 @@ async function initDB() {
         created_at TIMESTAMP DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS ai_token_gifts (
+        id SERIAL PRIMARY KEY,
+        client_id UUID REFERENCES ai_clients(id) ON DELETE CASCADE,
+        hours DECIMAL(10,2) NOT NULL,
+        reason VARCHAR(500),
+        gifted_at TIMESTAMP DEFAULT NOW()
+      );
+
       CREATE INDEX IF NOT EXISTS idx_ai_usage_client ON ai_usage_logs(client_id);
       CREATE INDEX IF NOT EXISTS idx_ai_usage_created ON ai_usage_logs(created_at);
       CREATE INDEX IF NOT EXISTS idx_ai_usage_service ON ai_usage_logs(service);
+      CREATE INDEX IF NOT EXISTS idx_ai_gifts_client ON ai_token_gifts(client_id);
     `);
+
+    // Safe migration: add columns if they don't exist (for existing tables)
+    const migrations = [
+      `ALTER TABLE ai_clients ADD COLUMN IF NOT EXISTS domain VARCHAR(255)`,
+      `ALTER TABLE ai_clients ADD COLUMN IF NOT EXISTS hours_balance DECIMAL(10,2) DEFAULT 0`,
+      `ALTER TABLE ai_clients ADD COLUMN IF NOT EXISTS hours_used DECIMAL(10,2) DEFAULT 0`,
+      `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS hours_deducted DECIMAL(10,4) DEFAULT 0`,
+    ];
+    for (const sql of migrations) {
+      await client.query(sql).catch(() => {}); // ignore if column exists
+    }
     console.log('✓ AI Gateway tables initialized');
   } catch (err) {
     console.error('Failed to initialize database tables:', err.message);
@@ -114,31 +136,21 @@ async function apiKeyAuth(req, res, next) {
     if (!client) return res.status(401).json({ error: 'Invalid API key' });
     if (!client.active) return res.status(403).json({ error: 'Client is disabled' });
 
-    // Check monthly quota
-    const usageResult = await pool.query(`
-      SELECT 
-        COALESCE(SUM(audio_seconds), 0) as total_audio_seconds,
-        COALESCE(SUM(tokens_used), 0) as total_tokens
-      FROM ai_usage_logs
-      WHERE client_id = $1 
-        AND created_at >= date_trunc('month', NOW())
-        AND status = 'success'
-    `, [client.id]);
-
-    const usage = usageResult.rows[0];
-    const audioMinutesUsed = Math.ceil(usage.total_audio_seconds / 60);
-
-    if (audioMinutesUsed >= client.monthly_quota_minutes) {
-      return res.status(429).json({ error: 'Monthly audio minutes quota exceeded' });
-    }
-    if (parseInt(usage.total_tokens) >= client.monthly_quota_tokens) {
-      return res.status(429).json({ error: 'Monthly token quota exceeded' });
+    // Check hours balance
+    const remaining = parseFloat(client.hours_balance) - parseFloat(client.hours_used);
+    if (remaining <= 0) {
+      return res.status(429).json({ 
+        error: 'No AI hours remaining. Contact your provider for more hours.',
+        hoursBalance: parseFloat(client.hours_balance),
+        hoursUsed: parseFloat(client.hours_used),
+      });
     }
 
     req.client = client;
     req.clientUsage = {
-      audioMinutesUsed,
-      tokensUsed: parseInt(usage.total_tokens),
+      hoursRemaining: remaining,
+      hoursBalance: parseFloat(client.hours_balance),
+      hoursUsed: parseFloat(client.hours_used),
     };
     next();
   } catch (err) {

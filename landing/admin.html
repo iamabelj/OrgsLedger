@@ -311,7 +311,8 @@
         <div class="stat-card"><div class="stat-label">Total Clients</div><div class="stat-value" id="s-total-clients">—</div></div>
         <div class="stat-card accent"><div class="stat-label">Active Clients</div><div class="stat-value" id="s-active-clients">—</div></div>
         <div class="stat-card primary"><div class="stat-label">Requests This Month</div><div class="stat-value" id="s-total-requests">—</div><div class="stat-sub" id="s-success-rate"></div></div>
-        <div class="stat-card warning"><div class="stat-label">Estimated Cost</div><div class="stat-value" id="s-total-cost">—</div><div class="stat-sub" id="s-cost-breakdown"></div></div>
+        <div class="stat-card warning"><div class="stat-label">Total Hours Assigned</div><div class="stat-value" id="s-total-hours">—</div><div class="stat-sub" id="s-hours-breakdown"></div></div>
+        <div class="stat-card"><div class="stat-label">Estimated Cost</div><div class="stat-value" id="s-total-cost">—</div><div class="stat-sub" id="s-cost-breakdown"></div></div>
       </div>
       <div class="chart-card">
         <h3>Daily Usage — Last 30 Days</h3>
@@ -321,7 +322,7 @@
         <div class="table-header"><h3>Top Clients This Month</h3></div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Client</th><th>Plan</th><th>Requests</th><th>Audio (min)</th><th>Tokens</th><th>Cost</th></tr></thead>
+            <thead><tr><th>Client</th><th>Domain</th><th>Hours (Balance / Used)</th><th>Requests</th><th>Cost</th></tr></thead>
             <tbody id="top-clients-body"></tbody>
           </table>
         </div>
@@ -332,13 +333,13 @@
     <div class="page" id="page-clients">
       <div class="page-header">
         <h2>Clients</h2>
-        <p>Manage API clients and their quotas</p>
+        <p>Manage API clients and their hours</p>
         <div class="actions"><button class="btn btn-accent" onclick="openAddClient()">+ Add Client</button></div>
       </div>
       <div class="table-card">
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Client</th><th>API Key</th><th>Plan</th><th>Status</th><th>Quota (min/tok)</th><th>Usage (month)</th><th>Cost</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Client</th><th>Domain</th><th>API Key</th><th>Status</th><th>Hours (Balance / Used)</th><th>Usage (month)</th><th>Cost</th><th>Actions</th></tr></thead>
             <tbody id="clients-body"><tr><td colspan="8" class="loading">Loading...</td></tr></tbody>
           </table>
         </div>
@@ -402,23 +403,13 @@
       <input type="email" id="m-email" placeholder="client@example.com" />
     </div>
     <div class="form-group">
-      <label>Plan</label>
-      <select id="m-plan">
-        <option value="free">Free</option>
-        <option value="standard" selected>Standard</option>
-        <option value="premium">Premium</option>
-        <option value="enterprise">Enterprise</option>
-      </select>
+      <label>Domain</label>
+      <input type="text" id="m-domain" placeholder="client.orgsledger.com or custom-domain.com" />
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-group">
-        <label>Audio Quota (min/mo)</label>
-        <input type="number" id="m-quota-min" value="120" />
-      </div>
-      <div class="form-group">
-        <label>Token Quota (tok/mo)</label>
-        <input type="number" id="m-quota-tok" value="500000" />
-      </div>
+    <div class="form-group">
+      <label>AI Hours to Assign</label>
+      <input type="number" id="m-hours" value="10" step="0.5" min="0" />
+      <small style="color:var(--gray-500);font-size:0.75rem">Total hours of AI usage (speech-to-text + summarization)</small>
     </div>
     <div class="form-group">
       <label>Notes</label>
@@ -427,6 +418,40 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" id="modal-save-btn" onclick="saveClient()">Save Client</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Gift Hours Modal ──────────────────────────────── -->
+<div class="modal-overlay" id="gift-modal" style="display:none" onclick="if(event.target===this)closeGiftModal()">
+  <div class="modal">
+    <h3>🎁 Gift AI Hours</h3>
+    <p style="color:var(--gray-400);font-size:0.85rem;margin-bottom:16px" id="gift-client-info">Gift hours to client</p>
+    <div class="form-group">
+      <label>Hours to Gift</label>
+      <input type="number" id="g-hours" value="5" step="0.5" min="0.5" />
+    </div>
+    <div class="form-group">
+      <label>Reason</label>
+      <select id="g-reason-preset" onchange="document.getElementById('g-reason').value=this.value">
+        <option value="">Select a reason or type custom...</option>
+        <option value="Holiday Season Bonus">Holiday Season Bonus</option>
+        <option value="New Year Celebration">New Year Celebration</option>
+        <option value="Easter Bonus">Easter Bonus</option>
+        <option value="Customer Loyalty Reward">Customer Loyalty Reward</option>
+        <option value="First Month Bonus">First Month Bonus</option>
+        <option value="Referral Reward">Referral Reward</option>
+        <option value="Promotional Offer">Promotional Offer</option>
+        <option value="Service Credit">Service Credit</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Custom Reason</label>
+      <input type="text" id="g-reason" placeholder="e.g. Christmas Bonus 2025" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeGiftModal()">Cancel</button>
+      <button class="btn btn-accent" onclick="submitGift()">🎁 Gift Hours</button>
     </div>
   </div>
 </div>
@@ -514,6 +539,7 @@ async function loadDashboard() {
     const data = await api('/api/admin/stats');
     const c = data.clients;
     const u = data.usage;
+    const h = data.hours || {};
 
     document.getElementById('s-total-clients').textContent = c.total_clients;
     document.getElementById('s-active-clients').textContent = c.active_clients;
@@ -521,6 +547,8 @@ async function loadDashboard() {
     document.getElementById('s-success-rate').textContent = u.total_requests > 0
       ? `${Math.round(u.success_count / u.total_requests * 100)}% success rate`
       : 'No requests yet';
+    document.getElementById('s-total-hours').textContent = Number(h.total_hours_assigned || 0).toFixed(1) + 'h';
+    document.getElementById('s-hours-breakdown').textContent = `${Number(h.total_hours_used || 0).toFixed(1)}h used · ${Number(h.total_hours_remaining || 0).toFixed(1)}h remaining`;
     document.getElementById('s-total-cost').textContent = '$' + Number(u.total_cost).toFixed(2);
     const audioMin = Math.round(u.total_audio_seconds / 60);
     document.getElementById('s-cost-breakdown').textContent = `${audioMin} audio min · ${Number(u.total_tokens).toLocaleString()} tokens`;
@@ -528,18 +556,20 @@ async function loadDashboard() {
     // Top clients
     const tbody = document.getElementById('top-clients-body');
     if (data.topClients.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--gray-500)">No usage data yet</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--gray-500)">No usage data yet</td></tr>';
     } else {
-      tbody.innerHTML = data.topClients.map(cl => `
+      tbody.innerHTML = data.topClients.map(cl => {
+        const bal = Number(cl.hours_balance || 0).toFixed(1);
+        const used = Number(cl.hours_used || 0).toFixed(1);
+        return `
         <tr>
           <td><strong style="color:var(--white)">${esc(cl.name)}</strong><br><span style="font-size:0.75rem;color:var(--gray-500)">${esc(cl.email || '')}</span></td>
-          <td><span class="badge badge-primary">${esc(cl.plan)}</span></td>
+          <td style="font-size:0.8rem;color:var(--gray-400)">${esc(cl.domain || '—')}</td>
+          <td>${bal}h / ${used}h</td>
           <td>${cl.request_count}</td>
-          <td>${(cl.audio_seconds / 60).toFixed(1)}</td>
-          <td>${Number(cl.tokens_used).toLocaleString()}</td>
           <td>$${Number(cl.total_cost).toFixed(4)}</td>
         </tr>
-      `).join('');
+      `}).join('');
     }
 
     // Chart
@@ -653,23 +683,33 @@ function renderClients(clients) {
   }
   tbody.innerHTML = clients.map(c => {
     const masked = c.api_key.slice(0, 8) + '••••••••' + c.api_key.slice(-4);
-    const quotaStr = `${c.monthly_quota_minutes}m / ${(c.monthly_quota_tokens/1000).toFixed(0)}K`;
+    const bal = Number(c.hours_balance || 0).toFixed(1);
+    const used = Number(c.hours_used || 0).toFixed(1);
+    const remaining = (Number(c.hours_balance || 0) - Number(c.hours_used || 0)).toFixed(1);
     const usageMin = ((c.monthly_audio_seconds || 0) / 60).toFixed(1);
     const usageTok = Number(c.monthly_tokens || 0).toLocaleString();
+    const hoursPercent = c.hours_balance > 0 ? Math.round((c.hours_used / c.hours_balance) * 100) : 0;
+    const barColor = hoursPercent > 80 ? 'var(--danger)' : hoursPercent > 50 ? 'var(--warning)' : 'var(--accent)';
     return `<tr>
       <td><strong style="color:var(--white)">${esc(c.name)}</strong><br><span style="font-size:0.75rem;color:var(--gray-500)">${esc(c.email || '—')}</span></td>
+      <td style="font-size:0.8rem;color:var(--gray-400)">${esc(c.domain || '—')}</td>
       <td><span class="api-key" title="${esc(c.api_key)}">${esc(masked)}</span>
         <button class="icon-btn" style="margin-left:6px;width:24px;height:24px" title="Copy" onclick="copyKey('${esc(c.api_key)}')">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
         </button>
       </td>
-      <td><span class="badge badge-primary">${esc(c.plan)}</span></td>
       <td><span class="badge ${c.active ? 'badge-success' : 'badge-danger'}">${c.active ? 'Active' : 'Disabled'}</span></td>
-      <td style="font-size:0.8rem">${quotaStr}</td>
+      <td>
+        <div style="font-size:0.8rem;margin-bottom:4px"><strong>${bal}h</strong> balance · <strong>${used}h</strong> used · <span style="color:${barColor}">${remaining}h left</span></div>
+        <div style="height:4px;background:var(--dark);border-radius:2px;overflow:hidden"><div style="height:100%;width:${Math.min(hoursPercent, 100)}%;background:${barColor};border-radius:2px"></div></div>
+      </td>
       <td style="font-size:0.8rem">${usageMin} min / ${usageTok} tok<br><span style="color:var(--gray-500)">${c.monthly_requests || 0} reqs</span></td>
       <td>$${Number(c.monthly_cost || 0).toFixed(4)}</td>
       <td>
         <div class="actions-cell">
+          <button class="icon-btn" title="Gift Hours" onclick="openGiftModal('${c.id}', '${esc(c.name)}')" style="color:var(--accent)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12v10H4V12"/><path d="M2 7h20v5H2z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+          </button>
           <button class="icon-btn" title="${c.active ? 'Disable' : 'Enable'}" onclick="toggleClient('${c.id}')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${c.active
               ? '<path d="M18.36 6.64a9 9 0 0 1-12.73 12.73A9 9 0 0 1 18.36 6.64z"/><line x1="1" y1="1" x2="23" y2="23"/>'
@@ -733,9 +773,8 @@ function openAddClient() {
   document.getElementById('modal-save-btn').textContent = 'Create Client';
   document.getElementById('m-name').value = '';
   document.getElementById('m-email').value = '';
-  document.getElementById('m-plan').value = 'standard';
-  document.getElementById('m-quota-min').value = '120';
-  document.getElementById('m-quota-tok').value = '500000';
+  document.getElementById('m-domain').value = '';
+  document.getElementById('m-hours').value = '10';
   document.getElementById('m-notes').value = '';
   document.getElementById('client-modal').style.display = 'flex';
 }
@@ -749,9 +788,8 @@ async function editClient(id) {
     document.getElementById('modal-save-btn').textContent = 'Update Client';
     document.getElementById('m-name').value = c.name || '';
     document.getElementById('m-email').value = c.email || '';
-    document.getElementById('m-plan').value = c.plan || 'standard';
-    document.getElementById('m-quota-min').value = c.monthly_quota_minutes || 120;
-    document.getElementById('m-quota-tok').value = c.monthly_quota_tokens || 500000;
+    document.getElementById('m-domain').value = c.domain || '';
+    document.getElementById('m-hours').value = c.hours_balance || 0;
     document.getElementById('m-notes').value = c.notes || '';
     document.getElementById('client-modal').style.display = 'flex';
   } catch (e) { toast('Failed to load client', 'error'); }
@@ -769,9 +807,8 @@ async function saveClient() {
   const body = {
     name,
     email: document.getElementById('m-email').value.trim() || null,
-    plan: document.getElementById('m-plan').value,
-    monthly_quota_minutes: parseInt(document.getElementById('m-quota-min').value) || 120,
-    monthly_quota_tokens: parseInt(document.getElementById('m-quota-tok').value) || 500000,
+    domain: document.getElementById('m-domain').value.trim() || null,
+    hours_balance: parseFloat(document.getElementById('m-hours').value) || 0,
     notes: document.getElementById('m-notes').value.trim() || null,
   };
 
@@ -787,6 +824,41 @@ async function saveClient() {
     closeModal();
     fetchClients();
   } catch (e) { toast('Failed to save client', 'error'); }
+}
+
+/* ═══════════════════════════════════════════════════════
+   GIFT HOURS
+   ═══════════════════════════════════════════════════════ */
+let giftingClientId = null;
+
+function openGiftModal(id, name) {
+  giftingClientId = id;
+  document.getElementById('gift-client-info').textContent = `Gift AI hours to "${name}"`;
+  document.getElementById('g-hours').value = '5';
+  document.getElementById('g-reason-preset').value = '';
+  document.getElementById('g-reason').value = '';
+  document.getElementById('gift-modal').style.display = 'flex';
+}
+
+function closeGiftModal() {
+  document.getElementById('gift-modal').style.display = 'none';
+  giftingClientId = null;
+}
+
+async function submitGift() {
+  const hours = parseFloat(document.getElementById('g-hours').value);
+  const reason = document.getElementById('g-reason').value.trim() || document.getElementById('g-reason-preset').value || 'Admin gift';
+
+  if (!hours || hours <= 0) { toast('Enter valid hours', 'error'); return; }
+  if (!giftingClientId) return;
+
+  try {
+    const data = await api(`/api/admin/clients/${giftingClientId}/gift`, 'POST', { hours, reason });
+    toast(data.message || `Gifted ${hours}h successfully`, 'success');
+    closeGiftModal();
+    fetchClients();
+    loadDashboard();
+  } catch (e) { toast('Failed to gift hours', 'error'); }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -876,7 +948,8 @@ function toast(msg, type = 'success') {
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.getElementById('login-screen').style.display !== 'none') handleLogin();
   if (e.key === 'Enter' && document.getElementById('client-modal').style.display === 'flex') saveClient();
-  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Enter' && document.getElementById('gift-modal').style.display === 'flex') submitGift();
+  if (e.key === 'Escape') { closeModal(); closeGiftModal(); }
 });
 
 // Init

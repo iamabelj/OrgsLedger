@@ -109,13 +109,23 @@ module.exports = function (pool) {
       // Estimate cost: $0.006 per 15 seconds
       const cost = (audioSeconds / 15) * PRICING['speech-to-text'];
 
+      // Calculate hours to deduct (audio seconds -> hours)
+      const hoursDeducted = audioSeconds / 3600;
+
+      // Deduct hours from client balance
+      await pool.query(
+        'UPDATE ai_clients SET hours_used = hours_used + $1, updated_at = NOW() WHERE id = $2',
+        [hoursDeducted, req.client.id]
+      );
+
       // Log usage
       await pool.query(`
-        INSERT INTO ai_usage_logs (client_id, service, endpoint, audio_seconds, estimated_cost, status, ip_address, request_metadata)
-        VALUES ($1, 'speech-to-text', '/transcribe', $2, $3, 'success', $4, $5)
+        INSERT INTO ai_usage_logs (client_id, service, endpoint, audio_seconds, hours_deducted, estimated_cost, status, ip_address, request_metadata)
+        VALUES ($1, 'speech-to-text', '/transcribe', $2, $3, $4, 'success', $5, $6)
       `, [
         req.client.id,
         Math.ceil(audioSeconds),
+        hoursDeducted.toFixed(4),
         cost.toFixed(6),
         req.ip,
         JSON.stringify({ language: language || 'en-US', encoding: encoding || 'LINEAR16' }),
@@ -211,14 +221,22 @@ Be thorough and accurate.`;
         (inputTokens / 1000) * PRICING['openai-gpt4o'] +
         (outputTokens / 1000) * PRICING['openai-gpt4o-out'];
 
+      // Calculate hours to deduct (tokens -> hours: ~100K tokens = 1 hour)
+      const hoursDeducted = tokensUsed / 100000;
+
+      // Deduct hours from client balance
+      await pool.query(
+        'UPDATE ai_clients SET hours_used = hours_used + $1, updated_at = NOW() WHERE id = $2',
+        [hoursDeducted, req.client.id]
+      );
+
       // Log usage
       await pool.query(`
-        INSERT INTO ai_usage_logs (client_id, service, endpoint, tokens_used, estimated_cost, status, ip_address, request_metadata)
-        VALUES ($1, 'openai', '/summarize', $2, $3, 'success', $4, $5)
+        INSERT INTO ai_usage_logs (client_id, service, endpoint, tokens_used, hours_deducted, estimated_cost, status, ip_address, request_metadata)
+        VALUES ($1, 'openai', '/summarize', $2, $3, $4, 'success', $5, $6)
       `, [
         req.client.id,
-        tokensUsed,
-        cost.toFixed(6),
+        tokensUsed,        hoursDeducted.toFixed(4),        cost.toFixed(6),
         req.ip,
         JSON.stringify({ model: 'gpt-4o', inputTokens, outputTokens }),
       ]);
@@ -264,10 +282,11 @@ Be thorough and accurate.`;
         success: true,
         period: 'current_month',
         usage: {
+          hoursBalance: parseFloat(req.client.hours_balance || 0),
+          hoursUsed: parseFloat(req.client.hours_used || 0),
+          hoursRemaining: parseFloat(req.client.hours_balance || 0) - parseFloat(req.client.hours_used || 0),
           audioMinutes: Math.ceil(parseInt(usage.total_audio_seconds) / 60),
-          audioMinutesQuota: req.client.monthly_quota_minutes,
           tokensUsed: parseInt(usage.total_tokens),
-          tokensQuota: req.client.monthly_quota_tokens,
           estimatedCost: parseFloat(parseFloat(usage.total_cost).toFixed(4)),
           totalRequests: parseInt(usage.total_requests),
           successfulRequests: parseInt(usage.successful_requests),
