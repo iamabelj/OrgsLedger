@@ -150,8 +150,18 @@ app.use('/uploads', (req, res, next) => {
   }
 }, express.static(path.resolve(config.upload.dir)));
 
+// ── Serve public frontend ─────────────────────────────────
+const publicDir = path.resolve(__dirname, '../public');
+if (fs.existsSync(publicDir)) {
+  app.use(express.static(publicDir));
+}
+
 // ── Root & Health Check ───────────────────────────────────
 app.get('/', (_req, res) => {
+  const indexPath = path.resolve(__dirname, '../public/index.html');
+  if (fs.existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
   res.json({
     name: 'OrgsLedger API',
     status: 'ok',
