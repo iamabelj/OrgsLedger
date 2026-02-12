@@ -166,7 +166,7 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 });
 
 // ── Start Server ──────────────────────────────────────────
-server.listen(config.port, () => {
+server.listen(config.port, '0.0.0.0', () => {
   logger.info(`OrgsLedger API running on port ${config.port}`);
   logger.info(`Environment: ${config.env}`);
   logger.info(`Socket.io enabled`);
