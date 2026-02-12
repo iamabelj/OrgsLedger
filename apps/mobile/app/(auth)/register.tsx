@@ -14,13 +14,14 @@ import {
 } from 'react-native';
 import { showAlert } from '../../src/utils/alert';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
 import { Input, Button, PoweredByFooter } from '../../src/components/ui';
 import { useResponsive } from '../../src/hooks/useResponsive';
 
 export default function RegisterScreen() {
+  const { org } = useLocalSearchParams<{ org?: string }>();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -56,6 +57,7 @@ export default function RegisterScreen() {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         phone: phone.trim() || undefined,
+        orgSlug: org || undefined,
       });
       console.log('[Register] Registration successful, navigating to home...');
       // Use setTimeout to ensure state update completes before navigation

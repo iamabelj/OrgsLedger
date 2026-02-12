@@ -34,7 +34,7 @@ interface AuthState {
   currentOrgId: string | null;
 
   login: (email: string, password: string) => Promise<void>;
-  register: (data: { email: string; password: string; firstName: string; lastName: string; phone?: string }) => Promise<void>;
+  register: (data: { email: string; password: string; firstName: string; lastName: string; phone?: string; orgSlug?: string }) => Promise<void>;
   logout: () => Promise<void>;
   loadUser: () => Promise<void>;
   setCurrentOrg: (orgId: string) => void;
@@ -89,10 +89,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await storage.setItemAsync('refreshToken', result.refreshToken);
     console.log('[AuthStore] Tokens saved to storage');
 
+    // Normalize membership fields (API may return snake_case)
+    const memberships = (result.memberships || []).map((m: any) => ({
+      ...m,
+      organization_id: m.organization_id || m.organizationId,
+      organizationId: m.organizationId || m.organization_id,
+    }));
+
     set({
       user: result.user,
-      memberships: [],
+      memberships,
       isAuthenticated: true,
+      currentOrgId: memberships[0]?.organization_id || null,
     });
     console.log('[AuthStore] State updated, isAuthenticated: true');
 

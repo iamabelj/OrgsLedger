@@ -21,6 +21,7 @@ const registerSchema = z.object({
   firstName: z.string().min(1).max(100),
   lastName: z.string().min(1).max(100),
   phone: z.string().optional(),
+  orgSlug: z.string().optional(),
 });
 
 const loginSchema = z.object({
@@ -46,7 +47,7 @@ function generateTokens(userId: string, email: string, globalRole: string) {
 // ── Register ────────────────────────────────────────────────
 router.post('/register', validate(registerSchema), async (req: Request, res: Response) => {
   try {
-    const { email, password, firstName, lastName, phone } = req.body;
+    const { email, password, firstName, lastName, phone, orgSlug } = req.body;
 
     // Check if user already exists
     const existing = await db('users').where({ email }).first();
@@ -69,17 +70,57 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
 
     const tokens = generateTokens(user.id, user.email, user.global_role);
 
+    // Auto-join organization if orgSlug provided
+    let memberships: any[] = [];
+    if (orgSlug) {
+      const org = await db('organizations').where({ slug: orgSlug }).first();
+      if (org) {
+        const existing = await db('memberships')
+          .where({ user_id: user.id, organization_id: org.id })
+          .first();
+        if (!existing) {
+          await db('memberships').insert({
+            user_id: user.id,
+            organization_id: org.id,
+            role: 'member',
+          });
+
+          // Add to general channel
+          const generalChannel = await db('channels')
+            .where({ organization_id: org.id, type: 'general' })
+            .first();
+          if (generalChannel) {
+            await db('channel_members')
+              .insert({ channel_id: generalChannel.id, user_id: user.id })
+              .onConflict(['channel_id', 'user_id'])
+              .ignore();
+          }
+        }
+
+        memberships = await db('memberships')
+          .join('organizations', 'memberships.organization_id', 'organizations.id')
+          .where({ 'memberships.user_id': user.id, 'memberships.is_active': true })
+          .select(
+            'memberships.id',
+            'memberships.role',
+            'organizations.id as organizationId',
+            'organizations.name as organizationName',
+            'organizations.slug as organizationSlug'
+          );
+      }
+    }
+
     await writeAuditLog({
       userId: user.id,
       action: 'create',
       entityType: 'user',
       entityId: user.id,
-      newValue: { email, firstName, lastName },
+      newValue: { email, firstName, lastName, orgSlug },
       ipAddress: req.ip || '',
       userAgent: req.headers['user-agent'] || '',
     });
 
-    logger.info(`User registered: ${email}`);
+    logger.info(`User registered: ${email}${orgSlug ? ` (org: ${orgSlug})` : ''}`);
 
     res.status(201).json({
       success: true,
@@ -91,6 +132,7 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
           lastName: user.last_name,
           role: user.global_role,
         },
+        memberships,
         ...tokens,
       },
     });

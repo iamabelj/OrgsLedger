@@ -34,13 +34,19 @@ const addMemberSchema = z.object({
   role: z.enum(['org_admin', 'executive', 'member', 'guest']).default('member'),
 });
 
-// ── Create Organization ─────────────────────────────────────
+// ── Create Organization (Super Admin Only) ─────────────────
 router.post(
   '/',
   authenticate,
   validate(createOrgSchema),
   async (req: Request, res: Response) => {
     try {
+      // Only super_admin can create organizations
+      if (req.user!.globalRole !== 'super_admin') {
+        res.status(403).json({ success: false, error: 'Only super admin can create organizations' });
+        return;
+      }
+
       const { name, slug, currency, timezone } = req.body;
 
       // Check slug uniqueness

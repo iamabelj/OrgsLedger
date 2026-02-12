@@ -65,7 +65,7 @@ class ApiClient {
 
   // ── Auth ──────────────────────────────────────────────
   auth = {
-    register: (data: { email: string; password: string; firstName: string; lastName: string; phone?: string }) =>
+    register: (data: { email: string; password: string; firstName: string; lastName: string; phone?: string; orgSlug?: string }) =>
       this.client.post('/auth/register', data),
     login: (data: { email: string; password: string }) =>
       this.client.post('/auth/login', data),
