@@ -189,7 +189,40 @@ app.post('/api/admin/login', (req, res) => {
 // ── Admin API Routes ──────────────────────────────────────
 const adminRouter = require('./routes/admin');
 app.use('/api/admin', adminAuth, adminRouter(pool));
-
+// ── License Verification (public) ────────────────────────
+app.post('/api/license/verify', async (req, res) => {
+  const { license_key } = req.body;
+  if (!license_key) {
+    return res.status(400).json({ valid: false, error: 'License key is required' });
+  }
+  try {
+    const result = await pool.query(
+      'SELECT id, name, domain, email, active, hours_balance, hours_used FROM ai_clients WHERE license_key = $1',
+      [license_key]
+    );
+    const client = result.rows[0];
+    if (!client) {
+      return res.status(404).json({ valid: false, error: 'Invalid license key' });
+    }
+    if (!client.active) {
+      return res.status(403).json({ valid: false, error: 'License has been deactivated' });
+    }
+    res.json({
+      valid: true,
+      client: {
+        name: client.name,
+        domain: client.domain,
+        email: client.email,
+        hoursBalance: parseFloat(client.hours_balance),
+        hoursUsed: parseFloat(client.hours_used),
+        hoursRemaining: parseFloat(client.hours_balance) - parseFloat(client.hours_used),
+      },
+    });
+  } catch (err) {
+    console.error('License verify error:', err);
+    res.status(500).json({ valid: false, error: 'Verification failed' });
+  }
+});
 // ── AI Proxy Routes ───────────────────────────────────────
 const aiProxyRouter = require('./routes/ai-proxy');
 app.use('/api/ai', apiKeyAuth, aiProxyRouter(pool));

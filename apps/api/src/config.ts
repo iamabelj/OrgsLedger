@@ -56,6 +56,12 @@ export const config = {
     apiKey: process.env.AI_PROXY_KEY || '', // client API key from the gateway
   },
 
+  // License key — required for deployment
+  license: {
+    key: process.env.LICENSE_KEY || '',
+    gatewayUrl: process.env.GATEWAY_URL || 'https://orgsledger.com',
+  },
+
   email: {
     host: process.env.SMTP_HOST || '',
     port: parseInt(process.env.SMTP_PORT || '587', 10),

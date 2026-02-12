@@ -33,6 +33,44 @@ import analyticsRoutes from './routes/analytics';
 import expenseRoutes from './routes/expenses';
 import { startScheduler } from './services/scheduler.service';
 
+// ── License Verification ──────────────────────────────────
+async function verifyLicense(): Promise<boolean> {
+  const { license } = config;
+  if (!license.key) {
+    logger.warn('No LICENSE_KEY set — running in unlicensed mode');
+    if (config.env === 'production') {
+      logger.error('LICENSE_KEY is required in production. Get one at https://orgsledger.com/admin');
+      process.exit(1);
+    }
+    return false;
+  }
+
+  try {
+    const axios = require('axios');
+    const { data } = await axios.post(`${license.gatewayUrl}/api/license/verify`, {
+      license_key: license.key,
+    }, { timeout: 10000 });
+
+    if (data.valid) {
+      logger.info(`License verified \u2714 — ${data.client.name} (${data.client.domain || 'no domain'})`);
+      logger.info(`AI hours: ${data.client.hoursRemaining.toFixed(1)}h remaining of ${data.client.hoursBalance.toFixed(1)}h`);
+      return true;
+    } else {
+      logger.error(`License invalid: ${data.error}`);
+      if (config.env === 'production') process.exit(1);
+      return false;
+    }
+  } catch (err: any) {
+    const msg = err.response?.data?.error || err.message;
+    logger.error(`License verification failed: ${msg}`);
+    if (config.env === 'production') {
+      logger.error('Cannot start without a valid license in production.');
+      process.exit(1);
+    }
+    return false;
+  }
+}
+
 const app = express();
 const server = http.createServer(app);
 
@@ -166,13 +204,18 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 });
 
 // ── Start Server ──────────────────────────────────────────
-server.listen(config.port, '0.0.0.0', () => {
-  logger.info(`OrgsLedger API running on port ${config.port}`);
-  logger.info(`Environment: ${config.env}`);
-  logger.info(`Socket.io enabled`);
+(async () => {
+  // Verify license before starting
+  await verifyLicense();
 
-  // Start recurring dues scheduler
-  startScheduler();
-});
+  server.listen(config.port, '0.0.0.0', () => {
+    logger.info(`OrgsLedger API running on port ${config.port}`);
+    logger.info(`Environment: ${config.env}`);
+    logger.info(`Socket.io enabled`);
+
+    // Start recurring dues scheduler
+    startScheduler();
+  });
+})();
 
 export { app, server, io };

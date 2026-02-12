@@ -2,19 +2,40 @@
 // OrgsLedger Mobile — Root Index (Auth Gate)
 // ============================================================
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../src/stores/auth.store';
 import { Colors, FontSize, FontWeight, Spacing } from '../src/theme';
+import storage from '../src/utils/storage';
 
 export default function Index() {
   const { isAuthenticated, isLoading } = useAuthStore();
   const hasNavigated = useRef(false);
+  const [licenseChecked, setLicenseChecked] = useState(false);
+  const [hasLicense, setHasLicense] = useState(false);
+
+  // Check license key on mount
+  useEffect(() => {
+    (async () => {
+      const licenseKey = await storage.getItemAsync('licenseKey');
+      setHasLicense(!!licenseKey);
+      setLicenseChecked(true);
+    })();
+  }, []);
 
   useEffect(() => {
-    console.log('[Index] State changed:', { isLoading, isAuthenticated, hasNavigated: hasNavigated.current });
+    if (!licenseChecked) return;
+    console.log('[Index] State changed:', { isLoading, isAuthenticated, hasLicense, hasNavigated: hasNavigated.current });
+
+    if (!hasLicense && !hasNavigated.current) {
+      hasNavigated.current = true;
+      console.log('[Index] No license key — navigating to activate...');
+      router.replace('/activate');
+      return;
+    }
+
     if (!isLoading && !hasNavigated.current) {
       hasNavigated.current = true;
       if (isAuthenticated) {
@@ -25,7 +46,7 @@ export default function Index() {
         router.replace('/(auth)/login');
       }
     }
-  }, [isLoading, isAuthenticated]);
+  }, [isLoading, isAuthenticated, licenseChecked, hasLicense]);
 
   return (
     <View style={styles.splash}>
