@@ -1,0 +1,8 @@
+node_modules
+.git
+*.md
+apps/mobile/node_modules
+apps/mobile/.expo
+apps/mobile/android
+apps/mobile/ios
+.venv

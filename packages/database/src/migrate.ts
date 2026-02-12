@@ -1,0 +1,25 @@
+import knex from 'knex';
+import config from './knexfile';
+
+async function migrate() {
+  const db = knex(config);
+  try {
+    console.log('Running migrations...');
+    const [batch, migrations] = await db.migrate.latest({
+      directory: __dirname + '/migrations',
+    });
+    if (migrations.length === 0) {
+      console.log('Already up to date.');
+    } else {
+      console.log(`Batch ${batch}: ${migrations.length} migrations applied.`);
+      migrations.forEach((m: string) => console.log(`  ✓ ${m}`));
+    }
+  } catch (err) {
+    console.error('Migration failed:', err);
+    process.exit(1);
+  } finally {
+    await db.destroy();
+  }
+}
+
+migrate();

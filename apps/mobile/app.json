@@ -1,0 +1,63 @@
+{
+  "expo": {
+    "name": "OrgsLedger",
+    "slug": "orgsledger",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "scheme": "orgsledger",
+    "splash": {
+      "backgroundColor": "#1a1a2e"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.orgsledger.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "OrgsLedger needs microphone access for meeting audio recording."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1a1a2e"
+      },
+      "package": "com.orgsledger.app",
+      "permissions": [
+        "RECORD_AUDIO",
+        "RECEIVE_NOTIFICATIONS"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "OrgsLedger needs access to your photos for sharing in chat.",
+          "cameraPermission": "OrgsLedger needs access to your camera for taking photos."
+        }
+      ],
+      [
+        "expo-document-picker",
+        {
+          "iCloudContainerEnvironment": "Production"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#1a1a2e"
+        }
+      ],
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.com.orgsledger",
+          "enableGooglePay": true
+        }
+      ]
+    ]
+  }
+}
