@@ -13,14 +13,15 @@
 ```
 ┌──────────────┐        ┌────────────────────────────────┐        ┌──────────────────┐
 │   Browser    │───────▶│   Hostinger Cloud Hosting      │───────▶│    Neon.tech      │
-│   (Users)    │        │   (hPanel)                     │        │    PostgreSQL     │
+│   (Users)    │        │   (hPanel — Express/Node.js)   │        │    PostgreSQL     │
 └──────────────┘        │                                │        │    (Serverless)   │
-                        │  orgsledger.com                │        │                  │
-                        │    └── public_html/ (landing)  │        │  AWS us-east-1   │
-                        │                                │        └──────────────────┘
-                        │  test.orgsledger.com           │
-                        │    ├── public_html/ (web app)  │
-                        │    └── Node.js app (API:3000)  │
+                        │  test.orgsledger.com           │        │                  │
+                        │    └── Express API serves:     │        │  AWS us-east-1   │
+                        │         /api/*  (API routes)   │        └──────────────────┘
+                        │         /*      (Web app)      │
+                        │                                │
+                        │  orgsledger.com                │
+                        │    └── public_html/ (landing)  │
                         └────────────────────────────────┘
 ```
 
@@ -29,6 +30,9 @@
 | Database        | Neon.tech (free tier)       | $0 (0.5 GB storage)   |
 | Hosting         | Hostinger Cloud (shared)   | ~$10–13/mo            |
 | Domain + SSL    | Hostinger (included)       | Free (auto-SSL)       |
+
+> **Key:** The Express API serves BOTH the API endpoints (`/api/*`) and the
+> web frontend (static files + SPA fallback). No separate web server needed.
 
 ---
 
@@ -68,7 +72,6 @@ DATABASE_URL=postgresql://neondb_owner:npg_S4XDP5sCkTyw@ep-crimson-sky-aim3t0hb-
 1. Login to **hPanel** → your hosting dashboard
 2. Go to **Domains** → **Subdomains**
 3. Create subdomain: `test.orgsledger.com`
-4. This creates a folder at `domains/test.orgsledger.com/public_html/`
 
 ### 2.3 Point DNS
 
@@ -90,56 +93,9 @@ In hPanel → **DNS / Nameservers** (or your domain registrar):
 
 ---
 
-## Part 3 — Set Up Node.js Application (API)
+## Part 3 — Deploy via SSH
 
-### 3.1 Enable Node.js in hPanel
-
-1. hPanel → **Advanced** → **Node.js**
-2. Click **"Create a new application"**
-3. Fill in:
-
-   | Setting                | Value                                      |
-   |------------------------|--------------------------------------------|
-   | **Node.js version**    | 20.x (latest LTS)                          |
-   | **Application mode**   | Production                                 |
-   | **Application root**   | `domains/test.orgsledger.com/OrgsLedger/apps/api` |
-   | **Application startup file** | `dist/index.js`                       |
-   | **Run NPM install**    | Yes                                        |
-
-4. Click **Create**
-
-### 3.2 Set Environment Variables
-
-In hPanel → **Node.js** → your app → **Environment Variables**, add:
-
-```
-NODE_ENV=production
-PORT=3000
-DATABASE_URL=postgresql://neondb_owner:npg_S4XDP5sCkTyw@ep-crimson-sky-aim3t0hb-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
-JWT_SECRET=<generate with: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))">
-JWT_EXPIRES_IN=7d
-JWT_REFRESH_EXPIRES_IN=30d
-CORS_ORIGINS=https://test.orgsledger.com,https://orgsledger.com
-UPLOAD_DIR=./uploads
-MAX_FILE_SIZE_MB=50
-```
-
-Optional (add when ready):
-```
-STRIPE_SECRET_KEY=
-PAYSTACK_SECRET_KEY=
-PAYSTACK_PUBLIC_KEY=
-FLUTTERWAVE_SECRET_KEY=
-FLUTTERWAVE_PUBLIC_KEY=
-OPENAI_API_KEY=
-SMTP_HOST=
-SMTP_PORT=587
-SMTP_USER=
-SMTP_PASS=
-EMAIL_FROM=noreply@orgsledger.com
-```
-
-### 3.3 Deploy via SSH (Terminal)
+### 3.1 Enable SSH & Connect
 
 1. hPanel → **Advanced** → **SSH Access** → Enable SSH
 2. Note your SSH credentials (username, port, hostname)
@@ -149,7 +105,7 @@ EMAIL_FROM=noreply@orgsledger.com
 ssh -p PORT username@hostname
 ```
 
-4. Clone and build:
+### 3.2 Clone & Build
 
 ```bash
 # Navigate to subdomain folder
@@ -176,89 +132,110 @@ cd apps/mobile && npx expo export --platform web && cd ../..
 mkdir -p apps/api/uploads
 ```
 
-### 3.4 Copy Web App Files to public_html
+---
 
-The Expo web build needs to be served as static files:
+## Part 4 — Create Node.js Application (Express)
 
-```bash
-# Copy web build to the subdomain's public_html
-cp -r apps/mobile/dist/* ../public_html/
+### 4.1 Create App in hPanel
+
+1. hPanel → **Advanced** → **Node.js**
+2. Click **"Create a new application"**
+3. Fill in:
+
+   | Setting                      | Value                                                  |
+   |------------------------------|--------------------------------------------------------|
+   | **Framework**                | **Express**                                            |
+   | **Node.js version**          | 20.x (latest LTS)                                     |
+   | **Application mode**         | Production                                             |
+   | **Application root**         | `domains/test.orgsledger.com/OrgsLedger/apps/api`      |
+   | **Application startup file** | `dist/index.js`                                        |
+   | **Linked domain**            | `test.orgsledger.com`                                  |
+
+4. Click **Create**
+
+> **How it works:** Hostinger proxies all `test.orgsledger.com` traffic to the
+> Express app. The Express app serves API routes at `/api/*` and the web
+> frontend (static files + SPA fallback) for all other routes. No `.htaccess`
+> or `public_html` setup needed for the app subdomain.
+
+### 4.2 Set Environment Variables
+
+In hPanel → **Node.js** → your app → **Environment Variables**, add each one:
+
+**Required:**
+| Variable | Value |
+|----------|-------|
+| `NODE_ENV` | `production` |
+| `PORT` | `3000` |
+| `DATABASE_URL` | `postgresql://neondb_owner:npg_S4XDP5sCkTyw@ep-crimson-sky-aim3t0hb-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require` |
+| `JWT_SECRET` | *(generate — see below)* |
+| `JWT_EXPIRES_IN` | `7d` |
+| `JWT_REFRESH_EXPIRES_IN` | `30d` |
+| `CORS_ORIGINS` | `https://test.orgsledger.com,https://orgsledger.com` |
+| `UPLOAD_DIR` | `./uploads` |
+| `MAX_FILE_SIZE_MB` | `50` |
+
+Generate your JWT secret locally:
+```powershell
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+```
+Copy the output and paste it as the `JWT_SECRET` value.
+
+**Optional (add later when ready):**
+| Variable | Purpose |
+|----------|---------|
+| `STRIPE_SECRET_KEY` | Stripe payments |
+| `PAYSTACK_SECRET_KEY` | Paystack payments |
+| `PAYSTACK_PUBLIC_KEY` | Paystack payments |
+| `FLUTTERWAVE_SECRET_KEY` | Flutterwave payments |
+| `FLUTTERWAVE_PUBLIC_KEY` | Flutterwave payments |
+| `OPENAI_API_KEY` | AI meeting minutes |
+| `SMTP_HOST` | Email sending |
+| `SMTP_PORT` | Email port (587) |
+| `SMTP_USER` | Email username |
+| `SMTP_PASS` | Email password |
+| `EMAIL_FROM` | noreply@orgsledger.com |
+
+### 4.3 Install Dependencies via hPanel
+
+After creating the app, in hPanel → **Node.js** → your app:
+1. Click **"Run NPM Install"** (this installs from the `apps/api/package.json`)
+2. Click **"Restart"**
+
+### 4.4 Verify App is Running
+
+In hPanel → **Node.js** → your app should show status **"Running"**
+
+Open browser: `https://test.orgsledger.com/health` → should return:
+```json
+{"status":"ok","version":"1.0.0","timestamp":"...","uptime":123}
 ```
 
-### 3.5 Configure .htaccess for SPA Routing
-
-Create `.htaccess` in the subdomain's `public_html/` for single-page app routing:
-
-```bash
-cat > ../public_html/.htaccess << 'EOF'
-RewriteEngine On
-
-# Proxy API requests to Node.js app
-RewriteRule ^api/(.*)$ http://127.0.0.1:3000/api/$1 [P,L]
-RewriteRule ^health$ http://127.0.0.1:3000/health [P,L]
-RewriteRule ^socket.io/(.*)$ http://127.0.0.1:3000/socket.io/$1 [P,L]
-
-# Proxy uploads
-RewriteRule ^uploads/(.*)$ http://127.0.0.1:3000/uploads/$1 [P,L]
-
-# SPA fallback — serve index.html for all non-file routes
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule . /index.html [L]
-EOF
-```
-
-### 3.6 Start the Node.js App
-
-Go back to hPanel → **Node.js** → your app → click **"Restart"**
-
-Or via SSH:
-```bash
-# If hPanel Node.js manager is set up, it auto-starts
-# Otherwise, you can check the process:
-cd domains/test.orgsledger.com/OrgsLedger/apps/api
-node dist/index.js
-```
+Open browser: `https://test.orgsledger.com` → should show the login page.
 
 ---
 
-## Part 4 — Landing Page (orgsledger.com)
+## Part 5 — Landing Page (orgsledger.com)
 
-### 4.1 Upload Landing Page
+### 5.1 Upload Landing Page
 
-The sales page goes in the **main domain's** `public_html/`:
+The landing/sales page goes on the **main domain's** `public_html/`:
 
+**Option A — via SSH:**
 ```bash
-# Via SSH
-cp landing/index.html ~/domains/orgsledger.com/public_html/index.html
+cp ~/domains/test.orgsledger.com/OrgsLedger/landing/index.html ~/domains/orgsledger.com/public_html/index.html
 ```
 
-Or via hPanel → **Files** → **File Manager** → navigate to `public_html/` → upload `landing/index.html`.
+**Option B — via hPanel:**
+hPanel → **Files** → **File Manager** → navigate to `public_html/` → upload `landing/index.html`
 
-### 4.2 Verify
+### 5.2 Verify
 
 Open `https://orgsledger.com` → you should see the sales/landing page.
 
 ---
 
-## Part 5 — Verify Deployment
-
-### Check the API
-
-```bash
-curl https://test.orgsledger.com/health
-```
-
-Expected:
-```json
-{"status":"ok","version":"1.0.0","timestamp":"...","uptime":123}
-```
-
-### Check the Web App
-
-Open `https://test.orgsledger.com` → you should see the login page.
-
-### Default Login
+## Part 6 — Default Login & First Steps
 
 ```
 Email:    admin@orgsledger.com
@@ -269,7 +246,7 @@ Password: SuperAdmin123!
 
 ---
 
-## Part 6 — Updates & Maintenance
+## Part 7 — Updates & Maintenance
 
 ### Push an Update
 
@@ -280,25 +257,21 @@ Password: SuperAdmin123!
    git push origin main
    ```
 
-2. SSH into Hostinger and pull:
+2. SSH into Hostinger and pull + rebuild:
    ```bash
    cd domains/test.orgsledger.com/OrgsLedger
    git pull origin main
 
-   # Rebuild
+   # Rebuild all
    cd packages/shared && npx tsc && cd ../..
    cd packages/database && npx tsc && cd ../..
    cd apps/api && npx tsc && cd ../..
    cd apps/mobile && npx expo export --platform web && cd ../..
-
-   # Copy updated web files
-   cp -r apps/mobile/dist/* ../public_html/
-
-   # Restart Node.js app via hPanel or:
-   # hPanel → Node.js → Restart
    ```
 
-3. Run new migrations (if any):
+3. Restart app: hPanel → **Node.js** → click **"Restart"**
+
+4. Run new migrations (if any):
    ```bash
    cd packages/database
    DATABASE_URL="your_neon_url" npx ts-node src/migrate.ts
@@ -316,17 +289,16 @@ Password: SuperAdmin123!
 
 | Problem | Fix |
 |---------|-----|
-| **"Database connection failed"** | Check `DATABASE_URL` in Node.js env vars — Neon free tier sleeps after 5 min, first request takes ~1s |
-| **CORS error in browser** | Add domain to `CORS_ORIGINS` env var, restart Node.js app |
-| **502 / App not loading** | hPanel → Node.js → check status. Click Restart. Check logs. |
-| **Blank page on web** | Rebuild: `cd apps/mobile && npx expo export --platform web`. Re-copy to public_html. |
-| **"Too many connections"** | You're already using Neon's pooler (`-pooler` in hostname) ✅ |
+| **"Database connection failed"** | Check `DATABASE_URL` in hPanel env vars — Neon free tier sleeps after 5 min, first request takes ~1s |
+| **CORS error in browser** | Check `CORS_ORIGINS` env var includes your domain, restart app |
+| **502 / App not loading** | hPanel → Node.js → check status. Click Restart. Verify `dist/index.js` exists. |
+| **Blank page on web** | Rebuild: `cd apps/mobile && npx expo export --platform web`. Restart app. |
+| **"Too many connections"** | Already using Neon's pooler (`-pooler` in hostname) ✅ |
 | **SSL error** | hPanel → Security → SSL → Reinstall. Enable Force HTTPS. |
 | **JWT error in production** | Make sure `JWT_SECRET` env var is set (not the default) |
 | **Uploads not working** | `mkdir -p apps/api/uploads` and ensure write permissions |
-| **API routes 404** | Check `.htaccess` has the ProxyPass rules for `/api/` |
-| **Socket.io not connecting** | Check `.htaccess` proxies `/socket.io/` correctly |
-| **Node.js version issue** | hPanel → Node.js → change to 20.x LTS |
+| **"Cannot find module"** | Run `npm install` in `apps/api/`, then click "Run NPM Install" in hPanel |
+| **Web files not found** | Ensure `apps/mobile/dist/` exists — rebuild with `npx expo export --platform web` |
 
 ---
 
@@ -351,10 +323,10 @@ Default Login:
 Hostinger hPanel:
   https://hpanel.hostinger.com
 
-Key Paths (on Hostinger):
-  App code:    ~/domains/test.orgsledger.com/OrgsLedger/
-  Web files:   ~/domains/test.orgsledger.com/public_html/
-  Landing:     ~/domains/orgsledger.com/public_html/
-  API build:   ~/domains/test.orgsledger.com/OrgsLedger/apps/api/dist/
-  Uploads:     ~/domains/test.orgsledger.com/OrgsLedger/apps/api/uploads/
+Key Paths (on Hostinger via SSH):
+  Repo:      ~/domains/test.orgsledger.com/OrgsLedger/
+  API build: ~/domains/test.orgsledger.com/OrgsLedger/apps/api/dist/
+  Web build: ~/domains/test.orgsledger.com/OrgsLedger/apps/mobile/dist/
+  Uploads:   ~/domains/test.orgsledger.com/OrgsLedger/apps/api/uploads/
+  Landing:   ~/domains/orgsledger.com/public_html/
 ```
