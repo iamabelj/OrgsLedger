@@ -289,6 +289,14 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         <span>Usage Logs</span>
       </a>
+      <a href="#" data-page="orders" onclick="showPage('orders')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        <span>Orders</span>
+      </a>
+      <a href="#" data-page="ai-plans" onclick="showPage('ai-plans')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>AI Plans</span>
+      </a>
     </nav>
     <div class="sidebar-footer">
       <button onclick="handleLogout()">
@@ -381,6 +389,69 @@
             <button class="btn btn-ghost btn-sm" id="logs-prev" onclick="logsPage(-1)" disabled>&larr; Prev</button>
             <button class="btn btn-ghost btn-sm" id="logs-next" onclick="logsPage(1)">Next &rarr;</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Orders Page ─────────────────────────────── -->
+    <div class="page" id="page-orders">
+      <div class="page-header">
+        <h2>Orders</h2>
+        <p>Product purchases from the landing page</p>
+      </div>
+      <div class="table-card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Customer</th><th>Items</th><th>Amount</th><th>Gateway</th><th>Status</th></tr></thead>
+            <tbody id="orders-body"><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── AI Plans Page (Super Admin Only) ────────── -->
+    <div class="page" id="page-ai-plans">
+      <div class="page-header">
+        <h2>AI Plans & Pricing</h2>
+        <p>Manage AI hour pricing and sell hours to clients. ₦10,000/hr (NGN) · $7/hr (USD)</p>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card accent">
+          <div class="stat-label">Price Per Hour (NGN)</div>
+          <div class="stat-value">₦10,000</div>
+        </div>
+        <div class="stat-card primary">
+          <div class="stat-label">Price Per Hour (USD)</div>
+          <div class="stat-value">$7.00</div>
+        </div>
+        <div class="stat-card warning">
+          <div class="stat-label">Exchange Rate</div>
+          <div class="stat-value">₦1,500/$1</div>
+        </div>
+      </div>
+
+      <div class="table-card" style="margin-top:24px">
+        <div class="table-header"><h3>Sell AI Hours to Client</h3></div>
+        <div style="padding:20px">
+          <div class="form-group">
+            <label>Select Client</label>
+            <select id="plan-client"></select>
+          </div>
+          <div class="form-group">
+            <label>Hours to Add</label>
+            <input type="number" id="plan-hours" value="10" step="1" min="1" />
+          </div>
+          <div class="form-group">
+            <label>Currency</label>
+            <select id="plan-currency">
+              <option value="NGN">NGN (₦)</option>
+              <option value="USD">USD ($)</option>
+            </select>
+          </div>
+          <div style="padding:16px 0;font-size:1.1rem;font-weight:700;color:var(--accent)" id="plan-cost-display">
+            Total: ₦100,000
+          </div>
+          <button class="btn btn-accent" onclick="sellHours()">💰 Add Hours & Record Sale</button>
         </div>
       </div>
     </div>
@@ -529,6 +600,8 @@ function showPage(name) {
   if (name === 'dashboard') loadDashboard();
   if (name === 'clients') fetchClients();
   if (name === 'logs') { logsOffset = 0; populateClientFilter(); fetchLogs(); }
+  if (name === 'orders') fetchOrders();
+  if (name === 'ai-plans') loadAIPlans();
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -948,6 +1021,83 @@ function toast(msg, type = 'success') {
   el.textContent = msg;
   c.appendChild(el);
   setTimeout(() => { el.remove(); }, 3500);
+}
+
+/* ═══════════════════════════════════════════════════════
+   ORDERS
+   ═══════════════════════════════════════════════════════ */
+async function fetchOrders() {
+  try {
+    const data = await api('/api/admin/orders');
+    const tbody = document.getElementById('orders-body');
+    if (!data.orders || data.orders.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--gray-500);padding:40px">No orders yet</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.orders.map(o => {
+      const dt = new Date(o.created_at);
+      const date = dt.toLocaleDateString() + ' ' + dt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+      let items = [];
+      try { items = typeof o.items === 'string' ? JSON.parse(o.items) : o.items; } catch {}
+      const itemNames = items.map(i => i.name || i.id).join(', ');
+      const sym = o.currency === 'USD' ? '$' : '₦';
+      return `<tr>
+        <td style="font-size:0.8rem;white-space:nowrap">${date}</td>
+        <td><strong style="color:var(--white)">${esc(o.customer_name || '—')}</strong><br><span style="font-size:0.75rem;color:var(--gray-500)">${esc(o.customer_email || '')}</span></td>
+        <td style="font-size:0.8rem">${esc(itemNames)}</td>
+        <td style="font-weight:700">${sym}${Number(o.amount).toLocaleString()}</td>
+        <td><span class="badge badge-primary">${esc(o.gateway || '—')}</span></td>
+        <td><span class="badge ${o.status==='completed'?'badge-success':o.status==='pending'?'badge-warning':'badge-danger'}">${esc(o.status)}</span></td>
+      </tr>`;
+    }).join('');
+  } catch (e) { console.error('Orders error:', e); }
+}
+
+/* ═══════════════════════════════════════════════════════
+   AI PLANS
+   ═══════════════════════════════════════════════════════ */
+function updatePlanCost() {
+  const hours = parseFloat(document.getElementById('plan-hours').value) || 0;
+  const currency = document.getElementById('plan-currency').value;
+  const price = currency === 'USD' ? hours * 7 : hours * 10000;
+  const sym = currency === 'USD' ? '$' : '₦';
+  document.getElementById('plan-cost-display').textContent = `Total: ${sym}${price.toLocaleString()}`;
+}
+
+async function loadAIPlans() {
+  try {
+    const data = await api('/api/admin/clients');
+    const sel = document.getElementById('plan-client');
+    sel.innerHTML = '';
+    (data.clients || []).forEach(c => {
+      sel.innerHTML += `<option value="${c.id}">${esc(c.name)} (${Number(c.hours_balance||0).toFixed(1)}h bal)</option>`;
+    });
+    // Attach event listeners
+    document.getElementById('plan-hours').oninput = updatePlanCost;
+    document.getElementById('plan-currency').onchange = updatePlanCost;
+    updatePlanCost();
+  } catch (e) { console.error(e); }
+}
+
+async function sellHours() {
+  const clientId = document.getElementById('plan-client').value;
+  const hours = parseFloat(document.getElementById('plan-hours').value);
+  const currency = document.getElementById('plan-currency').value;
+  if (!clientId || !hours || hours <= 0) { toast('Select client and enter hours', 'error'); return; }
+  const price = currency === 'USD' ? hours * 7 : hours * 10000;
+
+  if (!confirm(`Add ${hours}h to client for ${currency === 'USD' ? '$' : '₦'}${price.toLocaleString()}?`)) return;
+
+  try {
+    await api('/api/admin/purchase-hours', 'POST', {
+      clientId, hours, currency,
+      amount: price,
+      email: '',
+      gateway: 'admin_manual',
+    });
+    toast(`Added ${hours}h successfully`, 'success');
+    loadAIPlans();
+  } catch (e) { toast('Failed to add hours', 'error'); }
 }
 
 // Keyboard handler

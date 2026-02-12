@@ -214,7 +214,7 @@ class ApiClient {
 
   // ── Payments ──────────────────────────────────────────
   payments = {
-    pay: (orgId: string, data: { transactionId: string; gateway: string; paymentMethodId?: string }) =>
+    pay: (orgId: string, data: { transactionId: string; gateway: string; paymentMethodId?: string; proofOfPayment?: string }) =>
       this.client.post(`/payments/${orgId}/payments/pay`, data),
     setupIntent: (orgId: string) =>
       this.client.post(`/payments/${orgId}/payments/setup-intent`),
@@ -222,6 +222,16 @@ class ApiClient {
       this.client.get(`/payments/${orgId}/payments/gateways`),
     verify: (orgId: string, transactionId: string) =>
       this.client.get(`/payments/${orgId}/payments/verify/${transactionId}`),
+    // Bank transfer admin
+    getPendingTransfers: (orgId: string) =>
+      this.client.get(`/payments/${orgId}/payments/pending-transfers`),
+    approveTransfer: (orgId: string, data: { transactionId: string; approved: boolean }) =>
+      this.client.post(`/payments/${orgId}/payments/approve-transfer`, data),
+    // Payment method config
+    getPaymentMethods: (orgId: string) =>
+      this.client.get(`/payments/${orgId}/payments/methods`),
+    updatePaymentMethods: (orgId: string, paymentMethods: any) =>
+      this.client.put(`/payments/${orgId}/payments/methods`, { paymentMethods }),
   };
 
   // ── Committees ────────────────────────────────────────

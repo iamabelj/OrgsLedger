@@ -346,6 +346,18 @@ export default function HomeScreen() {
               color="#EC4899"
               onPress={() => router.push('/admin/analytics')}
             />
+            <AdminActionCard
+              icon="swap-horizontal"
+              label="Transfers"
+              color="#0EA5E9"
+              onPress={() => router.push('/admin/bank-transfers')}
+            />
+            <AdminActionCard
+              icon="card"
+              label="Pay Config"
+              color="#6366F1"
+              onPress={() => router.push('/admin/payment-methods')}
+            />
           </View>
         </View>
       )}

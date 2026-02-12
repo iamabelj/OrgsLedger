@@ -111,6 +111,43 @@ export default function FinancialsScreen() {
 
     const pickAndPay = async (gateway: string) => {
       try {
+        // Bank transfer — show details and submit with note
+        if (gateway === 'bank_transfer') {
+          const gw = gateways.find((g: any) => g.id === 'bank_transfer') as any;
+          const bd = gw?.bankDetails || {};
+          const detailLines = [
+            bd.bankName ? `Bank: ${bd.bankName}` : '',
+            bd.accountNumber ? `Account: ${bd.accountNumber}` : '',
+            bd.accountName ? `Name: ${bd.accountName}` : '',
+            bd.instructions || 'Transfer and submit proof of payment.',
+          ].filter(Boolean).join('\n');
+
+          showAlert(
+            'Bank Transfer Details',
+            `${detailLines}\n\nAmount: ₦${amount.toLocaleString()}\n\nAfter transferring, tap "I've Paid" so admin can verify.`,
+            [
+              { text: 'Cancel', style: 'cancel' as const },
+              {
+                text: "I've Paid",
+                onPress: async () => {
+                  try {
+                    const res = await api.payments.pay(currentOrgId!, {
+                      transactionId,
+                      gateway: 'bank_transfer',
+                      proofOfPayment: 'Member confirmed transfer',
+                    });
+                    showAlert('Submitted', res.data.data?.message || 'Your payment is awaiting admin approval.');
+                    await loadAll();
+                  } catch (err: any) {
+                    showAlert('Error', err.response?.data?.error || 'Failed to submit');
+                  }
+                },
+              },
+            ]
+          );
+          return;
+        }
+
         const res = await api.payments.pay(currentOrgId, { transactionId, gateway });
         const data = res.data.data;
         if (gateway === 'stripe' && data.status === 'completed') {

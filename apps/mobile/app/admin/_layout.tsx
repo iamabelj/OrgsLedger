@@ -30,6 +30,8 @@ export default function AdminLayout() {
       <Stack.Screen name="plans" options={{ title: 'Subscription Plans' }} />
       <Stack.Screen name="analytics" options={{ title: 'Analytics' }} />
       <Stack.Screen name="member-detail/[userId]" options={{ title: 'Member Details' }} />
+      <Stack.Screen name="bank-transfers" options={{ title: 'Bank Transfers' }} />
+      <Stack.Screen name="payment-methods" options={{ title: 'Payment Methods' }} />
     </Stack>
   );
 }

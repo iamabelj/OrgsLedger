@@ -29,8 +29,9 @@ async function getStripe() {
 // ── Schemas ─────────────────────────────────────────────────
 const payTransactionSchema = z.object({
   transactionId: z.string().uuid(),
-  gateway: z.enum(['stripe', 'paystack', 'flutterwave']).default('stripe'),
+  gateway: z.enum(['stripe', 'paystack', 'flutterwave', 'bank_transfer']).default('stripe'),
   paymentMethodId: z.string().optional(), // Stripe payment method
+  proofOfPayment: z.string().optional(),  // For bank transfer — reference/receipt
 });
 
 const purchaseCreditsSchema = z.object({
@@ -196,6 +197,52 @@ router.post(
             status: 'pending',
             paymentLink: result.paymentLink,
             txRef: result.txRef,
+          },
+        });
+        return;
+      }
+
+      // ─── BANK TRANSFER ─────────────────────────────────
+      if (gateway === 'bank_transfer') {
+        const { proofOfPayment } = req.body;
+
+        // Mark as awaiting_approval (admin must manually approve)
+        await db('transactions')
+          .where({ id: transactionId })
+          .update({
+            payment_method: 'bank_transfer',
+            payment_gateway_id: proofOfPayment || null,
+            status: 'awaiting_approval',
+          });
+
+        // Notify org admin(s)
+        const admins = await db('memberships')
+          .where({ organization_id: req.params.orgId, role: 'org_admin', is_active: true })
+          .pluck('user_id');
+
+        for (const adminId of admins) {
+          await db('notifications').insert({
+            user_id: adminId,
+            organization_id: req.params.orgId,
+            type: 'payment',
+            title: 'Bank Transfer Pending Approval',
+            body: `${user?.first_name || 'A member'} submitted bank transfer of ${transaction.currency} ${transaction.amount}. Proof: ${proofOfPayment || 'Not provided'}`,
+            data: JSON.stringify({ transactionId, type: 'bank_transfer_approval' }),
+          });
+          sendPushToUser(adminId, {
+            title: 'Bank Transfer Pending',
+            body: `${user?.first_name || 'A member'} submitted a bank transfer for ${transaction.currency} ${transaction.amount}. Awaiting your approval.`,
+            data: { transactionId, type: 'bank_transfer_approval' },
+          }).catch(() => {});
+        }
+
+        res.json({
+          success: true,
+          data: {
+            transactionId,
+            gateway: 'bank_transfer',
+            status: 'awaiting_approval',
+            message: 'Bank transfer submitted. Admin will review and approve your payment.',
           },
         });
         return;
@@ -779,18 +826,52 @@ router.get('/flutterwave/callback', async (req: Request, res: Response) => {
   }
 });
 
-// ── Available Gateways ──────────────────────────────────────
+// ── Available Gateways (org-configurable + bank_transfer) ───
 router.get(
   '/:orgId/payments/gateways',
   authenticate,
   loadMembership,
-  async (_req: Request, res: Response) => {
-    const gateways = [];
-    if (config.stripe.secretKey) gateways.push({ id: 'stripe', name: 'Stripe', type: 'card' });
-    if (config.paystack.secretKey) gateways.push({ id: 'paystack', name: 'Paystack', type: 'redirect' });
-    if (config.flutterwave.secretKey) gateways.push({ id: 'flutterwave', name: 'Flutterwave', type: 'redirect' });
+  async (req: Request, res: Response) => {
+    let orgMethods: any = null;
+    try {
+      const org = await db('organizations').where({ id: req.params.orgId }).select('settings').first();
+      const settings = org?.settings
+        ? (typeof org.settings === 'string' ? JSON.parse(org.settings) : org.settings)
+        : {};
+      orgMethods = settings.payment_methods;
+    } catch {}
 
-    // If none configured, show dev mode
+    const gateways: any[] = [];
+
+    if (orgMethods) {
+      if (orgMethods.paystack?.enabled) {
+        gateways.push({ id: 'paystack', name: orgMethods.paystack.label || 'Pay with Paystack', type: 'redirect' });
+      }
+      if (orgMethods.flutterwave?.enabled) {
+        gateways.push({ id: 'flutterwave', name: orgMethods.flutterwave.label || 'Pay with Flutterwave', type: 'redirect' });
+      }
+      if (orgMethods.stripe?.enabled) {
+        gateways.push({ id: 'stripe', name: orgMethods.stripe.label || 'Pay with Card', type: 'card' });
+      }
+      if (orgMethods.bank_transfer?.enabled) {
+        gateways.push({
+          id: 'bank_transfer',
+          name: orgMethods.bank_transfer.label || 'Bank Transfer',
+          type: 'bank_transfer',
+          bankDetails: {
+            bankName: orgMethods.bank_transfer.bank_name,
+            accountNumber: orgMethods.bank_transfer.account_number,
+            accountName: orgMethods.bank_transfer.account_name,
+            instructions: orgMethods.bank_transfer.instructions,
+          },
+        });
+      }
+    } else {
+      if (config.paystack.secretKey) gateways.push({ id: 'paystack', name: 'Paystack', type: 'redirect' });
+      if (config.flutterwave.secretKey) gateways.push({ id: 'flutterwave', name: 'Flutterwave', type: 'redirect' });
+      if (config.stripe.secretKey) gateways.push({ id: 'stripe', name: 'Stripe', type: 'card' });
+    }
+
     if (!gateways.length) {
       gateways.push({ id: 'stripe', name: 'Dev Mode', type: 'dev' });
     }
@@ -940,6 +1021,212 @@ router.post(
       });
     } catch (err) {
       res.status(500).json({ success: false, error: 'Failed to purchase credits' });
+    }
+  }
+);
+
+// ══════════════════════════════════════════════════════════════
+// BANK TRANSFER — ADMIN APPROVAL
+// ══════════════════════════════════════════════════════════════
+
+// List pending bank transfers
+router.get(
+  '/:orgId/payments/pending-transfers',
+  authenticate,
+  loadMembership,
+  requireRole('org_admin'),
+  async (req: Request, res: Response) => {
+    try {
+      const transfers = await db('transactions')
+        .leftJoin('users', 'transactions.user_id', 'users.id')
+        .where({
+          'transactions.organization_id': req.params.orgId,
+          'transactions.payment_method': 'bank_transfer',
+          'transactions.status': 'awaiting_approval',
+        })
+        .select(
+          'transactions.*',
+          'users.first_name',
+          'users.last_name',
+          'users.email'
+        )
+        .orderBy('transactions.created_at', 'desc');
+
+      res.json({ success: true, data: transfers });
+    } catch (err) {
+      res.status(500).json({ success: false, error: 'Failed to load pending transfers' });
+    }
+  }
+);
+
+// Approve or reject bank transfer
+router.post(
+  '/:orgId/payments/approve-transfer',
+  authenticate,
+  loadMembership,
+  requireRole('org_admin'),
+  async (req: Request, res: Response) => {
+    try {
+      const { transactionId, approved } = req.body;
+
+      const transaction = await db('transactions')
+        .where({
+          id: transactionId,
+          organization_id: req.params.orgId,
+          status: 'awaiting_approval',
+        })
+        .first();
+
+      if (!transaction) {
+        res.status(404).json({ success: false, error: 'Pending transfer not found' });
+        return;
+      }
+
+      if (approved) {
+        await markTransactionCompleted(
+          transaction,
+          transaction.payment_gateway_id || 'bank_transfer_approved',
+          'bank_transfer',
+          'bank'
+        );
+
+        await db('notifications').insert({
+          user_id: transaction.user_id,
+          organization_id: req.params.orgId,
+          type: 'payment',
+          title: 'Payment Approved',
+          body: `Your bank transfer of ${transaction.currency} ${transaction.amount} has been approved.`,
+          data: JSON.stringify({ transactionId }),
+        });
+
+        sendPushToUser(transaction.user_id, {
+          title: 'Payment Approved',
+          body: `Your bank transfer of ${transaction.currency} ${transaction.amount} has been approved.`,
+          data: { transactionId, type: 'payment' },
+        }).catch(() => {});
+
+        const io = req.app.get('io');
+        if (io) {
+          emitFinancialUpdate(io, req.params.orgId, {
+            type: 'payment_completed',
+            transactionId,
+            amount: transaction.amount,
+            currency: transaction.currency,
+            userId: transaction.user_id,
+          });
+        }
+      } else {
+        await db('transactions')
+          .where({ id: transactionId })
+          .update({ status: 'failed', payment_method: 'bank_transfer_rejected' });
+
+        await db('notifications').insert({
+          user_id: transaction.user_id,
+          organization_id: req.params.orgId,
+          type: 'payment',
+          title: 'Payment Rejected',
+          body: `Your bank transfer of ${transaction.currency} ${transaction.amount} was not approved. Please contact admin.`,
+          data: JSON.stringify({ transactionId }),
+        });
+
+        sendPushToUser(transaction.user_id, {
+          title: 'Payment Rejected',
+          body: `Your bank transfer of ${transaction.currency} ${transaction.amount} was not approved.`,
+          data: { transactionId, type: 'payment' },
+        }).catch(() => {});
+      }
+
+      await (req as any).audit?.({
+        organizationId: req.params.orgId,
+        action: approved ? 'approve' : 'reject',
+        entityType: 'bank_transfer',
+        entityId: transactionId,
+        newValue: { approved, amount: transaction.amount },
+      });
+
+      res.json({ success: true, message: approved ? 'Transfer approved' : 'Transfer rejected' });
+    } catch (err) {
+      logger.error('Approve transfer error', err);
+      res.status(500).json({ success: false, error: 'Failed to process approval' });
+    }
+  }
+);
+
+// ══════════════════════════════════════════════════════════════
+// PAYMENT METHOD CONFIGURATION (ORG ADMIN)
+// ══════════════════════════════════════════════════════════════
+
+// Get org payment methods config
+router.get(
+  '/:orgId/payments/methods',
+  authenticate,
+  loadMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const org = await db('organizations')
+        .where({ id: req.params.orgId })
+        .select('id', 'name', 'settings')
+        .first();
+
+      const settings = org?.settings
+        ? (typeof org.settings === 'string' ? JSON.parse(org.settings) : org.settings)
+        : {};
+      const paymentMethods = settings.payment_methods || {
+        paystack: { enabled: true, label: 'Pay with Paystack' },
+        flutterwave: { enabled: true, label: 'Pay with Flutterwave' },
+        stripe: { enabled: false, label: 'Pay with Card (Stripe)' },
+        bank_transfer: {
+          enabled: false,
+          label: 'Bank Transfer',
+          bank_name: '',
+          account_number: '',
+          account_name: '',
+          instructions: 'Please transfer to the above account and submit proof of payment.',
+        },
+      };
+
+      res.json({ success: true, data: paymentMethods });
+    } catch (err) {
+      res.status(500).json({ success: false, error: 'Failed to get payment methods' });
+    }
+  }
+);
+
+// Update org payment methods config (admin only)
+router.put(
+  '/:orgId/payments/methods',
+  authenticate,
+  loadMembership,
+  requireRole('org_admin'),
+  async (req: Request, res: Response) => {
+    try {
+      const { paymentMethods } = req.body;
+
+      const org = await db('organizations')
+        .where({ id: req.params.orgId })
+        .select('settings')
+        .first();
+
+      const settings = org?.settings
+        ? (typeof org.settings === 'string' ? JSON.parse(org.settings) : org.settings)
+        : {};
+      settings.payment_methods = paymentMethods;
+
+      await db('organizations')
+        .where({ id: req.params.orgId })
+        .update({ settings: JSON.stringify(settings) });
+
+      await (req as any).audit?.({
+        organizationId: req.params.orgId,
+        action: 'update',
+        entityType: 'payment_methods',
+        entityId: req.params.orgId,
+        newValue: paymentMethods,
+      });
+
+      res.json({ success: true, message: 'Payment methods updated' });
+    } catch (err) {
+      res.status(500).json({ success: false, error: 'Failed to update payment methods' });
     }
   }
 );

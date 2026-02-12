@@ -619,10 +619,10 @@
     <ul class="nav-links" id="navLinks">
       <li><a href="#features">Features</a></li>
       <li><a href="#pricing">Pricing</a></li>
-      <li><a href="#ai-pricing">AI Credits</a></li>
       <li><a href="#testimonials">Reviews</a></li>
       <li><a href="#faq">FAQ</a></li>
       <li><a href="#contact">Contact</a></li>
+      <li><button onclick="toggleCurrency()" class="nav-cta" id="currencyToggle" style="font-size:0.85rem;padding:8px 16px;">🌍 NGN ↔ USD</button></li>
       <li><a href="https://test.orgsledger.com" class="nav-cta">Launch App →</a></li>
     </ul>
     <button class="mobile-toggle" id="mobileToggle" aria-label="Menu">
@@ -791,6 +791,7 @@
       <span class="section-label">Pricing</span>
       <h2>Choose Your Platform</h2>
       <p>Get OrgsLedger on the platforms your organization needs. One-time license fee — own it forever.</p>
+      <p id="currency-notice" style="font-size:0.85rem;color:var(--primary);font-weight:600;margin-top:8px;"></p>
     </div>
 
     <div class="pricing-grid">
@@ -798,7 +799,7 @@
       <div class="pricing-card animate-on-scroll stagger-1">
         <span class="pricing-platform">🌐 WEB APPLICATION</span>
         <h3>OrgsLedger Web</h3>
-        <div class="pricing-amount">₦1,500,000</div>
+        <div class="pricing-amount price-display" data-ngn="1500000" data-usd="1000">₦1,500,000</div>
         <p class="pricing-note">One-time payment • Lifetime license</p>
         <ul class="pricing-features">
           <li>Full-featured web dashboard</li>
@@ -811,14 +812,14 @@
           <li>Deployment &amp; setup included</li>
           <li>3 months free support</li>
         </ul>
-        <button class="pricing-btn pricing-btn-outline" data-product="web" data-name="OrgsLedger Web" data-price="1500000" onclick="toggleCart(this)">Add to Cart</button>
+        <button class="pricing-btn pricing-btn-outline" data-product="web" data-name="OrgsLedger Web" data-price-ngn="1500000" data-price-usd="1000" onclick="toggleCart(this)">Add to Cart</button>
       </div>
 
       <!-- Android -->
       <div class="pricing-card featured animate-on-scroll stagger-2">
         <span class="pricing-platform">📱 ANDROID APP</span>
         <h3>OrgsLedger Android</h3>
-        <div class="pricing-amount">₦1,200,000</div>
+        <div class="pricing-amount price-display" data-ngn="1200000" data-usd="800">₦1,200,000</div>
         <p class="pricing-note">One-time payment • Lifetime license</p>
         <ul class="pricing-features">
           <li>Native Android application</li>
@@ -831,14 +832,14 @@
           <li>Play Store publishing support</li>
           <li>3 months free support</li>
         </ul>
-        <button class="pricing-btn pricing-btn-primary" data-product="android" data-name="OrgsLedger Android" data-price="1200000" onclick="toggleCart(this)">Add to Cart</button>
+        <button class="pricing-btn pricing-btn-primary" data-product="android" data-name="OrgsLedger Android" data-price-ngn="1200000" data-price-usd="800" onclick="toggleCart(this)">Add to Cart</button>
       </div>
 
       <!-- iOS -->
       <div class="pricing-card animate-on-scroll stagger-3">
         <span class="pricing-platform">🍎 iOS APP</span>
         <h3>OrgsLedger iOS</h3>
-        <div class="pricing-amount">₦1,500,000</div>
+        <div class="pricing-amount price-display" data-ngn="1500000" data-usd="1000">₦1,500,000</div>
         <p class="pricing-note">One-time payment • Lifetime license</p>
         <ul class="pricing-features">
           <li>Native iOS application</li>
@@ -851,19 +852,28 @@
           <li>App Store publishing support</li>
           <li>3 months free support</li>
         </ul>
-        <button class="pricing-btn pricing-btn-outline" data-product="ios" data-name="OrgsLedger iOS" data-price="1500000" onclick="toggleCart(this)">Add to Cart</button>
+        <button class="pricing-btn pricing-btn-outline" data-product="ios" data-name="OrgsLedger iOS" data-price-ngn="1500000" data-price-usd="1000" onclick="toggleCart(this)">Add to Cart</button>
       </div>
+    </div>
+
+    <!-- Deployment Fee (Optional) -->
+    <div style="max-width:600px;margin:32px auto 0;background:var(--gray-50);border:2px dashed var(--gray-300);border-radius:var(--radius-lg);padding:28px 32px;text-align:center;" class="animate-on-scroll">
+      <h4 style="font-size:1.1rem;font-weight:700;color:var(--gray-900);margin-bottom:8px;">🚀 Optional: Professional Deployment</h4>
+      <p style="font-size:0.9rem;color:var(--gray-500);margin-bottom:12px;">Let our team handle the complete deployment — server setup, domain config, database, SSL, and go-live testing.</p>
+      <div class="pricing-amount price-display" data-ngn="75000" data-usd="50" style="font-size:1.6rem;margin-bottom:8px;">₦75,000</div>
+      <p style="font-size:0.8rem;color:var(--gray-500);margin-bottom:16px;">One-time fee • Optional add-on</p>
+      <button class="pricing-btn pricing-btn-outline" data-product="deployment" data-name="Professional Deployment" data-price-ngn="75000" data-price-usd="50" onclick="toggleCart(this)" style="max-width:300px;margin:0 auto;">Add Deployment to Cart</button>
     </div>
 
     <!-- Bundle -->
     <div class="bundle-banner animate-on-scroll">
       <h3>🎯 Complete Bundle — All 3 Platforms</h3>
-      <p>Get Web + Android + iOS and save ₦700,000</p>
+      <p>Get Web + Android + iOS and save <span class="save-display" data-ngn="700000" data-usd="467">₦700,000</span></p>
       <div class="bundle-price">
-        <span class="original">₦4,200,000</span>
-        ₦3,500,000
+        <span class="original price-display" data-ngn="4200000" data-usd="2800">₦4,200,000</span>
+        <span class="price-display" data-ngn="3500000" data-usd="2334">₦3,500,000</span>
       </div>
-      <button class="btn btn-accent" data-product="bundle" data-name="OrgsLedger Complete Bundle (Web + Android + iOS)" data-price="3500000" onclick="toggleCart(this)" style="font-size:1.1rem;padding:18px 40px;">
+      <button class="btn btn-accent" data-product="bundle" data-name="OrgsLedger Complete Bundle (Web + Android + iOS)" data-price-ngn="3500000" data-price-usd="2334" onclick="toggleCart(this)" style="font-size:1.1rem;padding:18px 40px;" id="bundle-btn">
         Add Bundle to Cart — Save ₦700,000
       </button>
     </div>
@@ -879,6 +889,7 @@
       <span class="section-label">AI Credits</span>
       <h2>Supercharge with AI</h2>
       <p>AI-powered meeting summaries, financial insights, speech-to-text, and smart document generation — powered by GPT-4o.</p>
+      <p style="font-size:0.85rem;color:var(--accent);margin-top:12px;">💡 AI plans are managed by your organization's admin from the admin dashboard after purchase.</p>
     </div>
 
     <div class="ai-card animate-on-scroll">
@@ -895,7 +906,7 @@
         </div>
         <div class="ai-plan active">
           <h4>Premium Credits</h4>
-          <div class="plan-price">$7/hour</div>
+          <div class="plan-price ai-price-display" data-ngn="10000" data-usd="7"><span class="price-display" data-ngn="10000" data-usd="7">₦10,000</span>/hour</div>
           <ul>
             <li>1 credit = 1 hour of AI usage</li>
             <li>GPT-4o powered analysis</li>
@@ -1032,7 +1043,7 @@
           <span class="faq-icon">+</span>
         </button>
         <div class="faq-answer"><div class="faq-answer-inner">
-          Every organization gets <strong>5 free AI credits per month</strong>. 1 credit = 1 hour of AI processing. This covers meeting summaries, financial analysis, speech-to-text, and document generation. For heavier usage, additional credits are available at <strong>$7 per credit (hour)</strong>. Use the calculator above to estimate your needs.
+          Every organization gets <strong>5 free AI credits per month</strong>. 1 credit = 1 hour of AI processing. This covers meeting summaries, financial analysis, speech-to-text, and document generation. For heavier usage, additional credits are available at <strong>₦10,000 per hour (~$7 USD)</strong>. AI plan purchases are managed by your org admin from the admin dashboard. Use the calculator above to estimate your needs.
         </div></div>
       </div>
       <div class="faq-item animate-on-scroll">
@@ -1041,7 +1052,7 @@
           <span class="faq-icon">+</span>
         </button>
         <div class="faq-answer"><div class="faq-answer-inner">
-          Absolutely! The Complete Bundle (Web + Android + iOS) is available at <strong>₦3,500,000</strong> — a saving of <strong>₦700,000</strong> compared to purchasing each platform individually. This is the best value for organizations that want to reach members on every device.
+          Absolutely! The Complete Bundle (Web + Android + iOS) is available at <strong>₦3,500,000 (~$2,334 USD)</strong> — a saving of <strong>₦700,000 (~$467 USD)</strong> compared to purchasing each platform individually. Prices auto-detect your region: Naira for Nigeria, USD for international customers.
         </div></div>
       </div>
       <div class="faq-item animate-on-scroll">
@@ -1050,7 +1061,7 @@
           <span class="faq-icon">+</span>
         </button>
         <div class="faq-answer"><div class="faq-answer-inner">
-          For purchasing OrgsLedger, we accept bank transfer, Paystack, and Flutterwave. Contact our sales team for payment details. For your organization's members paying dues through the platform, OrgsLedger supports Paystack, Flutterwave, and bank transfer integrations.
+          For purchasing OrgsLedger, Nigerian customers can pay via <strong>Paystack or Flutterwave (Naira)</strong>, while international customers pay via <strong>Stripe (USD)</strong>. Bank transfer is also available. For your organization's members paying dues through the platform, OrgsLedger supports Paystack, Flutterwave, Stripe, and bank transfer integrations — with admin-configurable payment methods.
         </div></div>
       </div>
       <div class="faq-item animate-on-scroll">
@@ -1189,7 +1200,10 @@
       <span>Total</span>
       <span id="cartTotal">₦0</span>
     </div>
-    <button class="cart-checkout" onclick="checkout()">
+    <button class="cart-checkout" onclick="checkout()" style="background:var(--primary);margin-bottom:10px;">
+      💳 Pay with Paystack
+    </button>
+    <button class="cart-checkout" onclick="whatsappCheckout()" style="background:#25d366;">
       💬 Checkout via WhatsApp
     </button>
   </div>
@@ -1199,18 +1213,77 @@
      SCRIPTS
      ═══════════════════════════════════════════════════════ -->
 <script>
+// ── Currency & Geo Detection ────────────────────────────
+let isNigeria = true; // default to Nigeria
+const RATE = 1500;
+const CURRENCY = { ngn: { symbol: '₦', code: 'NGN' }, usd: { symbol: '$', code: 'USD' } };
+
+// Auto-detect on page load
+(async () => {
+  try {
+    const res = await fetch('/api/geo');
+    const data = await res.json();
+    if (data.countryCode && data.countryCode !== 'NG') {
+      isNigeria = false;
+    }
+  } catch {}
+  refreshCurrencyDisplay();
+})();
+
+function toggleCurrency() {
+  isNigeria = !isNigeria;
+  refreshCurrencyDisplay();
+}
+
+function refreshCurrencyDisplay() {
+  const cur = isNigeria ? 'ngn' : 'usd';
+  const sym = CURRENCY[cur].symbol;
+  document.getElementById('currencyToggle').textContent = isNigeria ? '🌍 NGN ↔ USD' : '🌍 USD ↔ NGN';
+  document.getElementById('currency-notice').textContent = isNigeria
+    ? 'Prices shown in Nigerian Naira (₦). Click the currency toggle to switch.'
+    : 'Prices shown in US Dollars ($). Rate: ₦1,500 = $1. Click to switch.';
+
+  document.querySelectorAll('.price-display').forEach(el => {
+    const val = parseFloat(el.dataset[cur]);
+    if (!isNaN(val)) el.textContent = sym + val.toLocaleString('en');
+  });
+  document.querySelectorAll('.save-display').forEach(el => {
+    const val = parseFloat(el.dataset[cur]);
+    if (!isNaN(val)) el.textContent = sym + val.toLocaleString('en');
+  });
+
+  // Update bundle button text
+  const bundleBtn = document.getElementById('bundle-btn');
+  if (bundleBtn && !bundleBtn.classList.contains('in-cart')) {
+    const saveAmt = isNigeria ? '₦700,000' : '$467';
+    bundleBtn.textContent = `Add Bundle to Cart — Save ${saveAmt}`;
+  }
+
+  // Update calculator display
+  updateCalc();
+
+  // Rebuild cart display
+  updateCartUI();
+}
+
+function getPrice(el) {
+  return isNigeria ? parseInt(el.dataset.priceNgn) : parseInt(el.dataset.priceUsd);
+}
+
+function getCurrencySymbol() { return isNigeria ? '₦' : '$'; }
+function getCurrencyCode() { return isNigeria ? 'NGN' : 'USD'; }
+
+function formatAmount(amount) {
+  return getCurrencySymbol() + amount.toLocaleString('en');
+}
+
 // ── Cart State ──────────────────────────────────────────
 const cart = new Map();
 const WHATSAPP_NUMBER = '2349051936094';
 
-function formatNaira(amount) {
-  return '₦' + amount.toLocaleString('en-NG');
-}
-
 function toggleCart(btn) {
   const product = btn.dataset.product;
   const name = btn.dataset.name;
-  const price = parseInt(btn.dataset.price);
 
   // If adding bundle, remove individual items; if adding individual, remove bundle
   if (product === 'bundle') {
@@ -1221,20 +1294,33 @@ function toggleCart(btn) {
       b.classList.remove('in-cart');
       b.textContent = 'Add to Cart';
     });
-  } else {
+  } else if (['web', 'android', 'ios'].includes(product)) {
     if (cart.has('bundle')) {
       cart.delete('bundle');
-      const bundleBtn = document.querySelector('[data-product="bundle"]');
-      if (bundleBtn) { bundleBtn.classList.remove('in-cart'); bundleBtn.textContent = 'Add Bundle to Cart — Save ₦700,000'; }
+      const bundleBtn = document.getElementById('bundle-btn');
+      if (bundleBtn) {
+        bundleBtn.classList.remove('in-cart');
+        const saveAmt = isNigeria ? '₦700,000' : '$467';
+        bundleBtn.textContent = `Add Bundle to Cart — Save ${saveAmt}`;
+      }
     }
   }
 
   if (cart.has(product)) {
     cart.delete(product);
     btn.classList.remove('in-cart');
-    btn.textContent = product === 'bundle' ? 'Add Bundle to Cart — Save ₦700,000' : 'Add to Cart';
+    if (product === 'bundle') {
+      const saveAmt = isNigeria ? '₦700,000' : '$467';
+      btn.textContent = `Add Bundle to Cart — Save ${saveAmt}`;
+    } else if (product === 'deployment') {
+      btn.textContent = 'Add Deployment to Cart';
+    } else {
+      btn.textContent = 'Add to Cart';
+    }
   } else {
-    cart.set(product, { name, price });
+    const priceNgn = parseInt(btn.dataset.priceNgn);
+    const priceUsd = parseInt(btn.dataset.priceUsd);
+    cart.set(product, { name, priceNgn, priceUsd });
     btn.classList.add('in-cart');
     btn.textContent = '✓ In Cart';
   }
@@ -1261,29 +1347,36 @@ function updateCartUI() {
   let html = '';
   let total = 0;
   cart.forEach((item, key) => {
-    total += item.price;
+    const price = isNigeria ? item.priceNgn : item.priceUsd;
+    total += price;
     html += `
       <div class="cart-item">
         <div class="cart-item-info">
           <h4>${item.name}</h4>
-          <p>${formatNaira(item.price)}</p>
+          <p>${formatAmount(price)}</p>
         </div>
         <button class="cart-item-remove" onclick="removeFromCart('${key}')">✕</button>
       </div>
     `;
   });
   itemsEl.innerHTML = html;
-  totalEl.textContent = formatNaira(total);
+  totalEl.textContent = formatAmount(total);
   footerEl.style.display = 'block';
 }
 
 function removeFromCart(product) {
   cart.delete(product);
-  // Reset button state
   const btn = document.querySelector(`[data-product="${product}"]`);
   if (btn) {
     btn.classList.remove('in-cart');
-    btn.textContent = product === 'bundle' ? 'Add Bundle to Cart — Save ₦700,000' : 'Add to Cart';
+    if (product === 'bundle') {
+      const saveAmt = isNigeria ? '₦700,000' : '$467';
+      btn.textContent = `Add Bundle to Cart — Save ${saveAmt}`;
+    } else if (product === 'deployment') {
+      btn.textContent = 'Add Deployment to Cart';
+    } else {
+      btn.textContent = 'Add to Cart';
+    }
   }
   updateCartUI();
 }
@@ -1300,22 +1393,81 @@ function closeCart() {
   document.body.style.overflow = '';
 }
 
-function checkout() {
+async function checkout() {
   if (cart.size === 0) return;
 
+  // Show checkout form
+  const total = [...cart.values()].reduce((sum, item) => sum + (isNigeria ? item.priceNgn : item.priceUsd), 0);
+  const items = [...cart.entries()].map(([key, item]) => ({
+    id: key,
+    name: item.name,
+    price: isNigeria ? item.priceNgn : item.priceUsd,
+  }));
+
+  const email = prompt('Enter your email address for payment receipt:');
+  if (!email || !email.includes('@')) {
+    alert('Please enter a valid email address.');
+    return;
+  }
+  const name = prompt('Enter your name or organization name:');
+
+  // Choose payment method
+  const gateway = isNigeria ? 'paystack' : 'stripe';
+  const currency = getCurrencyCode();
+
+  try {
+    const checkoutBtn = document.querySelector('.cart-checkout');
+    checkoutBtn.textContent = '⏳ Processing...';
+    checkoutBtn.disabled = true;
+
+    const res = await fetch(`/api/checkout/${gateway}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, name, items, amount: total, currency, metadata: { source: 'landing_page' } }),
+    });
+    const data = await res.json();
+
+    if (data.status === 'completed') {
+      // Dev mode
+      alert('✅ Order received! (Dev mode)\n\nWe will contact you at ' + email + ' with delivery details.');
+      cart.clear();
+      updateCartUI();
+      closeCart();
+    } else if (data.authorizationUrl) {
+      // Paystack redirect
+      window.location.href = data.authorizationUrl;
+    } else if (data.checkoutUrl) {
+      // Stripe redirect
+      window.location.href = data.checkoutUrl;
+    } else {
+      throw new Error(data.error || 'Checkout failed');
+    }
+  } catch (err) {
+    alert('Payment error: ' + (err.message || 'Please try again or contact support.'));
+  } finally {
+    const checkoutBtn = document.querySelector('.cart-checkout');
+    if (checkoutBtn) {
+      checkoutBtn.disabled = false;
+      checkoutBtn.innerHTML = isNigeria
+        ? '💳 Pay with Paystack'
+        : '💳 Pay with Stripe';
+    }
+  }
+}
+
+function whatsappCheckout() {
+  if (cart.size === 0) return;
   let message = '🛒 *OrgsLedger Order*\n\n';
   let total = 0;
-
+  const cur = getCurrencyCode();
   cart.forEach((item) => {
-    message += `✅ ${item.name} — ${formatNaira(item.price)}\n`;
-    total += item.price;
+    const price = isNigeria ? item.priceNgn : item.priceUsd;
+    message += `✅ ${item.name} — ${formatAmount(price)}\n`;
+    total += price;
   });
-
-  message += `\n💰 *Total: ${formatNaira(total)}*\n\n`;
+  message += `\n💰 *Total: ${formatAmount(total)} (${cur})*\n\n`;
   message += `I'd like to purchase the above. Please share payment details.`;
-
-  const encoded = encodeURIComponent(message);
-  window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encoded}`, '_blank');
+  window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`, '_blank');
 }
 
 // ── AI Calculator ───────────────────────────────────────
@@ -1330,15 +1482,28 @@ function updateCalc() {
   document.getElementById('calcSpeechVal').textContent = speech;
   document.getElementById('calcDocsVal').textContent = docs;
 
-  // Estimate: meetings=0.5hr/ea, reports=0.3hr/ea, speech=1hr/hr, docs=0.2hr/ea
   const totalHours = (meetings * 0.5) + (reports * 0.3) + (speech * 1) + (docs * 0.2);
   const freeCredits = 5;
   const billableHours = Math.max(0, totalHours - freeCredits);
-  const cost = billableHours * 7;
+  const costNgn = billableHours * 10000;
+  const costUsd = billableHours * 7;
+  const cost = isNigeria ? costNgn : costUsd;
 
   document.getElementById('calcCredits').textContent = totalHours.toFixed(1);
-  document.getElementById('calcTotal').innerHTML = `$${cost.toFixed(2)} <small>/month</small>`;
+  document.getElementById('calcTotal').innerHTML = `${formatAmount(cost)} <small>/month</small>`;
 }
+
+// Check for checkout status in URL
+(function checkCheckoutStatus() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('checkout') === 'success') {
+    setTimeout(() => alert('✅ Payment successful! We will contact you within 24 hours to start your deployment.'), 500);
+    window.history.replaceState({}, '', '/');
+  } else if (params.get('checkout') === 'cancelled') {
+    setTimeout(() => alert('Payment was cancelled. You can try again anytime.'), 500);
+    window.history.replaceState({}, '', '/');
+  }
+})();
 
 // ── Navbar Scroll ───────────────────────────────────────
 window.addEventListener('scroll', () => {
