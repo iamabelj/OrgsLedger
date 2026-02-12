@@ -150,7 +150,16 @@ app.use('/uploads', (req, res, next) => {
   }
 }, express.static(path.resolve(config.upload.dir)));
 
-// ── Health Check ──────────────────────────────────────────
+// ── Root & Health Check ───────────────────────────────────
+app.get('/', (_req, res) => {
+  res.json({
+    name: 'OrgsLedger API',
+    status: 'ok',
+    version: '1.0.0',
+    docs: '/health',
+  });
+});
+
 app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
