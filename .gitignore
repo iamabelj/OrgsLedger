@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# Keep the Expo web build for deployment
+!apps/api/web/
 build/
 .venv/
 uploads/

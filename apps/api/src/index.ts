@@ -150,17 +150,24 @@ app.use('/uploads', (req, res, next) => {
   }
 }, express.static(path.resolve(config.upload.dir)));
 
-// ── Serve public frontend ─────────────────────────────────
-const publicDir = path.resolve(__dirname, '../public');
-if (fs.existsSync(publicDir)) {
-  app.use(express.static(publicDir));
+// ── Serve Web Frontend ────────────────────────────────────
+// Expo web build is in apps/api/web/ (committed to git)
+const webDir = path.resolve(__dirname, '../web');
+if (fs.existsSync(webDir)) {
+  app.use(express.static(webDir));
+  logger.info(`Serving web frontend from ${webDir}`);
 }
 
 // ── Root & Health Check ───────────────────────────────────
 app.get('/', (_req, res) => {
-  const indexPath = path.resolve(__dirname, '../public/index.html');
-  if (fs.existsSync(indexPath)) {
-    return res.sendFile(indexPath);
+  const webIndex = path.join(webDir, 'index.html');
+  if (fs.existsSync(webIndex)) {
+    return res.sendFile(webIndex);
+  }
+  // Fallback status page if no web build
+  const publicIndex = path.resolve(__dirname, '../public/index.html');
+  if (fs.existsSync(publicIndex)) {
+    return res.sendFile(publicIndex);
   }
   res.json({
     name: 'OrgsLedger API',
@@ -242,11 +249,7 @@ app.post('/api/license/activate', async (req, res) => {
 });
 
 // ── Serve Web Frontend (production) ──────────────────────
-const webDir = path.resolve(__dirname, '../../mobile/dist');
-if (config.env === 'production' && fs.existsSync(webDir)) {
-  app.use(express.static(webDir));
-  logger.info(`Serving web frontend from ${webDir}`);
-}
+// (Already served from web/ above)
 
 // ── Auth Rate Limiting (login/register brute force protection) ──
 const authLimiter = rateLimit({
@@ -283,8 +286,8 @@ app.all('/api/*', (_req, res) => {
   res.status(404).json({ success: false, error: 'Route not found' });
 });
 
-// SPA fallback — serve web frontend for all other routes (production)
-if (config.env === 'production' && fs.existsSync(webDir)) {
+// SPA fallback — serve web frontend for all other routes
+if (fs.existsSync(webDir)) {
   app.get('*', (_req, res) => {
     res.sendFile(path.join(webDir, 'index.html'));
   });
