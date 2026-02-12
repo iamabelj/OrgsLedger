@@ -1,14 +1,28 @@
 // OrgsLedger — Root entry point for Hostinger Express deployment
-// This file bootstraps the API server from the monorepo root
+// Routes to API (test.orgsledger.com) or Landing Gateway (orgsledger.com)
+// based on the hostname/environment.
 
 const path = require('path');
 
-// Set working directory to the API folder so relative paths
-// (uploads, .env, etc.) resolve correctly from the API context
-process.chdir(path.join(__dirname, 'apps', 'api'));
+// Determine which app to run:
+// - If SITE_MODE=landing  →  run the landing gateway
+// - If SITE_MODE=api      →  run the API server
+// - Default: api (backwards-compatible)
+const SITE_MODE = (process.env.SITE_MODE || 'api').toLowerCase();
 
-// Load environment variables from apps/api/.env if present
-try { require('dotenv').config(); } catch (e) { /* dotenv loaded via api deps */ }
+if (SITE_MODE === 'landing') {
+  // ── Landing Gateway (orgsledger.com) ──
+  console.log('[OrgsLedger] Starting Landing Gateway...');
+  process.chdir(path.join(__dirname, 'landing'));
+  require(path.join(__dirname, 'landing', 'server.js'));
+} else {
+  // ── API Server (test.orgsledger.com) ──
+  console.log('[OrgsLedger] Starting API Server...');
+  process.chdir(path.join(__dirname, 'apps', 'api'));
 
-// Start the Express server (compiled TypeScript output)
-require(path.join(__dirname, 'apps', 'api', 'dist', 'index.js'));
+  // Load environment variables from apps/api/.env if present
+  try { require('dotenv').config(); } catch (e) { /* dotenv loaded via api deps */ }
+
+  // Start the Express server (compiled TypeScript output)
+  require(path.join(__dirname, 'apps', 'api', 'dist', 'index.js'));
+}
