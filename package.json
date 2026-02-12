@@ -2,6 +2,7 @@
   "name": "orgsledger",
   "version": "1.0.0",
   "private": true,
+  "main": "app.js",
   "description": "Cross-platform operational hub for associations, organizations, clubs, and communities",
   "license": "UNLICENSED",
   "workspaces": [
@@ -9,6 +10,8 @@
     "packages/*"
   ],
   "scripts": {
+    "start": "node app.js",
+    "build": "cd packages/shared && npx tsc && cd ../.. && cd packages/database && npx tsc && cd ../.. && cd apps/api && npx tsc && cd ../.. && cd apps/mobile && npx expo export --platform web && cd ../..",
     "api:dev": "npm run dev --workspace=apps/api",
     "api:build": "npm run build --workspace=apps/api",
     "api:start": "npm run start --workspace=apps/api",
@@ -20,6 +23,9 @@
     "shared:build": "npm run build --workspace=packages/shared",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
   },
   "engines": {
     "node": ">=18.0.0"
