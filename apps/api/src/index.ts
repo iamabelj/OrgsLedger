@@ -291,13 +291,24 @@ try {
   logger.warn('Developer gateway not loaded: ' + (err.message || err));
 }
 
+// ── Landing / Sales Page ──────────────────────────────────
+// Serve the sales landing page at root "/" so visitors see it first.
+// The Expo SPA app is available at /login, /register, etc.
+const landingPage = path.resolve(__dirname, '../../../landing/index.html');
+if (fs.existsSync(landingPage)) {
+  app.get('/', (_req, res) => {
+    res.sendFile(landingPage);
+  });
+  logger.info('Landing page served at /');
+}
+
 // ── 404 Handler ───────────────────────────────────────────
 // API 404 — only for /api/* routes
 app.all('/api/*', (_req, res) => {
   res.status(404).json({ success: false, error: 'Route not found' });
 });
 
-// SPA fallback — serve web frontend for all other routes
+// SPA fallback — serve web frontend for all other routes (except /)
 if (fs.existsSync(webDir)) {
   app.get('*', (_req, res) => {
     res.sendFile(path.join(webDir, 'index.html'));
