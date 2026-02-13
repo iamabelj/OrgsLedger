@@ -5,13 +5,9 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Try loading .env from multiple locations
-// 1. Current working directory (apps/api in production)
-// 2. Project root (two levels up from apps/api)
-dotenv.config();
-dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+// Load .env from project root (two levels up from apps/api/src)
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+dotenv.config(); // Also try local .env as fallback
 
 export const config = {
   env: process.env.NODE_ENV || 'development',
@@ -88,12 +84,12 @@ export const config = {
   },
 };
 
-// Validate critical config in production (warn, don't crash)
+// Warn about critical config in production (but never crash)
 if (config.env === 'production') {
   if (config.jwt.secret === 'CHANGE_ME_IN_PRODUCTION') {
-    console.error('[CONFIG WARNING] JWT_SECRET is not set! Auth will not work.');
+    console.warn('[CONFIG] WARNING: JWT_SECRET is using the default value — set it in env.js or environment variables');
   }
   if (!process.env.DATABASE_URL && config.db.password === 'orgsledger_dev') {
-    console.error('[CONFIG WARNING] DATABASE_URL is not set — DB queries will fail.');
+    console.warn('[CONFIG] WARNING: DATABASE_URL not set and DB_PASSWORD is default — set it in env.js or environment variables');
   }
 }

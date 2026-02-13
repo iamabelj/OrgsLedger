@@ -2,38 +2,11 @@
 // Routes to API (test.orgsledger.com) or Landing Gateway (orgsledger.com)
 // based on the hostname/environment.
 
+// Load production defaults FIRST — before any module reads process.env
+require('./env.js');
+
 const path = require('path');
 const http = require('http');
-const fs = require('fs');
-
-// ── Load .env from multiple locations ──
-// Hostinger may not set env vars via dashboard — check for .env files
-try {
-  const dotenvPaths = [
-    path.join(__dirname, '.env'),
-    path.join(__dirname, 'apps', 'api', '.env'),
-  ];
-  for (const p of dotenvPaths) {
-    if (fs.existsSync(p)) {
-      require('dotenv').config({ path: p });
-      console.log(`[OrgsLedger] Loaded env from ${p}`);
-    }
-  }
-} catch (e) {
-  console.log('[OrgsLedger] dotenv not available or no .env file found');
-}
-
-// ── Fallback production env vars (Hostinger/Neon deployment) ──
-// Only set if NOT already defined by the environment or .env file
-if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = 'postgresql://neondb_owner:npg_S4XDP5sCkTyw@ep-crimson-sky-aim3t0hb-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require';
-}
-if (!process.env.JWT_SECRET) {
-  process.env.JWT_SECRET = '8fb0da3dd7375f2de7b82feda6d06cd876d6b041358b1a468b3811c2005542ed9bcfd0c840f3d45b77d1ca904421bd1910fd2db02fa216cd3c54981d1feb22f3';
-}
-if (!process.env.NODE_ENV) {
-  process.env.NODE_ENV = 'production';
-}
 
 // ── Global error handler — never crash, always respond ──
 process.on('uncaughtException', (err) => {
