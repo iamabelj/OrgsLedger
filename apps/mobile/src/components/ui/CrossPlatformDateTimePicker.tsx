@@ -53,41 +53,29 @@ export function CrossPlatformDateTimePicker({
   const handleWebChange = (inputValue: string) => {
     if (!inputValue) return;
 
-    if (mode === 'date') {
-      // Parse YYYY-MM-DD
-      const [year, month, day] = inputValue.split('-').map(Number);
-      const newDate = new Date(value);
-      newDate.setFullYear(year, month - 1, day);
-      onChange(newDate);
-    } else {
-      // Parse HH:mm
-      const [hours, minutes] = inputValue.split(':').map(Number);
-      const newDate = new Date(value);
-      newDate.setHours(hours, minutes, 0, 0);
-      onChange(newDate);
+    try {
+      if (mode === 'date') {
+        // Parse YYYY-MM-DD
+        const [year, month, day] = inputValue.split('-').map(Number);
+        if (isNaN(year) || isNaN(month) || isNaN(day)) return;
+        const newDate = new Date(value);
+        newDate.setFullYear(year, month - 1, day);
+        if (!isNaN(newDate.getTime())) onChange(newDate);
+      } else {
+        // Parse HH:mm
+        const [hours, minutes] = inputValue.split(':').map(Number);
+        if (isNaN(hours) || isNaN(minutes)) return;
+        const newDate = new Date(value);
+        newDate.setHours(hours, minutes, 0, 0);
+        if (!isNaN(newDate.getTime())) onChange(newDate);
+      }
+    } catch {
+      // Ignore parse errors
     }
   };
 
   // Web implementation using native HTML5 date/time input
-  // React Native's TextInput doesn't support type="date" on web,
-  // so we use a raw HTML input element rendered via dangerouslySetInnerHTML workaround
   if (Platform.OS === 'web') {
-    const inputRef = React.useRef<any>(null);
-
-    React.useEffect(() => {
-      // Attach native DOM event listener to the real input element
-      const el = inputRef.current;
-      if (el) {
-        const handler = (e: any) => handleWebChange(e.target.value);
-        el.addEventListener('change', handler);
-        el.addEventListener('input', handler);
-        return () => {
-          el.removeEventListener('change', handler);
-          el.removeEventListener('input', handler);
-        };
-      }
-    });
-
     return (
       <View style={[styles.container, style]}>
         <Text style={styles.label}>{label}</Text>
@@ -98,9 +86,12 @@ export function CrossPlatformDateTimePicker({
             color={Colors.highlight}
           />
           <input
-            ref={inputRef}
             type={mode === 'date' ? 'date' : 'time'}
-            defaultValue={getInputValue(value)}
+            value={getInputValue(value)}
+            onChange={(e: any) => {
+              const v = e.target?.value || e.nativeEvent?.text;
+              if (v) handleWebChange(v);
+            }}
             style={{
               flex: 1,
               backgroundColor: 'transparent',
@@ -109,8 +100,10 @@ export function CrossPlatformDateTimePicker({
               color: Colors.textWhite,
               fontSize: 14,
               fontFamily: 'inherit',
-              padding: 0,
+              padding: '4px 0',
               colorScheme: 'dark',
+              cursor: 'pointer',
+              minHeight: '24px',
             } as any}
           />
         </View>
