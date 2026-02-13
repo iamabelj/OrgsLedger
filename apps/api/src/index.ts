@@ -242,11 +242,30 @@ app.post('/api/license/activate', async (req, res) => {
   }
 });
 
+// ── Landing / Sales Page ──────────────────────────────────
+// Serve the sales landing page at root "/" FIRST — before any static middleware
+// so orgsledger.com visitors always see the sales page.
+const landingPage = path.resolve(__dirname, '../../../landing/index.html');
+if (fs.existsSync(landingPage)) {
+  app.get('/', (_req, res) => {
+    res.sendFile(landingPage);
+  });
+  logger.info('Landing page served at /');
+}
+
 // ── Serve Web Frontend (production) ──────────────────────
 // __dirname = apps/api/dist in production, web build is at apps/api/web
+// On orgsledger.com, do NOT serve SPA static files — only landing + developer gateway
 const webDir = path.resolve(__dirname, '../web');
 if (fs.existsSync(webDir)) {
-  app.use(express.static(webDir));
+  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
+    // Block SPA static files on orgsledger.com — only landing page + /developer
+    if (host === 'orgsledger.com' || host === 'www.orgsledger.com') {
+      return next();
+    }
+    express.static(webDir)(req, res, next);
+  });
   logger.info(`Serving web frontend from ${webDir}`);
 } else {
   logger.warn(`Web frontend directory not found: ${webDir}`);
@@ -300,16 +319,7 @@ try {
   logger.warn('Developer gateway not loaded: ' + (err.message || err));
 }
 
-// ── Landing / Sales Page ──────────────────────────────────
-// Serve the sales landing page at root "/" on orgsledger.com.
-// test.orgsledger.com and client domains get the SPA at all non-API routes.
-const landingPage = path.resolve(__dirname, '../../../landing/index.html');
-if (fs.existsSync(landingPage)) {
-  app.get('/', (_req, res) => {
-    res.sendFile(landingPage);
-  });
-  logger.info('Landing page served at /');
-}
+// (Landing page is registered above, before static middleware)
 
 // ── 404 Handler ───────────────────────────────────────────
 // API 404 — only for /api/* routes
