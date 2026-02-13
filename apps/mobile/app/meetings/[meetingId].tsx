@@ -23,6 +23,7 @@ import { api } from '../../src/api/client';
 import { socketClient } from '../../src/api/socket';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
 import { Card, Badge, Button, Avatar, SectionHeader, LoadingScreen, CrossPlatformDateTimePicker } from '../../src/components/ui';
+import LiveTranslation from '../../src/components/ui/LiveTranslation';
 import { showAlert } from '../../src/utils/alert';
 
 const STATUS_CONFIG: Record<string, { color: string; bg: string; icon: string; label: string }> = {
@@ -452,6 +453,11 @@ export default function MeetingDetailScreen() {
             <Text style={styles.attendanceBtnText}>Mark My Attendance</Text>
           </TouchableOpacity>
         </View>
+      )}
+
+      {/* ── Live Translation ─────────────────────────────────── */}
+      {meeting.status === 'live' && userId && (
+        <LiveTranslation meetingId={meetingId!} userId={userId} />
       )}
 
       {/* Embedded Jitsi Video */}

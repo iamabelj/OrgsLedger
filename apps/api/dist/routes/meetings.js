@@ -17,6 +17,7 @@ const middleware_1 = require("../middleware");
 const logger_1 = require("../logger");
 const push_service_1 = require("../services/push.service");
 const config_1 = require("../config");
+const translation_service_1 = require("../services/translation.service");
 const router = (0, express_1.Router)();
 // ── Multer for audio uploads ────────────────────────────────
 const audioStorage = multer_1.default.diskStorage({
@@ -600,6 +601,31 @@ router.post('/:orgId/:meetingId/audio', middleware_1.authenticate, middleware_1.
     catch (err) {
         logger_1.logger.error('Audio upload error', err);
         res.status(500).json({ success: false, error: 'Failed to store audio' });
+    }
+});
+// ── Translation: Get supported languages ────────────────────
+router.get('/translation/languages', middleware_1.authenticate, (_req, res) => {
+    res.json({
+        success: true,
+        data: {
+            languages: translation_service_1.SUPPORTED_LANGUAGES,
+            speechCodes: translation_service_1.SPEECH_RECOGNITION_CODES,
+        },
+    });
+});
+// ── Translation: Translate a single text (REST fallback) ────
+router.post('/translation/translate', middleware_1.authenticate, async (req, res) => {
+    try {
+        const { text, targetLang, sourceLang } = req.body;
+        if (!text || !targetLang) {
+            return res.status(400).json({ success: false, error: 'text and targetLang are required' });
+        }
+        const result = await (0, translation_service_1.translateText)(text, targetLang, sourceLang);
+        res.json({ success: true, data: result });
+    }
+    catch (err) {
+        logger_1.logger.error('Translation endpoint error', err);
+        res.status(500).json({ success: false, error: 'Translation failed' });
     }
 });
 exports.default = router;

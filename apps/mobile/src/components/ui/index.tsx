@@ -735,3 +735,4 @@ const styles = StyleSheet.create({
 // Re-export PoweredByFooter
 export { PoweredByFooter } from './PoweredByFooter';
 export { CrossPlatformDateTimePicker } from './CrossPlatformDateTimePicker';
+export { default as LiveTranslation } from './LiveTranslation';

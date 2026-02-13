@@ -13,6 +13,7 @@ import { authenticate, loadMembership, requireRole, validate } from '../middlewa
 import { logger } from '../logger';
 import { sendPushToOrg } from '../services/push.service';
 import { config } from '../config';
+import { SUPPORTED_LANGUAGES, SPEECH_RECOGNITION_CODES, translateText } from '../services/translation.service';
 
 const router = Router();
 
@@ -743,6 +744,40 @@ router.post(
     } catch (err) {
       logger.error('Audio upload error', err);
       res.status(500).json({ success: false, error: 'Failed to store audio' });
+    }
+  }
+);
+
+// ── Translation: Get supported languages ────────────────────
+router.get(
+  '/translation/languages',
+  authenticate,
+  (_req: Request, res: Response) => {
+    res.json({
+      success: true,
+      data: {
+        languages: SUPPORTED_LANGUAGES,
+        speechCodes: SPEECH_RECOGNITION_CODES,
+      },
+    });
+  }
+);
+
+// ── Translation: Translate a single text (REST fallback) ────
+router.post(
+  '/translation/translate',
+  authenticate,
+  async (req: Request, res: Response) => {
+    try {
+      const { text, targetLang, sourceLang } = req.body;
+      if (!text || !targetLang) {
+        return res.status(400).json({ success: false, error: 'text and targetLang are required' });
+      }
+      const result = await translateText(text, targetLang, sourceLang);
+      res.json({ success: true, data: result });
+    } catch (err: any) {
+      logger.error('Translation endpoint error', err);
+      res.status(500).json({ success: false, error: 'Translation failed' });
     }
   }
 );

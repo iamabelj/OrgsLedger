@@ -9,6 +9,11 @@ import jwt from 'jsonwebtoken';
 import { config } from './config';
 import db from './db';
 import { logger } from './logger';
+import { translateToMultiple, SUPPORTED_LANGUAGES } from './services/translation.service';
+
+// In-memory store for meeting translation sessions
+// meetingId -> Map<userId, { language, name }>
+const meetingLanguages = new Map<string, Map<string, { language: string; name: string }>>();
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -134,13 +139,6 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       logger.debug(`User ${userId} joined meeting ${meetingId}`);
     });
 
-    socket.on('meeting:leave', (meetingId: string) => {
-      socket.leave(`meeting:${meetingId}`);
-      socket.to(`meeting:${meetingId}`).emit('meeting:participant-left', {
-        userId,
-      });
-    });
-
     // ── Audio Streaming for AI ──────────────────────────
     socket.on('meeting:audio-chunk', (data: { meetingId: string; chunk: Buffer }) => {
       // Forward audio chunks for real-time processing
@@ -148,6 +146,134 @@ export function setupSocketIO(httpServer: HttpServer): Server {
         userId,
         chunk: data.chunk,
       });
+    });
+
+    // ── Live Translation System ─────────────────────────
+    // User sets their preferred language for a meeting
+    socket.on('translation:set-language', async (data: { meetingId: string; language: string }) => {
+      const { meetingId, language } = data;
+      if (!meetingId || !language) return;
+
+      // Get user's name
+      const user = await db('users').where({ id: userId }).select('first_name', 'last_name').first();
+      const name = user ? `${user.first_name} ${user.last_name}` : 'Unknown';
+
+      // Store in memory
+      if (!meetingLanguages.has(meetingId)) {
+        meetingLanguages.set(meetingId, new Map());
+      }
+      meetingLanguages.get(meetingId)!.set(userId, { language, name });
+
+      // Broadcast updated participant languages to everyone in the meeting
+      const participants: Array<{ userId: string; name: string; language: string }> = [];
+      meetingLanguages.get(meetingId)!.forEach((val, uid) => {
+        participants.push({ userId: uid, name: val.name, language: val.language });
+      });
+
+      io.to(`meeting:${meetingId}`).emit('translation:participants', {
+        meetingId,
+        participants,
+      });
+
+      logger.debug(`User ${userId} set translation language to ${language} for meeting ${meetingId}`);
+    });
+
+    // User sends spoken text for translation
+    socket.on('translation:speech', async (data: {
+      meetingId: string;
+      text: string;
+      sourceLang: string;
+      isFinal: boolean;
+    }) => {
+      const { meetingId, text, sourceLang, isFinal } = data;
+      if (!meetingId || !text?.trim()) return;
+
+      const langMap = meetingLanguages.get(meetingId);
+      if (!langMap || langMap.size === 0) return;
+
+      // Get speaker name
+      const speaker = langMap.get(userId);
+      const speakerName = speaker?.name || 'Unknown';
+
+      // For interim results, just broadcast the original text to others
+      // (so they see the speaker is talking)
+      if (!isFinal) {
+        socket.to(`meeting:${meetingId}`).emit('translation:interim', {
+          meetingId,
+          speakerId: userId,
+          speakerName,
+          text,
+          sourceLang,
+        });
+        return;
+      }
+
+      // For final results, translate to all unique languages needed
+      const targetLangs = new Set<string>();
+      langMap.forEach((val) => {
+        if (val.language !== sourceLang) {
+          targetLangs.add(val.language);
+        }
+      });
+
+      try {
+        let translations: Record<string, string> = {};
+
+        if (targetLangs.size > 0) {
+          translations = await translateToMultiple(text, [...targetLangs], sourceLang);
+        }
+
+        // Always include the original language
+        translations[sourceLang] = text;
+
+        // Broadcast to all meeting participants
+        io.to(`meeting:${meetingId}`).emit('translation:result', {
+          meetingId,
+          speakerId: userId,
+          speakerName,
+          originalText: text,
+          sourceLang,
+          translations, // { en: "Hello", fr: "Bonjour", es: "Hola" }
+          timestamp: Date.now(),
+        });
+      } catch (err) {
+        logger.error('Translation failed', err);
+        // Still send the original text even if translation fails
+        io.to(`meeting:${meetingId}`).emit('translation:result', {
+          meetingId,
+          speakerId: userId,
+          speakerName,
+          originalText: text,
+          sourceLang,
+          translations: { [sourceLang]: text },
+          timestamp: Date.now(),
+          error: 'Translation temporarily unavailable',
+        });
+      }
+    });
+
+    // Clean up translation data when meeting ends
+    socket.on('meeting:leave', (meetingId: string) => {
+      socket.leave(`meeting:${meetingId}`);
+      socket.to(`meeting:${meetingId}`).emit('meeting:participant-left', {
+        userId,
+      });
+
+      // Remove from translation map
+      const langMap = meetingLanguages.get(meetingId);
+      if (langMap) {
+        langMap.delete(userId);
+        if (langMap.size === 0) {
+          meetingLanguages.delete(meetingId);
+        } else {
+          // Broadcast updated participants
+          const participants: Array<{ userId: string; name: string; language: string }> = [];
+          langMap.forEach((val, uid) => {
+            participants.push({ userId: uid, name: val.name, language: val.language });
+          });
+          io.to(`meeting:${meetingId}`).emit('translation:participants', { meetingId, participants });
+        }
+      }
     });
 
     // ── Financial Updates ───────────────────────────────
@@ -158,6 +284,21 @@ export function setupSocketIO(httpServer: HttpServer): Server {
     // ── Presence ────────────────────────────────────────
     socket.on('disconnect', () => {
       logger.debug(`Socket disconnected: ${userId}`);
+      // Clean up translation data for any meetings this user was in
+      meetingLanguages.forEach((langMap, meetingId) => {
+        if (langMap.has(userId)) {
+          langMap.delete(userId);
+          if (langMap.size === 0) {
+            meetingLanguages.delete(meetingId);
+          } else {
+            const participants: Array<{ userId: string; name: string; language: string }> = [];
+            langMap.forEach((val, uid) => {
+              participants.push({ userId: uid, name: val.name, language: val.language });
+            });
+            io.to(`meeting:${meetingId}`).emit('translation:participants', { meetingId, participants });
+          }
+        }
+      });
     });
   });
 

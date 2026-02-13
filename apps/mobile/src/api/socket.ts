@@ -100,6 +100,15 @@ class SocketClient {
     this.socket?.emit('ledger:subscribe', orgId);
   }
 
+  // ── Translation ─────────────────────────────────────────
+  setTranslationLanguage(meetingId: string, language: string): void {
+    this.socket?.emit('translation:set-language', { meetingId, language });
+  }
+
+  sendSpeechForTranslation(meetingId: string, text: string, sourceLang: string, isFinal: boolean): void {
+    this.socket?.emit('translation:speech', { meetingId, text, sourceLang, isFinal });
+  }
+
   get isConnected(): boolean {
     return this.socket?.connected ?? false;
   }

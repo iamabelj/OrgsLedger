@@ -362,6 +362,13 @@ class ApiClient {
     receipt: (orgId: string, recordId: string) =>
       this.client.get(`/analytics/${orgId}/receipt/${recordId}`),
   };
+
+  // ── Translation ───────────────────────────────────────
+  translation = {
+    getLanguages: () => this.client.get('/meetings/translation/languages'),
+    translate: (text: string, targetLang: string, sourceLang?: string) =>
+      this.client.post('/meetings/translation/translate', { text, targetLang, sourceLang }),
+  };
 }
 
 export const api = new ApiClient();
