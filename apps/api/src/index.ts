@@ -281,6 +281,16 @@ app.use('/api/documents', documentRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/expenses', expenseRoutes);
 
+// ── Developer Gateway (AI Client Management, Hours, Proxy) ──
+try {
+  process.env.NO_LISTEN = 'true'; // Prevent gateway from auto-listening
+  const gatewayApp = require('../../../landing/server');
+  app.use('/developer', gatewayApp);
+  logger.info('Developer gateway mounted at /developer');
+} catch (err: any) {
+  logger.warn('Developer gateway not loaded: ' + (err.message || err));
+}
+
 // ── 404 Handler ───────────────────────────────────────────
 // API 404 — only for /api/* routes
 app.all('/api/*', (_req, res) => {
@@ -313,20 +323,15 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
   // Verify license before starting
   await verifyLicense();
 
-  // Only auto-listen when running standalone (not loaded by combined app.js)
-  if (!process.env.NO_LISTEN) {
-    server.listen(config.port, '0.0.0.0', () => {
-      logger.info(`OrgsLedger API running on port ${config.port}`);
-      logger.info(`Environment: ${config.env}`);
-      logger.info(`Socket.io enabled`);
+  server.listen(config.port, '0.0.0.0', () => {
+    logger.info(`OrgsLedger API running on port ${config.port}`);
+    logger.info(`Environment: ${config.env}`);
+    logger.info(`Socket.io enabled`);
+    logger.info(`Developer gateway: /developer/admin`);
 
-      // Start recurring dues scheduler
-      startScheduler();
-    });
-  } else {
-    logger.info('API loaded in combined mode (no auto-listen)');
+    // Start recurring dues scheduler
     startScheduler();
-  }
+  });
 })();
 
 export { app, server, io };

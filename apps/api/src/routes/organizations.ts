@@ -5,6 +5,9 @@
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import path from 'path';
+import fs from 'fs';
+import multer from 'multer';
 import db from '../db';
 import {
   authenticate,
@@ -14,8 +17,31 @@ import {
   validate,
 } from '../middleware';
 import { logger } from '../logger';
+import { config } from '../config';
 
 const router = Router();
+
+// ── Multer for logo uploads ────────────────────────────────
+const logoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const dir = path.resolve(config.upload.dir, 'logos');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req: any, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase() || '.png';
+    cb(null, `org_${req.params.orgId}_${Date.now()}${ext}`);
+  },
+});
+const logoUpload = multer({
+  storage: logoStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error('Only JPEG, PNG, WebP, GIF, and SVG images are allowed'));
+  },
+});
 
 // ── Schemas ─────────────────────────────────────────────────
 const createOrgSchema = z.object({
@@ -713,6 +739,92 @@ router.get(
       });
     } catch (err) {
       res.status(500).json({ success: false, error: 'Failed to get subscription' });
+    }
+  }
+);
+
+// ── Upload Organization Logo ──────────────────────────────
+router.post(
+  '/:orgId/logo',
+  authenticate,
+  loadMembership,
+  requireRole('org_admin'),
+  (req: Request, res: Response, next) => {
+    logoUpload.single('logo')(req, res, (err) => {
+      if (err) return res.status(400).json({ success: false, error: err.message });
+      next();
+    });
+  },
+  async (req: Request, res: Response) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: 'No image file provided' });
+      }
+
+      const logoUrl = `/uploads/logos/${req.file.filename}`;
+      await db('organizations').where({ id: req.params.orgId }).update({ logo_url: logoUrl });
+
+      logger.info(`Logo uploaded for org ${req.params.orgId}: ${logoUrl}`);
+
+      res.json({
+        success: true,
+        data: { logoUrl },
+        message: 'Logo uploaded successfully',
+      });
+    } catch (err) {
+      logger.error('Logo upload error:', err);
+      res.status(500).json({ success: false, error: 'Failed to upload logo' });
+    }
+  }
+);
+
+// ── Update Organization Branding ──────────────────────────
+router.put(
+  '/:orgId/branding',
+  authenticate,
+  loadMembership,
+  requireRole('org_admin'),
+  async (req: Request, res: Response) => {
+    try {
+      const { primaryColor, secondaryColor, accentColor, tagline, description, website } = req.body;
+
+      const org = await db('organizations').where({ id: req.params.orgId }).first();
+      if (!org) {
+        return res.status(404).json({ success: false, error: 'Organization not found' });
+      }
+
+      // Merge branding into settings JSON
+      const settings = typeof org.settings === 'string' ? JSON.parse(org.settings) : (org.settings || {});
+      settings.branding = {
+        ...(settings.branding || {}),
+        primaryColor: primaryColor || settings.branding?.primaryColor || '#6366f1',
+        secondaryColor: secondaryColor || settings.branding?.secondaryColor || '#8b5cf6',
+        accentColor: accentColor || settings.branding?.accentColor || '#f59e0b',
+        tagline: tagline !== undefined ? tagline : (settings.branding?.tagline || ''),
+        description: description !== undefined ? description : (settings.branding?.description || ''),
+        website: website !== undefined ? website : (settings.branding?.website || ''),
+      };
+
+      await db('organizations')
+        .where({ id: req.params.orgId })
+        .update({ settings: JSON.stringify(settings) });
+
+      await (req as any).audit?.({
+        organizationId: req.params.orgId,
+        action: 'settings_change',
+        entityType: 'organization',
+        entityId: req.params.orgId,
+        newValue: { branding: settings.branding },
+      });
+
+      res.json({
+        success: true,
+        data: { branding: settings.branding },
+        message: 'Branding updated successfully',
+      });
+    } catch (err) {
+      logger.error('Branding update error:', err);
+      res.status(500).json({ success: false, error: 'Failed to update branding' });
     }
   }
 );

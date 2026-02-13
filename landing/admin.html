@@ -579,11 +579,15 @@ function handleLogout() {
 /* ═══════════════════════════════════════════════════════
    API HELPER
    ═══════════════════════════════════════════════════════ */
+// Auto-detect base path: when served from /developer (mounted in API),
+// prefix all API calls with /developer. When standalone, use root.
+const API_BASE = window.location.pathname.startsWith('/developer') ? '/developer' : '';
+
 async function api(url, method = 'GET', body = null, noAuth = false) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (!noAuth) opts.headers['Authorization'] = 'Bearer ' + token;
   if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(url, opts);
+  const res = await fetch(API_BASE + url, opts);
   if (res.status === 401) { handleLogout(); throw new Error('Unauthorized'); }
   return res.json();
 }

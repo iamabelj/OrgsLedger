@@ -26,8 +26,7 @@ const FLUTTERWAVE_PUBLIC_KEY = process.env.FLUTTERWAVE_PUBLIC_KEY || '';
 const RATE_NGN_PER_USD = 1500;
 
 if (!DATABASE_URL) {
-  console.error('ERROR: DATABASE_URL environment variable is required');
-  process.exit(1);
+  console.warn('WARNING: DATABASE_URL environment variable is required for gateway');
 }
 
 // ── Database ──────────────────────────────────────────────

@@ -7,12 +7,37 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
+import path from 'path';
+import fs from 'fs';
+import multer from 'multer';
 import db from '../db';
 import { config } from '../config';
 import { authenticate, validate, writeAuditLog } from '../middleware';
 import { logger } from '../logger';
 
 const router = Router();
+
+// ── Multer for avatar uploads ───────────────────────────────
+const avatarStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const dir = path.resolve(config.upload.dir, 'avatars');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req: any, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+    cb(null, `${req.user?.userId || 'unknown'}_${Date.now()}${ext}`);
+  },
+});
+const avatarUpload = multer({
+  storage: avatarStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error('Only JPEG, PNG, WebP, and GIF images are allowed'));
+  },
+});
 
 // ── Schemas ─────────────────────────────────────────────────
 const registerSchema = z.object({
@@ -598,6 +623,39 @@ router.put('/change-password', authenticate, validate(changePasswordSchema), asy
     res.json({ success: true, message: 'Password changed successfully' });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Failed to change password' });
+  }
+});
+
+// ── Upload Avatar ───────────────────────────────────────────
+router.post('/upload-avatar', authenticate, (req: Request, res: Response, next) => {
+  avatarUpload.single('avatar')(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+    next();
+  });
+}, async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No image file provided' });
+    }
+
+    // Build the URL path for the avatar
+    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+
+    // Update user's avatar_url
+    await db('users').where({ id: req.user!.userId }).update({ avatar_url: avatarUrl });
+
+    logger.info(`Avatar uploaded for user ${req.user!.userId}: ${avatarUrl}`);
+
+    res.json({
+      success: true,
+      data: { avatarUrl },
+      message: 'Avatar uploaded successfully',
+    });
+  } catch (err) {
+    logger.error('Avatar upload error:', err);
+    res.status(500).json({ success: false, error: 'Failed to upload avatar' });
   }
 });
 
