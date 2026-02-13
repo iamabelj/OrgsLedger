@@ -47,7 +47,15 @@ export default function CreateFineScreen() {
     setLoadingMembers(true);
     try {
       const res = await api.orgs.listMembers(currentOrgId);
-      setMembers(res.data?.data || []);
+      const rawMembers = res.data?.data || [];
+      // Normalize: API returns first_name/last_name/userId, we need fullName/id
+      const normalized = rawMembers.map((m: any) => ({
+        id: m.userId || m.user_id || m.id,
+        fullName: m.fullName || `${m.first_name || ''} ${m.last_name || ''}`.trim() || 'Unknown',
+        email: m.email || '',
+        role: m.role || 'member',
+      }));
+      setMembers(normalized);
     } catch (err) {
       console.error('Failed to load members', err);
     } finally {
@@ -71,8 +79,8 @@ export default function CreateFineScreen() {
 
   const filteredMembers = members.filter(
     (m) =>
-      m.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.email.toLowerCase().includes(searchQuery.toLowerCase())
+      (m.fullName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (m.email || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleCreate = async () => {

@@ -33,6 +33,7 @@ export default function MeetingDetailScreen() {
   const { meetingId } = useLocalSearchParams<{ meetingId: string }>();
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const userId = useAuthStore((s) => s.user?.id);
+  const globalRole = useAuthStore((s) => s.user?.globalRole);
   const membership = useAuthStore((s) =>
     s.memberships.find((m) => m.organization_id === s.currentOrgId)
   );
@@ -50,8 +51,8 @@ export default function MeetingDetailScreen() {
   const recordingRef = useRef<any>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const isAdmin = membership &&
-    ['org_admin', 'executive', 'super_admin'].includes(membership.role);
+  const isAdmin = globalRole === 'super_admin' || (membership &&
+    ['org_admin', 'executive'].includes(membership.role));
 
   useEffect(() => {
     loadMeeting();

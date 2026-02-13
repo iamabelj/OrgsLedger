@@ -39,6 +39,7 @@ const STATUS_CONFIG: Record<string, {
 
 export default function MeetingsScreen() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
+  const globalRole = useAuthStore((s) => s.user?.globalRole);
   const membership = useAuthStore((s) =>
     s.memberships.find((m) => m.organization_id === s.currentOrgId)
   );
@@ -48,8 +49,8 @@ export default function MeetingsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const canCreate = membership &&
-    ['org_admin', 'executive', 'super_admin'].includes(membership.role);
+  const canCreate = globalRole === 'super_admin' || (membership &&
+    ['org_admin', 'executive'].includes(membership.role));
 
   const loadMeetings = async () => {
     if (!currentOrgId) return;

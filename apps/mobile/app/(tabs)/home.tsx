@@ -54,7 +54,9 @@ export default function HomeScreen() {
 
   const currentMembership = memberships.find((m) => m.organization_id === currentOrgId);
   const userRole = currentMembership?.role || 'member';
-  const isOrgAdmin = userRole === 'org_admin';
+  const globalRole = user?.globalRole;
+  const isSuperAdmin = globalRole === 'super_admin';
+  const isOrgAdmin = isSuperAdmin || userRole === 'org_admin';
   const isExecutive = userRole === 'executive';
   const isAdmin = isOrgAdmin || isExecutive;
 

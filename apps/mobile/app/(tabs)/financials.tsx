@@ -55,6 +55,7 @@ const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'danger' | 'info' |
 export default function FinancialsScreen() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const userId = useAuthStore((s) => s.user?.id);
+  const globalRole = useAuthStore((s) => s.user?.globalRole);
   const membership = useAuthStore((s) =>
     s.memberships.find((m) => m.organization_id === s.currentOrgId)
   );
@@ -68,8 +69,8 @@ export default function FinancialsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [donationCampaigns, setDonationCampaigns] = useState<any[]>([]);
 
-  const isAdmin = membership &&
-    ['org_admin', 'executive', 'super_admin'].includes(membership.role);
+  const isAdmin = globalRole === 'super_admin' || (membership &&
+    ['org_admin', 'executive'].includes(membership.role));
 
   const loadAll = useCallback(async () => {
     if (!currentOrgId) return;
