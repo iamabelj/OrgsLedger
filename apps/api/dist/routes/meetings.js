@@ -47,6 +47,7 @@ const createMeetingSchema = zod_1.z.object({
     scheduledStart: flexDateTime,
     scheduledEnd: flexDateTime.optional(),
     aiEnabled: zod_1.z.boolean().default(false),
+    translationEnabled: zod_1.z.boolean().default(false),
     recurringPattern: zod_1.z.enum(['none', 'daily', 'weekly', 'biweekly', 'monthly']).default('none'),
     recurringEndDate: flexDateTime.optional(),
     agendaItems: zod_1.z
@@ -66,7 +67,7 @@ const createVoteSchema = zod_1.z.object({
 // ── Create Meeting ──────────────────────────────────────────
 router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createMeetingSchema), async (req, res) => {
     try {
-        const { title, description, location, scheduledStart, scheduledEnd, aiEnabled, agendaItems, recurringPattern, recurringEndDate } = req.body;
+        const { title, description, location, scheduledStart, scheduledEnd, aiEnabled, translationEnabled, agendaItems, recurringPattern, recurringEndDate } = req.body;
         // If AI enabled, check credits
         if (aiEnabled) {
             const credits = await (0, db_1.default)('ai_credits')
@@ -92,6 +93,7 @@ router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, (
             scheduled_end: scheduledEnd || null,
             created_by: req.user.userId,
             ai_enabled: aiEnabled,
+            translation_enabled: translationEnabled || false,
             jitsi_room_id: jitsiRoomId,
             recurring_pattern: recurringPattern || 'none',
             recurring_end_date: recurringEndDate || null,
@@ -149,6 +151,7 @@ const updateMeetingSchema = zod_1.z.object({
     scheduledStart: flexDateTime.optional(),
     scheduledEnd: flexDateTime.optional().nullable(),
     aiEnabled: zod_1.z.boolean().optional(),
+    translationEnabled: zod_1.z.boolean().optional(),
     recurringPattern: zod_1.z.enum(['none', 'daily', 'weekly', 'biweekly', 'monthly']).optional(),
     status: zod_1.z.enum(['scheduled', 'cancelled']).optional(),
     agendaItems: zod_1.z
@@ -173,7 +176,7 @@ router.put('/:orgId/:meetingId', middleware_1.authenticate, middleware_1.loadMem
             res.status(400).json({ success: false, error: 'Cannot edit an ended meeting' });
             return;
         }
-        const { title, description, location, scheduledStart, scheduledEnd, aiEnabled, recurringPattern, status, agendaItems } = req.body;
+        const { title, description, location, scheduledStart, scheduledEnd, aiEnabled, translationEnabled, recurringPattern, status, agendaItems } = req.body;
         // If enabling AI, check credits
         if (aiEnabled === true && !meeting.ai_enabled) {
             const credits = await (0, db_1.default)('ai_credits')
@@ -200,6 +203,8 @@ router.put('/:orgId/:meetingId', middleware_1.authenticate, middleware_1.loadMem
             updates.scheduled_end = scheduledEnd;
         if (aiEnabled !== undefined)
             updates.ai_enabled = aiEnabled;
+        if (translationEnabled !== undefined)
+            updates.translation_enabled = translationEnabled;
         if (recurringPattern !== undefined)
             updates.recurring_pattern = recurringPattern;
         if (status !== undefined)

@@ -46,6 +46,7 @@ export default function CreateMeetingScreen() {
   const [loading, setLoading] = useState(false);
   const [recurringPattern, setRecurringPattern] = useState<string>('none');
   const [aiEnabled, setAiEnabled] = useState(false);
+  const [translationEnabled, setTranslationEnabled] = useState(false);
 
   const addAgendaItem = () => {
     setAgendaItems([...agendaItems, { title: '', duration: '10' }]);
@@ -110,6 +111,7 @@ export default function CreateMeetingScreen() {
         scheduledStart,
         recurringPattern,
         aiEnabled,
+        translationEnabled,
         agendaItems: filteredAgenda.length > 0 ? filteredAgenda : undefined,
       });
 
@@ -234,6 +236,30 @@ export default function CreateMeetingScreen() {
             <Ionicons name="information-circle" size={16} color={Colors.highlight} />
             <Text style={styles.aiNoteText}>
               AI credits will be verified when you create the meeting. Purchase credits in AI Plans if needed.
+            </Text>
+          </View>
+        )}
+
+        {/* Live Translation */}
+        <View style={styles.aiRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.aiLabel}>Enable Live Translation</Text>
+            <Text style={styles.aiHint}>
+              Let members speak their language and hear others in theirs. Supports 26 languages.
+            </Text>
+          </View>
+          <Switch
+            value={translationEnabled}
+            onValueChange={setTranslationEnabled}
+            trackColor={{ false: Colors.accent, true: Colors.highlight }}
+            thumbColor={Colors.textWhite}
+          />
+        </View>
+        {translationEnabled && (
+          <View style={styles.aiNote}>
+            <Ionicons name="language" size={16} color={Colors.highlight} />
+            <Text style={styles.aiNoteText}>
+              Members will choose their preferred language when the meeting goes live. Translations happen in real-time.
             </Text>
           </View>
         )}

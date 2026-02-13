@@ -47,6 +47,7 @@ const createMeetingSchema = z.object({
   scheduledStart: flexDateTime,
   scheduledEnd: flexDateTime.optional(),
   aiEnabled: z.boolean().default(false),
+  translationEnabled: z.boolean().default(false),
   recurringPattern: z.enum(['none', 'daily', 'weekly', 'biweekly', 'monthly']).default('none'),
   recurringEndDate: flexDateTime.optional(),
   agendaItems: z
@@ -76,7 +77,7 @@ router.post(
   validate(createMeetingSchema),
   async (req: Request, res: Response) => {
     try {
-      const { title, description, location, scheduledStart, scheduledEnd, aiEnabled, agendaItems, recurringPattern, recurringEndDate } = req.body;
+      const { title, description, location, scheduledStart, scheduledEnd, aiEnabled, translationEnabled, agendaItems, recurringPattern, recurringEndDate } = req.body;
 
       // If AI enabled, check credits
       if (aiEnabled) {
@@ -105,6 +106,7 @@ router.post(
           scheduled_end: scheduledEnd || null,
           created_by: req.user!.userId,
           ai_enabled: aiEnabled,
+          translation_enabled: translationEnabled || false,
           jitsi_room_id: jitsiRoomId,
           recurring_pattern: recurringPattern || 'none',
           recurring_end_date: recurringEndDate || null,
@@ -171,6 +173,7 @@ const updateMeetingSchema = z.object({
   scheduledStart: flexDateTime.optional(),
   scheduledEnd: flexDateTime.optional().nullable(),
   aiEnabled: z.boolean().optional(),
+  translationEnabled: z.boolean().optional(),
   recurringPattern: z.enum(['none', 'daily', 'weekly', 'biweekly', 'monthly']).optional(),
   status: z.enum(['scheduled', 'cancelled']).optional(),
   agendaItems: z
@@ -205,7 +208,7 @@ router.put(
         return;
       }
 
-      const { title, description, location, scheduledStart, scheduledEnd, aiEnabled, recurringPattern, status, agendaItems } = req.body;
+      const { title, description, location, scheduledStart, scheduledEnd, aiEnabled, translationEnabled, recurringPattern, status, agendaItems } = req.body;
 
       // If enabling AI, check credits
       if (aiEnabled === true && !meeting.ai_enabled) {
@@ -228,6 +231,7 @@ router.put(
       if (scheduledStart !== undefined) updates.scheduled_start = scheduledStart;
       if (scheduledEnd !== undefined) updates.scheduled_end = scheduledEnd;
       if (aiEnabled !== undefined) updates.ai_enabled = aiEnabled;
+      if (translationEnabled !== undefined) updates.translation_enabled = translationEnabled;
       if (recurringPattern !== undefined) updates.recurring_pattern = recurringPattern;
       if (status !== undefined) updates.status = status;
       updates.updated_at = db.fn.now();

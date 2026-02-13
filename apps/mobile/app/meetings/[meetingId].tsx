@@ -214,6 +214,22 @@ export default function MeetingDetailScreen() {
     }
   };
 
+  // ── Translation Toggle ─────────────────────────────────
+  const handleToggleTranslation = async () => {
+    if (!currentOrgId || !meetingId) return;
+    setActionLoading(true);
+    try {
+      const newVal = !meeting.translation_enabled;
+      await api.meetings.update(currentOrgId, meetingId, { translationEnabled: newVal });
+      showAlert('Done', newVal ? 'Live translation enabled' : 'Live translation disabled');
+      await loadMeeting();
+    } catch (err: any) {
+      showAlert('Error', err.response?.data?.error || 'Failed to toggle translation');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleVote = async (voteId: string, option: string) => {
     if (!currentOrgId || !meetingId) return;
     try {
@@ -352,6 +368,12 @@ export default function MeetingDetailScreen() {
               <Text style={styles.aiBadgeText}>AI</Text>
             </View>
           )}
+          {meeting.translation_enabled && (
+            <View style={[styles.aiBadgeMini, { backgroundColor: '#7C3AED15' }]}>
+              <Ionicons name="language" size={12} color="#7C3AED" />
+              <Text style={[styles.aiBadgeText, { color: '#7C3AED' }]}>Translation</Text>
+            </View>
+          )}
         </View>
         <Text style={styles.title}>{meeting.title}</Text>
         {meeting.description && <Text style={styles.description}>{meeting.description}</Text>}
@@ -381,12 +403,12 @@ export default function MeetingDetailScreen() {
         )}
       </Card>
 
-      {/* ── AI Services Card ───────────────────────────────── */}
+      {/* ── Meeting Services Card ─────────────────────────── */}
       {isAdmin && !['ended', 'completed', 'cancelled'].includes(meeting.status) && (
         <Card style={styles.section}>
           <View style={styles.aiHeader}>
-            <Ionicons name="sparkles" size={18} color={Colors.highlight} />
-            <Text style={styles.aiTitle}>AI Services</Text>
+            <Ionicons name="settings" size={18} color={Colors.highlight} />
+            <Text style={styles.aiTitle}>Meeting Services</Text>
           </View>
           <View style={styles.aiToggleRow}>
             <View style={{ flex: 1 }}>
@@ -408,6 +430,24 @@ export default function MeetingDetailScreen() {
           {!meeting.ai_enabled && (
             <Text style={styles.aiCreditNote}>Requires at least 1 AI credit. Purchase in AI Plans.</Text>
           )}
+          <View style={{ height: 12 }} />
+          <View style={styles.aiToggleRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.aiToggleLabel}>Live Translation</Text>
+              <Text style={styles.aiToggleHint}>
+                {meeting.translation_enabled
+                  ? 'Enabled — Members can speak their own language and hear others in theirs.'
+                  : 'Disabled — Enable to allow real-time multilingual translation (26 languages).'}
+              </Text>
+            </View>
+            <Switch
+              value={!!meeting.translation_enabled}
+              onValueChange={handleToggleTranslation}
+              trackColor={{ false: Colors.accent, true: '#7C3AED' }}
+              thumbColor={Colors.textWhite}
+              disabled={actionLoading}
+            />
+          </View>
         </Card>
       )}
 
@@ -456,7 +496,7 @@ export default function MeetingDetailScreen() {
       )}
 
       {/* ── Live Translation ─────────────────────────────────── */}
-      {meeting.status === 'live' && userId && (
+      {meeting.status === 'live' && meeting.translation_enabled && userId && (
         <LiveTranslation meetingId={meetingId!} userId={userId} />
       )}
 

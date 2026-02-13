@@ -92,7 +92,8 @@ interface LiveTranslationProps {
 export default function LiveTranslation({ meetingId, userId }: LiveTranslationProps) {
   const [myLanguage, setMyLanguage] = useState('en');
   const [isListening, setIsListening] = useState(false);
-  const [showLanguagePicker, setShowLanguagePicker] = useState(false);
+  const [showLanguagePicker, setShowLanguagePicker] = useState(true); // Show on first join so members pick their language
+  const [hasChosenLanguage, setHasChosenLanguage] = useState(false);
   const [translations, setTranslations] = useState<TranslationEntry[]>([]);
   const [interimText, setInterimText] = useState('');
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -187,6 +188,7 @@ export default function LiveTranslation({ meetingId, userId }: LiveTranslationPr
   const selectLanguage = useCallback((lang: string) => {
     setMyLanguage(lang);
     setShowLanguagePicker(false);
+    setHasChosenLanguage(true);
     socketClient.setTranslationLanguage(meetingId, lang);
   }, [meetingId]);
 
@@ -358,8 +360,20 @@ export default function LiveTranslation({ meetingId, userId }: LiveTranslationPr
           {/* ── Language Picker Dropdown ────────────────────── */}
           {showLanguagePicker && (
             <View style={styles.langDropdown}>
-              <Text style={styles.dropdownTitle}>Select Your Language</Text>
-              <ScrollView style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
+              {!hasChosenLanguage ? (
+                <>
+                  <View style={styles.welcomeBanner}>
+                    <Ionicons name="language" size={24} color={Colors.highlight} />
+                    <Text style={styles.welcomeTitle}>Choose Your Language</Text>
+                    <Text style={styles.welcomeHint}>
+                      Select the language you speak. You'll hear others translated into your language in real-time.
+                    </Text>
+                  </View>
+                </>
+              ) : (
+                <Text style={styles.dropdownTitle}>Change Language</Text>
+              )}
+              <ScrollView style={{ maxHeight: hasChosenLanguage ? 200 : 300 }} showsVerticalScrollIndicator={false}>
                 {Object.entries(LANGUAGES).map(([code, name]) => (
                   <TouchableOpacity
                     key={code}
@@ -542,6 +556,27 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: Spacing.xs,
     paddingHorizontal: Spacing.xs,
+  },
+  welcomeBanner: {
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.sm,
+    gap: 6,
+    marginBottom: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.accent,
+  },
+  welcomeTitle: {
+    color: Colors.textWhite,
+    fontSize: FontSize.lg,
+    fontWeight: FontWeight.bold as any,
+    textAlign: 'center',
+  },
+  welcomeHint: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   langOption: {
     flexDirection: 'row',
