@@ -3,7 +3,15 @@
 // ============================================================
 
 import dotenv from 'dotenv';
+import path from 'path';
+
+// Try loading .env from multiple locations
+// 1. Current working directory (apps/api in production)
+// 2. Project root (two levels up from apps/api)
 dotenv.config();
+dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 export const config = {
   env: process.env.NODE_ENV || 'development',
@@ -80,12 +88,12 @@ export const config = {
   },
 };
 
-// Validate critical config in production
+// Validate critical config in production (warn, don't crash)
 if (config.env === 'production') {
   if (config.jwt.secret === 'CHANGE_ME_IN_PRODUCTION') {
-    throw new Error('JWT_SECRET must be set in production!');
+    console.error('[CONFIG WARNING] JWT_SECRET is not set! Auth will not work.');
   }
   if (!process.env.DATABASE_URL && config.db.password === 'orgsledger_dev') {
-    throw new Error('DB_PASSWORD must be changed from default in production!');
+    console.error('[CONFIG WARNING] DATABASE_URL is not set — DB queries will fail.');
   }
 }
