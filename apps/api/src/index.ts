@@ -65,7 +65,7 @@ async function verifyLicense(): Promise<boolean> {
 
   try {
     const axios = require('axios');
-    const { data } = await axios.post(`${license.gatewayUrl}/api/license/verify`, {
+    const { data } = await axios.post(`${license.gatewayUrl}/developer/api/license/verify`, {
       license_key: license.key,
     }, { timeout: 10000 });
 
@@ -169,7 +169,7 @@ app.get('/api/license/status', async (_req, res) => {
       try {
         const axios = require('axios');
         const gatewayUrl = config.license.gatewayUrl;
-        const { data } = await axios.post(`${gatewayUrl}/api/license/verify`, {
+        const { data } = await axios.post(`${gatewayUrl}/developer/api/license/verify`, {
           license_key: row.value,
         }, { timeout: 10000 });
 
@@ -229,7 +229,7 @@ app.post('/api/license/activate', async (req, res) => {
     // Verify with gateway
     const gatewayUrl = config.license.gatewayUrl;
     const axios = require('axios');
-    const { data } = await axios.post(`${gatewayUrl}/api/license/verify`, {
+    const { data } = await axios.post(`${gatewayUrl}/developer/api/license/verify`, {
       license_key,
     }, { timeout: 10000 });
 
