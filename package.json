@@ -2,7 +2,6 @@
   "name": "orgsledger",
   "version": "1.0.0",
   "private": true,
-  "main": "app.js",
   "description": "Cross-platform operational hub for associations, organizations, clubs, and communities",
   "license": "UNLICENSED",
   "workspaces": [
@@ -10,7 +9,7 @@
     "packages/*"
   ],
   "scripts": {
-    "start": "node app.js",
+    "start": "node server.js",
     "build": "node_modules/.bin/tsc -p packages/shared/tsconfig.json && node_modules/.bin/tsc -p packages/database/tsconfig.json && node_modules/.bin/tsc -p apps/api/tsconfig.json",
     "api:dev": "npm run dev --workspace=apps/api",
     "api:build": "npm run build --workspace=apps/api",

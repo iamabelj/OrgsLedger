@@ -70,11 +70,17 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
 
     const tokens = generateTokens(user.id, user.email, user.global_role);
 
-    // Auto-join organization if orgSlug provided
+    // Auto-join organization: use orgSlug if provided, else join the default org
     let memberships: any[] = [];
+    let org = null;
     if (orgSlug) {
-      const org = await db('organizations').where({ slug: orgSlug }).first();
-      if (org) {
+      org = await db('organizations').where({ slug: orgSlug }).first();
+    }
+    if (!org) {
+      // Auto-join the first (default) organization for this deployment
+      org = await db('organizations').orderBy('created_at', 'asc').first();
+    }
+    if (org) {
         // Check not already a member (shouldn't be for new registration, but just in case)
         const existingMembership = await db('memberships')
           .where({ user_id: user.id, organization_id: org.id })
@@ -114,7 +120,6 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
             'organizations.name as organizationName',
             'organizations.slug as organizationSlug'
           );
-      }
     }
 
     await writeAuditLog({
@@ -181,7 +186,7 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
     });
 
     // Load memberships
-    const memberships = await db('memberships')
+    let memberships = await db('memberships')
       .join('organizations', 'memberships.organization_id', 'organizations.id')
       .where({ 'memberships.user_id': user.id, 'memberships.is_active': true })
       .select(
@@ -191,6 +196,46 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
         'organizations.name as organizationName',
         'organizations.slug as organizationSlug'
       );
+
+    // Auto-join default org if user has no memberships (seamless login)
+    if (memberships.length === 0) {
+      try {
+        const defaultOrg = await db('organizations').orderBy('created_at', 'asc').first();
+        if (defaultOrg) {
+          await db('memberships').insert({
+            user_id: user.id,
+            organization_id: defaultOrg.id,
+            role: 'member',
+            is_active: true,
+            joined_at: db.fn.now(),
+          });
+          // Add to general channel
+          const generalChannel = await db('chat_channels')
+            .where({ organization_id: defaultOrg.id, name: 'General' })
+            .first();
+          if (generalChannel) {
+            await db('chat_channel_members').insert({
+              channel_id: generalChannel.id,
+              user_id: user.id,
+            }).onConflict(['channel_id', 'user_id']).ignore();
+          }
+          logger.info(`User ${email} auto-joined default org ${defaultOrg.slug} on login`);
+          // Reload memberships
+          memberships = await db('memberships')
+            .join('organizations', 'memberships.organization_id', 'organizations.id')
+            .where({ 'memberships.user_id': user.id, 'memberships.is_active': true })
+            .select(
+              'memberships.id',
+              'memberships.role',
+              'organizations.id as organizationId',
+              'organizations.name as organizationName',
+              'organizations.slug as organizationSlug'
+            );
+        }
+      } catch (autoJoinErr) {
+        logger.warn('Auto-join on login failed:', autoJoinErr);
+      }
+    }
 
     res.json({
       success: true,

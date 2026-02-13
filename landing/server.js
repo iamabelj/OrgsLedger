@@ -462,13 +462,18 @@ app.get('/health', async (req, res) => {
 
 // ── Start Server ──────────────────────────────────────────
 initDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`\n  OrgsLedger AI Gateway running on port ${PORT}`);
-    console.log(`  Landing:    http://localhost:${PORT}`);
-    console.log(`  Admin:      http://localhost:${PORT}/admin`);
-    console.log(`  AI Proxy:   http://localhost:${PORT}/api/ai/*`);
-    console.log(`  Health:     http://localhost:${PORT}/health\n`);
-  });
+  // Only auto-listen when running standalone (not loaded by combined app.js)
+  if (!process.env.NO_LISTEN) {
+    app.listen(PORT, () => {
+      console.log(`\n  OrgsLedger AI Gateway running on port ${PORT}`);
+      console.log(`  Landing:    http://localhost:${PORT}`);
+      console.log(`  Admin:      http://localhost:${PORT}/admin`);
+      console.log(`  AI Proxy:   http://localhost:${PORT}/api/ai/*`);
+      console.log(`  Health:     http://localhost:${PORT}/health\n`);
+    });
+  } else {
+    console.log('[Landing] Loaded in combined mode (no auto-listen)');
+  }
 });
 
 module.exports = app;

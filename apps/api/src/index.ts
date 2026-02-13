@@ -313,14 +313,20 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
   // Verify license before starting
   await verifyLicense();
 
-  server.listen(config.port, '0.0.0.0', () => {
-    logger.info(`OrgsLedger API running on port ${config.port}`);
-    logger.info(`Environment: ${config.env}`);
-    logger.info(`Socket.io enabled`);
+  // Only auto-listen when running standalone (not loaded by combined app.js)
+  if (!process.env.NO_LISTEN) {
+    server.listen(config.port, '0.0.0.0', () => {
+      logger.info(`OrgsLedger API running on port ${config.port}`);
+      logger.info(`Environment: ${config.env}`);
+      logger.info(`Socket.io enabled`);
 
-    // Start recurring dues scheduler
+      // Start recurring dues scheduler
+      startScheduler();
+    });
+  } else {
+    logger.info('API loaded in combined mode (no auto-listen)');
     startScheduler();
-  });
+  }
 })();
 
 export { app, server, io };
