@@ -47,6 +47,19 @@ const adminItems: NavItem[] = [
   { label: 'Reports', icon: 'stats-chart-outline', path: '/admin/reports', adminOnly: true },
   { label: 'Settings', icon: 'settings-outline', path: '/admin/settings', adminOnly: true },
   { label: 'AI Plans', icon: 'sparkles-outline', path: '/admin/plans', adminOnly: true },
+  { label: 'Analytics', icon: 'analytics-outline', path: '/admin/analytics', adminOnly: true },
+  { label: 'Bank Transfers', icon: 'swap-horizontal-outline', path: '/admin/bank-transfers', adminOnly: true },
+  { label: 'Pay Config', icon: 'card-outline', path: '/admin/payment-methods', adminOnly: true },
+];
+
+// Executive gets a subset — no Settings, AI Plans, Pay Config, Bank Transfers, Analytics
+const executiveItems: NavItem[] = [
+  { label: 'Members', icon: 'people-circle-outline', path: '/admin/members', adminOnly: true },
+  { label: 'Create Due', icon: 'card-outline', path: '/admin/create-due', adminOnly: true },
+  { label: 'Donation Campaign', icon: 'heart-outline', path: '/admin/create-campaign', adminOnly: true },
+  { label: 'Expenses', icon: 'receipt-outline', path: '/admin/expenses', adminOnly: true },
+  { label: 'Committees', icon: 'git-branch-outline', path: '/admin/committees', adminOnly: true },
+  { label: 'Reports', icon: 'stats-chart-outline', path: '/admin/reports', adminOnly: true },
 ];
 
 export function NavigationDrawer() {
@@ -58,7 +71,11 @@ export function NavigationDrawer() {
   const logout = useAuthStore((s) => s.logout);
 
   const currentMembership = memberships.find((m) => m.organization_id === currentOrgId);
-  const isAdmin = currentMembership && (currentMembership.role === 'org_admin' || currentMembership.role === 'executive');
+  const userRole = currentMembership?.role || 'member';
+  const isOrgAdmin = userRole === 'org_admin';
+  const isExecutive = userRole === 'executive';
+  const isAdmin = isOrgAdmin || isExecutive;
+  const drawerAdminItems = isOrgAdmin ? adminItems : executiveItems;
   const isMobile = Dimensions.get('window').width < MOBILE_BREAKPOINT;
   const isWeb = Platform.OS === 'web';
 
@@ -142,8 +159,8 @@ export function NavigationDrawer() {
         {/* Admin Section */}
         {isAdmin && (
           <View style={styles.navGroup}>
-            <Text style={styles.navGroupTitle}>ADMINISTRATION</Text>
-            {adminItems.map((item) => {
+            <Text style={styles.navGroupTitle}>{isOrgAdmin ? 'SUPER ADMIN' : 'EXECUTIVE'}</Text>
+            {drawerAdminItems.map((item) => {
               const isActive = pathname === item.path || pathname?.startsWith(item.path);
               return (
                 <TouchableOpacity

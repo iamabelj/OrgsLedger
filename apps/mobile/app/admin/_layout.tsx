@@ -1,13 +1,35 @@
 // ============================================================
 // OrgsLedger Mobile — Admin Stack Layout
+// Guards admin screens: only org_admin and executive can access
 // ============================================================
 
 import React from 'react';
-import { Stack } from 'expo-router';
-import { Colors, FontWeight } from '../../src/theme';
+import { View, Text, StyleSheet } from 'react-native';
+import { Stack, router } from 'expo-router';
+import { useAuthStore } from '../../src/stores/auth.store';
+import { Colors, FontWeight, FontSize, Spacing } from '../../src/theme';
 import { HamburgerButton } from '../../src/components/HamburgerButton';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function AdminLayout() {
+  const memberships = useAuthStore((s) => s.memberships);
+  const currentOrgId = useAuthStore((s) => s.currentOrgId);
+  const currentMembership = memberships.find((m) => m.organization_id === currentOrgId);
+  const userRole = currentMembership?.role || 'member';
+  const isAdmin = userRole === 'org_admin' || userRole === 'executive';
+
+  if (!isAdmin) {
+    return (
+      <View style={styles.denied}>
+        <Ionicons name="lock-closed" size={48} color={Colors.textLight} />
+        <Text style={styles.deniedTitle}>Access Restricted</Text>
+        <Text style={styles.deniedText}>
+          This area is available to administrators and executives only.
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <Stack
       screenOptions={{
@@ -35,3 +57,24 @@ export default function AdminLayout() {
     </Stack>
   );
 }
+
+const styles = StyleSheet.create({
+  denied: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.background,
+    padding: Spacing.xl,
+    gap: Spacing.md,
+  },
+  deniedTitle: {
+    fontSize: FontSize.xl,
+    fontWeight: FontWeight.bold,
+    color: Colors.textPrimary,
+  },
+  deniedText: {
+    fontSize: FontSize.md,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+});

@@ -53,7 +53,10 @@ export default function HomeScreen() {
   const [aiHours, setAiHours] = useState<{ balance: number; used: number; remaining: number } | null>(null);
 
   const currentMembership = memberships.find((m) => m.organization_id === currentOrgId);
-  const isAdmin = currentMembership && (currentMembership.role === 'org_admin' || currentMembership.role === 'executive');
+  const userRole = currentMembership?.role || 'member';
+  const isOrgAdmin = userRole === 'org_admin';
+  const isExecutive = userRole === 'executive';
+  const isAdmin = isOrgAdmin || isExecutive;
 
   useEffect(() => {
     if (!isLoading && memberships.length === 0 && user) {
@@ -186,8 +189,12 @@ export default function HomeScreen() {
       {currentMembership && (
         <View style={styles.roleBadgeRow}>
           <Badge
-            label={currentMembership.role.replace('_', ' ')}
-            variant={isAdmin ? 'warning' : 'neutral'}
+            label={
+              isOrgAdmin ? 'Super Admin' :
+              isExecutive ? 'Executive' :
+              userRole.replace('_', ' ')
+            }
+            variant={isOrgAdmin ? 'danger' : isExecutive ? 'info' : 'neutral'}
             size="md"
           />
         </View>
@@ -331,10 +338,10 @@ export default function HomeScreen() {
         </ScrollView>
       </View>
 
-      {/* Admin Section */}
-      {isAdmin && (
+      {/* Admin Section — Super Admin (org_admin) gets full control */}
+      {isOrgAdmin && (
         <View style={styles.section}>
-          <SectionHeader title="Admin Dashboard" />
+          <SectionHeader title="Super Admin" />
           <View style={styles.adminGrid}>
             <AdminActionCard
               icon="people"
@@ -431,6 +438,75 @@ export default function HomeScreen() {
               label="Pay Config"
               color="#6366F1"
               onPress={() => router.push('/admin/payment-methods')}
+            />
+          </View>
+        </View>
+      )}
+
+      {/* Executive Section — limited admin features */}
+      {isExecutive && !isOrgAdmin && (
+        <View style={styles.section}>
+          <SectionHeader title="Executive Dashboard" />
+          <View style={styles.adminGrid}>
+            <AdminActionCard
+              icon="people"
+              label="Members"
+              color={Colors.info}
+              onPress={() => router.push('/admin/members')}
+            />
+            <AdminActionCard
+              icon="receipt"
+              label="Create Due"
+              color={Colors.highlight}
+              onPress={() => router.push('/admin/create-due')}
+            />
+            <AdminActionCard
+              icon="megaphone"
+              label="Campaign"
+              color={Colors.success}
+              onPress={() => router.push('/admin/create-campaign')}
+            />
+            <AdminActionCard
+              icon="receipt-outline"
+              label="Expenses"
+              color={Colors.error}
+              onPress={() => router.push('/admin/expenses')}
+            />
+            <AdminActionCard
+              icon="people-circle"
+              label="Committees"
+              color={Colors.warning}
+              onPress={() => router.push('/admin/committees')}
+            />
+            <AdminActionCard
+              icon="bar-chart"
+              label="Reports"
+              color={Colors.highlight}
+              onPress={() => router.push('/admin/reports')}
+            />
+            <AdminActionCard
+              icon="megaphone-outline"
+              label="Announce"
+              color="#F59E0B"
+              onPress={() => router.push('/announcements')}
+            />
+            <AdminActionCard
+              icon="calendar"
+              label="Events"
+              color="#3B82F6"
+              onPress={() => router.push('/events')}
+            />
+            <AdminActionCard
+              icon="bar-chart-outline"
+              label="Polls"
+              color="#8B5CF6"
+              onPress={() => router.push('/polls')}
+            />
+            <AdminActionCard
+              icon="folder-open"
+              label="Documents"
+              color="#10B981"
+              onPress={() => router.push('/documents')}
             />
           </View>
         </View>
