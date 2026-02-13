@@ -50,6 +50,7 @@ export default function HomeScreen() {
   const [upcomingMeetings, setUpcomingMeetings] = useState<any[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [showOrgSwitcher, setShowOrgSwitcher] = useState(false);
+  const [aiHours, setAiHours] = useState<{ balance: number; used: number; remaining: number } | null>(null);
 
   const currentMembership = memberships.find((m) => m.organization_id === currentOrgId);
   const isAdmin = currentMembership && (currentMembership.role === 'org_admin' || currentMembership.role === 'executive');
@@ -83,6 +84,19 @@ export default function HomeScreen() {
         const notifRes = await api.notifications.list();
         const unread = (notifRes.data || []).filter((n: any) => !n.read).length;
         setUnreadNotifications(unread);
+      } catch (_) {}
+
+      // Load AI token hours from gateway license
+      try {
+        const licenseRes = await api.license.status();
+        const client = licenseRes.data?.client;
+        if (client && typeof client.hoursBalance === 'number') {
+          setAiHours({
+            balance: client.hoursBalance,
+            used: client.hoursUsed || 0,
+            remaining: client.hoursRemaining ?? client.hoursBalance,
+          });
+        }
       } catch (_) {}
     } catch (err) {
       console.error('[Home] loadDashboard error:', err);
@@ -215,6 +229,66 @@ export default function HomeScreen() {
           </View>
         </Card>
       </View>
+
+      {/* AI Hours Card */}
+      {aiHours && (
+        <View style={styles.section}>
+          <Card variant="elevated" style={styles.aiCard}>
+            <View style={styles.finCardHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="sparkles" size={18} color={Colors.highlight} />
+                <Text style={styles.finCardTitle}>AI Hours</Text>
+              </View>
+              {isAdmin && (
+                <TouchableOpacity onPress={() => router.push('/admin/plans')}>
+                  <Text style={styles.viewAllText}>Manage</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.finCardGrid}>
+              <View style={styles.finCardItem}>
+                <Ionicons name="time" size={20} color={Colors.success} />
+                <Text style={styles.finCardValue}>
+                  {aiHours.remaining.toFixed(1)}h
+                </Text>
+                <Text style={styles.finCardLabel}>Remaining</Text>
+              </View>
+              <View style={styles.finCardDivider} />
+              <View style={styles.finCardItem}>
+                <Ionicons name="play-circle" size={20} color={Colors.info} />
+                <Text style={styles.finCardValue}>
+                  {aiHours.used.toFixed(1)}h
+                </Text>
+                <Text style={styles.finCardLabel}>Used</Text>
+              </View>
+              <View style={styles.finCardDivider} />
+              <View style={styles.finCardItem}>
+                <Ionicons name="server" size={20} color={Colors.highlight} />
+                <Text style={styles.finCardValue}>
+                  {aiHours.balance.toFixed(1)}h
+                </Text>
+                <Text style={styles.finCardLabel}>Total</Text>
+              </View>
+            </View>
+            {/* Usage bar */}
+            <View style={styles.aiBarContainer}>
+              <View style={styles.aiBarTrack}>
+                <View
+                  style={[
+                    styles.aiBarFill,
+                    {
+                      width: aiHours.balance > 0
+                        ? `${Math.min((aiHours.used / aiHours.balance) * 100, 100)}%`
+                        : '0%',
+                      backgroundColor: aiHours.remaining < 0.5 ? Colors.error : Colors.highlight,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+          </Card>
+        </View>
+      )}
 
       {/* Quick Actions */}
       <View style={styles.section}>
@@ -629,6 +703,27 @@ const styles = StyleSheet.create({
     width: 1,
     height: 40,
     backgroundColor: Colors.borderLight,
+  },
+
+  // AI Hours Card
+  aiCard: {
+    paddingVertical: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.highlight + '25',
+  },
+  aiBarContainer: {
+    marginTop: Spacing.md,
+    paddingHorizontal: Spacing.xs,
+  },
+  aiBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.borderLight,
+    overflow: 'hidden' as const,
+  },
+  aiBarFill: {
+    height: '100%',
+    borderRadius: 3,
   },
 
   // Quick Actions

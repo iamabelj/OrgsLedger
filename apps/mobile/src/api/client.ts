@@ -258,6 +258,11 @@ class ApiClient {
       this.client.post(`/payments/${orgId}/ai-credits/purchase`, data),
   };
 
+  // ── License / Token Status ────────────────────────────
+  license = {
+    status: () => this.client.get('/license/status'),
+  };
+
   // ── Notifications ─────────────────────────────────────
   notifications = {
     list: (params?: any) => this.client.get('/notifications', { params }),

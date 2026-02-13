@@ -21,6 +21,7 @@ export default function AnalyticsScreen() {
   const [analytics, setAnalytics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [aiHours, setAiHours] = useState<{ balance: number; used: number; remaining: number } | null>(null);
 
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const memberships = useAuthStore((s) => s.memberships);
@@ -34,10 +35,23 @@ export default function AnalyticsScreen() {
       setAnalytics(res.data.data);
     } catch (err) {
       console.error('Failed to load analytics', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
     }
+
+    // Load AI hours from license/gateway
+    try {
+      const licenseRes = await api.license.status();
+      const client = licenseRes.data?.client;
+      if (client && typeof client.hoursBalance === 'number') {
+        setAiHours({
+          balance: client.hoursBalance,
+          used: client.hoursUsed || 0,
+          remaining: client.hoursRemaining ?? client.hoursBalance,
+        });
+      }
+    } catch (_) {}
+
+    setLoading(false);
+    setRefreshing(false);
   }, [currentOrgId]);
 
   useEffect(() => { loadAnalytics(); }, [loadAnalytics]);
@@ -137,6 +151,37 @@ export default function AnalyticsScreen() {
           />
         </View>
       </View>
+
+      {/* AI Hours */}
+      {aiHours && (
+        <View style={styles.section}>
+          <SectionHeader title="AI Hours" />
+          <View style={styles.statRow}>
+            <StatCard
+              label="Hours Remaining"
+              value={`${aiHours.remaining.toFixed(1)}h`}
+              icon="time"
+            />
+            <StatCard
+              label="Hours Used"
+              value={`${aiHours.used.toFixed(1)}h`}
+              icon="play-circle"
+            />
+          </View>
+          <View style={styles.statRow}>
+            <StatCard
+              label="Total Balance"
+              value={`${aiHours.balance.toFixed(1)}h`}
+              icon="server"
+            />
+            <StatCard
+              label="Usage Rate"
+              value={aiHours.balance > 0 ? `${Math.round((aiHours.used / aiHours.balance) * 100)}%` : '0%'}
+              icon="analytics"
+            />
+          </View>
+        </View>
+      )}
 
       {/* Monthly Breakdown */}
       {data.monthlyBreakdown?.length > 0 && (

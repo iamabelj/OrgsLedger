@@ -165,7 +165,27 @@ app.get('/api/license/status', async (_req, res) => {
   try {
     const row = await db('app_settings').where('key', 'license_key').first();
     if (row?.value) {
-      // Fetch stored client info if available
+      // Live-verify with gateway to get fresh hours balance
+      try {
+        const axios = require('axios');
+        const gatewayUrl = config.license.gatewayUrl;
+        const { data } = await axios.post(`${gatewayUrl}/api/license/verify`, {
+          license_key: row.value,
+        }, { timeout: 10000 });
+
+        if (data.valid && data.client) {
+          // Update stored client info with fresh data from gateway
+          await db('app_settings')
+            .insert({ key: 'license_client', value: JSON.stringify(data.client) })
+            .onConflict('key').merge();
+          return res.json({ licensed: true, client: data.client });
+        }
+      } catch (e) {
+        // Gateway unavailable — fall back to stored data
+        logger.warn('Gateway unreachable for license status, using cached data');
+      }
+
+      // Fallback: return stored client info
       let clientInfo = null;
       try {
         const infoRow = await db('app_settings').where('key', 'license_client').first();
