@@ -70,6 +70,7 @@ export function NavigationDrawer() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
 
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const currentMembership = memberships.find((m) => m.organization_id === currentOrgId);
   const userRole = currentMembership?.role || 'member';
   const isOrgAdmin = userRole === 'org_admin';
@@ -79,8 +80,8 @@ export function NavigationDrawer() {
   const isMobile = Dimensions.get('window').width < MOBILE_BREAKPOINT;
   const isWeb = Platform.OS === 'web';
 
-  // Drawer respects isOpen state on all platforms
-  const shouldShow = isOpen;
+  // Never show drawer when not authenticated (login/register screens)
+  const shouldShow = isOpen && isAuthenticated;
 
   const handleNavigation = (path: string) => {
     router.push(path as any);

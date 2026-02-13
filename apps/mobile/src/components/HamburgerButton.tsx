@@ -3,13 +3,20 @@
 // ============================================================
 
 import React from 'react';
-import { TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { TouchableOpacity, StyleSheet, Platform, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useDrawer } from '../contexts/DrawerContext';
+import { useAuthStore } from '../stores/auth.store';
 import { Colors, Spacing } from '../theme';
 
 export function HamburgerButton() {
   const { toggle } = useDrawer();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  // Don't show hamburger on auth screens (login, register, etc.)
+  if (!isAuthenticated) {
+    return <View style={styles.button} />;
+  }
 
   return (
     <TouchableOpacity
