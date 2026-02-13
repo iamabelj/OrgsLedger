@@ -333,9 +333,9 @@ app.all('/api/*', (_req, res) => {
 if (fs.existsSync(webDir)) {
   app.get('*', (req, res) => {
     const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
-    // On orgsledger.com, do NOT serve the SPA — only landing page + developer gateway exist
+    // On orgsledger.com, redirect all non-API routes to the landing/sales page
     if (host === 'orgsledger.com' || host === 'www.orgsledger.com') {
-      res.status(404).json({ success: false, error: 'Page not found' });
+      res.redirect(301, '/');
       return;
     }
     // All other domains (test.orgsledger.com, client deployments, localhost): serve SPA
