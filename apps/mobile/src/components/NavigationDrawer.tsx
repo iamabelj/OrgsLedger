@@ -34,6 +34,10 @@ const navItems: NavItem[] = [
   { label: 'Chat', icon: 'chatbubbles-outline', path: '/(tabs)/chat' },
   { label: 'Meetings', icon: 'people-outline', path: '/(tabs)/meetings' },
   { label: 'Financials', icon: 'wallet-outline', path: '/(tabs)/financials' },
+  { label: 'Announcements', icon: 'megaphone-outline', path: '/announcements' },
+  { label: 'Events', icon: 'calendar-outline', path: '/events' },
+  { label: 'Polls', icon: 'bar-chart-outline', path: '/polls' },
+  { label: 'Documents', icon: 'document-text-outline', path: '/documents' },
   { label: 'Profile', icon: 'person-outline', path: '/(tabs)/profile' },
 ];
 
