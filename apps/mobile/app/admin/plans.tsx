@@ -17,7 +17,7 @@ import { router } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius } from '../../src/theme';
-import { Card, Badge, SectionHeader, Button } from '../../src/components/ui';
+import { Card, SectionHeader, Button } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
 
 const AI_PRICE_PER_HOUR = 7;
@@ -106,42 +106,11 @@ export default function PlansScreen() {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
-        <SectionHeader title="Plans & AI Credits" />
+        <SectionHeader title="AI Credits" />
         <Text style={styles.subtitle}>
-          All core features are free. Pay only for AI-powered services.
+          Pay-as-you-go AI-powered services for your organization.
         </Text>
       </View>
-
-      {/* Free Plan Card */}
-      <Card style={[styles.planCard, styles.currentPlanCard]}>
-        <Badge label="YOUR PLAN" variant="success" style={styles.currentBadge} />
-        <Text style={styles.planName}>Free</Text>
-        <Text style={styles.planDescription}>
-          Everything you need to run your organization
-        </Text>
-        <View style={styles.priceContainer}>
-          <Text style={styles.price}>$0</Text>
-          <Text style={styles.priceInterval}>/forever</Text>
-        </View>
-        <View style={styles.features}>
-          {[
-            'Unlimited members',
-            'Meeting management',
-            'Financial tracking & dues',
-            'Chat & communication',
-            'Document management',
-            'Polls & voting',
-            'Committees',
-            'Push & email notifications',
-            'Analytics dashboard',
-          ].map((f, i) => (
-            <View key={i} style={styles.featureRow}>
-              <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
-              <Text style={styles.featureText}>{f}</Text>
-            </View>
-          ))}
-        </View>
-      </Card>
 
       {/* Premium AI Card */}
       <Card style={styles.planCard}>
@@ -249,15 +218,6 @@ const styles = StyleSheet.create({
     margin: Spacing.md,
     padding: Spacing.lg,
     position: 'relative',
-  },
-  currentPlanCard: {
-    borderWidth: 2,
-    borderColor: Colors.success,
-  },
-  currentBadge: {
-    position: 'absolute',
-    top: Spacing.md,
-    right: Spacing.md,
   },
   aiBadge: {
     flexDirection: 'row',

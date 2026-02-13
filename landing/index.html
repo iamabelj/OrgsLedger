@@ -894,16 +894,6 @@
 
     <div class="ai-card animate-on-scroll">
       <div class="ai-plans">
-        <div class="ai-plan">
-          <h4>Free Plan</h4>
-          <div class="plan-price">₦0/mo</div>
-          <ul>
-            <li>5 AI credits/month included</li>
-            <li>Basic meeting summaries</li>
-            <li>Text-based AI queries</li>
-            <li>Standard response speed</li>
-          </ul>
-        </div>
         <div class="ai-plan active">
           <h4>Premium Credits</h4>
           <div class="plan-price ai-price-display" data-ngn="10000" data-usd="7"><span class="price-display" data-ngn="10000" data-usd="7">₦10,000</span>/hour</div>
@@ -943,7 +933,7 @@
         <div class="calc-result">
           <p>Estimated monthly AI cost</p>
           <div class="total" id="calcTotal">$14.00 <small>/month</small></div>
-          <p style="margin-top:8px;font-size:0.85rem;">≈ <span id="calcCredits">2</span> credits (hours) • First 5 credits free every month</p>
+          <p style="margin-top:8px;font-size:0.85rem;">≈ <span id="calcCredits">2</span> credits (hours)</p>
         </div>
       </div>
     </div>
@@ -1025,7 +1015,7 @@
           <span class="faq-icon">+</span>
         </button>
         <div class="faq-answer"><div class="faq-answer-inner">
-          The platform license is a <strong>one-time purchase</strong> — you own it forever. The only ongoing cost is AI credits if you choose to use AI features beyond the free monthly allocation. Hosting and domain costs are separate (typically ₦5,000–₦15,000/year).
+          The platform license is a <strong>one-time purchase</strong> — you own it forever. The only ongoing cost is AI credits if you choose to use AI features. Hosting and domain costs are separate (typically ₦5,000–₦15,000/year).
         </div></div>
       </div>
       <div class="faq-item animate-on-scroll">
@@ -1043,7 +1033,7 @@
           <span class="faq-icon">+</span>
         </button>
         <div class="faq-answer"><div class="faq-answer-inner">
-          Every organization gets <strong>5 free AI credits per month</strong>. 1 credit = 1 hour of AI processing. This covers meeting summaries, financial analysis, speech-to-text, and document generation. For heavier usage, additional credits are available at <strong>₦10,000 per hour (~$7 USD)</strong>. AI plan purchases are managed by your org admin from the admin dashboard. Use the calculator above to estimate your needs.
+          1 credit = 1 hour of AI processing. This covers meeting summaries, financial analysis, speech-to-text, and document generation. Credits are available at <strong>₦10,000 per hour (~$7 USD)</strong>. AI plan purchases are managed by your org admin from the admin dashboard. Use the calculator above to estimate your needs.
         </div></div>
       </div>
       <div class="faq-item animate-on-scroll">
@@ -1483,8 +1473,7 @@ function updateCalc() {
   document.getElementById('calcDocsVal').textContent = docs;
 
   const totalHours = (meetings * 0.5) + (reports * 0.3) + (speech * 1) + (docs * 0.2);
-  const freeCredits = 5;
-  const billableHours = Math.max(0, totalHours - freeCredits);
+  const billableHours = totalHours;
   const costNgn = billableHours * 10000;
   const costUsd = billableHours * 7;
   const cost = isNigeria ? costNgn : costUsd;
