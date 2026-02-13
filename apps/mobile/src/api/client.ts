@@ -163,6 +163,10 @@ class ApiClient {
       this.client.get(`/meetings/${orgId}/${meetingId}`),
     create: (orgId: string, data: any) =>
       this.client.post(`/meetings/${orgId}`, data),
+    update: (orgId: string, meetingId: string, data: any) =>
+      this.client.put(`/meetings/${orgId}/${meetingId}`, data),
+    toggleAi: (orgId: string, meetingId: string) =>
+      this.client.post(`/meetings/${orgId}/${meetingId}/toggle-ai`),
     start: (orgId: string, meetingId: string) =>
       this.client.post(`/meetings/${orgId}/${meetingId}/start`),
     end: (orgId: string, meetingId: string) =>
@@ -184,7 +188,7 @@ class ApiClient {
       } as any);
       return this.client.post(`/meetings/${orgId}/${meetingId}/audio`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 120000, // 2 min for large audio files
+        timeout: 120000,
       });
     },
   };
@@ -266,6 +270,8 @@ class ApiClient {
     get: (orgId: string) => this.client.get(`/payments/${orgId}/ai-credits`),
     purchase: (orgId: string, data: { credits: number }) =>
       this.client.post(`/payments/${orgId}/ai-credits/purchase`, data),
+    grant: (data: { organizationId: string; credits: number; reason?: string }) =>
+      this.client.post('/admin/ai-credits/grant', data),
   };
 
   // ── License / Token Status ────────────────────────────

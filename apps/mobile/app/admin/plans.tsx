@@ -33,7 +33,8 @@ export default function PlansScreen() {
   const [purchaseHours, setPurchaseHours] = useState('1');
   const [purchasing, setPurchasing] = useState(false);
 
-  const isOwner = currentMembership?.role === 'org_admin';
+  const globalRole = useAuthStore((s) => s.user?.globalRole);
+  const isOwner = globalRole === 'super_admin' || currentMembership?.role === 'org_admin';
 
   useEffect(() => {
     loadCredits();

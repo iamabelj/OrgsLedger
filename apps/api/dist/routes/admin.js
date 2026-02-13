@@ -155,6 +155,52 @@ router.get('/config', middleware_1.authenticate, (0, middleware_1.requireSuperAd
         res.status(500).json({ success: false, error: 'Failed to get config' });
     }
 });
+// ══════════════════════════════════════════════════════════════
+// GRANT AI CREDITS (Super Admin)
+// ══════════════════════════════════════════════════════════════
+router.post('/ai-credits/grant', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (req, res) => {
+    try {
+        const { organizationId, credits, reason } = req.body;
+        if (!organizationId || !credits || credits < 1) {
+            res.status(400).json({ success: false, error: 'organizationId and credits (>=1) required' });
+            return;
+        }
+        // Ensure ai_credits row exists
+        const existing = await (0, db_1.default)('ai_credits')
+            .where({ organization_id: organizationId })
+            .first();
+        if (existing) {
+            await (0, db_1.default)('ai_credits')
+                .where({ organization_id: organizationId })
+                .update({
+                total_credits: db_1.default.raw('total_credits + ?', [credits]),
+            });
+        }
+        else {
+            await (0, db_1.default)('ai_credits').insert({
+                organization_id: organizationId,
+                total_credits: credits,
+                used_credits: 0,
+            });
+        }
+        await (0, db_1.default)('ai_credit_transactions').insert({
+            organization_id: organizationId,
+            type: 'bonus',
+            amount: credits,
+            description: reason || `Admin granted ${credits} AI credit${credits > 1 ? 's' : ''}`,
+        });
+        await req.audit?.({
+            action: 'grant',
+            entityType: 'ai_credits',
+            entityId: organizationId,
+            newValue: { credits, reason },
+        });
+        res.json({ success: true, message: `${credits} credit(s) granted` });
+    }
+    catch (err) {
+        res.status(500).json({ success: false, error: 'Failed to grant credits' });
+    }
+});
 router.put('/config', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), (0, middleware_1.validate)(updateConfigSchema), async (req, res) => {
     try {
         const { key, value, description } = req.body;

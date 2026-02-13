@@ -37,15 +37,17 @@ const audioUpload = (0, multer_1.default)({
     },
 });
 // ── Schemas ─────────────────────────────────────────────────
+// Helper: accept ISO datetime OR date-only strings
+const flexDateTime = zod_1.z.string().refine((s) => !isNaN(new Date(s).getTime()), { message: 'Invalid date/time string' });
 const createMeetingSchema = zod_1.z.object({
     title: zod_1.z.string().min(1).max(300),
     description: zod_1.z.string().max(5000).optional(),
     location: zod_1.z.string().max(500).optional(),
-    scheduledStart: zod_1.z.string().datetime(),
-    scheduledEnd: zod_1.z.string().datetime().optional(),
+    scheduledStart: flexDateTime,
+    scheduledEnd: flexDateTime.optional(),
     aiEnabled: zod_1.z.boolean().default(false),
     recurringPattern: zod_1.z.enum(['none', 'daily', 'weekly', 'biweekly', 'monthly']).default('none'),
-    recurringEndDate: zod_1.z.string().datetime().optional(),
+    recurringEndDate: flexDateTime.optional(),
     agendaItems: zod_1.z
         .array(zod_1.z.object({
         title: zod_1.z.string().min(1),
@@ -136,6 +138,139 @@ router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, (
     catch (err) {
         logger_1.logger.error('Create meeting error', err);
         res.status(500).json({ success: false, error: 'Failed to create meeting' });
+    }
+});
+// ── Update Meeting ──────────────────────────────────────────
+const updateMeetingSchema = zod_1.z.object({
+    title: zod_1.z.string().min(1).max(300).optional(),
+    description: zod_1.z.string().max(5000).optional().nullable(),
+    location: zod_1.z.string().max(500).optional().nullable(),
+    scheduledStart: flexDateTime.optional(),
+    scheduledEnd: flexDateTime.optional().nullable(),
+    aiEnabled: zod_1.z.boolean().optional(),
+    recurringPattern: zod_1.z.enum(['none', 'daily', 'weekly', 'biweekly', 'monthly']).optional(),
+    status: zod_1.z.enum(['scheduled', 'cancelled']).optional(),
+    agendaItems: zod_1.z
+        .array(zod_1.z.object({
+        title: zod_1.z.string().min(1),
+        description: zod_1.z.string().optional(),
+        durationMinutes: zod_1.z.number().min(1).optional(),
+        presenterUserId: zod_1.z.string().uuid().optional(),
+    }))
+        .optional(),
+});
+router.put('/:orgId/:meetingId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(updateMeetingSchema), async (req, res) => {
+    try {
+        const meeting = await (0, db_1.default)('meetings')
+            .where({ id: req.params.meetingId, organization_id: req.params.orgId })
+            .first();
+        if (!meeting) {
+            res.status(404).json({ success: false, error: 'Meeting not found' });
+            return;
+        }
+        if (meeting.status === 'ended') {
+            res.status(400).json({ success: false, error: 'Cannot edit an ended meeting' });
+            return;
+        }
+        const { title, description, location, scheduledStart, scheduledEnd, aiEnabled, recurringPattern, status, agendaItems } = req.body;
+        // If enabling AI, check credits
+        if (aiEnabled === true && !meeting.ai_enabled) {
+            const credits = await (0, db_1.default)('ai_credits')
+                .where({ organization_id: req.params.orgId })
+                .first();
+            if (!credits || credits.total_credits - credits.used_credits <= 0) {
+                res.status(402).json({
+                    success: false,
+                    error: 'Insufficient AI credits. Purchase credits in AI Plans.',
+                });
+                return;
+            }
+        }
+        const updates = {};
+        if (title !== undefined)
+            updates.title = title;
+        if (description !== undefined)
+            updates.description = description;
+        if (location !== undefined)
+            updates.location = location;
+        if (scheduledStart !== undefined)
+            updates.scheduled_start = scheduledStart;
+        if (scheduledEnd !== undefined)
+            updates.scheduled_end = scheduledEnd;
+        if (aiEnabled !== undefined)
+            updates.ai_enabled = aiEnabled;
+        if (recurringPattern !== undefined)
+            updates.recurring_pattern = recurringPattern;
+        if (status !== undefined)
+            updates.status = status;
+        updates.updated_at = db_1.default.fn.now();
+        const [updated] = await (0, db_1.default)('meetings')
+            .where({ id: req.params.meetingId })
+            .update(updates)
+            .returning('*');
+        // Replace agenda items if provided
+        if (agendaItems !== undefined) {
+            await (0, db_1.default)('agenda_items').where({ meeting_id: req.params.meetingId }).del();
+            if (agendaItems.length > 0) {
+                await (0, db_1.default)('agenda_items').insert(agendaItems.map((item, idx) => ({
+                    meeting_id: req.params.meetingId,
+                    title: item.title,
+                    description: item.description || null,
+                    order: idx + 1,
+                    duration_minutes: item.durationMinutes || null,
+                    presenter_user_id: item.presenterUserId || null,
+                })));
+            }
+        }
+        await req.audit?.({
+            organizationId: req.params.orgId,
+            action: 'update',
+            entityType: 'meeting',
+            entityId: req.params.meetingId,
+            newValue: updates,
+        });
+        res.json({ success: true, data: updated });
+    }
+    catch (err) {
+        logger_1.logger.error('Update meeting error', err);
+        res.status(500).json({ success: false, error: 'Failed to update meeting' });
+    }
+});
+// ── Toggle AI on existing meeting ───────────────────────────
+router.post('/:orgId/:meetingId/toggle-ai', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
+    try {
+        const meeting = await (0, db_1.default)('meetings')
+            .where({ id: req.params.meetingId, organization_id: req.params.orgId })
+            .first();
+        if (!meeting) {
+            res.status(404).json({ success: false, error: 'Meeting not found' });
+            return;
+        }
+        const newState = !meeting.ai_enabled;
+        // If enabling, check credits
+        if (newState) {
+            const credits = await (0, db_1.default)('ai_credits')
+                .where({ organization_id: req.params.orgId })
+                .first();
+            if (!credits || credits.total_credits - credits.used_credits <= 0) {
+                res.status(402).json({
+                    success: false,
+                    error: 'Insufficient AI credits. Purchase credits in AI Plans.',
+                });
+                return;
+            }
+        }
+        await (0, db_1.default)('meetings')
+            .where({ id: req.params.meetingId })
+            .update({ ai_enabled: newState });
+        res.json({
+            success: true,
+            data: { aiEnabled: newState },
+            message: newState ? 'AI minutes enabled' : 'AI minutes disabled',
+        });
+    }
+    catch (err) {
+        res.status(500).json({ success: false, error: 'Failed to toggle AI' });
     }
 });
 // ── List Meetings ───────────────────────────────────────────

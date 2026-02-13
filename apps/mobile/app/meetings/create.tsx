@@ -2,14 +2,13 @@
 // OrgsLedger Mobile — Create Meeting Screen (Royal Design)
 // ============================================================
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  ActivityIndicator,
   Platform,
   Switch,
 } from 'react-native';
@@ -24,13 +23,23 @@ import { showAlert } from '../../src/utils/alert';
 export default function CreateMeetingScreen() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
 
+  // Default to 1 hour from now, rounded to nearest 15 min
+  const getDefaultStart = () => {
+    const d = new Date();
+    d.setHours(d.getHours() + 1);
+    d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15, 0, 0);
+    return d;
+  };
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [selectedTime, setSelectedTime] = useState<Date>(new Date());
-  const [dateChosen, setDateChosen] = useState(false);
-  const [timeChosen, setTimeChosen] = useState(false);
+  const defaultStart = getDefaultStart();
+  const [selectedDate, setSelectedDate] = useState<Date>(defaultStart);
+  const [selectedTime, setSelectedTime] = useState<Date>(defaultStart);
+  // On web, always treat as chosen since inputs show real values
+  const [dateChosen, setDateChosen] = useState(Platform.OS === 'web');
+  const [timeChosen, setTimeChosen] = useState(Platform.OS === 'web');
   const [agendaItems, setAgendaItems] = useState<{ title: string; duration: string }[]>([
     { title: '', duration: '10' },
   ]);
@@ -75,8 +84,17 @@ export default function CreateMeetingScreen() {
 
     setLoading(true);
     try {
+      // Combine date + time
       const combined = new Date(selectedDate);
       combined.setHours(selectedTime.getHours(), selectedTime.getMinutes(), 0, 0);
+
+      // Validate date is not in the past (allow 5 min grace)
+      if (combined.getTime() < Date.now() - 5 * 60 * 1000) {
+        showAlert('Error', 'Meeting cannot be scheduled in the past');
+        setLoading(false);
+        return;
+      }
+
       const scheduledStart = combined.toISOString();
       const filteredAgenda = agendaItems
         .filter((a) => a.title.trim())
@@ -89,18 +107,19 @@ export default function CreateMeetingScreen() {
         title: title.trim(),
         description: description.trim() || undefined,
         location: location.trim() || undefined,
-        scheduledStart: scheduledStart,
+        scheduledStart,
         recurringPattern,
         aiEnabled,
         agendaItems: filteredAgenda.length > 0 ? filteredAgenda : undefined,
       });
 
       const createdMeeting = res.data?.data || res.data;
-      showAlert('Success', 'Meeting created', [
-        { text: 'OK', onPress: () => router.replace(`/meetings/${createdMeeting?.id}` as any) },
+      showAlert('Success', 'Meeting created successfully!', [
+        { text: 'View Meeting', onPress: () => router.replace(`/meetings/${createdMeeting?.id}` as any) },
       ]);
     } catch (err: any) {
-      showAlert('Error', err.response?.data?.error || 'Failed to create meeting');
+      const msg = err.response?.data?.error || err.response?.data?.details?.[0]?.message || 'Failed to create meeting';
+      showAlert('Error', msg);
     } finally {
       setLoading(false);
     }
@@ -121,10 +140,12 @@ export default function CreateMeetingScreen() {
 
       <Card style={styles.formCard}>
         <SectionHeader title="Meeting Details" />
-        <Input label="Title *" value={title} onChangeText={setTitle} placeholder="Meeting title" icon="text-outline" />
-        <Input label="Description" value={description} onChangeText={setDescription} placeholder="Optional description..." icon="document-text-outline" multiline numberOfLines={3} />
-        <Input label="Location" value={location} onChangeText={setLocation} placeholder="Meeting room, Zoom link, etc." icon="location-outline" />
+        <Input label="Title *" value={title} onChangeText={setTitle} placeholder="e.g. Board Meeting, Budget Review" icon="text-outline" />
+        <Input label="Description" value={description} onChangeText={setDescription} placeholder="What's this meeting about?" icon="document-text-outline" multiline numberOfLines={3} />
+        <Input label="Location" value={location} onChangeText={setLocation} placeholder="Room name, Zoom link, etc." icon="location-outline" />
 
+        {/* Date & Time */}
+        <SectionHeader title="Schedule" />
         <View style={styles.row}>
           <CrossPlatformDateTimePicker
             label="Date *"
@@ -143,6 +164,18 @@ export default function CreateMeetingScreen() {
             style={{ flex: 1 }}
           />
         </View>
+
+        {/* Display scheduled datetime */}
+        {dateChosen && timeChosen && (
+          <View style={styles.scheduleSummary}>
+            <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
+            <Text style={styles.scheduleSummaryText}>
+              {selectedDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+              {' at '}
+              {selectedTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+          </View>
+        )}
 
         {/* Recurring Pattern */}
         <SectionHeader title="Repeat" />
@@ -170,7 +203,7 @@ export default function CreateMeetingScreen() {
         {agendaItems.map((item, idx) => (
           <View key={idx} style={styles.agendaRow}>
             <View style={styles.agendaNumBadge}><Text style={styles.agendaNumText}>{idx + 1}</Text></View>
-            <Input value={item.title} onChangeText={(v: string) => updateAgenda(idx, 'title', v)} placeholder={`Item ${idx + 1}`} style={{ flex: 1 }} />
+            <Input value={item.title} onChangeText={(v: string) => updateAgenda(idx, 'title', v)} placeholder={`Agenda item ${idx + 1}`} style={{ flex: 1 }} />
             <Input value={item.duration} onChangeText={(v: string) => updateAgenda(idx, 'duration', v)} placeholder="min" keyboardType="number-pad" style={{ width: 60 }} />
             {agendaItems.length > 1 && (
               <TouchableOpacity onPress={() => removeAgenda(idx)} style={styles.removeAgendaBtn}>
@@ -181,13 +214,12 @@ export default function CreateMeetingScreen() {
         ))}
 
         {/* AI Meeting Minutes */}
-        <SectionHeader title="AI Minutes" />
+        <SectionHeader title="AI Services" />
         <View style={styles.aiRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.aiLabel}>Enable AI Minutes</Text>
             <Text style={styles.aiHint}>
-              Auto-generate meeting summary, decisions, and action items using AI.
-              Uses 1 credit per hour of meeting time.
+              Auto-generate summary, decisions, and action items. Uses 1 credit per hour.
             </Text>
           </View>
           <Switch
@@ -197,7 +229,16 @@ export default function CreateMeetingScreen() {
             thumbColor={Colors.textWhite}
           />
         </View>
+        {aiEnabled && (
+          <View style={styles.aiNote}>
+            <Ionicons name="information-circle" size={16} color={Colors.highlight} />
+            <Text style={styles.aiNoteText}>
+              AI credits will be verified when you create the meeting. Purchase credits in AI Plans if needed.
+            </Text>
+          </View>
+        )}
 
+        <View style={{ height: Spacing.md }} />
         <Button title={loading ? 'Creating...' : 'Create Meeting'} onPress={handleCreate} disabled={loading} variant="primary" />
         <View style={{ height: Spacing.xxl }} />
       </Card>
@@ -208,7 +249,18 @@ export default function CreateMeetingScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   formCard: { margin: Spacing.md, padding: Spacing.md, gap: Spacing.xs },
-  row: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm },
+  row: { flexDirection: 'row', gap: Spacing.sm },
+  scheduleSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.successSubtle,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.xs,
+  },
+  scheduleSummaryText: { color: Colors.success, fontSize: FontSize.sm, fontWeight: FontWeight.medium as any },
   agendaHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -256,4 +308,13 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: 2,
   },
+  aiNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    backgroundColor: Colors.highlightSubtle,
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+  },
+  aiNoteText: { flex: 1, color: Colors.highlight, fontSize: FontSize.xs },
 });

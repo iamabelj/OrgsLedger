@@ -36,15 +36,18 @@ const audioUpload = multer({
 });
 
 // ── Schemas ─────────────────────────────────────────────────
+// Helper: accept ISO datetime OR date-only strings
+const flexDateTime = z.string().refine((s) => !isNaN(new Date(s).getTime()), { message: 'Invalid date/time string' });
+
 const createMeetingSchema = z.object({
   title: z.string().min(1).max(300),
   description: z.string().max(5000).optional(),
   location: z.string().max(500).optional(),
-  scheduledStart: z.string().datetime(),
-  scheduledEnd: z.string().datetime().optional(),
+  scheduledStart: flexDateTime,
+  scheduledEnd: flexDateTime.optional(),
   aiEnabled: z.boolean().default(false),
   recurringPattern: z.enum(['none', 'daily', 'weekly', 'biweekly', 'monthly']).default('none'),
-  recurringEndDate: z.string().datetime().optional(),
+  recurringEndDate: flexDateTime.optional(),
   agendaItems: z
     .array(
       z.object({
@@ -155,6 +158,160 @@ router.post(
     } catch (err) {
       logger.error('Create meeting error', err);
       res.status(500).json({ success: false, error: 'Failed to create meeting' });
+    }
+  }
+);
+
+// ── Update Meeting ──────────────────────────────────────────
+const updateMeetingSchema = z.object({
+  title: z.string().min(1).max(300).optional(),
+  description: z.string().max(5000).optional().nullable(),
+  location: z.string().max(500).optional().nullable(),
+  scheduledStart: flexDateTime.optional(),
+  scheduledEnd: flexDateTime.optional().nullable(),
+  aiEnabled: z.boolean().optional(),
+  recurringPattern: z.enum(['none', 'daily', 'weekly', 'biweekly', 'monthly']).optional(),
+  status: z.enum(['scheduled', 'cancelled']).optional(),
+  agendaItems: z
+    .array(
+      z.object({
+        title: z.string().min(1),
+        description: z.string().optional(),
+        durationMinutes: z.number().min(1).optional(),
+        presenterUserId: z.string().uuid().optional(),
+      })
+    )
+    .optional(),
+});
+
+router.put(
+  '/:orgId/:meetingId',
+  authenticate,
+  loadMembership,
+  requireRole('org_admin', 'executive'),
+  validate(updateMeetingSchema),
+  async (req: Request, res: Response) => {
+    try {
+      const meeting = await db('meetings')
+        .where({ id: req.params.meetingId, organization_id: req.params.orgId })
+        .first();
+      if (!meeting) {
+        res.status(404).json({ success: false, error: 'Meeting not found' });
+        return;
+      }
+      if (meeting.status === 'ended') {
+        res.status(400).json({ success: false, error: 'Cannot edit an ended meeting' });
+        return;
+      }
+
+      const { title, description, location, scheduledStart, scheduledEnd, aiEnabled, recurringPattern, status, agendaItems } = req.body;
+
+      // If enabling AI, check credits
+      if (aiEnabled === true && !meeting.ai_enabled) {
+        const credits = await db('ai_credits')
+          .where({ organization_id: req.params.orgId })
+          .first();
+        if (!credits || credits.total_credits - credits.used_credits <= 0) {
+          res.status(402).json({
+            success: false,
+            error: 'Insufficient AI credits. Purchase credits in AI Plans.',
+          });
+          return;
+        }
+      }
+
+      const updates: any = {};
+      if (title !== undefined) updates.title = title;
+      if (description !== undefined) updates.description = description;
+      if (location !== undefined) updates.location = location;
+      if (scheduledStart !== undefined) updates.scheduled_start = scheduledStart;
+      if (scheduledEnd !== undefined) updates.scheduled_end = scheduledEnd;
+      if (aiEnabled !== undefined) updates.ai_enabled = aiEnabled;
+      if (recurringPattern !== undefined) updates.recurring_pattern = recurringPattern;
+      if (status !== undefined) updates.status = status;
+      updates.updated_at = db.fn.now();
+
+      const [updated] = await db('meetings')
+        .where({ id: req.params.meetingId })
+        .update(updates)
+        .returning('*');
+
+      // Replace agenda items if provided
+      if (agendaItems !== undefined) {
+        await db('agenda_items').where({ meeting_id: req.params.meetingId }).del();
+        if (agendaItems.length > 0) {
+          await db('agenda_items').insert(
+            agendaItems.map((item: any, idx: number) => ({
+              meeting_id: req.params.meetingId,
+              title: item.title,
+              description: item.description || null,
+              order: idx + 1,
+              duration_minutes: item.durationMinutes || null,
+              presenter_user_id: item.presenterUserId || null,
+            }))
+          );
+        }
+      }
+
+      await (req as any).audit?.({
+        organizationId: req.params.orgId,
+        action: 'update',
+        entityType: 'meeting',
+        entityId: req.params.meetingId,
+        newValue: updates,
+      });
+
+      res.json({ success: true, data: updated });
+    } catch (err) {
+      logger.error('Update meeting error', err);
+      res.status(500).json({ success: false, error: 'Failed to update meeting' });
+    }
+  }
+);
+
+// ── Toggle AI on existing meeting ───────────────────────────
+router.post(
+  '/:orgId/:meetingId/toggle-ai',
+  authenticate,
+  loadMembership,
+  requireRole('org_admin', 'executive'),
+  async (req: Request, res: Response) => {
+    try {
+      const meeting = await db('meetings')
+        .where({ id: req.params.meetingId, organization_id: req.params.orgId })
+        .first();
+      if (!meeting) {
+        res.status(404).json({ success: false, error: 'Meeting not found' });
+        return;
+      }
+
+      const newState = !meeting.ai_enabled;
+
+      // If enabling, check credits
+      if (newState) {
+        const credits = await db('ai_credits')
+          .where({ organization_id: req.params.orgId })
+          .first();
+        if (!credits || credits.total_credits - credits.used_credits <= 0) {
+          res.status(402).json({
+            success: false,
+            error: 'Insufficient AI credits. Purchase credits in AI Plans.',
+          });
+          return;
+        }
+      }
+
+      await db('meetings')
+        .where({ id: req.params.meetingId })
+        .update({ ai_enabled: newState });
+
+      res.json({
+        success: true,
+        data: { aiEnabled: newState },
+        message: newState ? 'AI minutes enabled' : 'AI minutes disabled',
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, error: 'Failed to toggle AI' });
     }
   }
 );
