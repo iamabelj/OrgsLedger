@@ -282,18 +282,27 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/expenses', expenseRoutes);
 
 // ── Developer Gateway (AI Client Management, Hours, Proxy) ──
+// Only mount on the main orgsledger.com domain — NEVER shipped with client deployments
 try {
   process.env.NO_LISTEN = 'true'; // Prevent gateway from auto-listening
   const gatewayApp = require('../../../landing/server');
-  app.use('/developer', gatewayApp);
-  logger.info('Developer gateway mounted at /developer');
+  app.use('/developer', (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
+    // Only allow developer gateway on orgsledger.com and localhost
+    if (host === 'orgsledger.com' || host === 'www.orgsledger.com' || host === 'localhost' || host === '127.0.0.1') {
+      return gatewayApp(req, res, next);
+    }
+    // All other domains (test.orgsledger.com, client domains): developer routes don't exist
+    res.status(404).json({ success: false, error: 'Route not found' });
+  });
+  logger.info('Developer gateway mounted at /developer (orgsledger.com only)');
 } catch (err: any) {
   logger.warn('Developer gateway not loaded: ' + (err.message || err));
 }
 
 // ── Landing / Sales Page ──────────────────────────────────
-// Serve the sales landing page at root "/" so visitors see it first.
-// The Expo SPA app is available at /login, /register, etc.
+// Serve the sales landing page at root "/" on orgsledger.com.
+// test.orgsledger.com and client domains get the SPA at all non-API routes.
 const landingPage = path.resolve(__dirname, '../../../landing/index.html');
 if (fs.existsSync(landingPage)) {
   app.get('/', (_req, res) => {
@@ -309,8 +318,17 @@ app.all('/api/*', (_req, res) => {
 });
 
 // SPA fallback — serve web frontend for all other routes (except /)
+// orgsledger.com = sales/landing site only (no SPA login/register)
+// test.orgsledger.com + client domains = full SPA app
 if (fs.existsSync(webDir)) {
-  app.get('*', (_req, res) => {
+  app.get('*', (req, res) => {
+    const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
+    // On orgsledger.com, do NOT serve the SPA — only landing page + developer gateway exist
+    if (host === 'orgsledger.com' || host === 'www.orgsledger.com') {
+      res.status(404).json({ success: false, error: 'Page not found' });
+      return;
+    }
+    // All other domains (test.orgsledger.com, client deployments, localhost): serve SPA
     res.sendFile(path.join(webDir, 'index.html'));
   });
 } else {

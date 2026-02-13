@@ -65,6 +65,7 @@ export default function LoginScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
+          responsive.isPhone && styles.scrollPhone,
           { maxWidth: responsive.contentMaxWidth, alignSelf: 'center', width: '100%' },
         ]}
         keyboardShouldPersistTaps="handled"
@@ -87,7 +88,7 @@ export default function LoginScreen() {
         </View>
 
         {/* Login Form */}
-        <View style={styles.formCard}>
+        <View style={[styles.formCard, responsive.isPhone && styles.formCardPhone]}>
           <Text style={styles.formTitle}>Welcome Back</Text>
           <Text style={styles.formSubtitle}>Sign in to your account</Text>
 
@@ -165,6 +166,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: Spacing.lg,
   },
+  scrollPhone: {
+    padding: Spacing.md,
+  },
   brand: {
     alignItems: 'center',
     marginBottom: Spacing.xl,
@@ -219,6 +223,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.borderLight,
     ...Shadow.md,
+  },
+  formCardPhone: {
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
   },
   formTitle: {
     fontSize: FontSize.xxl,

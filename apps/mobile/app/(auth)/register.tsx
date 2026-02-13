@@ -99,6 +99,7 @@ export default function RegisterScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
+          responsive.isPhone && styles.scrollPhone,
           { maxWidth: responsive.contentMaxWidth, alignSelf: 'center', width: '100%' },
         ]}
         keyboardShouldPersistTaps="handled"
@@ -114,9 +115,9 @@ export default function RegisterScreen() {
         </View>
 
         {/* Registration Form */}
-        <View style={styles.formCard}>
-          <View style={styles.nameRow}>
-            <View style={{ flex: 1 }}>
+        <View style={[styles.formCard, responsive.isPhone && styles.formCardPhone]}>
+          <View style={[styles.nameRow, responsive.isPhone && styles.nameRowPhone]}>
+            <View style={responsive.isPhone ? { width: '100%' } : { flex: 1 }}>
               <Input
                 label="FIRST NAME"
                 placeholder="John"
@@ -125,7 +126,7 @@ export default function RegisterScreen() {
                 icon="person-outline"
               />
             </View>
-            <View style={{ flex: 1 }}>
+            <View style={responsive.isPhone ? { width: '100%' } : { flex: 1 }}>
               <Input
                 label="LAST NAME"
                 placeholder="Doe"
@@ -232,6 +233,7 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   scroll: { flexGrow: 1, justifyContent: 'center', padding: Spacing.lg },
+  scrollPhone: { padding: Spacing.md },
   brand: {
     alignItems: 'center',
     marginBottom: Spacing.lg,
@@ -266,9 +268,17 @@ const styles = StyleSheet.create({
     ...Shadow.md,
     gap: Spacing.xs,
   },
+  formCardPhone: {
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+  },
   nameRow: {
-    flexDirection: 'row',
+    flexDirection: 'row' as const,
     gap: Spacing.sm,
+  },
+  nameRowPhone: {
+    flexDirection: 'column' as const,
+    gap: Spacing.xs,
   },
   eyeBtn: {
     position: 'absolute',
