@@ -3,11 +3,21 @@
 // ============================================================
 
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import { Platform } from 'react-native';
 import storage from '../utils/storage';
 
-const API_BASE_URL = __DEV__
-  ? 'http://localhost:3000/api'
-  : 'https://test.orgsledger.com/api';
+// Auto-detect API URL: on web, use same origin; on native builds, configure per deployment
+function getApiBaseUrl(): string {
+  if (__DEV__) return 'http://localhost:3000/api';
+  // On web, use the same origin the SPA is served from (works for any domain)
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    return `${window.location.origin}/api`;
+  }
+  // Native (mobile) builds — configure to the deployment domain
+  return 'https://test.orgsledger.com/api';
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 class ApiClient {
   private client: AxiosInstance;

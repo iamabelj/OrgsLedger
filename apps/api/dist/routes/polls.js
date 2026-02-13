@@ -189,6 +189,16 @@ router.post('/:orgId/:pollId/vote', middleware_1.authenticate, middleware_1.load
             res.status(400).json({ success: false, error: 'You have already voted' });
             return;
         }
+        // For multiple choice, prevent voting for same option twice
+        if (poll.multiple_choice) {
+            const duplicateVote = await (0, db_1.default)('poll_votes')
+                .where({ poll_id: poll.id, option_id: optionId, user_id: req.user.userId })
+                .first();
+            if (duplicateVote) {
+                res.status(400).json({ success: false, error: 'You already voted for this option' });
+                return;
+            }
+        }
         // Validate option belongs to this poll
         const option = await (0, db_1.default)('poll_options')
             .where({ id: optionId, poll_id: poll.id })

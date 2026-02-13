@@ -76,7 +76,7 @@ router.post(
   '/:orgId',
   authenticate,
   loadMembership,
-  requireRole('org_admin', 'executive', 'treasurer'),
+  requireRole('org_admin', 'executive'),
   async (req: Request, res: Response) => {
     try {
       const { title, description, amount, category, date, receipt_url } = req.body;
@@ -95,7 +95,7 @@ router.post(
           category: category || 'general',
           date: date || new Date().toISOString(),
           receipt_url: receipt_url || null,
-          created_by: (req as any).user.id,
+          created_by: req.user!.userId,
           status: 'approved',
         })
         .returning('*');

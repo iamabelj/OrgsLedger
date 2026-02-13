@@ -458,7 +458,7 @@ router.get(
         .limit(20);
 
       const totalPaid = await db('transactions')
-        .where({ user_id: req.params.userId, organization_id: req.params.orgId, status: 'paid' })
+        .where({ user_id: req.params.userId, organization_id: req.params.orgId, status: 'completed' })
         .sum('amount as total')
         .first();
 

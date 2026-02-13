@@ -57,7 +57,7 @@ router.get('/:orgId/:expenseId', middleware_1.authenticate, middleware_1.loadMem
     }
 });
 // ── Create Expense ──────────────────────────────────────────
-router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive', 'treasurer'), async (req, res) => {
+router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
     try {
         const { title, description, amount, category, date, receipt_url } = req.body;
         if (!title || !amount) {
@@ -73,7 +73,7 @@ router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, (
             category: category || 'general',
             date: date || new Date().toISOString(),
             receipt_url: receipt_url || null,
-            created_by: req.user.id,
+            created_by: req.user.userId,
             status: 'approved',
         })
             .returning('*');

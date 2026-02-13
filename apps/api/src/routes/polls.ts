@@ -243,6 +243,17 @@ router.post(
         return;
       }
 
+      // For multiple choice, prevent voting for same option twice
+      if (poll.multiple_choice) {
+        const duplicateVote = await db('poll_votes')
+          .where({ poll_id: poll.id, option_id: optionId, user_id: req.user!.userId })
+          .first();
+        if (duplicateVote) {
+          res.status(400).json({ success: false, error: 'You already voted for this option' });
+          return;
+        }
+      }
+
       // Validate option belongs to this poll
       const option = await db('poll_options')
         .where({ id: optionId, poll_id: poll.id })

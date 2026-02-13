@@ -11,7 +11,7 @@ import { Colors, FontSize, FontWeight, Spacing } from '../src/theme';
 
 const API_BASE_URL = __DEV__
   ? 'http://localhost:3000'
-  : 'https://test.orgsledger.com';
+  : (typeof window !== 'undefined' ? window.location.origin : 'https://test.orgsledger.com');
 
 export default function Index() {
   const { isAuthenticated, isLoading } = useAuthStore();

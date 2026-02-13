@@ -121,6 +121,36 @@ router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, as
         res.status(500).json({ success: false, error: 'Failed to list documents' });
     }
 });
+// ── Create Folder ───────────────────────────────────────────
+router.post('/:orgId/folders', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
+    try {
+        const { name, parentId } = req.body;
+        const [folder] = await (0, db_1.default)('document_folders')
+            .insert({
+            organization_id: req.params.orgId,
+            name,
+            parent_id: parentId || null,
+            created_by: req.user.userId,
+        })
+            .returning('*');
+        res.status(201).json({ success: true, data: folder });
+    }
+    catch (err) {
+        res.status(500).json({ success: false, error: 'Failed to create folder' });
+    }
+});
+// ── List Folders ────────────────────────────────────────────
+router.get('/:orgId/folders', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+    try {
+        const folders = await (0, db_1.default)('document_folders')
+            .where({ organization_id: req.params.orgId })
+            .orderBy('name');
+        res.json({ success: true, data: folders });
+    }
+    catch (err) {
+        res.status(500).json({ success: false, error: 'Failed to list folders' });
+    }
+});
 // ── Get Document ────────────────────────────────────────────
 router.get('/:orgId/:docId', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
     try {
@@ -159,36 +189,6 @@ router.delete('/:orgId/:docId', middleware_1.authenticate, middleware_1.loadMemb
     }
     catch (err) {
         res.status(500).json({ success: false, error: 'Failed to delete document' });
-    }
-});
-// ── Create Folder ───────────────────────────────────────────
-router.post('/:orgId/folders', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
-    try {
-        const { name, parentId } = req.body;
-        const [folder] = await (0, db_1.default)('document_folders')
-            .insert({
-            organization_id: req.params.orgId,
-            name,
-            parent_id: parentId || null,
-            created_by: req.user.userId,
-        })
-            .returning('*');
-        res.status(201).json({ success: true, data: folder });
-    }
-    catch (err) {
-        res.status(500).json({ success: false, error: 'Failed to create folder' });
-    }
-});
-// ── List Folders ────────────────────────────────────────────
-router.get('/:orgId/folders', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
-    try {
-        const folders = await (0, db_1.default)('document_folders')
-            .where({ organization_id: req.params.orgId })
-            .orderBy('name');
-        res.json({ success: true, data: folders });
-    }
-    catch (err) {
-        res.status(500).json({ success: false, error: 'Failed to list folders' });
     }
 });
 exports.default = router;

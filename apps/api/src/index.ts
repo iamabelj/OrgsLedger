@@ -179,13 +179,26 @@ app.get('/api/license/status', async (_req, res) => {
             .insert({ key: 'license_client', value: JSON.stringify(data.client) })
             .onConflict('key').merge();
           return res.json({ licensed: true, client: data.client });
+        } else {
+          // License was revoked or invalidated — remove stored key
+          logger.warn('License revoked by gateway — clearing stored key');
+          await db('app_settings').where('key', 'license_key').delete();
+          await db('app_settings').where('key', 'license_client').delete();
+          return res.json({ licensed: false, error: data.error || 'License revoked' });
         }
-      } catch (e) {
-        // Gateway unavailable — fall back to stored data
+      } catch (e: any) {
+        // Gateway unavailable — fall back to stored data (don't block users)
+        if (e.response?.status === 403 || e.response?.status === 404) {
+          // Gateway explicitly rejected — license is invalid
+          logger.warn('License rejected by gateway — clearing stored key');
+          await db('app_settings').where('key', 'license_key').delete();
+          await db('app_settings').where('key', 'license_client').delete();
+          return res.json({ licensed: false, error: e.response?.data?.error || 'License invalid' });
+        }
         logger.warn('Gateway unreachable for license status, using cached data');
       }
 
-      // Fallback: return stored client info
+      // Fallback: return stored client info (only if gateway was unreachable)
       let clientInfo = null;
       try {
         const infoRow = await db('app_settings').where('key', 'license_client').first();
@@ -247,10 +260,15 @@ app.post('/api/license/activate', async (req, res) => {
 // so orgsledger.com visitors always see the sales page.
 const landingPage = path.resolve(__dirname, '../../../landing/index.html');
 if (fs.existsSync(landingPage)) {
-  app.get('/', (_req, res) => {
-    res.sendFile(landingPage);
+  app.get('/', (req, res, next) => {
+    const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
+    // Only serve landing/sales page on orgsledger.com — test/client sites go to SPA
+    if (host === 'orgsledger.com' || host === 'www.orgsledger.com' || host === 'localhost' || host === '127.0.0.1') {
+      return res.sendFile(landingPage);
+    }
+    next(); // Let SPA static middleware or SPA fallback handle it
   });
-  logger.info('Landing page served at /');
+  logger.info('Landing page served at / (orgsledger.com only)');
 }
 
 // ── Serve Web Frontend (production) ──────────────────────

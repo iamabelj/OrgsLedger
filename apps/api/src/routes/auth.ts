@@ -121,11 +121,11 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
           });
 
           // Add to general channel if it exists
-          const generalChannel = await db('chat_channels')
+          const generalChannel = await db('channels')
             .where({ organization_id: org.id, name: 'General' })
             .first();
           if (generalChannel) {
-            await db('chat_channel_members').insert({
+            await db('channel_members').insert({
               channel_id: generalChannel.id,
               user_id: user.id,
             }).onConflict(['channel_id', 'user_id']).ignore();
@@ -235,11 +235,11 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
             joined_at: db.fn.now(),
           });
           // Add to general channel
-          const generalChannel = await db('chat_channels')
+          const generalChannel = await db('channels')
             .where({ organization_id: defaultOrg.id, name: 'General' })
             .first();
           if (generalChannel) {
-            await db('chat_channel_members').insert({
+            await db('channel_members').insert({
               channel_id: generalChannel.id,
               user_id: user.id,
             }).onConflict(['channel_id', 'user_id']).ignore();

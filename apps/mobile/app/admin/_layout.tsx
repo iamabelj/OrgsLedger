@@ -15,8 +15,10 @@ export default function AdminLayout() {
   const memberships = useAuthStore((s) => s.memberships);
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const currentMembership = memberships.find((m) => m.organization_id === currentOrgId);
+  const globalRole = useAuthStore((s) => s.user?.globalRole);
   const userRole = currentMembership?.role || 'member';
-  const isAdmin = userRole === 'org_admin' || userRole === 'executive';
+  const isSuperAdmin = globalRole === 'super_admin';
+  const isAdmin = isSuperAdmin || userRole === 'org_admin' || userRole === 'executive';
 
   if (!isAdmin) {
     return (

@@ -142,6 +142,50 @@ router.get(
   }
 );
 
+// ── Create Folder ───────────────────────────────────────────
+router.post(
+  '/:orgId/folders',
+  authenticate,
+  loadMembership,
+  requireRole('org_admin', 'executive'),
+  async (req: Request, res: Response) => {
+    try {
+      const { name, parentId } = req.body;
+
+      const [folder] = await db('document_folders')
+        .insert({
+          organization_id: req.params.orgId,
+          name,
+          parent_id: parentId || null,
+          created_by: req.user!.userId,
+        })
+        .returning('*');
+
+      res.status(201).json({ success: true, data: folder });
+    } catch (err) {
+      res.status(500).json({ success: false, error: 'Failed to create folder' });
+    }
+  }
+);
+
+// ── List Folders ────────────────────────────────────────────
+router.get(
+  '/:orgId/folders',
+  authenticate,
+  loadMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const folders = await db('document_folders')
+        .where({ organization_id: req.params.orgId })
+        .orderBy('name');
+
+      res.json({ success: true, data: folders });
+    } catch (err) {
+      res.status(500).json({ success: false, error: 'Failed to list folders' });
+    }
+  }
+);
+
 // ── Get Document ────────────────────────────────────────────
 router.get(
   '/:orgId/:docId',
@@ -198,50 +242,6 @@ router.delete(
       res.json({ success: true, message: 'Document deleted' });
     } catch (err) {
       res.status(500).json({ success: false, error: 'Failed to delete document' });
-    }
-  }
-);
-
-// ── Create Folder ───────────────────────────────────────────
-router.post(
-  '/:orgId/folders',
-  authenticate,
-  loadMembership,
-  requireRole('org_admin', 'executive'),
-  async (req: Request, res: Response) => {
-    try {
-      const { name, parentId } = req.body;
-
-      const [folder] = await db('document_folders')
-        .insert({
-          organization_id: req.params.orgId,
-          name,
-          parent_id: parentId || null,
-          created_by: req.user!.userId,
-        })
-        .returning('*');
-
-      res.status(201).json({ success: true, data: folder });
-    } catch (err) {
-      res.status(500).json({ success: false, error: 'Failed to create folder' });
-    }
-  }
-);
-
-// ── List Folders ────────────────────────────────────────────
-router.get(
-  '/:orgId/folders',
-  authenticate,
-  loadMembership,
-  async (req: Request, res: Response) => {
-    try {
-      const folders = await db('document_folders')
-        .where({ organization_id: req.params.orgId })
-        .orderBy('name');
-
-      res.json({ success: true, data: folders });
-    } catch (err) {
-      res.status(500).json({ success: false, error: 'Failed to list folders' });
     }
   }
 );

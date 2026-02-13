@@ -21,7 +21,7 @@ import { Colors, FontSize, FontWeight, Spacing, BorderRadius } from '../src/them
 
 const API_BASE_URL = __DEV__
   ? 'http://localhost:3000'
-  : 'https://test.orgsledger.com';
+  : (typeof window !== 'undefined' ? window.location.origin : 'https://test.orgsledger.com');
 
 export default function ActivateScreen() {
   const [licenseKey, setLicenseKey] = useState('');

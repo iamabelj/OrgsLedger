@@ -369,7 +369,7 @@ router.get('/:orgId/members/:userId', middleware_1.authenticate, middleware_1.lo
             .orderBy('donations.created_at', 'desc')
             .limit(20);
         const totalPaid = await (0, db_1.default)('transactions')
-            .where({ user_id: req.params.userId, organization_id: req.params.orgId, status: 'paid' })
+            .where({ user_id: req.params.userId, organization_id: req.params.orgId, status: 'completed' })
             .sum('amount as total')
             .first();
         const totalOwed = await (0, db_1.default)('transactions')

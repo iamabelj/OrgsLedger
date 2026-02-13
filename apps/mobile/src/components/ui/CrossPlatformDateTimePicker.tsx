@@ -10,7 +10,6 @@ import {
   StyleSheet,
   Platform,
   Modal,
-  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
@@ -51,8 +50,7 @@ export function CrossPlatformDateTimePicker({
     }
   };
 
-  const handleWebChange = (event: any) => {
-    const inputValue = event.target.value;
+  const handleWebChange = (inputValue: string) => {
     if (!inputValue) return;
 
     if (mode === 'date') {
@@ -70,8 +68,26 @@ export function CrossPlatformDateTimePicker({
     }
   };
 
-  // Web implementation using HTML5 input
+  // Web implementation using native HTML5 date/time input
+  // React Native's TextInput doesn't support type="date" on web,
+  // so we use a raw HTML input element rendered via dangerouslySetInnerHTML workaround
   if (Platform.OS === 'web') {
+    const inputRef = React.useRef<any>(null);
+
+    React.useEffect(() => {
+      // Attach native DOM event listener to the real input element
+      const el = inputRef.current;
+      if (el) {
+        const handler = (e: any) => handleWebChange(e.target.value);
+        el.addEventListener('change', handler);
+        el.addEventListener('input', handler);
+        return () => {
+          el.removeEventListener('change', handler);
+          el.removeEventListener('input', handler);
+        };
+      }
+    });
+
     return (
       <View style={[styles.container, style]}>
         <Text style={styles.label}>{label}</Text>
@@ -81,14 +97,21 @@ export function CrossPlatformDateTimePicker({
             size={16}
             color={Colors.highlight}
           />
-          <TextInput
-            style={styles.webInput}
-            // @ts-ignore - web-specific props
-            type={mode}
-            value={getInputValue(value)}
-            onChange={handleWebChange}
-            placeholder={mode === 'date' ? 'Select date' : 'Select time'}
-            placeholderTextColor={Colors.textLight}
+          <input
+            ref={inputRef}
+            type={mode === 'date' ? 'date' : 'time'}
+            defaultValue={getInputValue(value)}
+            style={{
+              flex: 1,
+              backgroundColor: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: Colors.textWhite,
+              fontSize: 14,
+              fontFamily: 'inherit',
+              padding: 0,
+              colorScheme: 'dark',
+            } as any}
           />
         </View>
       </View>
