@@ -264,6 +264,14 @@ export default function MeetingDetailScreen() {
             <Text style={styles.metaText}>{meeting.location}</Text>
           </View>
         )}
+        {meeting.moderator && (
+          <View style={styles.metaRow}>
+            <View style={styles.metaIcon}><Ionicons name="person-circle-outline" size={14} color={Colors.highlight} /></View>
+            <Text style={styles.metaText}>
+              Moderator: {meeting.moderator.first_name} {meeting.moderator.last_name}
+            </Text>
+          </View>
+        )}
       </Card>
 
       {/* Action Buttons */}

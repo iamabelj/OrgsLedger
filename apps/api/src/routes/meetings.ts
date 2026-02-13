@@ -224,6 +224,12 @@ router.get(
         return;
       }
 
+      // Get creator info (= default moderator)
+      const creator = await db('users')
+        .where({ id: meeting.created_by })
+        .select('id', 'first_name', 'last_name', 'email')
+        .first();
+
       const agendaItems = await db('agenda_items')
         .where({ meeting_id: meeting.id })
         .orderBy('order');
@@ -250,6 +256,7 @@ router.get(
         success: true,
         data: {
           ...meeting,
+          moderator: creator || null,
           agendaItems,
           attendance,
           votes,
