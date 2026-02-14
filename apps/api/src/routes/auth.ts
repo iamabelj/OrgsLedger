@@ -187,18 +187,21 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
 
     const user = await db('users').where({ email }).first();
     if (!user || !user.is_active) {
+      logger.warn('[AUTH] Login failed - user not found or inactive', { email, ip: req.ip, exists: !!user, active: user?.is_active });
       res.status(401).json({ success: false, error: 'Invalid credentials' });
       return;
     }
 
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
+      logger.warn('[AUTH] Login failed - wrong password', { email, ip: req.ip, userId: user.id });
       res.status(401).json({ success: false, error: 'Invalid credentials' });
       return;
     }
 
     // Update last login
     await db('users').where({ id: user.id }).update({ last_login_at: db.fn.now() });
+    logger.info('[AUTH] Login success', { email, userId: user.id, role: user.global_role, ip: req.ip });
 
     const tokens = generateTokens(user.id, user.email, user.global_role);
 

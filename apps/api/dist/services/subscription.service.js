@@ -33,6 +33,7 @@ exports.adminAdjustAiWallet = adminAdjustAiWallet;
 exports.adminAdjustTranslationWallet = adminAdjustTranslationWallet;
 exports.getPlatformRevenue = getPlatformRevenue;
 const db_1 = __importDefault(require("../db"));
+const logger_1 = require("../logger");
 const crypto_1 = __importDefault(require("crypto"));
 // ── Currency Helpers ──────────────────────────────────────
 function isNigeria(country) {
@@ -139,6 +140,15 @@ async function createSubscription(params) {
         action: 'created',
         metadata: JSON.stringify({ planId: params.planId, amountPaid: params.amountPaid, cycle: params.billingCycle }),
     });
+    logger_1.logger.info('[SUB] Subscription created', {
+        orgId: params.organizationId,
+        planId: params.planId,
+        cycle: params.billingCycle,
+        currency: params.currency,
+        amountPaid: params.amountPaid,
+        periodEnd: periodEnd.toISOString(),
+        gateway: params.paymentGateway || 'none',
+    });
     return sub;
 }
 async function renewSubscription(orgId, amountPaid, paymentRef) {
@@ -209,6 +219,14 @@ async function topUpAiWallet(params) {
         payment_gateway: params.paymentGateway,
         description: `Top-up: ${(params.minutes / 60).toFixed(1)} hours`,
     });
+    logger_1.logger.info('[WALLET] AI wallet topped up', {
+        orgId: params.orgId,
+        minutes: params.minutes,
+        hours: (params.minutes / 60).toFixed(1),
+        cost: params.cost,
+        currency: params.currency,
+        gateway: params.paymentGateway || 'none',
+    });
     return getAiWallet(params.orgId);
 }
 async function topUpTranslationWallet(params) {
@@ -228,11 +246,21 @@ async function topUpTranslationWallet(params) {
         payment_gateway: params.paymentGateway,
         description: `Top-up: ${(params.minutes / 60).toFixed(1)} hours`,
     });
+    logger_1.logger.info('[WALLET] Translation wallet topped up', {
+        orgId: params.orgId,
+        minutes: params.minutes,
+        hours: (params.minutes / 60).toFixed(1),
+        cost: params.cost,
+        currency: params.currency,
+        gateway: params.paymentGateway || 'none',
+    });
     return getTranslationWallet(params.orgId);
 }
 async function deductAiWallet(orgId, minutes, description) {
     const wallet = await getAiWallet(orgId);
-    if (parseFloat(wallet.balance_minutes) < minutes) {
+    const balanceBefore = parseFloat(wallet.balance_minutes);
+    if (balanceBefore < minutes) {
+        logger_1.logger.warn('[WALLET] AI deduction failed - insufficient balance', { orgId, requested: minutes, available: balanceBefore });
         return { success: false, error: 'Insufficient AI wallet balance' };
     }
     await (0, db_1.default)('ai_wallet')
@@ -247,11 +275,14 @@ async function deductAiWallet(orgId, minutes, description) {
         amount_minutes: -minutes,
         description: description || `AI usage: ${minutes.toFixed(1)} minutes`,
     });
+    logger_1.logger.info('[WALLET] AI wallet deducted', { orgId, minutes, balanceBefore, balanceAfter: balanceBefore - minutes, description });
     return { success: true };
 }
 async function deductTranslationWallet(orgId, minutes, description) {
     const wallet = await getTranslationWallet(orgId);
-    if (parseFloat(wallet.balance_minutes) < minutes) {
+    const balanceBefore = parseFloat(wallet.balance_minutes);
+    if (balanceBefore < minutes) {
+        logger_1.logger.warn('[WALLET] Translation deduction failed - insufficient balance', { orgId, requested: minutes, available: balanceBefore });
         return { success: false, error: 'Insufficient translation wallet balance' };
     }
     await (0, db_1.default)('translation_wallet')
@@ -266,6 +297,7 @@ async function deductTranslationWallet(orgId, minutes, description) {
         amount_minutes: -minutes,
         description: description || `Translation usage: ${minutes.toFixed(1)} minutes`,
     });
+    logger_1.logger.info('[WALLET] Translation wallet deducted', { orgId, minutes, balanceBefore, balanceAfter: balanceBefore - minutes, description });
     return { success: true };
 }
 async function getAiWalletHistory(orgId, limit = 50, offset = 0) {

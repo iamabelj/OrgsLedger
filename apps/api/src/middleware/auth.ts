@@ -6,6 +6,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import db from '../db';
+import { logger } from '../logger';
 
 export interface AuthPayload {
   userId: string;
@@ -47,13 +48,16 @@ export async function authenticate(
       .where({ id: payload.userId, is_active: true })
       .first();
     if (!user) {
+      logger.warn('[AUTH] User not found or deactivated', { userId: payload.userId, email: payload.email });
       res.status(401).json({ success: false, error: 'User not found or deactivated' });
       return;
     }
 
+    logger.debug('[AUTH] Authenticated', { userId: payload.userId, email: payload.email, role: payload.globalRole, path: req.originalUrl });
     req.user = payload;
     next();
-  } catch (err) {
+  } catch (err: any) {
+    logger.warn('[AUTH] Token verification failed', { error: err.message, path: req.originalUrl, ip: req.ip });
     res.status(401).json({ success: false, error: 'Invalid or expired token' });
   }
 }
@@ -94,10 +98,12 @@ export async function loadMembership(
       .first();
 
     if (!membership) {
+      logger.warn('[AUTH] Non-member access attempt', { userId: req.user.userId, orgId });
       res.status(403).json({ success: false, error: 'Not a member of this organization' });
       return;
     }
 
+    logger.debug('[AUTH] Membership loaded', { userId: req.user.userId, orgId, role: membership.role });
     req.membership = {
       id: membership.id,
       role: membership.role,

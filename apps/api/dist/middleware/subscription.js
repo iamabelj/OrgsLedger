@@ -7,6 +7,7 @@ exports.requireActiveSubscription = requireActiveSubscription;
 exports.checkAiWallet = checkAiWallet;
 exports.checkTranslationWallet = checkTranslationWallet;
 const subscription_service_1 = require("../services/subscription.service");
+const logger_1 = require("../logger");
 /**
  * Block request if organization has no active subscription.
  * Super admins always bypass.
@@ -22,6 +23,7 @@ async function requireActiveSubscription(req, res, next) {
             return next(); // No org context — skip
         const sub = await (0, subscription_service_1.getOrgSubscription)(orgId);
         if (!sub) {
+            logger_1.logger.warn('[SUB] No active subscription', { orgId, path: req.originalUrl, userId: req.user?.userId });
             res.status(402).json({
                 success: false,
                 error: 'No active subscription. Please subscribe to a plan.',
@@ -30,6 +32,7 @@ async function requireActiveSubscription(req, res, next) {
             return;
         }
         if (sub.status === 'expired' || sub.status === 'cancelled' || sub.status === 'suspended') {
+            logger_1.logger.warn('[SUB] Subscription not active', { orgId, status: sub.status, plan: sub.plan?.name, expiredAt: sub.current_period_end, userId: req.user?.userId });
             res.status(402).json({
                 success: false,
                 error: 'Your subscription has expired. Please renew to continue.',
@@ -42,6 +45,7 @@ async function requireActiveSubscription(req, res, next) {
             });
             return;
         }
+        logger_1.logger.debug('[SUB] Subscription valid', { orgId, status: sub.status, plan: sub.plan?.name });
         // Attach subscription to request
         req.subscription = sub;
         next();
@@ -59,8 +63,10 @@ async function checkAiWallet(req, res, next) {
         const orgId = req.params.orgId || req.organizationId;
         if (orgId) {
             const wallet = await (0, subscription_service_1.getAiWallet)(orgId);
-            req.aiWalletBalance = parseFloat(wallet.balance_minutes);
-            req.aiWalletEmpty = parseFloat(wallet.balance_minutes) <= 0;
+            const balance = parseFloat(wallet.balance_minutes);
+            req.aiWalletBalance = balance;
+            req.aiWalletEmpty = balance <= 0;
+            logger_1.logger.debug('[WALLET] AI wallet checked', { orgId, balanceMinutes: balance, empty: balance <= 0 });
         }
         next();
     }
@@ -77,8 +83,10 @@ async function checkTranslationWallet(req, res, next) {
         const orgId = req.params.orgId || req.organizationId;
         if (orgId) {
             const wallet = await (0, subscription_service_1.getTranslationWallet)(orgId);
-            req.translationWalletBalance = parseFloat(wallet.balance_minutes);
-            req.translationWalletEmpty = parseFloat(wallet.balance_minutes) <= 0;
+            const balance = parseFloat(wallet.balance_minutes);
+            req.translationWalletBalance = balance;
+            req.translationWalletEmpty = balance <= 0;
+            logger_1.logger.debug('[WALLET] Translation wallet checked', { orgId, balanceMinutes: balance, empty: balance <= 0 });
         }
         next();
     }

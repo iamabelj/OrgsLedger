@@ -133,6 +133,16 @@ export async function createSubscription(params: {
     metadata: JSON.stringify({ planId: params.planId, amountPaid: params.amountPaid, cycle: params.billingCycle }),
   });
 
+  logger.info('[SUB] Subscription created', {
+    orgId: params.organizationId,
+    planId: params.planId,
+    cycle: params.billingCycle,
+    currency: params.currency,
+    amountPaid: params.amountPaid,
+    periodEnd: periodEnd.toISOString(),
+    gateway: params.paymentGateway || 'none',
+  });
+
   return sub;
 }
 
@@ -220,6 +230,15 @@ export async function topUpAiWallet(params: {
     description: `Top-up: ${(params.minutes / 60).toFixed(1)} hours`,
   });
 
+  logger.info('[WALLET] AI wallet topped up', {
+    orgId: params.orgId,
+    minutes: params.minutes,
+    hours: (params.minutes / 60).toFixed(1),
+    cost: params.cost,
+    currency: params.currency,
+    gateway: params.paymentGateway || 'none',
+  });
+
   return getAiWallet(params.orgId);
 }
 
@@ -249,12 +268,23 @@ export async function topUpTranslationWallet(params: {
     description: `Top-up: ${(params.minutes / 60).toFixed(1)} hours`,
   });
 
+  logger.info('[WALLET] Translation wallet topped up', {
+    orgId: params.orgId,
+    minutes: params.minutes,
+    hours: (params.minutes / 60).toFixed(1),
+    cost: params.cost,
+    currency: params.currency,
+    gateway: params.paymentGateway || 'none',
+  });
+
   return getTranslationWallet(params.orgId);
 }
 
 export async function deductAiWallet(orgId: string, minutes: number, description?: string) {
   const wallet = await getAiWallet(orgId);
-  if (parseFloat(wallet.balance_minutes) < minutes) {
+  const balanceBefore = parseFloat(wallet.balance_minutes);
+  if (balanceBefore < minutes) {
+    logger.warn('[WALLET] AI deduction failed - insufficient balance', { orgId, requested: minutes, available: balanceBefore });
     return { success: false, error: 'Insufficient AI wallet balance' };
   }
 
@@ -272,12 +302,16 @@ export async function deductAiWallet(orgId: string, minutes: number, description
     description: description || `AI usage: ${minutes.toFixed(1)} minutes`,
   });
 
+  logger.info('[WALLET] AI wallet deducted', { orgId, minutes, balanceBefore, balanceAfter: balanceBefore - minutes, description });
+
   return { success: true };
 }
 
 export async function deductTranslationWallet(orgId: string, minutes: number, description?: string) {
   const wallet = await getTranslationWallet(orgId);
-  if (parseFloat(wallet.balance_minutes) < minutes) {
+  const balanceBefore = parseFloat(wallet.balance_minutes);
+  if (balanceBefore < minutes) {
+    logger.warn('[WALLET] Translation deduction failed - insufficient balance', { orgId, requested: minutes, available: balanceBefore });
     return { success: false, error: 'Insufficient translation wallet balance' };
   }
 
@@ -294,6 +328,8 @@ export async function deductTranslationWallet(orgId: string, minutes: number, de
     amount_minutes: -minutes,
     description: description || `Translation usage: ${minutes.toFixed(1)} minutes`,
   });
+
+  logger.info('[WALLET] Translation wallet deducted', { orgId, minutes, balanceBefore, balanceAfter: balanceBefore - minutes, description });
 
   return { success: true };
 }

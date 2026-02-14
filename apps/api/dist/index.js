@@ -17,6 +17,7 @@ const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const config_1 = require("./config");
 const logger_1 = require("./logger");
 const middleware_1 = require("./middleware");
+const request_logger_1 = require("./middleware/request-logger");
 const socket_1 = require("./socket");
 const ai_service_1 = require("./services/ai.service");
 // Route imports
@@ -78,6 +79,8 @@ const limiter = (0, express_rate_limit_1.default)({
 app.use(limiter);
 // Audit context
 app.use(middleware_1.auditContext);
+// ── Full Request Logging (temporary observability) ────────
+app.use(request_logger_1.requestLogger);
 // Serve uploaded files (require valid JWT)
 app.use('/uploads', (req, res, next) => {
     const token = req.query.token || req.headers.authorization?.split(' ')[1];

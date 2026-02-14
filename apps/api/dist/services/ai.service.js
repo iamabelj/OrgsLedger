@@ -71,12 +71,17 @@ class AIService {
                 .where({ organization_id: organizationId })
                 .first();
             if (!credits || credits.total_credits - credits.used_credits <= 0) {
+                logger_1.logger.warn('[AI] Insufficient credits', { meetingId, organizationId, available: credits ? credits.total_credits - credits.used_credits : 0 });
                 throw new Error('Insufficient AI credits');
             }
             // Step 1: Transcribe audio
+            const transcriptStart = Date.now();
             const transcript = await this.transcribeAudio(meeting.audio_storage_url);
+            logger_1.logger.info('[AI] Transcription complete', { meetingId, durationMs: Date.now() - transcriptStart, segments: transcript.length });
             // Step 2: Generate structured minutes
+            const summarizeStart = Date.now();
             const minutes = await this.generateMinutes(transcript, meeting);
+            logger_1.logger.info('[AI] Summarization complete', { meetingId, durationMs: Date.now() - summarizeStart });
             // Calculate duration in credits (1 credit = 1 hour, rounded up)
             const meetingDurationCredits = meeting.actual_start && meeting.actual_end
                 ? Math.ceil((new Date(meeting.actual_end).getTime() - new Date(meeting.actual_start).getTime()) /
@@ -101,6 +106,13 @@ class AIService {
                 .where({ organization_id: organizationId })
                 .update({
                 used_credits: db_1.default.raw('used_credits + ?', [meetingDurationCredits]),
+            });
+            logger_1.logger.info('[AI] Credits deducted', {
+                meetingId,
+                organizationId,
+                creditsUsed: meetingDurationCredits,
+                totalDurationMs: Date.now() - startTime,
+                meetingTitle: meeting.title,
             });
             await (0, db_1.default)('ai_credit_transactions').insert({
                 organization_id: organizationId,

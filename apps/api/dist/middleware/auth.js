@@ -11,6 +11,7 @@ exports.loadMembership = loadMembership;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const config_1 = require("../config");
 const db_1 = __importDefault(require("../db"));
+const logger_1 = require("../logger");
 async function authenticate(req, res, next) {
     try {
         const authHeader = req.headers.authorization;
@@ -25,13 +26,16 @@ async function authenticate(req, res, next) {
             .where({ id: payload.userId, is_active: true })
             .first();
         if (!user) {
+            logger_1.logger.warn('[AUTH] User not found or deactivated', { userId: payload.userId, email: payload.email });
             res.status(401).json({ success: false, error: 'User not found or deactivated' });
             return;
         }
+        logger_1.logger.debug('[AUTH] Authenticated', { userId: payload.userId, email: payload.email, role: payload.globalRole, path: req.originalUrl });
         req.user = payload;
         next();
     }
     catch (err) {
+        logger_1.logger.warn('[AUTH] Token verification failed', { error: err.message, path: req.originalUrl, ip: req.ip });
         res.status(401).json({ success: false, error: 'Invalid or expired token' });
     }
 }
@@ -64,9 +68,11 @@ async function loadMembership(req, res, next) {
         })
             .first();
         if (!membership) {
+            logger_1.logger.warn('[AUTH] Non-member access attempt', { userId: req.user.userId, orgId });
             res.status(403).json({ success: false, error: 'Not a member of this organization' });
             return;
         }
+        logger_1.logger.debug('[AUTH] Membership loaded', { userId: req.user.userId, orgId, role: membership.role });
         req.membership = {
             id: membership.id,
             role: membership.role,

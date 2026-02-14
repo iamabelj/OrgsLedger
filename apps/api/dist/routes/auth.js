@@ -162,16 +162,19 @@ router.post('/login', (0, middleware_1.validate)(loginSchema), async (req, res) 
         const { email, password } = req.body;
         const user = await (0, db_1.default)('users').where({ email }).first();
         if (!user || !user.is_active) {
+            logger_1.logger.warn('[AUTH] Login failed - user not found or inactive', { email, ip: req.ip, exists: !!user, active: user?.is_active });
             res.status(401).json({ success: false, error: 'Invalid credentials' });
             return;
         }
         const valid = await bcryptjs_1.default.compare(password, user.password_hash);
         if (!valid) {
+            logger_1.logger.warn('[AUTH] Login failed - wrong password', { email, ip: req.ip, userId: user.id });
             res.status(401).json({ success: false, error: 'Invalid credentials' });
             return;
         }
         // Update last login
         await (0, db_1.default)('users').where({ id: user.id }).update({ last_login_at: db_1.default.fn.now() });
+        logger_1.logger.info('[AUTH] Login success', { email, userId: user.id, role: user.global_role, ip: req.ip });
         const tokens = generateTokens(user.id, user.email, user.global_role);
         await (0, middleware_1.writeAuditLog)({
             userId: user.id,

@@ -4,6 +4,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { getOrgSubscription, getAiWallet, getTranslationWallet } from '../services/subscription.service';
+import { logger } from '../logger';
 
 /**
  * Block request if organization has no active subscription.
@@ -21,6 +22,7 @@ export async function requireActiveSubscription(req: Request, res: Response, nex
     const sub = await getOrgSubscription(orgId);
 
     if (!sub) {
+      logger.warn('[SUB] No active subscription', { orgId, path: req.originalUrl, userId: req.user?.userId });
       res.status(402).json({
         success: false,
         error: 'No active subscription. Please subscribe to a plan.',
@@ -30,6 +32,7 @@ export async function requireActiveSubscription(req: Request, res: Response, nex
     }
 
     if (sub.status === 'expired' || sub.status === 'cancelled' || sub.status === 'suspended') {
+      logger.warn('[SUB] Subscription not active', { orgId, status: sub.status, plan: sub.plan?.name, expiredAt: sub.current_period_end, userId: req.user?.userId });
       res.status(402).json({
         success: false,
         error: 'Your subscription has expired. Please renew to continue.',
@@ -43,6 +46,7 @@ export async function requireActiveSubscription(req: Request, res: Response, nex
       return;
     }
 
+    logger.debug('[SUB] Subscription valid', { orgId, status: sub.status, plan: sub.plan?.name });
     // Attach subscription to request
     (req as any).subscription = sub;
     next();
@@ -60,8 +64,10 @@ export async function checkAiWallet(req: Request, res: Response, next: NextFunct
     const orgId = req.params.orgId || (req as any).organizationId;
     if (orgId) {
       const wallet = await getAiWallet(orgId);
-      (req as any).aiWalletBalance = parseFloat(wallet.balance_minutes);
-      (req as any).aiWalletEmpty = parseFloat(wallet.balance_minutes) <= 0;
+      const balance = parseFloat(wallet.balance_minutes);
+      (req as any).aiWalletBalance = balance;
+      (req as any).aiWalletEmpty = balance <= 0;
+      logger.debug('[WALLET] AI wallet checked', { orgId, balanceMinutes: balance, empty: balance <= 0 });
     }
     next();
   } catch {
@@ -78,8 +84,10 @@ export async function checkTranslationWallet(req: Request, res: Response, next: 
     const orgId = req.params.orgId || (req as any).organizationId;
     if (orgId) {
       const wallet = await getTranslationWallet(orgId);
-      (req as any).translationWalletBalance = parseFloat(wallet.balance_minutes);
-      (req as any).translationWalletEmpty = parseFloat(wallet.balance_minutes) <= 0;
+      const balance = parseFloat(wallet.balance_minutes);
+      (req as any).translationWalletBalance = balance;
+      (req as any).translationWalletEmpty = balance <= 0;
+      logger.debug('[WALLET] Translation wallet checked', { orgId, balanceMinutes: balance, empty: balance <= 0 });
     }
     next();
   } catch {

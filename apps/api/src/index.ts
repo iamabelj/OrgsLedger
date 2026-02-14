@@ -13,6 +13,7 @@ import { config } from './config';
 import { logger } from './logger';
 import db from './db';
 import { auditContext } from './middleware';
+import { requestLogger } from './middleware/request-logger';
 import { setupSocketIO } from './socket';
 import { AIService } from './services/ai.service';
 
@@ -82,6 +83,9 @@ app.use(limiter);
 
 // Audit context
 app.use(auditContext);
+
+// ── Full Request Logging (temporary observability) ────────
+app.use(requestLogger);
 
 // Serve uploaded files (require valid JWT)
 app.use('/uploads', (req, res, next) => {
