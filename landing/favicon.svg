@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06d6a0"/>
+      <stop offset="100%" stop-color="#05b88a"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded square background -->
+  <rect width="512" height="512" rx="96" ry="96" fill="url(#bg)"/>
+  <!-- Stylized "O" letterform -->
+  <path d="M256 100c-86 0-156 70-156 156s70 156 156 156 156-70 156-156S342 100 256 100zm0 60c53 0 96 43 96 96s-43 96-96 96-96-43-96-96 43-96 96-96z" fill="rgba(255,255,255,0.95)"/>
+  <!-- Ledger lines accent -->
+  <rect x="188" y="236" width="136" height="8" rx="4" fill="url(#accent)"/>
+  <rect x="210" y="260" width="92" height="6" rx="3" fill="url(#accent)" opacity="0.7"/>
+  <rect x="220" y="280" width="72" height="5" rx="2.5" fill="url(#accent)" opacity="0.4"/>
+</svg>
