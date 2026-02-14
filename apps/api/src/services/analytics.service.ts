@@ -90,6 +90,11 @@ export function trackEvent(
   if (opts.orgId) {
     let usage = orgUsage.get(opts.orgId);
     if (!usage) {
+      // Cap org usage tracking to 1000 most recent orgs
+      if (orgUsage.size >= 1000) {
+        const oldestKey = orgUsage.keys().next().value;
+        if (oldestKey) orgUsage.delete(oldestKey);
+      }
       usage = {
         meetingsCreated: 0,
         aiMinutesUsed: 0,

@@ -191,7 +191,10 @@ export async function renewSubscription(orgId: string, amountPaid: number, payme
 export async function getAiWallet(orgId: string) {
   let wallet = await db('ai_wallet').where({ organization_id: orgId }).first();
   if (!wallet) {
-    [wallet] = await db('ai_wallet').insert({ organization_id: orgId, balance_minutes: 0, currency: 'USD' }).returning('*');
+    // Use org's billing currency instead of hardcoded USD
+    const org = await db('organizations').where({ id: orgId }).select('billing_currency').first();
+    const currency = org?.billing_currency || 'USD';
+    [wallet] = await db('ai_wallet').insert({ organization_id: orgId, balance_minutes: 0, currency }).returning('*');
   }
   return wallet;
 }
@@ -199,7 +202,10 @@ export async function getAiWallet(orgId: string) {
 export async function getTranslationWallet(orgId: string) {
   let wallet = await db('translation_wallet').where({ organization_id: orgId }).first();
   if (!wallet) {
-    [wallet] = await db('translation_wallet').insert({ organization_id: orgId, balance_minutes: 0, currency: 'USD' }).returning('*');
+    // Use org's billing currency instead of hardcoded USD
+    const org = await db('organizations').where({ id: orgId }).select('billing_currency').first();
+    const currency = org?.billing_currency || 'USD';
+    [wallet] = await db('translation_wallet').insert({ organization_id: orgId, balance_minutes: 0, currency }).returning('*');
   }
   return wallet;
 }
@@ -491,36 +497,40 @@ export async function completeUsageRecord(recordId: string, durationMinutes: num
 
 // ── Admin Adjustments ─────────────────────────────────────
 export async function adminAdjustAiWallet(orgId: string, minutes: number, description: string) {
-  await db('ai_wallet')
-    .where({ organization_id: orgId })
-    .update({
-      balance_minutes: db.raw('balance_minutes + ?', [minutes]),
-      updated_at: db.fn.now(),
-    });
+  await db.transaction(async (trx) => {
+    await trx('ai_wallet')
+      .where({ organization_id: orgId })
+      .update({
+        balance_minutes: db.raw('GREATEST(balance_minutes + ?, 0)', [minutes]),
+        updated_at: db.fn.now(),
+      });
 
-  await db('ai_wallet_transactions').insert({
-    organization_id: orgId,
-    type: 'admin_adjustment',
-    amount_minutes: minutes,
-    description,
+    await trx('ai_wallet_transactions').insert({
+      organization_id: orgId,
+      type: 'admin_adjustment',
+      amount_minutes: minutes,
+      description,
+    });
   });
 
   return getAiWallet(orgId);
 }
 
 export async function adminAdjustTranslationWallet(orgId: string, minutes: number, description: string) {
-  await db('translation_wallet')
-    .where({ organization_id: orgId })
-    .update({
-      balance_minutes: db.raw('balance_minutes + ?', [minutes]),
-      updated_at: db.fn.now(),
-    });
+  await db.transaction(async (trx) => {
+    await trx('translation_wallet')
+      .where({ organization_id: orgId })
+      .update({
+        balance_minutes: db.raw('GREATEST(balance_minutes + ?, 0)', [minutes]),
+        updated_at: db.fn.now(),
+      });
 
-  await db('translation_wallet_transactions').insert({
-    organization_id: orgId,
-    type: 'admin_adjustment',
-    amount_minutes: minutes,
-    description,
+    await trx('translation_wallet_transactions').insert({
+      organization_id: orgId,
+      type: 'admin_adjustment',
+      amount_minutes: minutes,
+      description,
+    });
   });
 
   return getTranslationWallet(orgId);

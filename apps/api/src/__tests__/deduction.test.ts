@@ -296,12 +296,15 @@ describe('Wallet Deduction Algorithm', () => {
     it('should create wallet if not exists', async () => {
       const newWallet = { organization_id: 'org-1', balance_minutes: 0, currency: 'USD' };
       const chain: any = {};
-      const methods = ['where', 'first', 'insert', 'returning'];
+      const methods = ['where', 'first', 'insert', 'returning', 'select'];
       for (const m of methods) {
         chain[m] = jest.fn().mockReturnValue(chain);
       }
-      // First call returns null (wallet not found), second returns the created wallet
-      chain.first.mockResolvedValue(null);
+      // First call (ai_wallet lookup) returns null, second call (org lookup) returns org,
+      // third call (insert) returns the created wallet
+      chain.first
+        .mockResolvedValueOnce(null)  // wallet not found
+        .mockResolvedValueOnce({ billing_currency: 'USD' }); // org lookup
       chain.returning.mockResolvedValue([newWallet]);
       (db as any).mockReturnValue(chain);
 
@@ -326,11 +329,13 @@ describe('Wallet Deduction Algorithm', () => {
     it('should create wallet if not exists', async () => {
       const newWallet = { organization_id: 'org-1', balance_minutes: 0, currency: 'USD' };
       const chain: any = {};
-      const methods = ['where', 'first', 'insert', 'returning'];
+      const methods = ['where', 'first', 'insert', 'returning', 'select'];
       for (const m of methods) {
         chain[m] = jest.fn().mockReturnValue(chain);
       }
-      chain.first.mockResolvedValue(null);
+      chain.first
+        .mockResolvedValueOnce(null)  // wallet not found
+        .mockResolvedValueOnce({ billing_currency: 'USD' }); // org lookup
       chain.returning.mockResolvedValue([newWallet]);
       (db as any).mockReturnValue(chain);
 

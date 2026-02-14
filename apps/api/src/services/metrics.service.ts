@@ -132,16 +132,24 @@ export function metricsMiddleware(req: Request, res: Response, next: NextFunctio
     metrics.httpResponsesByStatus[bucket].inc();
     metrics.httpResponseTime.observe(durationMs);
 
-    // Route-level tracking
-    const routeKey = `${req.method} ${req.route?.path || req.path}`;
-    let routeStat = metrics.routeMetrics.get(routeKey);
-    if (!routeStat) {
-      routeStat = { count: 0, totalTime: 0, errors: 0 };
-      metrics.routeMetrics.set(routeKey, routeStat);
+    // Route-level tracking (use route pattern, not raw path with IDs)
+    const routePath = req.route?.path;
+    if (routePath) {
+      const routeKey = `${req.method} ${req.baseUrl}${routePath}`;
+      let routeStat = metrics.routeMetrics.get(routeKey);
+      if (!routeStat) {
+        // Cap route metrics to prevent unbounded growth
+        if (metrics.routeMetrics.size >= 200) {
+          const oldestKey = metrics.routeMetrics.keys().next().value;
+          if (oldestKey) metrics.routeMetrics.delete(oldestKey);
+        }
+        routeStat = { count: 0, totalTime: 0, errors: 0 };
+        metrics.routeMetrics.set(routeKey, routeStat);
+      }
+      routeStat.count++;
+      routeStat.totalTime += durationMs;
+      if (res.statusCode >= 400) routeStat.errors++;
     }
-    routeStat.count++;
-    routeStat.totalTime += durationMs;
-    if (res.statusCode >= 400) routeStat.errors++;
   });
 
   next();

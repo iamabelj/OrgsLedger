@@ -55,12 +55,17 @@ export function captureError(
   const fp = fingerprint(err, context);
   const now = new Date().toISOString();
 
-  // Track frequency
+  // Track frequency (capped at 500 unique fingerprints)
   const freq = errorFrequency.get(fp);
   if (freq) {
     freq.count++;
     freq.lastSeen = now;
   } else {
+    if (errorFrequency.size >= 500) {
+      // Evict oldest fingerprint
+      const oldestKey = errorFrequency.keys().next().value;
+      if (oldestKey) errorFrequency.delete(oldestKey);
+    }
     errorFrequency.set(fp, { count: 1, firstSeen: now, lastSeen: now });
   }
 
