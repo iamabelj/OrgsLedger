@@ -478,6 +478,11 @@ router.post('/:orgId/members', middleware_1.authenticate, middleware_1.loadMembe
 router.put('/:orgId/members/:userId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
         const { role, isActive } = req.body;
+        // Only developer can assign developer or super_admin roles
+        if (role && ['developer', 'super_admin'].includes(role) && req.user.globalRole !== 'developer') {
+            res.status(403).json({ success: false, error: 'Only the platform developer can assign this role' });
+            return;
+        }
         const membership = await (0, db_1.default)('memberships')
             .where({ user_id: req.params.userId, organization_id: req.params.orgId })
             .first();

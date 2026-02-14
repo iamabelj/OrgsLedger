@@ -27,6 +27,18 @@ export default function SaasDashboard() {
   const globalRole = useAuthStore((s) => s.user?.globalRole);
   const isSuperAdmin = globalRole === 'developer';
 
+  if (!isSuperAdmin) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background }}>
+        <Text style={{ fontSize: 48, marginBottom: 16 }}>{String.fromCodePoint(0x1F512)}</Text>
+        <Text style={{ color: Colors.text, fontSize: 18, fontWeight: '600' as const }}>Developer Access Only</Text>
+        <Text style={{ color: Colors.textLight, fontSize: 14, marginTop: 8, textAlign: 'center' as const, paddingHorizontal: 32 }}>
+          This dashboard is restricted to the platform developer.
+        </Text>
+      </View>
+    );
+  }
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<Tab>('overview');

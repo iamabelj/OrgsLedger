@@ -600,6 +600,12 @@ router.put(
     try {
       const { role, isActive } = req.body;
 
+      // Only developer can assign developer or super_admin roles
+      if (role && ['developer', 'super_admin'].includes(role) && req.user!.globalRole !== 'developer') {
+        res.status(403).json({ success: false, error: 'Only the platform developer can assign this role' });
+        return;
+      }
+
       const membership = await db('memberships')
         .where({ user_id: req.params.userId, organization_id: req.params.orgId })
         .first();

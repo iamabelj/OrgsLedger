@@ -25,7 +25,8 @@ import { Card, Badge, Avatar, SearchBar, EmptyState, SectionHeader, PoweredByFoo
 import { useResponsive } from '../../src/hooks/useResponsive';
 import { showAlert } from '../../src/utils/alert';
 
-const ROLES = ['member', 'executive', 'org_admin', 'super_admin', 'developer'] as const;
+const ALL_ROLES = ['member', 'executive', 'org_admin', 'super_admin', 'developer'] as const;
+const ASSIGNABLE_ROLES = ['member', 'executive', 'org_admin'] as const;
 const ROLE_LABELS: Record<string, string> = {
   member: 'Member',
   executive: 'Executive',
@@ -101,8 +102,8 @@ export default function MembersScreen() {
       showAlert('Error', 'You cannot change your own role.');
       return;
     }
-    const options = ROLES.map((r) => ROLE_LABELS[r]);
-    const currentIndex = ROLES.indexOf(member.role as any);
+    const options = ASSIGNABLE_ROLES.map((r) => ROLE_LABELS[r]);
+    const currentIndex = ASSIGNABLE_ROLES.indexOf(member.role as any);
 
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
@@ -113,7 +114,7 @@ export default function MembersScreen() {
           destructiveButtonIndex: undefined,
         },
         async (idx) => {
-          if (idx > 0) await updateRole(member.user_id, ROLES[idx - 1]);
+          if (idx > 0) await updateRole(member.user_id, ASSIGNABLE_ROLES[idx - 1]);
         },
       );
     } else {
@@ -121,7 +122,7 @@ export default function MembersScreen() {
         'Change Role',
         `Select new role for ${member.first_name} ${member.last_name}`,
         [
-          ...ROLES.map((r) => ({
+          ...ASSIGNABLE_ROLES.map((r) => ({
             text: `${ROLE_LABELS[r]}${r === member.role ? ' (current)' : ''}`,
             onPress: () => updateRole(member.user_id, r),
           })),
