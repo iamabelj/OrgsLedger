@@ -65,7 +65,7 @@ app.set('aiService', aiService);
 app.use(helmet());
 app.use(cors({
   origin: config.env === 'production'
-    ? (process.env.CORS_ORIGINS || 'https://orgsledger.com,https://app.orgsledger.com,https://api.orgsledger.com').split(',')
+    ? (process.env.CORS_ORIGINS || 'https://orgsledger.com,https://app.orgsledger.com').split(',')
     : '*',
   credentials: true,
 }));

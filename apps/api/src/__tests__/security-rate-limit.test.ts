@@ -431,11 +431,10 @@ describe('Security Headers (Helmet)', () => {
 
 describe('CORS Configuration', () => {
   it('should restrict origins in production mode', () => {
-    const productionOrigins = (process.env.CORS_ORIGINS || 'https://orgsledger.com,https://app.orgsledger.com,https://api.orgsledger.com').split(',');
+    const productionOrigins = (process.env.CORS_ORIGINS || 'https://orgsledger.com,https://app.orgsledger.com').split(',');
 
     expect(productionOrigins).toContain('https://orgsledger.com');
     expect(productionOrigins).toContain('https://app.orgsledger.com');
-    expect(productionOrigins).toContain('https://api.orgsledger.com');
     // Should NOT contain wildcard
     expect(productionOrigins).not.toContain('*');
   });

@@ -9,8 +9,8 @@ import storage from '../utils/storage';
 // Auto-detect API URL: on web, use same origin; on native builds, configure per deployment
 function getApiBaseUrl(): string {
   if (__DEV__) return 'http://localhost:3000/api';
-  // Production — always use the dedicated API domain
-  return 'https://api.orgsledger.com/api';
+  // Production — same Express server serves API and web app
+  return 'https://app.orgsledger.com/api';
 }
 
 const API_BASE_URL = getApiBaseUrl();
