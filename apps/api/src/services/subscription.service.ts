@@ -10,7 +10,7 @@ import crypto from 'crypto';
 // ── Currency Helpers ──────────────────────────────────────
 export function isNigeria(country?: string | null): boolean {
   if (!country) return false;
-  return ['NG', 'NGA', 'nigeria'].includes(country.toLowerCase());
+  return ['ng', 'nga', 'nigeria'].includes(country.toLowerCase());
 }
 
 export function getCurrency(country?: string | null): 'USD' | 'NGN' {
