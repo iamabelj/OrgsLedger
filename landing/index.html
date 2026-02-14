@@ -3,425 +3,923 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>OrgsLedger — The All-in-One Platform for Organizations, Clubs &amp; Communities</title>
-  <meta name="description" content="OrgsLedger is the complete SaaS platform for managing associations, organizations, clubs, and communities. Dues collection, AI meetings, real-time chat, financial tracking — all in one place." />
-  <meta property="og:title" content="OrgsLedger — Smart Organization Management" />
-  <meta property="og:description" content="All-in-one SaaS platform for managing associations, clubs, and communities." />
+  <title>OrgsLedger — Cross-Border Organizational Infrastructure Platform</title>
+  <meta name="description" content="Run your organization across borders — powered by AI and real-time language translation. Annual subscription SaaS platform for associations, communities, and international teams." />
+  <meta property="og:title" content="OrgsLedger — Cross-Border Organizational Infrastructure" />
+  <meta property="og:description" content="Multi-tenant SaaS platform for organizations. AI meeting summaries, real-time translation, financial management — hosted and secure." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://orgsledger.com" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     :root {
-      --primary: #2563eb; --primary-dark: #1d4ed8; --primary-light: #3b82f6;
-      --accent: #06d6a0; --accent-dark: #05c090;
-      --dark: #0f172a; --dark-card: #1e293b; --dark-border: #334155;
-      --gray-50: #f8fafc; --gray-100: #f1f5f9; --gray-200: #e2e8f0; --gray-300: #cbd5e1;
-      --gray-400: #94a3b8; --gray-500: #64748b; --gray-600: #475569;
-      --gray-700: #334155; --gray-800: #1e293b; --gray-900: #0f172a;
-      --white: #fff; --danger: #ef4444; --warning: #f59e0b; --success: #10b981;
-      --gradient-1: linear-gradient(135deg, #2563eb 0%, #06d6a0 100%);
-      --radius: 12px; --radius-lg: 20px;
-      --shadow: 0 4px 6px -1px rgba(0,0,0,0.1); --shadow-lg: 0 20px 25px -5px rgba(0,0,0,0.1);
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --primary-deeper: #1e40af;
+      --primary-light: #3b82f6;
+      --primary-subtle: rgba(37,99,235,0.08);
+      --accent: #06d6a0;
+      --accent-dark: #05b88a;
+      --dark: #0a0f1e;
+      --dark-2: #0f172a;
+      --dark-3: #1e293b;
+      --dark-4: #263548;
+      --dark-border: #1e293b;
+      --dark-border-2: #334155;
+      --gray-50: #f8fafc;
+      --gray-100: #f1f5f9;
+      --gray-200: #e2e8f0;
+      --gray-300: #cbd5e1;
+      --gray-400: #94a3b8;
+      --gray-500: #64748b;
+      --gray-600: #475569;
+      --gray-700: #334155;
+      --gray-800: #1e293b;
+      --gray-900: #0f172a;
+      --white: #ffffff;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --success: #10b981;
+      --gradient-brand: linear-gradient(135deg, #2563eb 0%, #06d6a0 100%);
+      --gradient-dark: linear-gradient(180deg, #0a0f1e 0%, #0f172a 100%);
+      --radius: 16px;
+      --radius-sm: 10px;
+      --radius-xs: 6px;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.12);
+      --shadow: 0 4px 16px rgba(0,0,0,0.12);
+      --shadow-lg: 0 12px 40px rgba(0,0,0,0.15);
+      --shadow-glow: 0 0 60px rgba(37,99,235,0.15);
     }
-    html { scroll-behavior: smooth; }
-    body { font-family: 'Inter', -apple-system, sans-serif; color: var(--gray-800); line-height: 1.7; background: var(--white); overflow-x: hidden; }
-    h1,h2,h3,h4,h5 { font-family: 'Space Grotesk', 'Inter', sans-serif; line-height: 1.2; }
+
+    html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: var(--gray-300); line-height: 1.7; background: var(--dark); overflow-x: hidden; }
+    h1,h2,h3,h4,h5,h6 { font-family: 'Space Grotesk', 'Inter', sans-serif; line-height: 1.15; color: var(--white); }
     a { text-decoration: none; color: inherit; }
+    img { max-width: 100%; }
     .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
-    @keyframes fadeInUp { from { opacity:0; transform:translateY(30px); } to { opacity:1; transform:translateY(0); } }
-    .animate { opacity:0; transform:translateY(30px); transition: opacity .6s ease, transform .6s ease; }
-    .animate.visible { opacity:1; transform:translateY(0); }
 
-    /* Nav */
-    nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(15,23,42,0.95); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.08); }
-    nav .container { display: flex; align-items: center; justify-content: space-between; height: 72px; }
-    .nav-logo { display: flex; align-items: center; gap: 10px; }
-    .nav-logo-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--gradient-1); display: flex; align-items: center; justify-content: center; font-weight: 800; color: var(--white); font-size: 1rem; }
-    .nav-logo span { font-size: 1.2rem; font-weight: 800; color: var(--white); }
-    .nav-links { display: flex; align-items: center; gap: 28px; }
-    .nav-links a { color: var(--gray-300); font-size: 0.9rem; font-weight: 500; transition: color .2s; }
+    /* ── Animations ──────────────────────────────────── */
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .6; } }
+    @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+    .anim { opacity: 0; transform: translateY(40px); transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1); }
+    .anim.visible { opacity: 1; transform: translateY(0); }
+    .anim-delay-1 { transition-delay: .1s; }
+    .anim-delay-2 { transition-delay: .2s; }
+    .anim-delay-3 { transition-delay: .3s; }
+    .anim-delay-4 { transition-delay: .4s; }
+
+    /* ── Navigation ─────────────────────────────────── */
+    .nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; transition: all .3s; }
+    .nav.scrolled { background: rgba(10,15,30,0.92); backdrop-filter: blur(20px) saturate(1.6); border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .nav .container { display: flex; align-items: center; justify-content: space-between; height: 80px; }
+    .nav-logo { display: flex; align-items: center; gap: 12px; }
+    .nav-logo-icon { width: 38px; height: 38px; border-radius: 10px; background: var(--gradient-brand); display: flex; align-items: center; justify-content: center; font-weight: 900; color: var(--white); font-size: .95rem; letter-spacing: -.02em; box-shadow: 0 4px 20px rgba(37,99,235,0.3); }
+    .nav-logo-text { font-size: 1.15rem; font-weight: 800; color: var(--white); letter-spacing: -.02em; }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a { color: var(--gray-400); font-size: .88rem; font-weight: 500; transition: color .2s; }
     .nav-links a:hover { color: var(--white); }
-    .nav-cta { padding: 10px 24px; background: var(--primary); color: var(--white) !important; border-radius: 8px; font-weight: 600; transition: background .2s; }
-    .nav-cta:hover { background: var(--primary-dark); }
-    .currency-toggle { display:flex; background: var(--dark-card); border-radius: 6px; overflow: hidden; border: 1px solid var(--dark-border); }
-    .currency-toggle button { padding: 6px 14px; border: none; background: transparent; color: var(--gray-400); font-size: .8rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: all .2s; }
-    .currency-toggle button.active { background: var(--primary); color: var(--white); }
-    .hamburger { display: none; background: none; border: none; color: var(--white); font-size: 1.5rem; cursor: pointer; }
-    @media (max-width: 768px) { .nav-links { display: none; } .hamburger { display: block; } }
+    .nav-cta { padding: 10px 24px; background: var(--primary); color: var(--white) !important; border-radius: var(--radius-xs); font-weight: 700 !important; font-size: .85rem !important; letter-spacing: -.01em; transition: all .2s; box-shadow: 0 2px 12px rgba(37,99,235,0.3); }
+    .nav-cta:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(37,99,235,0.4); }
+    .nav-hamburger { display: none; background: none; border: none; color: var(--white); font-size: 1.6rem; cursor: pointer; padding: 4px; }
+    @media (max-width: 900px) {
+      .nav-links { position: fixed; top: 80px; left: 0; right: 0; background: rgba(10,15,30,0.98); backdrop-filter: blur(20px); flex-direction: column; padding: 24px; gap: 16px; display: none; border-bottom: 1px solid var(--dark-border-2); }
+      .nav-links.show { display: flex; }
+      .nav-hamburger { display: block; }
+    }
 
-    /* Hero */
-    .hero { background: linear-gradient(160deg, #0f172a 0%, #1e293b 40%, #0f172a 100%); padding: 140px 0 100px; text-align: center; position: relative; overflow: hidden; }
-    .hero::before { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: radial-gradient(circle at 30% 50%, rgba(37,99,235,0.08) 0%, transparent 50%), radial-gradient(circle at 70% 50%, rgba(6,214,160,0.06) 0%, transparent 50%); }
-    .hero h1 { font-size: clamp(2rem, 5vw, 3.5rem); color: var(--white); font-weight: 900; position: relative; max-width: 800px; margin: 0 auto 20px; animation: fadeInUp .8s ease; }
-    .hero h1 span { background: var(--gradient-1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .hero p { color: var(--gray-400); font-size: 1.15rem; max-width: 620px; margin: 0 auto 36px; position: relative; animation: fadeInUp .8s ease .2s both; }
-    .hero-btns { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; position: relative; animation: fadeInUp .8s ease .4s both; }
-    .btn-primary { padding: 14px 32px; background: var(--primary); color: var(--white); border: none; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; font-family: inherit; transition: all .2s; display: inline-block; }
-    .btn-primary:hover { background: var(--primary-dark); transform: translateY(-2px); box-shadow: 0 8px 30px rgba(37,99,235,0.4); }
-    .btn-outline { padding: 14px 32px; background: transparent; color: var(--white); border: 2px solid var(--dark-border); border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: all .2s; display: inline-block; }
-    .btn-outline:hover { border-color: var(--gray-400); color: var(--white); }
-    .hero-stats { display: flex; gap: 48px; justify-content: center; flex-wrap: wrap; margin-top: 48px; position: relative; animation: fadeInUp .8s ease .6s both; }
-    .hero-stats .stat { text-align: center; }
-    .hero-stats .stat-val { font-size: 2rem; font-weight: 800; color: var(--white); font-family: 'Space Grotesk', sans-serif; }
-    .hero-stats .stat-label { font-size: .85rem; color: var(--gray-400); }
+    /* ── Buttons ─────────────────────────────────────── */
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 16px 36px; border: none; border-radius: var(--radius-sm); font-size: 1rem; font-weight: 700; font-family: inherit; cursor: pointer; transition: all .25s cubic-bezier(.16,1,.3,1); letter-spacing: -.01em; }
+    .btn-lg { padding: 18px 42px; font-size: 1.05rem; }
+    .btn-primary { background: var(--primary); color: var(--white); box-shadow: 0 4px 20px rgba(37,99,235,0.35); }
+    .btn-primary:hover { background: var(--primary-dark); transform: translateY(-2px); box-shadow: 0 8px 30px rgba(37,99,235,0.45); }
+    .btn-accent { background: var(--accent); color: var(--dark); box-shadow: 0 4px 20px rgba(6,214,160,0.3); }
+    .btn-accent:hover { background: var(--accent-dark); transform: translateY(-2px); box-shadow: 0 8px 30px rgba(6,214,160,0.4); }
+    .btn-outline { background: transparent; color: var(--white); border: 2px solid var(--dark-border-2); }
+    .btn-outline:hover { border-color: var(--gray-400); transform: translateY(-2px); }
 
-    /* Features */
-    .features { padding: 100px 0; background: var(--gray-50); }
-    .section-header { text-align: center; margin-bottom: 60px; }
-    .section-header .tag { display: inline-block; padding: 6px 16px; background: rgba(37,99,235,0.1); color: var(--primary); border-radius: 50px; font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 16px; }
-    .section-header h2 { font-size: clamp(1.6rem, 4vw, 2.5rem); color: var(--gray-900); margin-bottom: 12px; }
-    .section-header p { color: var(--gray-500); font-size: 1.05rem; max-width: 600px; margin: 0 auto; }
-    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
-    .feature-card { background: var(--white); border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 32px; transition: all .3s; }
-    .feature-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); border-color: var(--primary); }
-    .feature-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; margin-bottom: 16px; }
-    .feature-card h3 { font-size: 1.1rem; color: var(--gray-900); margin-bottom: 8px; }
-    .feature-card p { color: var(--gray-500); font-size: .9rem; line-height: 1.6; }
-    .icon-blue { background: rgba(37,99,235,0.1); } .icon-green { background: rgba(6,214,160,0.1); }
-    .icon-purple { background: rgba(139,92,246,0.1); } .icon-orange { background: rgba(245,158,11,0.1); }
-    .icon-pink { background: rgba(236,72,153,0.1); } .icon-teal { background: rgba(20,184,166,0.1); }
+    /* ── Section Utilities ───────────────────────────── */
+    .section { padding: 120px 0; position: relative; }
+    .section-dark { background: var(--dark); }
+    .section-darker { background: var(--dark-2); }
+    .section-darkest { background: var(--dark); }
+    .section-header { text-align: center; margin-bottom: 64px; }
+    .section-tag { display: inline-flex; align-items: center; gap: 6px; padding: 6px 18px; background: var(--primary-subtle); color: var(--primary-light); border: 1px solid rgba(37,99,235,0.15); border-radius: 50px; font-size: .76rem; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; margin-bottom: 20px; }
+    .section-tag::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--primary-light); animation: pulse 2s ease infinite; }
+    .section-title { font-size: clamp(1.8rem, 4vw, 2.8rem); font-weight: 800; margin-bottom: 16px; letter-spacing: -.03em; }
+    .section-subtitle { color: var(--gray-400); font-size: 1.1rem; max-width: 640px; margin: 0 auto; line-height: 1.7; }
 
-    /* How It Works */
-    .how-it-works { padding: 100px 0; }
-    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 32px; margin-top: 48px; }
-    .step { text-align: center; padding: 24px; }
-    .step-num { width: 56px; height: 56px; border-radius: 50%; background: var(--gradient-1); color: var(--white); font-weight: 800; font-size: 1.3rem; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }
-    .step h3 { font-size: 1.1rem; color: var(--gray-900); margin-bottom: 8px; }
-    .step p { color: var(--gray-500); font-size: .9rem; }
+    /* ── HERO ─────────────────────────────────────────── */
+    .hero { padding: 160px 0 120px; text-align: center; position: relative; overflow: hidden; background: var(--dark); }
+    .hero::before {
+      content: '';
+      position: absolute; top: -40%; left: -20%; width: 140%; height: 140%;
+      background:
+        radial-gradient(ellipse 600px 400px at 25% 40%, rgba(37,99,235,0.08) 0%, transparent 70%),
+        radial-gradient(ellipse 500px 350px at 75% 30%, rgba(6,214,160,0.05) 0%, transparent 70%),
+        radial-gradient(ellipse 300px 300px at 50% 80%, rgba(37,99,235,0.04) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .hero::after {
+      content: '';
+      position: absolute; bottom: 0; left: 0; right: 0; height: 200px;
+      background: linear-gradient(to top, var(--dark-2), transparent);
+      pointer-events: none;
+    }
+    .hero-content { position: relative; z-index: 2; }
+    .hero-badge { display: inline-flex; align-items: center; gap: 8px; padding: 8px 20px; background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.15); border-radius: 50px; font-size: .78rem; font-weight: 600; color: var(--primary-light); margin-bottom: 32px; animation: fadeUp .8s ease both; }
+    .hero-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 2s ease infinite; }
+    .hero h1 {
+      font-size: clamp(2.2rem, 5.5vw, 4rem);
+      font-weight: 900;
+      color: var(--white);
+      max-width: 900px;
+      margin: 0 auto 24px;
+      letter-spacing: -.04em;
+      line-height: 1.08;
+      animation: fadeUp .8s ease .1s both;
+    }
+    .hero h1 .gradient-text {
+      background: var(--gradient-brand);
+      background-size: 200% 200%;
+      animation: gradientShift 6s ease infinite;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-sub {
+      font-size: 1.15rem;
+      color: var(--gray-400);
+      max-width: 620px;
+      margin: 0 auto 44px;
+      line-height: 1.8;
+      animation: fadeUp .8s ease .2s both;
+    }
+    .hero-sub strong { color: var(--gray-200); font-weight: 600; }
+    .hero-actions { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; animation: fadeUp .8s ease .35s both; }
+    .hero-proof { display: flex; align-items: center; justify-content: center; gap: 40px; margin-top: 56px; flex-wrap: wrap; animation: fadeUp .8s ease .5s both; }
+    .hero-proof-item { display: flex; align-items: center; gap: 10px; color: var(--gray-500); font-size: .85rem; }
+    .hero-proof-item .check { color: var(--accent); font-weight: 700; font-size: 1rem; }
 
-    /* Pricing */
-    .pricing { padding: 100px 0; background: var(--dark); }
-    .pricing .section-header h2 { color: var(--white); }
-    .pricing .section-header p { color: var(--gray-400); }
-    .pricing-toggle { display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 48px; }
-    .pricing-toggle span { color: var(--gray-400); font-size: .9rem; font-weight: 500; }
-    .pricing-toggle span.active { color: var(--white); font-weight: 700; }
-    .toggle-switch { width: 52px; height: 28px; background: var(--dark-border); border-radius: 14px; position: relative; cursor: pointer; border: none; transition: background .2s; }
-    .toggle-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--white); transition: transform .2s; }
-    .toggle-switch.monthly::after { transform: translateX(24px); }
-    .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; max-width: 1050px; margin: 0 auto; }
-    .pricing-card { background: var(--dark-card); border: 1px solid var(--dark-border); border-radius: var(--radius-lg); padding: 36px; transition: all .3s; position: relative; }
+    /* ── Grid Backgrounds ──────────────────────────── */
+    .grid-bg { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+    .grid-bg::before {
+      content: '';
+      position: absolute; inset: -1px;
+      background-image:
+        linear-gradient(rgba(37,99,235,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(37,99,235,0.03) 1px, transparent 1px);
+      background-size: 60px 60px;
+    }
+
+    /* ── PROBLEM Section ──────────────────────────────── */
+    .problems-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+    .problem-card {
+      background: rgba(239,68,68,0.03);
+      border: 1px solid rgba(239,68,68,0.1);
+      border-radius: var(--radius);
+      padding: 28px;
+      transition: all .3s;
+    }
+    .problem-card:hover { border-color: rgba(239,68,68,0.2); background: rgba(239,68,68,0.05); transform: translateY(-2px); }
+    .problem-icon { font-size: 1.5rem; margin-bottom: 14px; }
+    .problem-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 8px; color: var(--gray-200); }
+    .problem-card p { font-size: .88rem; color: var(--gray-400); line-height: 1.65; }
+
+    /* ── SOLUTION Section ────────────────────────────── */
+    .solution-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+    .solution-card {
+      background: var(--dark-3);
+      border: 1px solid var(--dark-border-2);
+      border-radius: var(--radius);
+      padding: 32px;
+      transition: all .3s;
+      position: relative;
+      overflow: hidden;
+    }
+    .solution-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: var(--gradient-brand); opacity: 0; transition: opacity .3s;
+    }
+    .solution-card:hover { border-color: var(--primary); transform: translateY(-4px); box-shadow: var(--shadow-glow); }
+    .solution-card:hover::before { opacity: 1; }
+    .solution-icon { width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; margin-bottom: 18px; }
+    .solution-card h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: 10px; }
+    .solution-card p { font-size: .88rem; color: var(--gray-400); line-height: 1.65; }
+    .icon-bg-blue { background: rgba(37,99,235,0.1); }
+    .icon-bg-green { background: rgba(6,214,160,0.1); }
+    .icon-bg-purple { background: rgba(139,92,246,0.1); }
+    .icon-bg-orange { background: rgba(245,158,11,0.1); }
+    .icon-bg-pink { background: rgba(236,72,153,0.1); }
+    .icon-bg-teal { background: rgba(20,184,166,0.1); }
+    .icon-bg-indigo { background: rgba(99,102,241,0.1); }
+    .icon-bg-cyan { background: rgba(6,182,212,0.1); }
+
+    /* ── PRICING ──────────────────────────────────────── */
+    .pricing-region-toggle { display: flex; justify-content: center; gap: 4px; margin-bottom: 48px; background: var(--dark-3); border-radius: var(--radius-sm); padding: 4px; max-width: 380px; margin-left: auto; margin-right: auto; border: 1px solid var(--dark-border-2); }
+    .pricing-region-btn {
+      flex: 1;
+      padding: 12px 20px;
+      background: transparent;
+      border: none;
+      border-radius: var(--radius-xs);
+      color: var(--gray-400);
+      font-size: .88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .2s;
+      font-family: inherit;
+    }
+    .pricing-region-btn.active { background: var(--primary); color: var(--white); box-shadow: 0 2px 10px rgba(37,99,235,0.3); }
+    .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; max-width: 1020px; margin: 0 auto; }
+    .pricing-card {
+      background: var(--dark-3);
+      border: 1px solid var(--dark-border-2);
+      border-radius: var(--radius);
+      padding: 36px;
+      transition: all .3s;
+      position: relative;
+    }
     .pricing-card:hover { transform: translateY(-6px); }
-    .pricing-card.popular { border-color: var(--primary); box-shadow: 0 0 30px rgba(37,99,235,0.2); }
-    .pricing-card.popular::before { content: 'MOST POPULAR'; position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: var(--primary); color: var(--white); padding: 4px 16px; border-radius: 50px; font-size: .7rem; font-weight: 800; letter-spacing: .1em; }
-    .plan-name { font-size: 1.1rem; font-weight: 700; color: var(--gray-300); margin-bottom: 4px; }
-    .plan-price { font-size: 2.8rem; font-weight: 900; color: var(--white); font-family: 'Space Grotesk', sans-serif; margin-bottom: 4px; }
-    .plan-price .cur { font-size: 1.2rem; vertical-align: top; margin-right: 2px; }
-    .plan-price .per { font-size: .9rem; font-weight: 400; color: var(--gray-400); }
-    .plan-members { font-size: .85rem; color: var(--gray-400); margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--dark-border); }
-    .plan-features { list-style: none; margin-bottom: 28px; }
-    .plan-features li { padding: 7px 0; font-size: .88rem; color: var(--gray-300); display: flex; align-items: center; gap: 10px; }
-    .plan-features li::before { content: '✓'; color: var(--accent); font-weight: 700; }
-    .plan-features li.no::before { content: '—'; color: var(--gray-500); }
-    .plan-features li.no { color: var(--gray-500); }
-    .plan-btn { width: 100%; padding: 14px; border: none; border-radius: 10px; font-size: .95rem; font-weight: 700; cursor: pointer; transition: all .2s; font-family: inherit; }
-    .plan-btn-primary { background: var(--primary); color: var(--white); }
-    .plan-btn-primary:hover { background: var(--primary-dark); }
-    .plan-btn-accent { background: var(--accent); color: var(--dark); }
-    .plan-btn-accent:hover { background: var(--accent-dark); }
-    .plan-btn-outline { background: transparent; color: var(--gray-300); border: 2px solid var(--dark-border); }
-    .plan-btn-outline:hover { border-color: var(--gray-400); }
+    .pricing-card.featured {
+      border-color: var(--primary);
+      box-shadow: 0 0 40px rgba(37,99,235,0.12), 0 0 80px rgba(37,99,235,0.06);
+    }
+    .pricing-card.featured::before {
+      content: 'RECOMMENDED';
+      position: absolute; top: -13px; left: 50%; transform: translateX(-50%);
+      background: var(--gradient-brand);
+      color: var(--white);
+      padding: 5px 20px;
+      border-radius: 50px;
+      font-size: .68rem;
+      font-weight: 800;
+      letter-spacing: .1em;
+    }
+    .pricing-plan-name { font-size: .95rem; font-weight: 700; color: var(--gray-400); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+    .pricing-amount { font-size: 2.8rem; font-weight: 900; color: var(--white); font-family: 'Space Grotesk', sans-serif; letter-spacing: -.03em; margin-bottom: 4px; }
+    .pricing-amount .currency { font-size: 1.1rem; vertical-align: top; margin-right: 2px; font-weight: 700; }
+    .pricing-amount .period { font-size: .9rem; font-weight: 400; color: var(--gray-500); letter-spacing: 0; }
+    .pricing-desc { font-size: .85rem; color: var(--gray-500); margin-bottom: 28px; padding-bottom: 28px; border-bottom: 1px solid var(--dark-border-2); }
+    .pricing-features { list-style: none; margin-bottom: 32px; }
+    .pricing-features li { padding: 8px 0; font-size: .88rem; color: var(--gray-300); display: flex; align-items: flex-start; gap: 10px; }
+    .pricing-features .feat-check { color: var(--accent); font-weight: 700; flex-shrink: 0; margin-top: 2px; }
+    .pricing-features li.excluded { color: var(--gray-600); }
+    .pricing-features li.excluded .feat-check { color: var(--gray-600); }
+    .pricing-cta { width: 100%; padding: 14px; border: none; border-radius: var(--radius-sm); font-size: .95rem; font-weight: 700; cursor: pointer; transition: all .2s; font-family: inherit; }
+    .pricing-note { text-align: center; color: var(--gray-500); font-size: .82rem; margin-top: 28px; max-width: 600px; margin-left: auto; margin-right: auto; line-height: 1.7; }
 
-    /* Add-ons */
-    .addons { padding: 80px 0; background: var(--gray-900); }
-    .addons .section-header h2 { color: var(--white); }
-    .addons .section-header p { color: var(--gray-400); }
-    .addon-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; max-width: 700px; margin: 0 auto; }
-    .addon-card { background: var(--dark-card); border: 1px solid var(--dark-border); border-radius: var(--radius); padding: 28px; text-align: center; }
-    .addon-card h3 { color: var(--white); font-size: 1.1rem; margin-bottom: 8px; }
-    .addon-price { font-size: 2rem; font-weight: 800; color: var(--accent); font-family: 'Space Grotesk', sans-serif; margin-bottom: 4px; }
-    .addon-unit { color: var(--gray-400); font-size: .85rem; margin-bottom: 12px; }
-    .addon-card p { color: var(--gray-400); font-size: .85rem; }
+    /* ── ADD-ONS ──────────────────────────────────────── */
+    .addons-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 24px; max-width: 820px; margin: 0 auto; }
+    .addon-card {
+      background: var(--dark-3);
+      border: 1px solid var(--dark-border-2);
+      border-radius: var(--radius);
+      padding: 36px;
+      transition: all .3s;
+      position: relative;
+      overflow: hidden;
+    }
+    .addon-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    }
+    .addon-card.addon-ai::before { background: linear-gradient(90deg, #2563eb, #8b5cf6); }
+    .addon-card.addon-translation::before { background: linear-gradient(90deg, #06d6a0, #14b8a6); }
+    .addon-card:hover { transform: translateY(-4px); border-color: var(--dark-border-2); box-shadow: var(--shadow-lg); }
+    .addon-badge { display: inline-flex; padding: 4px 12px; border-radius: 50px; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 16px; }
+    .addon-badge-ai { background: rgba(37,99,235,0.12); color: var(--primary-light); }
+    .addon-badge-trans { background: rgba(6,214,160,0.12); color: var(--accent); }
+    .addon-card h3 { font-size: 1.2rem; margin-bottom: 12px; }
+    .addon-pricing-row { display: flex; align-items: baseline; gap: 6px; margin-bottom: 16px; }
+    .addon-price { font-size: 2rem; font-weight: 800; color: var(--white); font-family: 'Space Grotesk', sans-serif; }
+    .addon-unit { font-size: .85rem; color: var(--gray-500); }
+    .addon-features { list-style: none; }
+    .addon-features li { padding: 6px 0; font-size: .88rem; color: var(--gray-400); display: flex; align-items: flex-start; gap: 8px; }
+    .addon-features li::before { content: '\2192'; color: var(--gray-500); flex-shrink: 0; }
 
-    /* Payments */
-    .payments { padding: 80px 0; text-align: center; }
-    .payment-logos { display: flex; gap: 24px; align-items: center; justify-content: center; margin-top: 32px; flex-wrap: wrap; }
-    .payment-logo { padding: 16px 28px; background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius); font-weight: 700; font-size: 1rem; color: var(--gray-700); }
+    /* ── HOW IT WORKS ──────────────────────────────── */
+    .steps-timeline { max-width: 700px; margin: 0 auto; position: relative; }
+    .steps-timeline::before {
+      content: ''; position: absolute; top: 0; bottom: 0; left: 27px; width: 2px;
+      background: linear-gradient(to bottom, var(--primary), var(--accent));
+      opacity: .2;
+    }
+    .step-item { display: flex; gap: 24px; padding: 24px 0; position: relative; }
+    .step-num {
+      width: 56px; height: 56px; border-radius: 50%; flex-shrink: 0;
+      background: var(--dark-3); border: 2px solid var(--dark-border-2);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 1.1rem; color: var(--primary-light);
+      font-family: 'Space Grotesk', sans-serif;
+      z-index: 2; transition: all .3s;
+    }
+    .step-item:hover .step-num { border-color: var(--primary); background: var(--primary-subtle); box-shadow: 0 0 20px rgba(37,99,235,0.15); }
+    .step-body { padding-top: 12px; }
+    .step-body h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: 6px; }
+    .step-body p { font-size: .88rem; color: var(--gray-400); line-height: 1.6; }
 
-    /* CTA */
-    .cta { padding: 100px 0; background: var(--dark); text-align: center; }
-    .cta h2 { font-size: clamp(1.6rem, 4vw, 2.5rem); color: var(--white); margin-bottom: 16px; }
-    .cta p { color: var(--gray-400); font-size: 1.1rem; max-width: 500px; margin: 0 auto 32px; }
+    /* ── SECURITY / INFRASTRUCTURE ───────────────── */
+    .infra-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+    .infra-card {
+      background: var(--dark-3);
+      border: 1px solid var(--dark-border-2);
+      border-radius: var(--radius);
+      padding: 28px;
+      text-align: center;
+      transition: all .3s;
+    }
+    .infra-card:hover { border-color: var(--primary); transform: translateY(-3px); }
+    .infra-icon { font-size: 1.8rem; margin-bottom: 14px; }
+    .infra-card h4 { font-size: .92rem; font-weight: 700; margin-bottom: 6px; }
+    .infra-card p { font-size: .82rem; color: var(--gray-500); line-height: 1.55; }
 
-    /* Footer */
-    footer { padding: 60px 0 30px; background: var(--gray-900); border-top: 1px solid var(--dark-border); }
-    .footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 40px; margin-bottom: 40px; }
-    .footer-brand .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
-    .footer-brand .logo-icon { width: 32px; height: 32px; border-radius: 8px; background: var(--gradient-1); display: flex; align-items: center; justify-content: center; font-weight: 800; color: var(--white); font-size: .85rem; }
-    .footer-brand .logo span { font-size: 1.1rem; font-weight: 800; color: var(--white); }
-    .footer-brand p { color: var(--gray-400); font-size: .85rem; max-width: 280px; }
-    .footer-col h4 { color: var(--white); font-size: .9rem; font-weight: 700; margin-bottom: 16px; }
-    .footer-col a { display: block; color: var(--gray-400); font-size: .85rem; padding: 4px 0; transition: color .2s; }
+    /* ── FINAL CTA ───────────────────────────────── */
+    .final-cta {
+      padding: 120px 0;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .final-cta::before {
+      content: '';
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(ellipse 600px 300px at 50% 50%, rgba(37,99,235,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .final-cta h2 { font-size: clamp(1.8rem, 4vw, 2.8rem); font-weight: 900; margin-bottom: 16px; letter-spacing: -.03em; position: relative; }
+    .final-cta p { color: var(--gray-400); font-size: 1.1rem; max-width: 540px; margin: 0 auto 36px; position: relative; line-height: 1.7; }
+    .final-cta .btn { position: relative; }
+
+    /* ── FOOTER ───────────────────────────────────── */
+    .footer { padding: 80px 0 32px; background: var(--dark-2); border-top: 1px solid var(--dark-border); }
+    .footer-grid { display: grid; grid-template-columns: 2.2fr 1fr 1fr 1fr; gap: 48px; margin-bottom: 48px; }
+    .footer-brand-text { font-size: 1.1rem; font-weight: 800; color: var(--white); display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .footer-brand-text .f-icon { width: 30px; height: 30px; border-radius: 8px; background: var(--gradient-brand); display: flex; align-items: center; justify-content: center; font-weight: 900; color: var(--white); font-size: .75rem; }
+    .footer-brand p { color: var(--gray-500); font-size: .85rem; max-width: 300px; line-height: 1.65; }
+    .footer-col h5 { color: var(--gray-200); font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 16px; }
+    .footer-col a { display: block; color: var(--gray-500); font-size: .85rem; padding: 5px 0; transition: color .2s; }
     .footer-col a:hover { color: var(--accent); }
-    .footer-bottom { border-top: 1px solid var(--dark-border); padding-top: 24px; text-align: center; color: var(--gray-500); font-size: .8rem; }
+    .footer-bottom { border-top: 1px solid var(--dark-border); padding-top: 28px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    .footer-bottom p { color: var(--gray-600); font-size: .78rem; }
+    .footer-bottom-links { display: flex; gap: 20px; }
+    .footer-bottom-links a { color: var(--gray-500); font-size: .78rem; transition: color .2s; }
+    .footer-bottom-links a:hover { color: var(--gray-300); }
+
     @media (max-width: 768px) {
+      .section { padding: 80px 0; }
+      .hero { padding: 120px 0 80px; }
+      .footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; }
       .pricing-grid { grid-template-columns: 1fr; }
-      .footer-grid { grid-template-columns: 1fr 1fr; }
-      .features-grid { grid-template-columns: 1fr; }
-      .hero-stats { gap: 20px; }
+      .addons-grid { grid-template-columns: 1fr; }
+      .hero-proof { gap: 20px; }
+      .infra-grid { grid-template-columns: 1fr 1fr; }
+      .footer-bottom { flex-direction: column; text-align: center; }
+    }
+    @media (max-width: 480px) {
+      .infra-grid { grid-template-columns: 1fr; }
+      .hero-proof { flex-direction: column; gap: 12px; }
     }
   </style>
 </head>
 <body>
 
-<!-- NAV -->
-<nav>
+<!-- ════════════════════════════════════════════════════════
+     NAVIGATION
+     ════════════════════════════════════════════════════════ -->
+<header class="nav" id="nav">
   <div class="container">
-    <a href="/" class="nav-logo"><div class="nav-logo-icon">OL</div><span>OrgsLedger</span></a>
-    <div class="nav-links">
-      <a href="#features">Features</a>
+    <a href="/" class="nav-logo">
+      <div class="nav-logo-icon">OL</div>
+      <span class="nav-logo-text">OrgsLedger</span>
+    </a>
+    <div class="nav-links" id="nav-links">
+      <a href="#problems">Why OrgsLedger</a>
+      <a href="#solutions">Platform</a>
       <a href="#pricing">Pricing</a>
+      <a href="#addons">Add-Ons</a>
       <a href="#how-it-works">How It Works</a>
-      <div class="currency-toggle">
-        <button id="btn-usd" onclick="setCurrency('usd')">USD</button>
-        <button id="btn-ngn" class="active" onclick="setCurrency('ngn')">NGN</button>
-      </div>
-      <a href="https://app.orgsledger.com" class="nav-cta">Launch App &rarr;</a>
+      <a href="https://app.orgsledger.com/register" class="nav-cta">Start Your Organization</a>
     </div>
+    <button class="nav-hamburger" aria-label="Toggle navigation" onclick="document.getElementById('nav-links').classList.toggle('show')">&#9776;</button>
   </div>
-</nav>
+</header>
 
-<!-- HERO -->
+<!-- ════════════════════════════════════════════════════════
+     HERO
+     ════════════════════════════════════════════════════════ -->
 <section class="hero">
-  <div class="container">
-    <h1>The Complete Platform for <span>Organizations &amp; Communities</span></h1>
-    <p>Manage dues, finances, meetings with AI, real-time chat, events, polls, documents &mdash; everything your organization needs in one place.</p>
-    <div class="hero-btns">
-      <a href="https://app.orgsledger.com/register" class="btn-primary">Start Free Trial</a>
-      <a href="#features" class="btn-outline">See Features</a>
+  <div class="container hero-content">
+    <div class="hero-badge">
+      <span class="dot"></span>
+      Cross-Border Organizational Infrastructure
     </div>
-    <div class="hero-stats">
-      <div class="stat"><div class="stat-val">9+</div><div class="stat-label">Core Modules</div></div>
-      <div class="stat"><div class="stat-val">3</div><div class="stat-label">Flexible Plans</div></div>
-      <div class="stat"><div class="stat-val">AI</div><div class="stat-label">Meeting Summaries &amp; Translation</div></div>
-      <div class="stat"><div class="stat-val">100%</div><div class="stat-label">Mobile + Web</div></div>
+
+    <h1>Run Your Organization Across Borders &mdash; <span class="gradient-text">Powered by AI &amp; Real-Time Translation</span></h1>
+
+    <p class="hero-sub">
+      The fully hosted SaaS platform for managing international organizations, associations, and communities.
+      <strong>Annual subscription</strong> with optional <strong>AI meeting intelligence</strong> and <strong>real-time multilingual translation</strong> add-ons &mdash; all on secure, hosted infrastructure.
+    </p>
+
+    <div class="hero-actions">
+      <a href="https://app.orgsledger.com/register" class="btn btn-primary btn-lg">Start Your Organization</a>
+      <a href="#how-it-works" class="btn btn-outline btn-lg">Book a Demo</a>
+    </div>
+
+    <div class="hero-proof">
+      <div class="hero-proof-item"><span class="check">&#10003;</span> Multi-Tenant SaaS</div>
+      <div class="hero-proof-item"><span class="check">&#10003;</span> AI-Powered Meetings</div>
+      <div class="hero-proof-item"><span class="check">&#10003;</span> Multilingual Translation</div>
+      <div class="hero-proof-item"><span class="check">&#10003;</span> Stripe &amp; Paystack Payments</div>
     </div>
   </div>
 </section>
 
-<!-- FEATURES -->
-<section class="features" id="features">
+<!-- ════════════════════════════════════════════════════════
+     PROBLEM SECTION
+     ════════════════════════════════════════════════════════ -->
+<section class="section section-darker" id="problems">
+  <div class="grid-bg"></div>
   <div class="container">
     <div class="section-header">
-      <div class="tag">Features</div>
-      <h2>Everything Your Organization Needs</h2>
-      <p>Replace dozens of tools with one seamless platform built for organizations of all sizes.</p>
+      <div class="section-tag anim">The Problem</div>
+      <h2 class="section-title anim anim-delay-1">Running Cross-Border Organizations Is Broken</h2>
+      <p class="section-subtitle anim anim-delay-2">Most organizations rely on fragmented tools that don't scale across borders, languages, or currencies.</p>
     </div>
-    <div class="features-grid">
-      <div class="feature-card animate"><div class="feature-icon icon-blue">💰</div><h3>Financial Management</h3><p>Collect dues, levies, and donations. Track expenses, generate financial reports, and manage budgets with full transparency.</p></div>
-      <div class="feature-card animate"><div class="feature-icon icon-green">🤖</div><h3>AI Meeting Summaries</h3><p>Record meetings, get AI transcriptions, summaries, and action items. Export professional minutes in one click.</p></div>
-      <div class="feature-card animate"><div class="feature-icon icon-purple">🌍</div><h3>Real-Time Translation</h3><p>Break language barriers in meetings with live AI translation. Members hear and read in their preferred language.</p></div>
-      <div class="feature-card animate"><div class="feature-icon icon-orange">💬</div><h3>Real-Time Chat</h3><p>Channels, direct messages, and file sharing. Keep your organization connected with instant, organized communication.</p></div>
-      <div class="feature-card animate"><div class="feature-icon icon-pink">📊</div><h3>Polls &amp; Voting</h3><p>Create polls, conduct elections, and make democratic decisions. Real-time results with full transparency.</p></div>
-      <div class="feature-card animate"><div class="feature-icon icon-teal">📅</div><h3>Events &amp; Attendance</h3><p>Schedule events, manage RSVPs, and track attendance. Automatic notifications and reminders.</p></div>
-      <div class="feature-card animate"><div class="feature-icon icon-blue">📁</div><h3>Document Management</h3><p>Upload, share, and organize documents. Meeting minutes, constitutions, reports &mdash; securely stored.</p></div>
-      <div class="feature-card animate"><div class="feature-icon icon-green">🏛️</div><h3>Committees &amp; Groups</h3><p>Create sub-committees with dedicated channels. Delegate responsibilities and track activities.</p></div>
-      <div class="feature-card animate"><div class="feature-icon icon-purple">📱</div><h3>Mobile + Web App</h3><p>Access everything from Android, iOS, or web. Responsive design that works on any device, anywhere.</p></div>
+
+    <div class="problems-grid">
+      <div class="problem-card anim">
+        <div class="problem-icon">&#127760;</div>
+        <h3>Cross-Border Communication Barriers</h3>
+        <p>Members scattered across countries rely on disconnected messaging tools. No single platform unifies communication for global teams.</p>
+      </div>
+      <div class="problem-card anim anim-delay-1">
+        <div class="problem-icon">&#128483;&#65039;</div>
+        <h3>Language Barriers in Meetings</h3>
+        <p>Multilingual organizations struggle with meetings where not everyone speaks the same language. Key decisions get lost in translation.</p>
+      </div>
+      <div class="problem-card anim anim-delay-2">
+        <div class="problem-icon">&#128200;</div>
+        <h3>Fragmented Organizational Management</h3>
+        <p>Spreadsheets for finances, WhatsApp for chat, email for documents, separate tools for events. Nothing is integrated.</p>
+      </div>
+      <div class="problem-card anim anim-delay-3">
+        <div class="problem-icon">&#128184;</div>
+        <h3>Manual Financial Tracking</h3>
+        <p>Dues collection, expense tracking, budget management &mdash; all done manually with no audit trail and no accountability.</p>
+      </div>
+      <div class="problem-card anim anim-delay-1">
+        <div class="problem-icon">&#129302;</div>
+        <h3>No AI Automation</h3>
+        <p>Meeting minutes, transcription, summaries, and follow-ups are done by hand. Hours wasted on tasks AI could handle instantly.</p>
+      </div>
+      <div class="problem-card anim anim-delay-2">
+        <div class="problem-icon">&#128202;</div>
+        <h3>Scaling International Teams</h3>
+        <p>As organizations grow across borders, existing tools break down. Multi-currency support, timezone management, and compliance become nightmares.</p>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- HOW IT WORKS -->
-<section class="how-it-works" id="how-it-works">
+<!-- ════════════════════════════════════════════════════════
+     SOLUTION / PLATFORM SECTION
+     ════════════════════════════════════════════════════════ -->
+<section class="section section-darkest" id="solutions">
   <div class="container">
     <div class="section-header">
-      <div class="tag">Getting Started</div>
-      <h2>Up &amp; Running in Minutes</h2>
-      <p>No complex setup. Create your organization and invite members in three simple steps.</p>
+      <div class="section-tag anim">The Platform</div>
+      <h2 class="section-title anim anim-delay-1">One Platform for Every Organizational Need</h2>
+      <p class="section-subtitle anim anim-delay-2">OrgsLedger replaces your fragmented tools with a single, secure, AI-powered infrastructure platform built for cross-border collaboration.</p>
     </div>
-    <div class="steps">
-      <div class="step animate"><div class="step-num">1</div><h3>Create Your Organization</h3><p>Sign up, name your organization, and choose a subscription plan that fits your size.</p></div>
-      <div class="step animate"><div class="step-num">2</div><h3>Invite Members</h3><p>Share an invite link or add members by email. Set roles: admin, treasurer, secretary, and more.</p></div>
-      <div class="step animate"><div class="step-num">3</div><h3>Manage Everything</h3><p>Collect dues, run meetings with AI, chat in real-time, create polls, manage events &mdash; all from one dashboard.</p></div>
+
+    <div class="solution-grid">
+      <div class="solution-card anim">
+        <div class="solution-icon icon-bg-blue">&#127970;</div>
+        <h3>Multi-Organization SaaS</h3>
+        <p>Each organization gets an isolated, secure workspace. Manage multiple organizations from a single account with full tenant separation.</p>
+      </div>
+      <div class="solution-card anim anim-delay-1">
+        <div class="solution-icon icon-bg-green">&#128279;</div>
+        <h3>Invite-Based Member Access</h3>
+        <p>Share a secure invite link. Members join instantly with role-based access &mdash; admin, treasurer, secretary, member, or custom roles.</p>
+      </div>
+      <div class="solution-card anim anim-delay-2">
+        <div class="solution-icon icon-bg-purple">&#128274;</div>
+        <h3>Secure Tenant Isolation</h3>
+        <p>Every organization's data is logically isolated. Row-level security, encrypted communications, and strict access controls built in.</p>
+      </div>
+      <div class="solution-card anim">
+        <div class="solution-icon icon-bg-orange">&#128176;</div>
+        <h3>Financial Management</h3>
+        <p>Collect dues, levies, and donations. Track expenses, generate financial reports, and manage budgets with full audit trails and transparency.</p>
+      </div>
+      <div class="solution-card anim anim-delay-1">
+        <div class="solution-icon icon-bg-teal">&#129302;</div>
+        <h3>AI Productivity Suite</h3>
+        <p>AI meeting transcription, automatic summaries, action item extraction, and intelligent document generation &mdash; all wallet-based and on demand.</p>
+      </div>
+      <div class="solution-card anim anim-delay-2">
+        <div class="solution-icon icon-bg-pink">&#127758;</div>
+        <h3>Real-Time Meeting Translation</h3>
+        <p>Live speech-to-text with instant multilingual translation. Every member hears and reads in their preferred language during meetings.</p>
+      </div>
+      <div class="solution-card anim">
+        <div class="solution-icon icon-bg-indigo">&#128172;</div>
+        <h3>Real-Time Chat &amp; Channels</h3>
+        <p>Organized communication with channels, direct messages, file sharing, and threaded conversations. Built for teams, not consumers.</p>
+      </div>
+      <div class="solution-card anim anim-delay-1">
+        <div class="solution-icon icon-bg-cyan">&#128202;</div>
+        <h3>Polls, Events &amp; Documents</h3>
+        <p>Run polls, schedule events with RSVPs, track attendance, and manage organizational documents &mdash; all from one integrated dashboard.</p>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- PRICING -->
-<section class="pricing" id="pricing">
+<!-- ════════════════════════════════════════════════════════
+     PRICING SECTION
+     ════════════════════════════════════════════════════════ -->
+<section class="section section-darker" id="pricing">
   <div class="container">
     <div class="section-header">
-      <div class="tag">Pricing</div>
-      <h2>Simple, Transparent Pricing</h2>
-      <p>Choose the plan that fits your organization. Upgrade or downgrade anytime.</p>
+      <div class="section-tag anim">Pricing</div>
+      <h2 class="section-title anim anim-delay-1">Transparent Annual Pricing</h2>
+      <p class="section-subtitle anim anim-delay-2">Choose your region. All plans require an annual subscription. AI and Translation services are billed separately via wallet credits.</p>
     </div>
-    <div class="pricing-toggle">
-      <span id="annual-label" class="active">Annual <span style="color:var(--accent);font-weight:700;font-size:.75rem;">(Save ~17%)</span></span>
-      <button class="toggle-switch" id="billing-toggle" onclick="toggleBilling()"></button>
-      <span id="monthly-label">Monthly</span>
+
+    <div class="pricing-region-toggle anim">
+      <button class="pricing-region-btn active" onclick="setRegion('global')" id="btn-global">&#127760; Global (USD)</button>
+      <button class="pricing-region-btn" onclick="setRegion('nigeria')" id="btn-nigeria">&#127475;&#127468; Nigeria (NGN)</button>
     </div>
+
     <div class="pricing-grid">
       <!-- Standard -->
-      <div class="pricing-card animate">
-        <div class="plan-name">Standard</div>
-        <div class="plan-price"><span class="cur" data-cur>&#8358;</span><span data-price="standard">500,000</span><span class="per" data-per>/year</span></div>
-        <div class="plan-members">Up to <strong>100</strong> members</div>
-        <ul class="plan-features">
-          <li>Real-Time Chat &amp; Channels</li>
-          <li>Meeting Management</li>
-          <li>Dues &amp; Donation Collection</li>
-          <li>Polls &amp; Voting</li>
-          <li>Event Scheduling &amp; RSVP</li>
-          <li>Announcements Board</li>
-          <li>Document Storage</li>
-          <li>Committees</li>
-          <li class="no">Analytics &amp; Reports</li>
-          <li class="no">Data Export</li>
-          <li class="no">Priority Support</li>
+      <div class="pricing-card anim">
+        <div class="pricing-plan-name">Standard</div>
+        <div class="pricing-amount">
+          <span class="currency" data-cur>$</span><span data-price="standard">300</span><span class="period" data-per>/year</span>
+        </div>
+        <div class="pricing-desc">For small organizations up to <strong>100 members</strong>.</div>
+        <ul class="pricing-features">
+          <li><span class="feat-check">&#10003;</span> Real-Time Chat &amp; Channels</li>
+          <li><span class="feat-check">&#10003;</span> Meeting Management</li>
+          <li><span class="feat-check">&#10003;</span> Dues &amp; Donation Collection</li>
+          <li><span class="feat-check">&#10003;</span> Polls &amp; Voting</li>
+          <li><span class="feat-check">&#10003;</span> Event Scheduling &amp; RSVP</li>
+          <li><span class="feat-check">&#10003;</span> Announcements &amp; Documents</li>
+          <li><span class="feat-check">&#10003;</span> Committees &amp; Groups</li>
+          <li><span class="feat-check">&#10003;</span> Mobile + Web Access</li>
+          <li class="excluded"><span class="feat-check">&mdash;</span> Advanced Analytics</li>
+          <li class="excluded"><span class="feat-check">&mdash;</span> Data Export</li>
         </ul>
-        <button class="plan-btn plan-btn-outline" onclick="location.href='https://app.orgsledger.com/register?plan=standard'">Get Started</button>
+        <button class="pricing-cta btn-primary" onclick="location.href='https://app.orgsledger.com/register?plan=standard'">Start Your Organization</button>
       </div>
+
       <!-- Professional -->
-      <div class="pricing-card popular animate">
-        <div class="plan-name">Professional</div>
-        <div class="plan-price"><span class="cur" data-cur>&#8358;</span><span data-price="professional">1,200,000</span><span class="per" data-per>/year</span></div>
-        <div class="plan-members">Up to <strong>300</strong> members</div>
-        <ul class="plan-features">
-          <li>Everything in Standard</li>
-          <li>Advanced Analytics &amp; Reports</li>
-          <li>Data Export (CSV, Excel)</li>
-          <li>Custom Branding</li>
-          <li>AI Meeting Summaries &#42;</li>
-          <li>Real-Time Translation &#42;</li>
-          <li>Expense Tracking &amp; Approval</li>
-          <li>Priority Email Support</li>
-          <li class="no">Dedicated Account Manager</li>
-          <li class="no">API Access</li>
+      <div class="pricing-card featured anim anim-delay-1">
+        <div class="pricing-plan-name">Professional</div>
+        <div class="pricing-amount">
+          <span class="currency" data-cur>$</span><span data-price="professional">800</span><span class="period" data-per>/year</span>
+        </div>
+        <div class="pricing-desc">For growing organizations up to <strong>300 members</strong>.</div>
+        <ul class="pricing-features">
+          <li><span class="feat-check">&#10003;</span> Everything in Standard</li>
+          <li><span class="feat-check">&#10003;</span> Advanced Analytics &amp; Reports</li>
+          <li><span class="feat-check">&#10003;</span> Data Export (CSV, Excel)</li>
+          <li><span class="feat-check">&#10003;</span> Custom Branding</li>
+          <li><span class="feat-check">&#10003;</span> AI Meeting Summaries *</li>
+          <li><span class="feat-check">&#10003;</span> Real-Time Translation *</li>
+          <li><span class="feat-check">&#10003;</span> Expense Tracking &amp; Approval</li>
+          <li><span class="feat-check">&#10003;</span> Priority Email Support</li>
+          <li class="excluded"><span class="feat-check">&mdash;</span> Dedicated Account Manager</li>
+          <li class="excluded"><span class="feat-check">&mdash;</span> API Access</li>
         </ul>
-        <button class="plan-btn plan-btn-accent" onclick="location.href='https://app.orgsledger.com/register?plan=professional'">Get Started</button>
+        <button class="pricing-cta btn-accent" onclick="location.href='https://app.orgsledger.com/register?plan=professional'">Start Your Organization</button>
       </div>
+
       <!-- Enterprise -->
-      <div class="pricing-card animate">
-        <div class="plan-name">Enterprise</div>
-        <div class="plan-price"><span class="cur" data-cur>&#8358;</span><span data-price="enterprise">3,500,000</span><span class="per" data-per>/year</span></div>
-        <div class="plan-members">Up to <strong>10,000</strong> members</div>
-        <ul class="plan-features">
-          <li>Everything in Professional</li>
-          <li>AI Meeting Summaries &#42;</li>
-          <li>Real-Time Translation &#42;</li>
-          <li>Dedicated Account Manager</li>
-          <li>Full API Access</li>
-          <li>Priority Phone &amp; Chat Support</li>
-          <li>Custom Integrations</li>
-          <li>SLA Guarantee</li>
-          <li>Unlimited Committees</li>
-          <li>Onboarding Assistance</li>
+      <div class="pricing-card anim anim-delay-2">
+        <div class="pricing-plan-name">Enterprise</div>
+        <div class="pricing-amount">
+          <span class="currency" data-cur>$</span><span data-price="enterprise">2,500<sup style="font-size:.5em;vertical-align:super;color:var(--gray-500);">+</sup></span><span class="period" data-per>/year</span>
+        </div>
+        <div class="pricing-desc">For large organizations up to <strong>10,000 members</strong>.</div>
+        <ul class="pricing-features">
+          <li><span class="feat-check">&#10003;</span> Everything in Professional</li>
+          <li><span class="feat-check">&#10003;</span> AI Meeting Summaries *</li>
+          <li><span class="feat-check">&#10003;</span> Real-Time Translation *</li>
+          <li><span class="feat-check">&#10003;</span> Dedicated Account Manager</li>
+          <li><span class="feat-check">&#10003;</span> Full API Access</li>
+          <li><span class="feat-check">&#10003;</span> Priority Phone &amp; Chat Support</li>
+          <li><span class="feat-check">&#10003;</span> Custom Integrations</li>
+          <li><span class="feat-check">&#10003;</span> SLA Guarantee</li>
+          <li><span class="feat-check">&#10003;</span> Unlimited Committees</li>
+          <li><span class="feat-check">&#10003;</span> Onboarding Assistance</li>
         </ul>
-        <button class="plan-btn plan-btn-primary" onclick="location.href='https://app.orgsledger.com/register?plan=enterprise'">Contact Sales</button>
+        <button class="pricing-cta btn-primary" onclick="location.href='https://app.orgsledger.com/register?plan=enterprise'">Contact Sales</button>
       </div>
     </div>
-    <p style="text-align:center;color:var(--gray-400);font-size:.78rem;margin-top:20px;">&#42; AI features require wallet credits purchased separately &mdash; see add-ons below.</p>
+
+    <p class="pricing-note anim">
+      All plans require an <strong style="color:var(--gray-200);">annual subscription</strong>.
+      * AI Meeting Summaries and Real-Time Translation are independent add-ons billed separately via wallet credits &mdash; see below.
+    </p>
   </div>
 </section>
 
-<!-- ADD-ONS -->
-<section class="addons">
+<!-- ════════════════════════════════════════════════════════
+     ADD-ONS SECTION
+     ════════════════════════════════════════════════════════ -->
+<section class="section section-darkest" id="addons">
   <div class="container">
     <div class="section-header">
-      <div class="tag">Add-Ons</div>
-      <h2>AI-Powered Add-Ons</h2>
-      <p>Pay only for what you use. Top up your wallet and consume minutes on demand.</p>
+      <div class="section-tag anim">Add-Ons</div>
+      <h2 class="section-title anim anim-delay-1">AI &amp; Translation &mdash; Pay Only for What You Use</h2>
+      <p class="section-subtitle anim anim-delay-2">Two independent add-ons, each billed separately. Top up your organization's wallet and consume on demand. No commitments, no minimum spend.</p>
     </div>
-    <div class="addon-grid">
-      <div class="addon-card animate">
-        <h3>🤖 AI Meeting Credits</h3>
-        <div class="addon-price" data-addon="ai">&#8358;18,000</div>
-        <div class="addon-unit">per hour</div>
-        <p>Transcription, summaries, action items, and meeting minutes powered by GPT-4 &amp; Google Speech.</p>
+
+    <div class="addons-grid">
+      <!-- AI Productivity -->
+      <div class="addon-card addon-ai anim">
+        <div class="addon-badge addon-badge-ai">AI Productivity</div>
+        <h3>AI Meeting Intelligence</h3>
+        <div class="addon-pricing-row">
+          <span class="addon-price" data-addon="ai">$10</span>
+          <span class="addon-unit">per hour</span>
+        </div>
+        <ul class="addon-features">
+          <li>Meeting transcription (speech-to-text)</li>
+          <li>AI-generated summaries &amp; action items</li>
+          <li>AI document generation &amp; analysis</li>
+          <li>Usage-based billing via wallet</li>
+          <li>Real-time cost tracking per session</li>
+        </ul>
       </div>
-      <div class="addon-card animate">
-        <h3>🌍 Translation Credits</h3>
-        <div class="addon-price" data-addon="translation">&#8358;45,000</div>
-        <div class="addon-unit">per hour</div>
-        <p>Live real-time translation during meetings. Members hear and read in their own language.</p>
+
+      <!-- Real-Time Translation -->
+      <div class="addon-card addon-translation anim anim-delay-1">
+        <div class="addon-badge addon-badge-trans">Live Translation</div>
+        <h3>Real-Time Meeting Translation</h3>
+        <div class="addon-pricing-row">
+          <span class="addon-price" data-addon="translation">$25</span>
+          <span class="addon-unit">per hour</span>
+        </div>
+        <ul class="addon-features">
+          <li>Live speech-to-text during meetings</li>
+          <li>Multi-language instant translation</li>
+          <li>Members read in their preferred language</li>
+          <li>Per-hour wallet-based billing</li>
+          <li>Supports global language pairs</li>
+        </ul>
       </div>
     </div>
   </div>
 </section>
 
-<!-- PAYMENTS -->
-<section class="payments">
+<!-- ════════════════════════════════════════════════════════
+     HOW IT WORKS SECTION
+     ════════════════════════════════════════════════════════ -->
+<section class="section section-darker" id="how-it-works">
   <div class="container">
     <div class="section-header">
-      <div class="tag">Payments</div>
-      <h2>Flexible Payment Options</h2>
-      <p>Pay with cards, bank transfer, or mobile money. We support the gateways your members already use.</p>
+      <div class="section-tag anim">Getting Started</div>
+      <h2 class="section-title anim anim-delay-1">Launch Your Organization in Minutes</h2>
+      <p class="section-subtitle anim anim-delay-2">From sign-up to fully operational workspace &mdash; no installation, no setup complexity, no servers to manage.</p>
     </div>
-    <div class="payment-logos">
-      <div class="payment-logo">💳 Stripe</div>
-      <div class="payment-logo">🏦 Paystack</div>
-      <div class="payment-logo">🌊 Flutterwave</div>
-      <div class="payment-logo">🏛️ Bank Transfer</div>
+
+    <div class="steps-timeline">
+      <div class="step-item anim">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <h3>Create Your Organization</h3>
+          <p>Sign up at app.orgsledger.com and create your organization. Name it, describe it, configure your structure.</p>
+        </div>
+      </div>
+      <div class="step-item anim anim-delay-1">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <h3>Select Your Annual Plan</h3>
+          <p>Choose Standard, Professional, or Enterprise based on your size and needs. Pay annually via Stripe (USD) or Paystack (NGN).</p>
+        </div>
+      </div>
+      <div class="step-item anim anim-delay-2">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <h3>Your Workspace Is Provisioned</h3>
+          <p>A secure, isolated workspace is instantly created with all features enabled based on your plan tier. No waiting.</p>
+        </div>
+      </div>
+      <div class="step-item anim anim-delay-3">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <h3>Share Your Invite Link</h3>
+          <p>A unique invite link is generated. Share it with members via email, WhatsApp, or any channel. They join in seconds.</p>
+        </div>
+      </div>
+      <div class="step-item anim anim-delay-4">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <h3>Members Join &amp; Collaborate</h3>
+          <p>Members sign up, accept the invite, and immediately access chat, meetings, polls, events, documents, and financials.</p>
+        </div>
+      </div>
+      <div class="step-item anim anim-delay-4">
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <h3>Activate AI &amp; Translation</h3>
+          <p>Optionally top up your AI and Translation wallets. Enable AI meeting summaries and real-time translation on demand &mdash; pay only for what you use.</p>
+        </div>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- CTA -->
-<section class="cta">
+<!-- ════════════════════════════════════════════════════════
+     SECURITY & INFRASTRUCTURE SECTION
+     ════════════════════════════════════════════════════════ -->
+<section class="section section-darkest" id="security">
   <div class="container">
-    <h2>Ready to Transform Your Organization?</h2>
-    <p>Join organizations already using OrgsLedger to streamline operations, collect dues, and empower their members.</p>
-    <a href="https://app.orgsledger.com/register" class="btn-primary">Start Your Free Trial &rarr;</a>
+    <div class="section-header">
+      <div class="section-tag anim">Security &amp; Infrastructure</div>
+      <h2 class="section-title anim anim-delay-1">Enterprise-Grade Security, Fully Hosted</h2>
+      <p class="section-subtitle anim anim-delay-2">Your data is protected by multi-tenant isolation, encrypted at rest and in transit, with metered access controls and cross-border payment support.</p>
+    </div>
+
+    <div class="infra-grid">
+      <div class="infra-card anim">
+        <div class="infra-icon">&#128274;</div>
+        <h4>Multi-Tenant Isolation</h4>
+        <p>Every organization's data is logically separated with row-level security. Zero data leakage between tenants.</p>
+      </div>
+      <div class="infra-card anim anim-delay-1">
+        <div class="infra-icon">&#9729;&#65039;</div>
+        <h4>Secure Cloud Hosting</h4>
+        <p>Hosted on enterprise cloud infrastructure with automated backups, monitoring, and high-availability architecture.</p>
+      </div>
+      <div class="infra-card anim anim-delay-2">
+        <div class="infra-icon">&#128273;</div>
+        <h4>Subscription Enforcement</h4>
+        <p>Access tied to active subscriptions with grace periods, automatic notifications, and secure plan enforcement.</p>
+      </div>
+      <div class="infra-card anim anim-delay-3">
+        <div class="infra-icon">&#128202;</div>
+        <h4>Wallet-Based Metering</h4>
+        <p>AI and Translation usage tracked to the second. Transparent billing with real-time balance visibility and cost controls.</p>
+      </div>
+      <div class="infra-card anim anim-delay-1">
+        <div class="infra-icon">&#127758;</div>
+        <h4>Cross-Border Payments</h4>
+        <p>Accept payments globally via Stripe (USD) and Paystack (NGN). Multi-currency support for international organizations.</p>
+      </div>
+      <div class="infra-card anim anim-delay-2">
+        <div class="infra-icon">&#128737;&#65039;</div>
+        <h4>Data Encryption</h4>
+        <p>All data encrypted at rest and in transit. Secrets managed through secure environment injection. Zero trust architecture.</p>
+      </div>
+    </div>
   </div>
 </section>
 
-<!-- FOOTER -->
-<footer>
+<!-- ════════════════════════════════════════════════════════
+     FINAL CTA
+     ════════════════════════════════════════════════════════ -->
+<section class="final-cta section-darker">
+  <div class="container">
+    <h2 class="anim">Build Your Cross-Border Organization Today</h2>
+    <p class="anim anim-delay-1">Join organizations already using OrgsLedger to manage operations, collect dues, and collaborate seamlessly across borders with AI-powered infrastructure.</p>
+    <a href="https://app.orgsledger.com/register" class="btn btn-primary btn-lg anim anim-delay-2">Launch Your Workspace &rarr;</a>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════
+     FOOTER
+     ════════════════════════════════════════════════════════ -->
+<footer class="footer">
   <div class="container">
     <div class="footer-grid">
       <div class="footer-brand">
-        <div class="logo"><div class="logo-icon">OL</div><span>OrgsLedger</span></div>
-        <p>The all-in-one operational hub for associations, organizations, clubs, and communities worldwide.</p>
+        <div class="footer-brand-text"><div class="f-icon">OL</div> OrgsLedger</div>
+        <p>The cross-border organizational infrastructure platform. AI-powered meetings, real-time translation, financial management &mdash; fully hosted, fully secure.</p>
       </div>
-      <div class="footer-col"><h4>Product</h4><a href="#features">Features</a><a href="#pricing">Pricing</a><a href="#how-it-works">How It Works</a><a href="https://app.orgsledger.com">Launch App</a></div>
-      <div class="footer-col"><h4>Company</h4><a href="#">About Us</a><a href="#">Blog</a><a href="#">Careers</a><a href="#">Contact</a></div>
-      <div class="footer-col"><h4>Legal</h4><a href="#">Terms of Service</a><a href="#">Privacy Policy</a><a href="#">Cookie Policy</a></div>
+      <div class="footer-col">
+        <h5>Platform</h5>
+        <a href="#solutions">Features</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#addons">AI &amp; Translation</a>
+        <a href="#how-it-works">How It Works</a>
+        <a href="#security">Security</a>
+      </div>
+      <div class="footer-col">
+        <h5>Company</h5>
+        <a href="#">About Us</a>
+        <a href="#">Blog</a>
+        <a href="#">Careers</a>
+        <a href="#">Contact Sales</a>
+      </div>
+      <div class="footer-col">
+        <h5>Legal</h5>
+        <a href="#">Terms of Service</a>
+        <a href="#">Privacy Policy</a>
+        <a href="#">Cookie Policy</a>
+        <a href="#">Acceptable Use</a>
+      </div>
     </div>
-    <div class="footer-bottom">&copy; 2026 OrgsLedger. All rights reserved.</div>
+    <div class="footer-bottom">
+      <p>&copy; 2025 OrgsLedger. All rights reserved.</p>
+      <div class="footer-bottom-links">
+        <a href="https://app.orgsledger.com">app.orgsledger.com</a>
+      </div>
+    </div>
   </div>
 </footer>
 
+<!-- ════════════════════════════════════════════════════════
+     JAVASCRIPT
+     ════════════════════════════════════════════════════════ -->
 <script>
-let currency = 'ngn', billingCycle = 'annual';
-const P = {
-  standard:     { usd: { annual: '300', monthly: '31' }, ngn: { annual: '500,000', monthly: '52,083' } },
-  professional: { usd: { annual: '800', monthly: '83' }, ngn: { annual: '1,200,000', monthly: '125,000' } },
-  enterprise:   { usd: { annual: '2,500', monthly: '260' }, ngn: { annual: '3,500,000', monthly: '364,583' } },
-};
-const A = { ai: { usd: '$10', ngn: '\u20A618,000' }, translation: { usd: '$25', ngn: '\u20A645,000' } };
+(function() {
+  'use strict';
 
-function setCurrency(c) {
-  currency = c;
-  document.getElementById('btn-usd').classList.toggle('active', c==='usd');
-  document.getElementById('btn-ngn').classList.toggle('active', c==='ngn');
-  render();
-}
-function toggleBilling() {
-  billingCycle = billingCycle==='annual'?'monthly':'annual';
-  document.getElementById('billing-toggle').classList.toggle('monthly', billingCycle==='monthly');
-  document.getElementById('annual-label').classList.toggle('active', billingCycle==='annual');
-  document.getElementById('monthly-label').classList.toggle('active', billingCycle==='monthly');
-  render();
-}
-function render() {
-  const sym = currency==='usd'?'$':'\u20A6';
-  const per = billingCycle==='annual'?'/year':'/month';
-  document.querySelectorAll('[data-cur]').forEach(e=>e.textContent=sym);
-  document.querySelectorAll('[data-per]').forEach(e=>e.textContent=per);
-  document.querySelectorAll('[data-price]').forEach(e=>{
-    const plan = e.getAttribute('data-price');
-    e.textContent = P[plan][currency][billingCycle];
-  });
-  document.querySelectorAll('[data-addon]').forEach(e=>{
-    e.textContent = A[e.getAttribute('data-addon')][currency];
-  });
-}
+  // ── Region / Currency Toggle ─────────────────────────
+  var region = 'global';
+  var prices = {
+    standard:     { global: '300',   nigeria: '500,000' },
+    professional: { global: '800',   nigeria: '1,200,000' },
+    enterprise:   { global: '2,500', nigeria: '3,500,000' },
+  };
+  var addons = {
+    ai:          { global: '$10',    nigeria: '\u20A618,000' },
+    translation: { global: '$25',    nigeria: '\u20A645,000' },
+  };
 
-const obs = new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('visible');});},{threshold:.1});
-document.querySelectorAll('.animate').forEach(e=>obs.observe(e));
+  window.setRegion = function(r) {
+    region = r;
+    document.getElementById('btn-global').classList.toggle('active', r === 'global');
+    document.getElementById('btn-nigeria').classList.toggle('active', r === 'nigeria');
+    renderPricing();
+  };
+
+  function renderPricing() {
+    var sym = region === 'global' ? '$' : '\u20A6';
+    document.querySelectorAll('[data-cur]').forEach(function(el) { el.textContent = sym; });
+    document.querySelectorAll('[data-price]').forEach(function(el) {
+      var key = el.getAttribute('data-price');
+      // Preserve the "+" superscript for enterprise
+      if (key === 'enterprise') {
+        el.innerHTML = prices[key][region] + '<sup style="font-size:.5em;vertical-align:super;color:var(--gray-500);">+</sup>';
+      } else {
+        el.textContent = prices[key][region];
+      }
+    });
+    document.querySelectorAll('[data-addon]').forEach(function(el) {
+      el.textContent = addons[el.getAttribute('data-addon')][region];
+    });
+  }
+
+  // ── Scroll animations (IntersectionObserver) ─────────
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+
+  document.querySelectorAll('.anim').forEach(function(el) {
+    observer.observe(el);
+  });
+
+  // ── Nav scroll state ─────────────────────────────────
+  var navEl = document.getElementById('nav');
+  window.addEventListener('scroll', function() {
+    navEl.classList.toggle('scrolled', window.scrollY > 40);
+  }, { passive: true });
+
+  // ── Close mobile nav on link click ───────────────────
+  document.querySelectorAll('#nav-links a').forEach(function(link) {
+    link.addEventListener('click', function() {
+      document.getElementById('nav-links').classList.remove('show');
+    });
+  });
+
+  // ── Geo-detect for auto currency ─────────────────────
+  try {
+    fetch('/api/geo').then(function(r) { return r.json(); }).then(function(data) {
+      if (data && data.countryCode === 'NG') {
+        window.setRegion('nigeria');
+      }
+    }).catch(function() {});
+  } catch(e) {}
+
+})();
 </script>
 </body>
 </html>
