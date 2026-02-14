@@ -65,7 +65,7 @@ app.set('aiService', aiService);
 app.use(helmet());
 app.use(cors({
   origin: config.env === 'production'
-    ? (process.env.CORS_ORIGINS || 'https://orgsledger.com').split(',')
+    ? (process.env.CORS_ORIGINS || 'https://orgsledger.com,https://app.orgsledger.com,https://api.orgsledger.com').split(',')
     : '*',
   credentials: true,
 }));
@@ -204,7 +204,7 @@ try {
     if (host === 'orgsledger.com' || host === 'www.orgsledger.com' || host === 'localhost' || host === '127.0.0.1') {
       return gatewayApp(req, res, next);
     }
-    // All other domains (test.orgsledger.com, client domains): developer routes don't exist
+    // All other domains (app.orgsledger.com, client domains): developer routes don't exist
     res.status(404).json({ success: false, error: 'Route not found' });
   });
   logger.info('Developer gateway mounted at /developer (orgsledger.com only)');
@@ -222,7 +222,7 @@ app.all('/api/*', (_req, res) => {
 
 // SPA fallback — serve web frontend for all other routes (except /)
 // orgsledger.com = sales/landing site only (no SPA login/register)
-// test.orgsledger.com + client domains = full SPA app
+// app.orgsledger.com + client domains = full SPA app
 if (fs.existsSync(webDir)) {
   app.get('*', (req, res) => {
     const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
@@ -231,7 +231,7 @@ if (fs.existsSync(webDir)) {
       res.redirect(301, '/');
       return;
     }
-    // All other domains (test.orgsledger.com, client deployments, localhost): serve SPA
+    // All other domains (app.orgsledger.com, client deployments, localhost): serve SPA
     res.sendFile(path.join(webDir, 'index.html'));
   });
 } else {

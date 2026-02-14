@@ -7,7 +7,7 @@ import storage from '../utils/storage';
 
 const SOCKET_URL = __DEV__
   ? 'http://localhost:3000'
-  : 'https://test.orgsledger.com';
+  : 'https://api.orgsledger.com';
 
 class SocketClient {
   private socket: Socket | null = null;

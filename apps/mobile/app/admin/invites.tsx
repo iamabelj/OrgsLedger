@@ -77,7 +77,7 @@ export default function InvitesScreen() {
   };
 
   const shareInvite = async (code: string) => {
-    const url = `${Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : 'https://test.orgsledger.com'}/join/${code}`;
+    const url = `${Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : 'https://app.orgsledger.com'}/join/${code}`;
     if (Platform.OS === 'web') {
       try { await navigator.clipboard.writeText(url); doAlert('Copied', 'Invite URL copied to clipboard'); } catch { doAlert('Link', url); }
     } else {

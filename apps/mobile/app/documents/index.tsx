@@ -73,7 +73,7 @@ export default function DocumentsScreen() {
   useEffect(() => { loadDocuments(); }, [loadDocuments]);
 
   const handleOpenDocument = (doc: any) => {
-    const url = `${__DEV__ ? 'http://localhost:3000' : 'https://test.orgsledger.com'}${doc.file_path}`;
+    const url = `${__DEV__ ? 'http://localhost:3000' : 'https://api.orgsledger.com'}${doc.file_path}`;
     Linking.openURL(url).catch(() => {
       showAlert('Error', 'Cannot open this file');
     });
