@@ -14,6 +14,7 @@ import db from '../db';
 import { config } from '../config';
 import { authenticate, validate, writeAuditLog } from '../middleware';
 import { logger } from '../logger';
+import { checkMemberLimit } from '../services/subscription.service';
 
 const router = Router();
 
@@ -112,26 +113,32 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
           .first();
 
         if (!existingMembership) {
-          await db('memberships').insert({
-            user_id: user.id,
-            organization_id: org.id,
-            role: 'member',
-            is_active: true,
-            joined_at: db.fn.now(),
-          });
-
-          // Add to general channel if it exists
-          const generalChannel = await db('channels')
-            .where({ organization_id: org.id, name: 'General' })
-            .first();
-          if (generalChannel) {
-            await db('channel_members').insert({
-              channel_id: generalChannel.id,
+          // Check member limit before auto-joining
+          const { allowed, current, max } = await checkMemberLimit(org.id);
+          if (!allowed) {
+            logger.warn(`User ${email} cannot auto-join org ${org.slug}: member limit reached (${current}/${max})`);
+          } else {
+            await db('memberships').insert({
               user_id: user.id,
-            }).onConflict(['channel_id', 'user_id']).ignore();
-          }
+              organization_id: org.id,
+              role: 'member',
+              is_active: true,
+              joined_at: db.fn.now(),
+            });
 
-          logger.info(`User ${email} auto-joined org ${org.slug}`);
+            // Add to general channel if it exists
+            const generalChannel = await db('channels')
+              .where({ organization_id: org.id, name: 'General' })
+              .first();
+            if (generalChannel) {
+              await db('channel_members').insert({
+                channel_id: generalChannel.id,
+                user_id: user.id,
+              }).onConflict(['channel_id', 'user_id']).ignore();
+            }
+
+            logger.info(`User ${email} auto-joined org ${org.slug}`);
+          }
         }
 
         // Load memberships
@@ -231,35 +238,40 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
       try {
         const defaultOrg = await db('organizations').orderBy('created_at', 'asc').first();
         if (defaultOrg) {
-          await db('memberships').insert({
-            user_id: user.id,
-            organization_id: defaultOrg.id,
-            role: 'member',
-            is_active: true,
-            joined_at: db.fn.now(),
-          });
-          // Add to general channel
-          const generalChannel = await db('channels')
-            .where({ organization_id: defaultOrg.id, name: 'General' })
-            .first();
-          if (generalChannel) {
-            await db('channel_members').insert({
-              channel_id: generalChannel.id,
+          const { allowed, current, max } = await checkMemberLimit(defaultOrg.id);
+          if (!allowed) {
+            logger.warn(`User ${email} cannot auto-join org ${defaultOrg.slug} on login: member limit reached (${current}/${max})`);
+          } else {
+            await db('memberships').insert({
               user_id: user.id,
-            }).onConflict(['channel_id', 'user_id']).ignore();
+              organization_id: defaultOrg.id,
+              role: 'member',
+              is_active: true,
+              joined_at: db.fn.now(),
+            });
+            // Add to general channel
+            const generalChannel = await db('channels')
+              .where({ organization_id: defaultOrg.id, name: 'General' })
+              .first();
+            if (generalChannel) {
+              await db('channel_members').insert({
+                channel_id: generalChannel.id,
+                user_id: user.id,
+              }).onConflict(['channel_id', 'user_id']).ignore();
+            }
+            logger.info(`User ${email} auto-joined default org ${defaultOrg.slug} on login`);
+            // Reload memberships
+            memberships = await db('memberships')
+              .join('organizations', 'memberships.organization_id', 'organizations.id')
+              .where({ 'memberships.user_id': user.id, 'memberships.is_active': true })
+              .select(
+                'memberships.id',
+                'memberships.role',
+                'organizations.id as organizationId',
+                'organizations.name as organizationName',
+                'organizations.slug as organizationSlug'
+              );
           }
-          logger.info(`User ${email} auto-joined default org ${defaultOrg.slug} on login`);
-          // Reload memberships
-          memberships = await db('memberships')
-            .join('organizations', 'memberships.organization_id', 'organizations.id')
-            .where({ 'memberships.user_id': user.id, 'memberships.is_active': true })
-            .select(
-              'memberships.id',
-              'memberships.role',
-              'organizations.id as organizationId',
-              'organizations.name as organizationName',
-              'organizations.slug as organizationSlug'
-            );
         }
       } catch (autoJoinErr) {
         logger.warn('Auto-join on login failed:', autoJoinErr);

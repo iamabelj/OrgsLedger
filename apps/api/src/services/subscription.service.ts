@@ -42,6 +42,18 @@ export function getPlanPrice(plan: any, currency: 'USD' | 'NGN', cycle: 'annual'
     : parseFloat(plan.price_usd_annual);
 }
 
+// ── Member Limit Check ────────────────────────────────────
+export async function checkMemberLimit(orgId: string): Promise<{ allowed: boolean; current: number; max: number }> {
+  const sub = await getOrgSubscription(orgId);
+  const maxMembers = sub?.plan?.max_members || 100;
+  const countResult = await db('memberships')
+    .where({ organization_id: orgId, is_active: true })
+    .count('id as count')
+    .first();
+  const current = parseInt(countResult?.count as string) || 0;
+  return { allowed: current < maxMembers, current, max: maxMembers };
+}
+
 // ── Subscriptions ─────────────────────────────────────────
 export async function getOrgSubscription(orgId: string) {
   const sub = await db('subscriptions')
@@ -507,15 +519,9 @@ export async function useInviteLink(code: string, userId: string) {
     await db('memberships').where({ id: existing.id }).update({ is_active: true, role: link.role });
   } else {
     // Check member limit
-    const sub = await getOrgSubscription(link.organization_id);
-    if (sub?.plan) {
-      const count = await db('memberships')
-        .where({ organization_id: link.organization_id, is_active: true })
-        .count('id as count')
-        .first();
-      if (parseInt(count?.count as string) >= sub.plan.max_members) {
-        return { valid: false, error: 'Organization has reached its member limit. Upgrade the plan.' };
-      }
+    const { allowed, current, max } = await checkMemberLimit(link.organization_id);
+    if (!allowed) {
+      return { valid: false, error: `Organization has reached its member limit (${current}/${max}). Upgrade the plan.` };
     }
 
     await db('memberships').insert({

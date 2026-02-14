@@ -27,6 +27,7 @@ import {
   getPlanPrice,
   getCurrency,
   createInviteLink,
+  checkMemberLimit,
 } from '../services/subscription.service';
 
 const router = Router();
@@ -386,13 +387,9 @@ router.post(
         await db('memberships').where({ id: existing.id }).update({ is_active: true, role: 'member' });
       } else {
         // Check member limit from subscription plan
-        const sub = await getOrgSubscription(orgId);
-        const maxMembers = sub?.plan?.max_members || 100;
-        const memberCount = await db('memberships')
-          .where({ organization_id: orgId, is_active: true })
-          .count('id as count').first();
-        if (parseInt(memberCount?.count as string) >= maxMembers) {
-          res.status(403).json({ success: false, error: 'Organization has reached its member limit. An admin needs to upgrade the plan.' });
+        const { allowed, current, max } = await checkMemberLimit(orgId);
+        if (!allowed) {
+          res.status(403).json({ success: false, error: `Organization has reached its member limit (${current}/${max}). An admin needs to upgrade the plan.` });
           return;
         }
 
@@ -543,15 +540,10 @@ router.post(
         // Reactivate
         await db('memberships').where({ id: existing.id }).update({ is_active: true, role });
       } else {
-        // Check member limit
-        const org = await db('organizations').where({ id: req.params.orgId }).first();
-        const settings = typeof org.settings === 'string' ? JSON.parse(org.settings) : org.settings;
-        const memberCount = await db('memberships')
-          .where({ organization_id: req.params.orgId, is_active: true })
-          .count('id as count')
-          .first();
-        if (parseInt(memberCount?.count as string) >= settings.maxMembers) {
-          res.status(403).json({ success: false, error: 'Member limit reached for this license' });
+        // Check member limit from subscription plan
+        const { allowed, current, max } = await checkMemberLimit(req.params.orgId);
+        if (!allowed) {
+          res.status(403).json({ success: false, error: `Organization has reached its member limit (${current}/${max}). Upgrade the plan to add more members.` });
           return;
         }
 

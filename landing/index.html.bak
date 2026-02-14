@@ -1,0 +1,1553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OrgsLedger — The Operational Hub for Organizations, Clubs &amp; Communities</title>
+  <meta name="description" content="OrgsLedger is an all-in-one platform for managing associations, organizations, clubs, and communities. Finance, communication, meetings, AI insights — all in one place." />
+  <meta name="keywords" content="organization management, club management, association management, community platform, dues collection, meeting management, AI insights" />
+  <meta property="og:title" content="OrgsLedger — Smart Organization Management" />
+  <meta property="og:description" content="All-in-one platform for managing associations, clubs, and communities." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://orgsledger.com" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Reset & Base ───────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --primary-light: #3b82f6;
+      --accent: #06d6a0;
+      --accent-dark: #05c090;
+      --dark: #0f172a;
+      --dark-card: #1e293b;
+      --dark-border: #334155;
+      --gray-50: #f8fafc;
+      --gray-100: #f1f5f9;
+      --gray-200: #e2e8f0;
+      --gray-300: #cbd5e1;
+      --gray-400: #94a3b8;
+      --gray-500: #64748b;
+      --gray-600: #475569;
+      --gray-700: #334155;
+      --gray-800: #1e293b;
+      --gray-900: #0f172a;
+      --white: #ffffff;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --success: #10b981;
+      --gradient-1: linear-gradient(135deg, #2563eb 0%, #06d6a0 100%);
+      --gradient-2: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      --gradient-hero: linear-gradient(160deg, #0f172a 0%, #1e293b 40%, #0f172a 100%);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+      --shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+      --shadow-md: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1);
+      --shadow-lg: 0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1);
+      --shadow-xl: 0 25px 50px -12px rgba(0,0,0,0.25);
+      --radius: 12px;
+      --radius-lg: 20px;
+      --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    html { scroll-behavior: smooth; font-size: 16px; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--gray-800);
+      line-height: 1.7;
+      background: var(--white);
+      overflow-x: hidden;
+    }
+    h1, h2, h3, h4, h5 { font-family: 'Space Grotesk', 'Inter', sans-serif; line-height: 1.2; }
+    a { text-decoration: none; color: inherit; }
+    img { max-width: 100%; height: auto; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+
+    /* ── Animations ─────────────────────────────────────── */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(40px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 0 20px rgba(37,99,235,0.3); }
+      50% { box-shadow: 0 0 40px rgba(37,99,235,0.5); }
+    }
+    @keyframes slideInLeft {
+      from { opacity: 0; transform: translateX(-60px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes slideInRight {
+      from { opacity: 0; transform: translateX(60px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes counter-up {
+      from { opacity: 0; transform: scale(0.5); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .animate-on-scroll { opacity: 0; transform: translateY(30px); transition: opacity 0.7s ease, transform 0.7s ease; }
+    .animate-on-scroll.visible { opacity: 1; transform: translateY(0); }
+    .stagger-1 { transition-delay: 0.1s; }
+    .stagger-2 { transition-delay: 0.2s; }
+    .stagger-3 { transition-delay: 0.3s; }
+    .stagger-4 { transition-delay: 0.4s; }
+
+    /* ── Navigation ─────────────────────────────────────── */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      padding: 16px 0;
+      transition: var(--transition);
+      background: transparent;
+    }
+    .navbar.scrolled {
+      background: rgba(15,23,42,0.95);
+      backdrop-filter: blur(20px);
+      padding: 10px 0;
+      box-shadow: 0 4px 30px rgba(0,0,0,0.2);
+    }
+    .nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      max-width: 1200px; margin: 0 auto; padding: 0 24px;
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 10px;
+      font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1.5rem; color: var(--white);
+    }
+    .nav-logo-icon {
+      width: 40px; height: 40px; background: var(--gradient-1); border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem; font-weight: 800; color: var(--white);
+    }
+    .nav-links { display: flex; align-items: center; gap: 32px; list-style: none; }
+    .nav-links a {
+      color: var(--gray-300); font-size: 0.95rem; font-weight: 500;
+      transition: var(--transition); position: relative;
+    }
+    .nav-links a:hover { color: var(--white); }
+    .nav-links a::after {
+      content: ''; position: absolute; bottom: -4px; left: 0; width: 0; height: 2px;
+      background: var(--accent); transition: width 0.3s ease;
+    }
+    .nav-links a:hover::after { width: 100%; }
+    .nav-cta {
+      background: var(--gradient-1); color: var(--white) !important;
+      padding: 10px 24px; border-radius: 50px; font-weight: 600;
+      transition: var(--transition); border: none; cursor: pointer;
+    }
+    .nav-cta:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(37,99,235,0.4); }
+    .nav-cta::after { display: none !important; }
+    .mobile-toggle { display: none; background: none; border: none; cursor: pointer; padding: 8px; }
+    .mobile-toggle span {
+      display: block; width: 24px; height: 2px; background: var(--white);
+      margin: 6px 0; transition: var(--transition); border-radius: 2px;
+    }
+    .mobile-toggle.active span:nth-child(1) { transform: rotate(45deg) translate(5px, 6px); }
+    .mobile-toggle.active span:nth-child(2) { opacity: 0; }
+    .mobile-toggle.active span:nth-child(3) { transform: rotate(-45deg) translate(5px, -6px); }
+
+    /* ── Hero Section ───────────────────────────────────── */
+    .hero {
+      background: var(--gradient-hero); min-height: 100vh;
+      display: flex; align-items: center; position: relative; overflow: hidden;
+      padding: 120px 0 80px;
+    }
+    .hero::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background:
+        radial-gradient(circle at 20% 50%, rgba(37,99,235,0.15) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(6,214,160,0.1) 0%, transparent 40%),
+        radial-gradient(circle at 60% 80%, rgba(37,99,235,0.08) 0%, transparent 40%);
+    }
+    .hero-grid-bg {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0; opacity: 0.03;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px);
+      background-size: 60px 60px;
+    }
+    .hero-content { position: relative; z-index: 2; text-align: center; max-width: 860px; margin: 0 auto; }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.3);
+      padding: 8px 20px; border-radius: 50px; font-size: 0.85rem; font-weight: 600;
+      color: var(--primary-light); margin-bottom: 28px;
+      animation: fadeIn 0.8s ease forwards;
+    }
+    .hero-badge-dot { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; animation: pulse-glow 2s infinite; }
+    .hero h1 {
+      font-size: clamp(2.5rem, 6vw, 4.2rem); font-weight: 800; color: var(--white);
+      margin-bottom: 24px; letter-spacing: -0.02em;
+      animation: fadeInUp 0.8s ease forwards; animation-delay: 0.2s; opacity: 0;
+    }
+    .hero h1 span { background: var(--gradient-1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .hero p {
+      font-size: 1.2rem; color: var(--gray-400); margin-bottom: 40px; max-width: 640px; margin-left: auto; margin-right: auto;
+      animation: fadeInUp 0.8s ease forwards; animation-delay: 0.4s; opacity: 0;
+    }
+    .hero-actions {
+      display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;
+      animation: fadeInUp 0.8s ease forwards; animation-delay: 0.6s; opacity: 0;
+    }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 16px 32px; border-radius: 50px; font-weight: 600; font-size: 1rem;
+      cursor: pointer; border: none; transition: var(--transition); font-family: inherit;
+    }
+    .btn-primary {
+      background: var(--gradient-1); color: var(--white);
+      box-shadow: 0 4px 15px rgba(37,99,235,0.4);
+    }
+    .btn-primary:hover { transform: translateY(-3px); box-shadow: 0 8px 30px rgba(37,99,235,0.5); }
+    .btn-outline {
+      background: transparent; color: var(--white);
+      border: 2px solid var(--gray-600);
+    }
+    .btn-outline:hover { border-color: var(--white); transform: translateY(-3px); }
+    .btn-accent { background: var(--accent); color: var(--dark); font-weight: 700; }
+    .btn-accent:hover { background: var(--accent-dark); transform: translateY(-3px); box-shadow: 0 8px 30px rgba(6,214,160,0.4); }
+    .btn-whatsapp { background: #25d366; color: var(--white); }
+    .btn-whatsapp:hover { background: #1fb855; transform: translateY(-3px); box-shadow: 0 8px 30px rgba(37,211,102,0.4); }
+    .hero-stats {
+      display: flex; justify-content: center; gap: 48px; margin-top: 64px;
+      animation: fadeInUp 0.8s ease forwards; animation-delay: 0.8s; opacity: 0;
+    }
+    .hero-stat { text-align: center; }
+    .hero-stat-value { font-family: 'Space Grotesk', sans-serif; font-size: 2.2rem; font-weight: 700; color: var(--white); }
+    .hero-stat-label { font-size: 0.85rem; color: var(--gray-500); margin-top: 4px; }
+
+    /* ── Trusted By ─────────────────────────────────────── */
+    .trusted {
+      background: var(--gray-50); padding: 48px 0; border-bottom: 1px solid var(--gray-200);
+    }
+    .trusted p { text-align: center; font-size: 0.85rem; color: var(--gray-500); text-transform: uppercase; letter-spacing: 2px; font-weight: 600; margin-bottom: 24px; }
+    .trusted-logos {
+      display: flex; justify-content: center; align-items: center; gap: 48px; flex-wrap: wrap; opacity: 0.4;
+      font-family: 'Space Grotesk', sans-serif; font-size: 1.3rem; font-weight: 700; color: var(--gray-500);
+    }
+
+    /* ── Section Styles ─────────────────────────────────── */
+    .section { padding: 100px 0; }
+    .section-dark { background: var(--gradient-2); color: var(--white); }
+    .section-gray { background: var(--gray-50); }
+    .section-header { text-align: center; max-width: 680px; margin: 0 auto 64px; }
+    .section-label {
+      display: inline-block; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 3px;
+      color: var(--primary); margin-bottom: 16px;
+    }
+    .section-dark .section-label { color: var(--accent); }
+    .section-header h2 { font-size: clamp(2rem, 4vw, 2.8rem); font-weight: 800; margin-bottom: 16px; letter-spacing: -0.02em; }
+    .section-header p { font-size: 1.1rem; color: var(--gray-500); }
+    .section-dark .section-header p { color: var(--gray-400); }
+
+    /* ── Features Grid ──────────────────────────────────── */
+    .features-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 24px;
+    }
+    .feature-card {
+      background: var(--white); border: 1px solid var(--gray-200);
+      padding: 36px; border-radius: var(--radius-lg);
+      transition: var(--transition); position: relative; overflow: hidden;
+    }
+    .feature-card:hover { transform: translateY(-6px); box-shadow: var(--shadow-lg); border-color: var(--primary-light); }
+    .feature-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: var(--gradient-1); transform: scaleX(0); transition: transform 0.3s ease; transform-origin: left;
+    }
+    .feature-card:hover::before { transform: scaleX(1); }
+    .feature-icon {
+      width: 56px; height: 56px; border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.6rem; margin-bottom: 20px;
+    }
+    .feature-icon-blue { background: rgba(37,99,235,0.1); color: var(--primary); }
+    .feature-icon-green { background: rgba(6,214,160,0.1); color: var(--accent-dark); }
+    .feature-icon-amber { background: rgba(245,158,11,0.1); color: var(--warning); }
+    .feature-icon-red { background: rgba(239,68,68,0.1); color: var(--danger); }
+    .feature-card h3 { font-size: 1.2rem; font-weight: 700; margin-bottom: 10px; color: var(--gray-900); }
+    .feature-card p { font-size: 0.95rem; color: var(--gray-500); line-height: 1.7; }
+
+    /* ── How It Works ───────────────────────────────────── */
+    .steps { display: flex; gap: 0; position: relative; justify-content: center; flex-wrap: wrap; }
+    .step {
+      flex: 1; min-width: 220px; max-width: 280px; text-align: center; padding: 32px 20px; position: relative;
+    }
+    .step-number {
+      width: 64px; height: 64px; border-radius: 50%; background: var(--gradient-1);
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Space Grotesk', sans-serif; font-size: 1.5rem; font-weight: 700; color: var(--white);
+      margin: 0 auto 20px; position: relative; z-index: 2;
+    }
+    .step h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; }
+    .step p { font-size: 0.9rem; color: var(--gray-500); }
+    .section-dark .step p { color: var(--gray-400); }
+
+    /* ── Product Pricing ────────────────────────────────── */
+    .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 28px; max-width: 1100px; margin: 0 auto; }
+    .pricing-card {
+      background: var(--white); border: 2px solid var(--gray-200);
+      border-radius: var(--radius-lg); padding: 40px 32px;
+      transition: var(--transition); position: relative; overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+    .pricing-card:hover { transform: translateY(-8px); box-shadow: var(--shadow-xl); }
+    .pricing-card.featured {
+      border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary), var(--shadow-lg);
+    }
+    .pricing-card.featured::before {
+      content: 'MOST POPULAR'; position: absolute; top: 20px; right: -30px;
+      background: var(--gradient-1); color: var(--white);
+      padding: 6px 40px; font-size: 0.7rem; font-weight: 700; letter-spacing: 1px;
+      transform: rotate(45deg);
+    }
+    .pricing-platform {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px;
+      color: var(--primary); margin-bottom: 16px;
+    }
+    .pricing-card h3 { font-size: 1.4rem; font-weight: 800; margin-bottom: 8px; color: var(--gray-900); }
+    .pricing-amount {
+      font-family: 'Space Grotesk', sans-serif; font-size: 2.4rem; font-weight: 800;
+      color: var(--gray-900); margin-bottom: 4px;
+    }
+    .pricing-amount small { font-size: 1rem; font-weight: 500; color: var(--gray-500); }
+    .pricing-note { font-size: 0.85rem; color: var(--gray-500); margin-bottom: 24px; }
+    .pricing-features { list-style: none; margin-bottom: 32px; flex: 1; }
+    .pricing-features li {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 8px 0; font-size: 0.95rem; color: var(--gray-600);
+    }
+    .pricing-features li::before { content: '✓'; color: var(--accent-dark); font-weight: 700; margin-top: 1px; }
+    .pricing-btn {
+      width: 100%; padding: 16px; border-radius: 12px; font-weight: 700; font-size: 1rem;
+      text-align: center; cursor: pointer; border: none; transition: var(--transition); font-family: inherit;
+    }
+    .pricing-btn-primary { background: var(--gradient-1); color: var(--white); }
+    .pricing-btn-primary:hover { box-shadow: 0 8px 25px rgba(37,99,235,0.4); transform: translateY(-2px); }
+    .pricing-btn-outline { background: var(--white); color: var(--primary); border: 2px solid var(--primary); }
+    .pricing-btn-outline:hover { background: var(--primary); color: var(--white); transform: translateY(-2px); }
+    .pricing-btn.in-cart { background: var(--accent) !important; color: var(--dark) !important; border-color: var(--accent) !important; }
+
+    /* ── Bundle Banner ──────────────────────────────────── */
+    .bundle-banner {
+      background: var(--gradient-1); border-radius: var(--radius-lg);
+      padding: 40px; text-align: center; margin-top: 48px; color: var(--white);
+      position: relative; overflow: hidden;
+    }
+    .bundle-banner::before {
+      content: ''; position: absolute; top: -50%; right: -20%; width: 300px; height: 300px;
+      background: rgba(255,255,255,0.08); border-radius: 50%;
+    }
+    .bundle-banner h3 { font-size: 1.8rem; font-weight: 800; margin-bottom: 8px; position: relative; }
+    .bundle-banner p { font-size: 1.1rem; opacity: 0.9; margin-bottom: 8px; position: relative; }
+    .bundle-banner .bundle-price {
+      font-family: 'Space Grotesk', sans-serif; font-size: 2.2rem; font-weight: 800; margin-bottom: 20px; position: relative;
+    }
+    .bundle-banner .bundle-price .original { text-decoration: line-through; opacity: 0.6; font-size: 1.4rem; margin-right: 12px; }
+
+    /* ── AI Pricing Calculator ──────────────────────────── */
+    .ai-section { background: var(--gradient-2); }
+    .ai-card {
+      background: rgba(255,255,255,0.05); border: 1px solid var(--dark-border);
+      border-radius: var(--radius-lg); padding: 48px; max-width: 800px; margin: 0 auto;
+    }
+    .ai-plans { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 40px; }
+    .ai-plan {
+      background: rgba(255,255,255,0.05); border: 2px solid var(--dark-border);
+      border-radius: var(--radius); padding: 28px; text-align: center; transition: var(--transition); cursor: pointer;
+    }
+    .ai-plan:hover, .ai-plan.active { border-color: var(--accent); background: rgba(6,214,160,0.05); }
+    .ai-plan h4 { font-size: 1.2rem; font-weight: 700; margin-bottom: 4px; color: var(--white); }
+    .ai-plan .plan-price { font-family: 'Space Grotesk'; font-size: 1.6rem; font-weight: 700; color: var(--accent); margin-bottom: 12px; }
+    .ai-plan ul { list-style: none; text-align: left; }
+    .ai-plan ul li { padding: 4px 0; font-size: 0.9rem; color: var(--gray-400); display: flex; align-items: center; gap: 8px; }
+    .ai-plan ul li::before { content: '✓'; color: var(--accent); font-weight: 700; }
+
+    .calculator {
+      background: rgba(255,255,255,0.03); border: 1px solid var(--dark-border);
+      border-radius: var(--radius); padding: 32px;
+    }
+    .calculator h4 { font-size: 1.2rem; font-weight: 700; color: var(--white); margin-bottom: 20px; text-align: center; }
+    .calc-row { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+    .calc-label { font-size: 0.95rem; color: var(--gray-400); min-width: 200px; }
+    .calc-slider { flex: 1; min-width: 200px; }
+    .calc-slider input[type="range"] {
+      width: 100%; height: 6px; border-radius: 3px; outline: none; cursor: pointer;
+      -webkit-appearance: none; background: var(--dark-border);
+    }
+    .calc-slider input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%;
+      background: var(--accent); cursor: pointer; box-shadow: 0 2px 8px rgba(6,214,160,0.4);
+    }
+    .calc-value {
+      font-family: 'Space Grotesk'; font-size: 1.1rem; font-weight: 700;
+      color: var(--accent); min-width: 80px; text-align: right;
+    }
+    .calc-result {
+      text-align: center; margin-top: 28px; padding: 24px;
+      background: rgba(6,214,160,0.08); border: 1px solid rgba(6,214,160,0.2);
+      border-radius: var(--radius);
+    }
+    .calc-result p { font-size: 0.95rem; color: var(--gray-400); margin-bottom: 8px; }
+    .calc-result .total {
+      font-family: 'Space Grotesk'; font-size: 2.4rem; font-weight: 800; color: var(--accent);
+    }
+    .calc-result .total small { font-size: 1rem; color: var(--gray-500); font-weight: 500; }
+
+    /* ── Testimonials ───────────────────────────────────── */
+    .testimonial-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; }
+    .testimonial-card {
+      background: var(--white); border: 1px solid var(--gray-200);
+      padding: 32px; border-radius: var(--radius-lg);
+    }
+    .testimonial-stars { color: var(--warning); font-size: 1.1rem; margin-bottom: 16px; letter-spacing: 2px; }
+    .testimonial-card blockquote { font-size: 1rem; color: var(--gray-600); margin-bottom: 20px; line-height: 1.8; font-style: italic; }
+    .testimonial-author { display: flex; align-items: center; gap: 12px; }
+    .testimonial-avatar {
+      width: 44px; height: 44px; border-radius: 50%; background: var(--gradient-1);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; color: var(--white); font-size: 1rem;
+    }
+    .testimonial-name { font-weight: 700; font-size: 0.95rem; color: var(--gray-900); }
+    .testimonial-role { font-size: 0.8rem; color: var(--gray-500); }
+
+    /* ── FAQ ─────────────────────────────────────────────── */
+    .faq-list { max-width: 780px; margin: 0 auto; }
+    .faq-item {
+      border: 1px solid var(--gray-200); border-radius: var(--radius);
+      margin-bottom: 12px; overflow: hidden; transition: var(--transition);
+    }
+    .faq-item:hover { border-color: var(--primary-light); }
+    .faq-question {
+      width: 100%; padding: 20px 24px; background: var(--white);
+      border: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+      font-size: 1rem; font-weight: 600; color: var(--gray-800);
+      font-family: inherit; text-align: left;
+    }
+    .faq-question .faq-icon { font-size: 1.4rem; color: var(--primary); transition: transform 0.3s ease; font-weight: 300; }
+    .faq-item.open .faq-icon { transform: rotate(45deg); }
+    .faq-answer {
+      max-height: 0; overflow: hidden; transition: max-height 0.4s ease;
+      background: var(--gray-50);
+    }
+    .faq-answer-inner { padding: 0 24px 20px; font-size: 0.95rem; color: var(--gray-600); line-height: 1.8; }
+    .faq-item.open .faq-answer { max-height: 400px; }
+
+    /* ── CTA Section ────────────────────────────────────── */
+    .cta-section {
+      background: var(--gradient-hero); padding: 100px 0; text-align: center;
+      position: relative; overflow: hidden;
+    }
+    .cta-section::before {
+      content: ''; position: absolute; inset: 0;
+      background:
+        radial-gradient(circle at 30% 50%, rgba(37,99,235,0.2) 0%, transparent 50%),
+        radial-gradient(circle at 70% 50%, rgba(6,214,160,0.15) 0%, transparent 50%);
+    }
+    .cta-section h2 {
+      font-size: clamp(2rem, 4vw, 3rem); font-weight: 800; color: var(--white); margin-bottom: 16px;
+      position: relative;
+    }
+    .cta-section p { font-size: 1.1rem; color: var(--gray-400); margin-bottom: 40px; max-width: 600px; margin-left: auto; margin-right: auto; position: relative; }
+    .cta-actions { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; position: relative; }
+
+    /* ── Contact ─────────────────────────────────────────── */
+    .contact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 28px; max-width: 900px; margin: 0 auto; }
+    .contact-card {
+      background: var(--white); border: 1px solid var(--gray-200);
+      padding: 36px; border-radius: var(--radius-lg); text-align: center;
+      transition: var(--transition);
+    }
+    .contact-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+    .contact-icon { font-size: 2.4rem; margin-bottom: 16px; }
+    .contact-card h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; color: var(--gray-900); }
+    .contact-card p { font-size: 0.95rem; color: var(--gray-500); margin-bottom: 16px; }
+    .contact-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--primary); font-weight: 600; font-size: 0.95rem;
+      transition: var(--transition);
+    }
+    .contact-link:hover { color: var(--primary-dark); gap: 10px; }
+
+    /* ── Footer ──────────────────────────────────────────── */
+    .footer {
+      background: var(--dark); color: var(--gray-400); padding: 64px 0 32px;
+      border-top: 1px solid var(--dark-border);
+    }
+    .footer-grid {
+      display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 40px;
+      margin-bottom: 48px;
+    }
+    .footer-brand p { font-size: 0.9rem; line-height: 1.8; margin-top: 16px; }
+    .footer-col h4 {
+      font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px;
+      color: var(--gray-300); margin-bottom: 20px;
+    }
+    .footer-col ul { list-style: none; }
+    .footer-col ul li { margin-bottom: 10px; }
+    .footer-col ul li a { color: var(--gray-500); font-size: 0.9rem; transition: var(--transition); }
+    .footer-col ul li a:hover { color: var(--white); padding-left: 4px; }
+    .footer-bottom {
+      border-top: 1px solid var(--dark-border); padding-top: 24px;
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;
+    }
+    .footer-bottom p { font-size: 0.85rem; color: var(--gray-600); }
+
+    /* ── Floating Cart ──────────────────────────────────── */
+    .cart-fab {
+      position: fixed; bottom: 32px; right: 32px; z-index: 999;
+      width: 64px; height: 64px; border-radius: 50%;
+      background: var(--gradient-1); color: var(--white);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; border: none; font-size: 1.5rem;
+      box-shadow: 0 8px 30px rgba(37,99,235,0.5);
+      transition: var(--transition);
+      opacity: 0; pointer-events: none; transform: scale(0.8);
+    }
+    .cart-fab.visible { opacity: 1; pointer-events: auto; transform: scale(1); }
+    .cart-fab:hover { transform: scale(1.1); }
+    .cart-badge {
+      position: absolute; top: -4px; right: -4px;
+      width: 24px; height: 24px; border-radius: 50%;
+      background: var(--danger); color: var(--white);
+      font-size: 0.75rem; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    /* ── Cart Drawer ────────────────────────────────────── */
+    .cart-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      z-index: 1001; opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+      backdrop-filter: blur(4px);
+    }
+    .cart-overlay.open { opacity: 1; pointer-events: auto; }
+    .cart-drawer {
+      position: fixed; top: 0; right: -420px; width: 400px; max-width: 100vw;
+      height: 100vh; background: var(--white); z-index: 1002;
+      transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex; flex-direction: column;
+      box-shadow: -8px 0 30px rgba(0,0,0,0.15);
+    }
+    .cart-drawer.open { right: 0; }
+    .cart-drawer-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 24px; border-bottom: 1px solid var(--gray-200);
+    }
+    .cart-drawer-header h3 { font-size: 1.2rem; font-weight: 700; }
+    .cart-close {
+      width: 36px; height: 36px; border-radius: 50%; background: var(--gray-100);
+      border: none; cursor: pointer; font-size: 1.2rem; color: var(--gray-600);
+      display: flex; align-items: center; justify-content: center; transition: var(--transition);
+    }
+    .cart-close:hover { background: var(--gray-200); }
+    .cart-items { flex: 1; overflow-y: auto; padding: 24px; }
+    .cart-empty { text-align: center; color: var(--gray-500); padding: 40px 0; }
+    .cart-empty span { font-size: 3rem; display: block; margin-bottom: 12px; }
+    .cart-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px; background: var(--gray-50); border-radius: var(--radius);
+      margin-bottom: 12px;
+    }
+    .cart-item-info h4 { font-size: 0.95rem; font-weight: 700; color: var(--gray-900); }
+    .cart-item-info p { font-size: 0.85rem; color: var(--gray-500); }
+    .cart-item-remove {
+      background: none; border: none; color: var(--danger); cursor: pointer;
+      font-size: 1.1rem; padding: 4px 8px; border-radius: 6px; transition: var(--transition);
+    }
+    .cart-item-remove:hover { background: rgba(239,68,68,0.1); }
+    .cart-footer { padding: 24px; border-top: 1px solid var(--gray-200); }
+    .cart-total {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 16px; font-size: 1.1rem; font-weight: 700; color: var(--gray-900);
+    }
+    .cart-total span:last-child { font-family: 'Space Grotesk'; font-size: 1.4rem; color: var(--primary); }
+    .cart-checkout {
+      width: 100%; padding: 16px; border-radius: 12px; border: none;
+      background: #25d366; color: var(--white); font-size: 1rem; font-weight: 700;
+      cursor: pointer; font-family: inherit; transition: var(--transition);
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .cart-checkout:hover { background: #1fb855; transform: translateY(-2px); box-shadow: 0 8px 25px rgba(37,211,102,0.4); }
+
+    /* ── Responsive ──────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .nav-links { display: none; position: absolute; top: 100%; left: 0; right: 0;
+        background: rgba(15,23,42,0.98); backdrop-filter: blur(20px);
+        flex-direction: column; padding: 24px; gap: 20px;
+      }
+      .nav-links.open { display: flex; }
+      .mobile-toggle { display: block; }
+      .hero-stats { gap: 24px; }
+      .hero-stat-value { font-size: 1.6rem; }
+      .features-grid { grid-template-columns: 1fr; }
+      .pricing-grid { grid-template-columns: 1fr; max-width: 420px; margin: 0 auto; }
+      .ai-plans { grid-template-columns: 1fr; }
+      .footer-grid { grid-template-columns: 1fr 1fr; }
+      .steps { flex-direction: column; align-items: center; }
+      .calc-row { flex-direction: column; align-items: stretch; }
+      .calc-label { min-width: auto; }
+      .calc-value { text-align: left; }
+    }
+    @media (max-width: 480px) {
+      .hero h1 { font-size: 2rem; }
+      .hero-actions { flex-direction: column; align-items: center; }
+      .btn { width: 100%; justify-content: center; }
+      .pricing-amount { font-size: 1.8rem; }
+      .footer-grid { grid-template-columns: 1fr; }
+      .trusted-logos { gap: 24px; font-size: 1rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════
+     NAVIGATION
+     ═══════════════════════════════════════════════════════ -->
+<nav class="navbar" id="navbar">
+  <div class="nav-inner">
+    <a href="#" class="nav-logo">
+      <div class="nav-logo-icon">OL</div>
+      OrgsLedger
+    </a>
+    <ul class="nav-links" id="navLinks">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#pricing">Pricing</a></li>
+      <li><a href="#testimonials">Reviews</a></li>
+      <li><a href="#faq">FAQ</a></li>
+      <li><a href="#contact">Contact</a></li>
+      <li><button onclick="toggleCurrency()" class="nav-cta" id="currencyToggle" style="font-size:0.85rem;padding:8px 16px;">🌍 NGN ↔ USD</button></li>
+      <li><a href="https://app.orgsledger.com" class="nav-cta">Launch App →</a></li>
+    </ul>
+    <button class="mobile-toggle" id="mobileToggle" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════
+     HERO
+     ═══════════════════════════════════════════════════════ -->
+<section class="hero" id="hero">
+  <div class="hero-grid-bg"></div>
+  <div class="container">
+    <div class="hero-content">
+      <div class="hero-badge">
+        <span class="hero-badge-dot"></span>
+        Now Live — AI-Powered Organization Management
+      </div>
+      <h1>The <span>Smart Operational Hub</span> for Organizations &amp; Communities</h1>
+      <p>Finance management, real-time communication, meeting scheduling, AI-powered insights, and everything your organization needs — unified in one powerful platform.</p>
+      <div class="hero-actions">
+        <a href="#pricing" class="btn btn-primary">View Pricing ↓</a>
+        <a href="https://app.orgsledger.com" class="btn btn-outline">Try Live Demo →</a>
+      </div>
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <div class="hero-stat-value">15+</div>
+          <div class="hero-stat-label">Core Modules</div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-value">AI</div>
+          <div class="hero-stat-label">Powered Insights</div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-value">3</div>
+          <div class="hero-stat-label">Platforms</div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-value">99.9%</div>
+          <div class="hero-stat-label">Uptime</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     TRUSTED BY
+     ═══════════════════════════════════════════════════════ -->
+<section class="trusted">
+  <div class="container">
+    <p>Built for Modern Organizations</p>
+    <div class="trusted-logos">
+      <span>Alumni Associations</span>
+      <span>Social Clubs</span>
+      <span>Religious Bodies</span>
+      <span>NGOs</span>
+      <span>Communities</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     FEATURES
+     ═══════════════════════════════════════════════════════ -->
+<section class="section section-gray" id="features">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <span class="section-label">Features</span>
+      <h2>Everything Your Organization Needs, All in One Place</h2>
+      <p>From financial tracking to AI-powered meeting summaries — OrgsLedger replaces a dozen tools with one streamlined platform.</p>
+    </div>
+
+    <div class="features-grid">
+      <div class="feature-card animate-on-scroll stagger-1">
+        <div class="feature-icon feature-icon-blue">💰</div>
+        <h3>Financial Management</h3>
+        <p>Track dues, levies, donations, and expenses. Automated recurring billing, payment integration with Paystack &amp; Flutterwave, and real-time financial dashboards.</p>
+      </div>
+      <div class="feature-card animate-on-scroll stagger-2">
+        <div class="feature-icon feature-icon-green">💬</div>
+        <h3>Real-Time Chat &amp; Channels</h3>
+        <p>Dedicated chat channels, direct messages, read receipts, and file sharing. Built with Socket.io for instant, real-time communication.</p>
+      </div>
+      <div class="feature-card animate-on-scroll stagger-3">
+        <div class="feature-icon feature-icon-amber">📅</div>
+        <h3>Meeting Scheduler</h3>
+        <p>Schedule meetings, send automatic reminders, track attendance, and generate AI-powered meeting minutes from audio recordings.</p>
+      </div>
+      <div class="feature-card animate-on-scroll stagger-1">
+        <div class="feature-icon feature-icon-red">🤖</div>
+        <h3>AI-Powered Insights</h3>
+        <p>GPT-4o integration for meeting summaries, financial analysis, speech-to-text transcription, and intelligent document generation.</p>
+      </div>
+      <div class="feature-card animate-on-scroll stagger-2">
+        <div class="feature-icon feature-icon-blue">📊</div>
+        <h3>Analytics &amp; Reports</h3>
+        <p>Revenue breakdowns, member activity trends, payment analytics, and exportable reports. Data-driven decisions at your fingertips.</p>
+      </div>
+      <div class="feature-card animate-on-scroll stagger-3">
+        <div class="feature-icon feature-icon-green">👥</div>
+        <h3>Member Management</h3>
+        <p>Role-based access control, committee management, member profiles, activity tracking, and hierarchical permissions.</p>
+      </div>
+      <div class="feature-card animate-on-scroll stagger-1">
+        <div class="feature-icon feature-icon-amber">📢</div>
+        <h3>Announcements &amp; Events</h3>
+        <p>Organization-wide announcements, event scheduling with RSVP tracking, push notifications, and email alerts.</p>
+      </div>
+      <div class="feature-card animate-on-scroll stagger-2">
+        <div class="feature-icon feature-icon-red">🗳️</div>
+        <h3>Polls &amp; Voting</h3>
+        <p>Create polls, conduct elections, and gather member opinions. Real-time results with anonymous voting options.</p>
+      </div>
+      <div class="feature-card animate-on-scroll stagger-3">
+        <div class="feature-icon feature-icon-blue">📁</div>
+        <h3>Document Vault</h3>
+        <p>Secure document storage, file sharing, version control, and organizing important files by categories and access levels.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     HOW IT WORKS
+     ═══════════════════════════════════════════════════════ -->
+<section class="section section-dark">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <span class="section-label">How It Works</span>
+      <h2>Get Started in Minutes</h2>
+      <p>From purchase to deployment — we've made the process seamless.</p>
+    </div>
+    <div class="steps">
+      <div class="step animate-on-scroll stagger-1">
+        <div class="step-number">1</div>
+        <h3>Choose Your Plan</h3>
+        <p>Select Web, Android, iOS — or get all three at a discounted bundle price.</p>
+      </div>
+      <div class="step animate-on-scroll stagger-2">
+        <div class="step-number">2</div>
+        <h3>We Deploy For You</h3>
+        <p>Our team handles setup, deployment, and configuration on your domain or server.</p>
+      </div>
+      <div class="step animate-on-scroll stagger-3">
+        <div class="step-number">3</div>
+        <h3>Customize &amp; Brand</h3>
+        <p>Add your organization's logos, colors, and configure features to match your needs.</p>
+      </div>
+      <div class="step animate-on-scroll stagger-4">
+        <div class="step-number">4</div>
+        <h3>Go Live</h3>
+        <p>Invite members, start managing finances, and let AI supercharge your operations.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     PRODUCT PRICING
+     ═══════════════════════════════════════════════════════ -->
+<section class="section" id="pricing">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <span class="section-label">Pricing</span>
+      <h2>Choose Your Platform</h2>
+      <p>Get OrgsLedger on the platforms your organization needs. One-time license fee — own it forever.</p>
+      <p id="currency-notice" style="font-size:0.85rem;color:var(--primary);font-weight:600;margin-top:8px;"></p>
+    </div>
+
+    <div class="pricing-grid">
+      <!-- Web -->
+      <div class="pricing-card animate-on-scroll stagger-1">
+        <span class="pricing-platform">🌐 WEB APPLICATION</span>
+        <h3>OrgsLedger Web</h3>
+        <div class="pricing-amount price-display" data-ngn="1500000" data-usd="1000">₦1,500,000</div>
+        <p class="pricing-note">One-time payment • Lifetime license</p>
+        <ul class="pricing-features">
+          <li>Full-featured web dashboard</li>
+          <li>Responsive design — works on all devices</li>
+          <li>Real-time chat &amp; notifications</li>
+          <li>Financial management &amp; reports</li>
+          <li>Meeting scheduler &amp; minutes</li>
+          <li>Document management</li>
+          <li>Analytics dashboard</li>
+          <li>Deployment &amp; setup included</li>
+          <li>3 months free support</li>
+        </ul>
+        <button class="pricing-btn pricing-btn-outline" data-product="web" data-name="OrgsLedger Web" data-price-ngn="1500000" data-price-usd="1000" onclick="toggleCart(this)">Add to Cart</button>
+      </div>
+
+      <!-- Android -->
+      <div class="pricing-card featured animate-on-scroll stagger-2">
+        <span class="pricing-platform">📱 ANDROID APP</span>
+        <h3>OrgsLedger Android</h3>
+        <div class="pricing-amount price-display" data-ngn="1200000" data-usd="800">₦1,200,000</div>
+        <p class="pricing-note">One-time payment • Lifetime license</p>
+        <ul class="pricing-features">
+          <li>Native Android application</li>
+          <li>Push notifications</li>
+          <li>Offline-capable architecture</li>
+          <li>Camera &amp; audio integration</li>
+          <li>Real-time chat &amp; messaging</li>
+          <li>Financial tracking on mobile</li>
+          <li>Meeting management</li>
+          <li>Play Store publishing support</li>
+          <li>3 months free support</li>
+        </ul>
+        <button class="pricing-btn pricing-btn-primary" data-product="android" data-name="OrgsLedger Android" data-price-ngn="1200000" data-price-usd="800" onclick="toggleCart(this)">Add to Cart</button>
+      </div>
+
+      <!-- iOS -->
+      <div class="pricing-card animate-on-scroll stagger-3">
+        <span class="pricing-platform">🍎 iOS APP</span>
+        <h3>OrgsLedger iOS</h3>
+        <div class="pricing-amount price-display" data-ngn="1500000" data-usd="1000">₦1,500,000</div>
+        <p class="pricing-note">One-time payment • Lifetime license</p>
+        <ul class="pricing-features">
+          <li>Native iOS application</li>
+          <li>Push notifications (APNs)</li>
+          <li>Optimized for iPhone &amp; iPad</li>
+          <li>Camera &amp; audio integration</li>
+          <li>Real-time chat &amp; messaging</li>
+          <li>Financial tracking on mobile</li>
+          <li>Meeting management</li>
+          <li>App Store publishing support</li>
+          <li>3 months free support</li>
+        </ul>
+        <button class="pricing-btn pricing-btn-outline" data-product="ios" data-name="OrgsLedger iOS" data-price-ngn="1500000" data-price-usd="1000" onclick="toggleCart(this)">Add to Cart</button>
+      </div>
+    </div>
+
+    <!-- Deployment Fee (Optional) -->
+    <div style="max-width:600px;margin:32px auto 0;background:var(--gray-50);border:2px dashed var(--gray-300);border-radius:var(--radius-lg);padding:28px 32px;text-align:center;" class="animate-on-scroll">
+      <h4 style="font-size:1.1rem;font-weight:700;color:var(--gray-900);margin-bottom:8px;">🚀 Optional: Professional Deployment</h4>
+      <p style="font-size:0.9rem;color:var(--gray-500);margin-bottom:12px;">Let our team handle the complete deployment — server setup, domain config, database, SSL, and go-live testing.</p>
+      <div class="pricing-amount price-display" data-ngn="75000" data-usd="50" style="font-size:1.6rem;margin-bottom:8px;">₦75,000</div>
+      <p style="font-size:0.8rem;color:var(--gray-500);margin-bottom:16px;">One-time fee • Optional add-on</p>
+      <button class="pricing-btn pricing-btn-outline" data-product="deployment" data-name="Professional Deployment" data-price-ngn="75000" data-price-usd="50" onclick="toggleCart(this)" style="max-width:300px;margin:0 auto;">Add Deployment to Cart</button>
+    </div>
+
+    <!-- Bundle -->
+    <div class="bundle-banner animate-on-scroll">
+      <h3>🎯 Complete Bundle — All 3 Platforms</h3>
+      <p>Get Web + Android + iOS and save <span class="save-display" data-ngn="700000" data-usd="467">₦700,000</span></p>
+      <div class="bundle-price">
+        <span class="original price-display" data-ngn="4200000" data-usd="2800">₦4,200,000</span>
+        <span class="price-display" data-ngn="3500000" data-usd="2334">₦3,500,000</span>
+      </div>
+      <button class="btn btn-accent" data-product="bundle" data-name="OrgsLedger Complete Bundle (Web + Android + iOS)" data-price-ngn="3500000" data-price-usd="2334" onclick="toggleCart(this)" style="font-size:1.1rem;padding:18px 40px;" id="bundle-btn">
+        Add Bundle to Cart — Save ₦700,000
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     AI CREDITS PRICING
+     ═══════════════════════════════════════════════════════ -->
+<section class="section section-dark ai-section" id="ai-pricing">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <span class="section-label">AI Credits</span>
+      <h2>Supercharge with AI</h2>
+      <p>AI-powered meeting summaries, financial insights, speech-to-text, and smart document generation — powered by GPT-4o.</p>
+      <p style="font-size:0.85rem;color:var(--accent);margin-top:12px;">💡 AI plans are managed by your organization's admin from the admin dashboard after purchase.</p>
+    </div>
+
+    <div class="ai-card animate-on-scroll">
+      <div class="ai-plans">
+        <div class="ai-plan active">
+          <h4>Premium Credits</h4>
+          <div class="plan-price ai-price-display" data-ngn="10000" data-usd="7"><span class="price-display" data-ngn="10000" data-usd="7">₦10,000</span>/hour</div>
+          <ul>
+            <li>1 credit = 1 hour of AI usage</li>
+            <li>GPT-4o powered analysis</li>
+            <li>Speech-to-text transcription</li>
+            <li>Advanced financial insights</li>
+            <li>Priority processing</li>
+            <li>Bulk credit discounts available</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="calculator">
+        <h4>💡 AI Credit Cost Calculator</h4>
+        <div class="calc-row">
+          <span class="calc-label">Meeting summaries per month</span>
+          <div class="calc-slider"><input type="range" min="0" max="50" value="4" id="calcMeetings" oninput="updateCalc()"></div>
+          <span class="calc-value" id="calcMeetingsVal">4</span>
+        </div>
+        <div class="calc-row">
+          <span class="calc-label">Financial reports per month</span>
+          <div class="calc-slider"><input type="range" min="0" max="20" value="2" id="calcReports" oninput="updateCalc()"></div>
+          <span class="calc-value" id="calcReportsVal">2</span>
+        </div>
+        <div class="calc-row">
+          <span class="calc-label">Speech-to-text hours</span>
+          <div class="calc-slider"><input type="range" min="0" max="20" value="1" id="calcSpeech" oninput="updateCalc()"></div>
+          <span class="calc-value" id="calcSpeechVal">1</span>
+        </div>
+        <div class="calc-row">
+          <span class="calc-label">Document generations per month</span>
+          <div class="calc-slider"><input type="range" min="0" max="30" value="3" id="calcDocs" oninput="updateCalc()"></div>
+          <span class="calc-value" id="calcDocsVal">3</span>
+        </div>
+        <div class="calc-result">
+          <p>Estimated monthly AI cost</p>
+          <div class="total" id="calcTotal">$14.00 <small>/month</small></div>
+          <p style="margin-top:8px;font-size:0.85rem;">≈ <span id="calcCredits">2</span> credits (hours)</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     TESTIMONIALS
+     ═══════════════════════════════════════════════════════ -->
+<section class="section section-gray" id="testimonials">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <span class="section-label">Testimonials</span>
+      <h2>Trusted by Organizations Across Africa</h2>
+      <p>Hear from leaders who transformed their organization's operations with OrgsLedger.</p>
+    </div>
+
+    <div class="testimonial-grid">
+      <div class="testimonial-card animate-on-scroll stagger-1">
+        <div class="testimonial-stars">★★★★★</div>
+        <blockquote>"OrgsLedger completely changed how we manage our alumni association. Dues collection went from chaotic spreadsheets to automated, real-time tracking. The AI meeting summaries save us hours every week."</blockquote>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">AO</div>
+          <div>
+            <div class="testimonial-name">Adebayo Okonkwo</div>
+            <div class="testimonial-role">President, UNILAG Alumni '08</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card animate-on-scroll stagger-2">
+        <div class="testimonial-stars">★★★★★</div>
+        <blockquote>"We tried three different platforms before finding OrgsLedger. The financial management alone is worth it — but having chat, meetings, and AI insights all in one place? Game changer for our cooperative."</blockquote>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">FN</div>
+          <div>
+            <div class="testimonial-name">Funke Nwosu</div>
+            <div class="testimonial-role">Secretary, Lagos Business Cooperative</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card animate-on-scroll stagger-3">
+        <div class="testimonial-stars">★★★★★</div>
+        <blockquote>"The mobile app makes it so easy for our 500+ members to stay connected. Push notifications for announcements, instant chat, and the ability to pay dues right from their phones. Absolutely brilliant."</blockquote>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">EI</div>
+          <div>
+            <div class="testimonial-name">Emeka Ibeh</div>
+            <div class="testimonial-role">Chairman, Rotary Club Abuja</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     FAQ
+     ═══════════════════════════════════════════════════════ -->
+<section class="section" id="faq">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <span class="section-label">FAQ</span>
+      <h2>Frequently Asked Questions</h2>
+    </div>
+
+    <div class="faq-list">
+      <div class="faq-item animate-on-scroll">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          What is OrgsLedger?
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer"><div class="faq-answer-inner">
+          OrgsLedger is an all-in-one operational hub designed for associations, organizations, clubs, and communities. It combines financial management, real-time communication, meeting scheduling, AI-powered insights, analytics, document management, and more — into a single platform available on Web, Android, and iOS.
+        </div></div>
+      </div>
+      <div class="faq-item animate-on-scroll">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          Is this a one-time purchase or subscription?
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer"><div class="faq-answer-inner">
+          The platform license is a <strong>one-time purchase</strong> — you own it forever. The only ongoing cost is AI credits if you choose to use AI features. Hosting and domain costs are separate (typically ₦5,000–₦15,000/year).
+        </div></div>
+      </div>
+      <div class="faq-item animate-on-scroll">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          Do you handle deployment and setup?
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer"><div class="faq-answer-inner">
+          Yes! Every purchase includes free deployment and setup. We'll deploy the application to your domain or server, configure the database, set up payment integrations, and ensure everything is running smoothly before handoff. You also get 3 months of free support.
+        </div></div>
+      </div>
+      <div class="faq-item animate-on-scroll">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          How do AI credits work?
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer"><div class="faq-answer-inner">
+          1 credit = 1 hour of AI processing. This covers meeting summaries, financial analysis, speech-to-text, and document generation. Credits are available at <strong>₦10,000 per hour (~$7 USD)</strong>. AI plan purchases are managed by your org admin from the admin dashboard. Use the calculator above to estimate your needs.
+        </div></div>
+      </div>
+      <div class="faq-item animate-on-scroll">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          Can I get a bundle discount?
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer"><div class="faq-answer-inner">
+          Absolutely! The Complete Bundle (Web + Android + iOS) is available at <strong>₦3,500,000 (~$2,334 USD)</strong> — a saving of <strong>₦700,000 (~$467 USD)</strong> compared to purchasing each platform individually. Prices auto-detect your region: Naira for Nigeria, USD for international customers.
+        </div></div>
+      </div>
+      <div class="faq-item animate-on-scroll">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          What payment methods do you support?
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer"><div class="faq-answer-inner">
+          For purchasing OrgsLedger, Nigerian customers can pay via <strong>Paystack or Flutterwave (Naira)</strong>, while international customers pay via <strong>Stripe (USD)</strong>. Bank transfer is also available. For your organization's members paying dues through the platform, OrgsLedger supports Paystack, Flutterwave, Stripe, and bank transfer integrations — with admin-configurable payment methods.
+        </div></div>
+      </div>
+      <div class="faq-item animate-on-scroll">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          Can I try it before buying?
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer"><div class="faq-answer-inner">
+          Yes! Visit our <a href="https://app.orgsledger.com" style="color:var(--primary);font-weight:600;">live demo</a> to experience OrgsLedger firsthand. You can create an account, explore all features, and see how it works for your organization before making a purchase decision.
+        </div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     CONTACT
+     ═══════════════════════════════════════════════════════ -->
+<section class="section section-gray" id="contact">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <span class="section-label">Contact Us</span>
+      <h2>Ready to Transform Your Organization?</h2>
+      <p>Reach out to our team — we typically respond within 2 hours during business hours.</p>
+    </div>
+
+    <div class="contact-grid">
+      <div class="contact-card animate-on-scroll stagger-1">
+        <div class="contact-icon">📧</div>
+        <h3>Sales Inquiries</h3>
+        <p>Questions about pricing, features, or custom requirements? Our sales team is ready to help.</p>
+        <a href="mailto:sales@orgsledger.com" class="contact-link">sales@orgsledger.com →</a>
+      </div>
+      <div class="contact-card animate-on-scroll stagger-2">
+        <div class="contact-icon">💬</div>
+        <h3>WhatsApp</h3>
+        <p>Prefer to chat? Send us a message on WhatsApp for quick responses and demos.</p>
+        <a href="https://wa.me/2349051936094?text=Hi%2C%20I%27m%20interested%20in%20OrgsLedger.%20Can%20you%20tell%20me%20more%3F" target="_blank" class="contact-link" style="color:#25d366;">Chat on WhatsApp →</a>
+      </div>
+      <div class="contact-card animate-on-scroll stagger-3">
+        <div class="contact-icon">🛟</div>
+        <h3>Technical Support</h3>
+        <p>Already a customer? Get help with setup, deployment, or technical issues.</p>
+        <a href="mailto:support@orgsledger.com" class="contact-link">support@orgsledger.com →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     CTA
+     ═══════════════════════════════════════════════════════ -->
+<section class="cta-section">
+  <div class="container">
+    <h2>Start Managing Smarter Today</h2>
+    <p>Join organizations across Africa already using OrgsLedger to streamline operations, track finances, and empower members.</p>
+    <div class="cta-actions">
+      <a href="#pricing" class="btn btn-primary" style="font-size:1.1rem;padding:18px 40px;">Get OrgsLedger Now</a>
+      <a href="https://wa.me/2349051936094?text=Hi%2C%20I%27m%20interested%20in%20OrgsLedger.%20Can%20you%20tell%20me%20more%3F" target="_blank" class="btn btn-whatsapp" style="font-size:1.1rem;padding:18px 40px;">💬 Chat with Sales</a>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     FOOTER
+     ═══════════════════════════════════════════════════════ -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a href="#" class="nav-logo" style="margin-bottom:4px;">
+          <div class="nav-logo-icon">OL</div>
+          OrgsLedger
+        </a>
+        <p>The smart operational hub for associations, organizations, clubs, and communities. Built in Africa, for the world.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <ul>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+          <li><a href="#ai-pricing">AI Credits</a></li>
+          <li><a href="https://app.orgsledger.com">Live Demo</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Company</h4>
+        <ul>
+          <li><a href="#testimonials">Testimonials</a></li>
+          <li><a href="#faq">FAQ</a></li>
+          <li><a href="#contact">Contact</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Contact</h4>
+        <ul>
+          <li><a href="mailto:sales@orgsledger.com">sales@orgsledger.com</a></li>
+          <li><a href="mailto:support@orgsledger.com">support@orgsledger.com</a></li>
+          <li><a href="https://wa.me/2349051936094" target="_blank">WhatsApp</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 OrgsLedger. All rights reserved.</p>
+      <p>Made with ❤️ in Nigeria</p>
+    </div>
+  </div>
+</footer>
+
+<!-- ═══════════════════════════════════════════════════════
+     FLOATING CART BUTTON
+     ═══════════════════════════════════════════════════════ -->
+<button class="cart-fab" id="cartFab" onclick="openCart()">
+  🛒
+  <span class="cart-badge" id="cartBadge">0</span>
+</button>
+
+<!-- ═══════════════════════════════════════════════════════
+     CART DRAWER
+     ═══════════════════════════════════════════════════════ -->
+<div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>
+<div class="cart-drawer" id="cartDrawer">
+  <div class="cart-drawer-header">
+    <h3>🛒 Your Cart</h3>
+    <button class="cart-close" onclick="closeCart()">✕</button>
+  </div>
+  <div class="cart-items" id="cartItems">
+    <div class="cart-empty">
+      <span>🛒</span>
+      <p>Your cart is empty</p>
+      <p style="font-size:0.85rem;margin-top:8px;">Add products from the pricing section above</p>
+    </div>
+  </div>
+  <div class="cart-footer" id="cartFooter" style="display:none;">
+    <div class="cart-total">
+      <span>Total</span>
+      <span id="cartTotal">₦0</span>
+    </div>
+    <button class="cart-checkout" onclick="checkout()" style="background:var(--primary);margin-bottom:10px;">
+      💳 Pay with Paystack
+    </button>
+    <button class="cart-checkout" onclick="whatsappCheckout()" style="background:#25d366;">
+      💬 Checkout via WhatsApp
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SCRIPTS
+     ═══════════════════════════════════════════════════════ -->
+<script>
+// ── Currency & Geo Detection ────────────────────────────
+let isNigeria = true; // default to Nigeria
+const RATE = 1500;
+const CURRENCY = { ngn: { symbol: '₦', code: 'NGN' }, usd: { symbol: '$', code: 'USD' } };
+
+// Auto-detect on page load
+(async () => {
+  try {
+    const res = await fetch('/api/geo');
+    const data = await res.json();
+    if (data.countryCode && data.countryCode !== 'NG') {
+      isNigeria = false;
+    }
+  } catch {}
+  refreshCurrencyDisplay();
+})();
+
+function toggleCurrency() {
+  isNigeria = !isNigeria;
+  refreshCurrencyDisplay();
+}
+
+function refreshCurrencyDisplay() {
+  const cur = isNigeria ? 'ngn' : 'usd';
+  const sym = CURRENCY[cur].symbol;
+  document.getElementById('currencyToggle').textContent = isNigeria ? '🌍 NGN ↔ USD' : '🌍 USD ↔ NGN';
+  document.getElementById('currency-notice').textContent = isNigeria
+    ? 'Prices shown in Nigerian Naira (₦). Click the currency toggle to switch.'
+    : 'Prices shown in US Dollars ($). Rate: ₦1,500 = $1. Click to switch.';
+
+  document.querySelectorAll('.price-display').forEach(el => {
+    const val = parseFloat(el.dataset[cur]);
+    if (!isNaN(val)) el.textContent = sym + val.toLocaleString('en');
+  });
+  document.querySelectorAll('.save-display').forEach(el => {
+    const val = parseFloat(el.dataset[cur]);
+    if (!isNaN(val)) el.textContent = sym + val.toLocaleString('en');
+  });
+
+  // Update bundle button text
+  const bundleBtn = document.getElementById('bundle-btn');
+  if (bundleBtn && !bundleBtn.classList.contains('in-cart')) {
+    const saveAmt = isNigeria ? '₦700,000' : '$467';
+    bundleBtn.textContent = `Add Bundle to Cart — Save ${saveAmt}`;
+  }
+
+  // Update calculator display
+  updateCalc();
+
+  // Rebuild cart display
+  updateCartUI();
+}
+
+function getPrice(el) {
+  return isNigeria ? parseInt(el.dataset.priceNgn) : parseInt(el.dataset.priceUsd);
+}
+
+function getCurrencySymbol() { return isNigeria ? '₦' : '$'; }
+function getCurrencyCode() { return isNigeria ? 'NGN' : 'USD'; }
+
+function formatAmount(amount) {
+  return getCurrencySymbol() + amount.toLocaleString('en');
+}
+
+// ── Cart State ──────────────────────────────────────────
+const cart = new Map();
+const WHATSAPP_NUMBER = '2349051936094';
+
+function toggleCart(btn) {
+  const product = btn.dataset.product;
+  const name = btn.dataset.name;
+
+  // If adding bundle, remove individual items; if adding individual, remove bundle
+  if (product === 'bundle') {
+    cart.delete('web');
+    cart.delete('android');
+    cart.delete('ios');
+    document.querySelectorAll('.pricing-btn[data-product="web"], .pricing-btn[data-product="android"], .pricing-btn[data-product="ios"]').forEach(b => {
+      b.classList.remove('in-cart');
+      b.textContent = 'Add to Cart';
+    });
+  } else if (['web', 'android', 'ios'].includes(product)) {
+    if (cart.has('bundle')) {
+      cart.delete('bundle');
+      const bundleBtn = document.getElementById('bundle-btn');
+      if (bundleBtn) {
+        bundleBtn.classList.remove('in-cart');
+        const saveAmt = isNigeria ? '₦700,000' : '$467';
+        bundleBtn.textContent = `Add Bundle to Cart — Save ${saveAmt}`;
+      }
+    }
+  }
+
+  if (cart.has(product)) {
+    cart.delete(product);
+    btn.classList.remove('in-cart');
+    if (product === 'bundle') {
+      const saveAmt = isNigeria ? '₦700,000' : '$467';
+      btn.textContent = `Add Bundle to Cart — Save ${saveAmt}`;
+    } else if (product === 'deployment') {
+      btn.textContent = 'Add Deployment to Cart';
+    } else {
+      btn.textContent = 'Add to Cart';
+    }
+  } else {
+    const priceNgn = parseInt(btn.dataset.priceNgn);
+    const priceUsd = parseInt(btn.dataset.priceUsd);
+    cart.set(product, { name, priceNgn, priceUsd });
+    btn.classList.add('in-cart');
+    btn.textContent = '✓ In Cart';
+  }
+
+  updateCartUI();
+}
+
+function updateCartUI() {
+  const badge = document.getElementById('cartBadge');
+  const fab = document.getElementById('cartFab');
+  const itemsEl = document.getElementById('cartItems');
+  const footerEl = document.getElementById('cartFooter');
+  const totalEl = document.getElementById('cartTotal');
+
+  badge.textContent = cart.size;
+  fab.classList.toggle('visible', cart.size > 0);
+
+  if (cart.size === 0) {
+    itemsEl.innerHTML = '<div class="cart-empty"><span>🛒</span><p>Your cart is empty</p><p style="font-size:0.85rem;margin-top:8px;">Add products from the pricing section above</p></div>';
+    footerEl.style.display = 'none';
+    return;
+  }
+
+  let html = '';
+  let total = 0;
+  cart.forEach((item, key) => {
+    const price = isNigeria ? item.priceNgn : item.priceUsd;
+    total += price;
+    html += `
+      <div class="cart-item">
+        <div class="cart-item-info">
+          <h4>${item.name}</h4>
+          <p>${formatAmount(price)}</p>
+        </div>
+        <button class="cart-item-remove" onclick="removeFromCart('${key}')">✕</button>
+      </div>
+    `;
+  });
+  itemsEl.innerHTML = html;
+  totalEl.textContent = formatAmount(total);
+  footerEl.style.display = 'block';
+}
+
+function removeFromCart(product) {
+  cart.delete(product);
+  const btn = document.querySelector(`[data-product="${product}"]`);
+  if (btn) {
+    btn.classList.remove('in-cart');
+    if (product === 'bundle') {
+      const saveAmt = isNigeria ? '₦700,000' : '$467';
+      btn.textContent = `Add Bundle to Cart — Save ${saveAmt}`;
+    } else if (product === 'deployment') {
+      btn.textContent = 'Add Deployment to Cart';
+    } else {
+      btn.textContent = 'Add to Cart';
+    }
+  }
+  updateCartUI();
+}
+
+function openCart() {
+  document.getElementById('cartOverlay').classList.add('open');
+  document.getElementById('cartDrawer').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeCart() {
+  document.getElementById('cartOverlay').classList.remove('open');
+  document.getElementById('cartDrawer').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+async function checkout() {
+  if (cart.size === 0) return;
+
+  // Show checkout form
+  const total = [...cart.values()].reduce((sum, item) => sum + (isNigeria ? item.priceNgn : item.priceUsd), 0);
+  const items = [...cart.entries()].map(([key, item]) => ({
+    id: key,
+    name: item.name,
+    price: isNigeria ? item.priceNgn : item.priceUsd,
+  }));
+
+  const email = prompt('Enter your email address for payment receipt:');
+  if (!email || !email.includes('@')) {
+    alert('Please enter a valid email address.');
+    return;
+  }
+  const name = prompt('Enter your name or organization name:');
+
+  // Choose payment method
+  const gateway = isNigeria ? 'paystack' : 'stripe';
+  const currency = getCurrencyCode();
+
+  try {
+    const checkoutBtn = document.querySelector('.cart-checkout');
+    checkoutBtn.textContent = '⏳ Processing...';
+    checkoutBtn.disabled = true;
+
+    const res = await fetch(`/api/checkout/${gateway}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, name, items, amount: total, currency, metadata: { source: 'landing_page' } }),
+    });
+    const data = await res.json();
+
+    if (data.status === 'completed') {
+      // Dev mode
+      alert('✅ Order received! (Dev mode)\n\nWe will contact you at ' + email + ' with delivery details.');
+      cart.clear();
+      updateCartUI();
+      closeCart();
+    } else if (data.authorizationUrl) {
+      // Paystack redirect
+      window.location.href = data.authorizationUrl;
+    } else if (data.checkoutUrl) {
+      // Stripe redirect
+      window.location.href = data.checkoutUrl;
+    } else {
+      throw new Error(data.error || 'Checkout failed');
+    }
+  } catch (err) {
+    alert('Payment error: ' + (err.message || 'Please try again or contact support.'));
+  } finally {
+    const checkoutBtn = document.querySelector('.cart-checkout');
+    if (checkoutBtn) {
+      checkoutBtn.disabled = false;
+      checkoutBtn.innerHTML = isNigeria
+        ? '💳 Pay with Paystack'
+        : '💳 Pay with Stripe';
+    }
+  }
+}
+
+function whatsappCheckout() {
+  if (cart.size === 0) return;
+  let message = '🛒 *OrgsLedger Order*\n\n';
+  let total = 0;
+  const cur = getCurrencyCode();
+  cart.forEach((item) => {
+    const price = isNigeria ? item.priceNgn : item.priceUsd;
+    message += `✅ ${item.name} — ${formatAmount(price)}\n`;
+    total += price;
+  });
+  message += `\n💰 *Total: ${formatAmount(total)} (${cur})*\n\n`;
+  message += `I'd like to purchase the above. Please share payment details.`;
+  window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`, '_blank');
+}
+
+// ── AI Calculator ───────────────────────────────────────
+function updateCalc() {
+  const meetings = parseInt(document.getElementById('calcMeetings').value);
+  const reports = parseInt(document.getElementById('calcReports').value);
+  const speech = parseInt(document.getElementById('calcSpeech').value);
+  const docs = parseInt(document.getElementById('calcDocs').value);
+
+  document.getElementById('calcMeetingsVal').textContent = meetings;
+  document.getElementById('calcReportsVal').textContent = reports;
+  document.getElementById('calcSpeechVal').textContent = speech;
+  document.getElementById('calcDocsVal').textContent = docs;
+
+  const totalHours = (meetings * 0.5) + (reports * 0.3) + (speech * 1) + (docs * 0.2);
+  const billableHours = totalHours;
+  const costNgn = billableHours * 10000;
+  const costUsd = billableHours * 7;
+  const cost = isNigeria ? costNgn : costUsd;
+
+  document.getElementById('calcCredits').textContent = totalHours.toFixed(1);
+  document.getElementById('calcTotal').innerHTML = `${formatAmount(cost)} <small>/month</small>`;
+}
+
+// Check for checkout status in URL
+(function checkCheckoutStatus() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('checkout') === 'success') {
+    setTimeout(() => alert('✅ Payment successful! We will contact you within 24 hours to start your deployment.'), 500);
+    window.history.replaceState({}, '', '/');
+  } else if (params.get('checkout') === 'cancelled') {
+    setTimeout(() => alert('Payment was cancelled. You can try again anytime.'), 500);
+    window.history.replaceState({}, '', '/');
+  }
+})();
+
+// ── Navbar Scroll ───────────────────────────────────────
+window.addEventListener('scroll', () => {
+  document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 50);
+});
+
+// ── Mobile Menu ─────────────────────────────────────────
+document.getElementById('mobileToggle').addEventListener('click', function() {
+  this.classList.toggle('active');
+  document.getElementById('navLinks').classList.toggle('open');
+});
+
+// Close mobile menu on link click
+document.querySelectorAll('.nav-links a').forEach(link => {
+  link.addEventListener('click', () => {
+    document.getElementById('mobileToggle').classList.remove('active');
+    document.getElementById('navLinks').classList.remove('open');
+  });
+});
+
+// ── FAQ Toggles ─────────────────────────────────────────
+function toggleFaq(btn) {
+  const item = btn.parentElement;
+  const wasOpen = item.classList.contains('open');
+  // Close all
+  document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
+  // Toggle clicked
+  if (!wasOpen) item.classList.add('open');
+}
+
+// ── Scroll Animations ───────────────────────────────────
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+document.querySelectorAll('.animate-on-scroll').forEach(el => observer.observe(el));
+
+// ── Smooth Scroll for anchor links ──────────────────────
+document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+  anchor.addEventListener('click', function(e) {
+    e.preventDefault();
+    const target = document.querySelector(this.getAttribute('href'));
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+});
+
+// Initialize calculator
+updateCalc();
+</script>
+
+</body>
+</html>

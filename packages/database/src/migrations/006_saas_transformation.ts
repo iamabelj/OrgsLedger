@@ -171,7 +171,7 @@ export async function up(knex: Knex): Promise<void> {
     {
       name: 'Enterprise',
       slug: 'enterprise',
-      max_members: 9999,
+      max_members: 500,
       features: JSON.stringify({ chat: true, meetings: true, financials: true, polls: true, events: true, announcements: true, documents: true, committees: true, analytics: true, export: true, customBranding: true, prioritySupport: true, dedicatedAccount: true, api: true }),
       price_usd_annual: 2500,
       price_usd_monthly: 260.42,
