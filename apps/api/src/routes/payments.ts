@@ -38,6 +38,17 @@ const purchaseCreditsSchema = z.object({
   credits: z.number().int().min(1), // minimum 1 credit (= 1 hour)
 });
 
+const refundSchema = z.object({
+  transactionId: z.string().uuid(),
+  amount: z.number().positive().max(999_999_999).optional(),
+  reason: z.string().max(500).optional(),
+});
+
+const approveTransferSchema = z.object({
+  transactionId: z.string().uuid(),
+  approved: z.boolean(),
+});
+
 // ── Pay a Transaction ───────────────────────────────────────
 router.post(
   '/:orgId/payments/pay',
@@ -381,6 +392,7 @@ router.post(
   authenticate,
   loadMembership,
   requireRole('org_admin'),
+  validate(refundSchema),
   async (req: Request, res: Response) => {
     try {
       const { transactionId, amount, reason } = req.body;
@@ -1065,6 +1077,7 @@ router.post(
   authenticate,
   loadMembership,
   requireRole('org_admin'),
+  validate(approveTransferSchema),
   async (req: Request, res: Response) => {
     try {
       const { transactionId, approved } = req.body;

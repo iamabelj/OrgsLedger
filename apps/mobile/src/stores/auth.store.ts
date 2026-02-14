@@ -49,14 +49,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   currentOrgId: null,
 
   login: async (email, password) => {
-    console.log('[AuthStore] Starting login for:', email);
     const { data } = await api.auth.login({ email, password });
     const result = data.data;
-    console.log('[AuthStore] Login API response:', result);
 
     await storage.setItemAsync('accessToken', result.accessToken);
     await storage.setItemAsync('refreshToken', result.refreshToken);
-    console.log('[AuthStore] Tokens saved to storage');
 
     // Normalize membership fields (API may return snake_case)
     const memberships = (result.memberships || []).map((m: any) => ({
@@ -64,7 +61,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       organization_id: m.organization_id || m.organizationId,
       organizationId: m.organizationId || m.organization_id,
     }));
-    console.log('[AuthStore] Memberships:', memberships);
 
     set({
       user: result.user,
@@ -72,22 +68,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       isAuthenticated: true,
       currentOrgId: memberships[0]?.organization_id || null,
     });
-    console.log('[AuthStore] State updated, isAuthenticated: true');
 
     // Connect socket in background (don't await)
-    socketClient.connect().catch(err => console.error('[AuthStore] Socket connection failed:', err));
-    console.log('[AuthStore] Socket connection initiated');
+    socketClient.connect().catch(() => {});
   },
 
   register: async (regData) => {
-    console.log('[AuthStore] Starting registration for:', regData.email);
     const { data } = await api.auth.register(regData);
     const result = data.data;
-    console.log('[AuthStore] Registration API response:', result);
 
     await storage.setItemAsync('accessToken', result.accessToken);
     await storage.setItemAsync('refreshToken', result.refreshToken);
-    console.log('[AuthStore] Tokens saved to storage');
 
     // Normalize membership fields (API may return snake_case)
     const memberships = (result.memberships || []).map((m: any) => ({
@@ -95,7 +86,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       organization_id: m.organization_id || m.organizationId,
       organizationId: m.organizationId || m.organization_id,
     }));
-    console.log('[AuthStore] Registration memberships:', memberships);
 
     set({
       user: result.user,
@@ -103,11 +93,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       isAuthenticated: true,
       currentOrgId: memberships[0]?.organization_id || null,
     });
-    console.log('[AuthStore] State updated, isAuthenticated: true');
 
     // Connect socket in background (don't await)
-    socketClient.connect().catch(err => console.error('[AuthStore] Socket connection failed:', err));
-    console.log('[AuthStore] Socket connection initiated');
+    socketClient.connect().catch(() => {});
   },
 
   logout: async () => {
@@ -122,20 +110,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   loadUser: async () => {
-    console.log('[AuthStore] loadUser starting...');
     try {
       const token = await storage.getItemAsync('accessToken');
-      console.log('[AuthStore] Token check:', token ? 'Found' : 'None');
       if (!token) {
-        console.log('[AuthStore] No token, setting isLoading: false, isAuthenticated: false');
         set({ isLoading: false, isAuthenticated: false });
         return;
       }
 
-      console.log('[AuthStore] Fetching user data...');
       const { data } = await api.auth.me();
       const result = data.data;
-      console.log('[AuthStore] User data received:', result);
 
       const savedOrgId = await storage.getItemAsync('currentOrgId');
 
@@ -161,15 +144,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isLoading: false,
         currentOrgId: savedOrgId || memberships[0]?.organization_id || null,
       });
-      console.log('[AuthStore] loadUser complete, isAuthenticated: true');
 
       // Connect socket in background (don't await)
-      socketClient.connect().catch(err => console.error('[AuthStore] Socket connection failed:', err));
+      socketClient.connect().catch(() => {});
     } catch (err) {
-      console.error('[AuthStore] loadUser error:', err);
       await api.clearAuth();
       set({ isLoading: false, isAuthenticated: false });
-      console.log('[AuthStore] loadUser complete with error, isAuthenticated: false');
     }
   },
 

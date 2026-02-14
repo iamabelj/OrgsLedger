@@ -41,7 +41,7 @@ export default function InvitesScreen() {
   const load = useCallback(async () => {
     if (!currentOrgId) return;
     try {
-      const res = await api.subscriptions.listInvites(currentOrgId);
+      const res = await api.subscriptions.getInvites(currentOrgId);
       setInvites(res.data.data || []);
     } catch (e) { console.error(e); }
     setLoading(false);

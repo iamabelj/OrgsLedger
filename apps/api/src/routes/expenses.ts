@@ -3,10 +3,39 @@
 // ============================================================
 
 import { Router, Request, Response } from 'express';
+import { z } from 'zod';
 import { db } from '../db';
-import { authenticate, loadMembershipAndSub as loadMembership, requireRole } from '../middleware';
+import { authenticate, loadMembershipAndSub as loadMembership, requireRole, validate } from '../middleware';
 
 const router = Router();
+
+// ── Schemas ─────────────────────────────────────────────────
+const createExpenseSchema = z.object({
+  title: z.string().min(1).max(200),
+  description: z.string().max(1000).optional(),
+  amount: z.union([z.number(), z.string()]).transform(v => {
+    const n = typeof v === 'string' ? parseFloat(v) : v;
+    if (isNaN(n) || n <= 0 || n > 999_999_999) throw new Error('Invalid amount');
+    return n;
+  }),
+  category: z.string().max(100).optional(),
+  date: z.string().optional(),
+  receipt_url: z.string().url().optional().or(z.literal('')),
+});
+
+const updateExpenseSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().max(1000).optional(),
+  amount: z.union([z.number(), z.string()]).transform(v => {
+    const n = typeof v === 'string' ? parseFloat(v) : v;
+    if (isNaN(n) || n <= 0 || n > 999_999_999) throw new Error('Invalid amount');
+    return n;
+  }).optional(),
+  category: z.string().max(100).optional(),
+  date: z.string().optional(),
+  status: z.enum(['approved', 'pending', 'rejected']).optional(),
+  receipt_url: z.string().url().optional().or(z.literal('')),
+});
 
 // ── List Expenses ───────────────────────────────────────────
 router.get(
@@ -77,21 +106,17 @@ router.post(
   authenticate,
   loadMembership,
   requireRole('org_admin', 'executive'),
+  validate(createExpenseSchema),
   async (req: Request, res: Response) => {
     try {
       const { title, description, amount, category, date, receipt_url } = req.body;
-
-      if (!title || !amount) {
-        res.status(400).json({ success: false, error: 'Title and amount are required' });
-        return;
-      }
 
       const [expense] = await db('expenses')
         .insert({
           organization_id: req.params.orgId,
           title,
           description: description || null,
-          amount: parseFloat(amount),
+          amount,
           category: category || 'general',
           date: date || new Date().toISOString(),
           receipt_url: receipt_url || null,
@@ -121,6 +146,7 @@ router.put(
   authenticate,
   loadMembership,
   requireRole('org_admin', 'executive', 'treasurer'),
+  validate(updateExpenseSchema),
   async (req: Request, res: Response) => {
     try {
       const { title, description, amount, category, date, status, receipt_url } = req.body;
@@ -137,7 +163,7 @@ router.put(
       const updates: Record<string, any> = {};
       if (title !== undefined) updates.title = title;
       if (description !== undefined) updates.description = description;
-      if (amount !== undefined) updates.amount = parseFloat(amount);
+      if (amount !== undefined) updates.amount = amount;
       if (category !== undefined) updates.category = category;
       if (date !== undefined) updates.date = date;
       if (status !== undefined) updates.status = status;

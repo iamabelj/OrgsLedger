@@ -91,16 +91,15 @@ export default function HomeScreen() {
         setUnreadNotifications(unread);
       } catch (_) {}
 
-      // Load AI token hours from gateway license
+      // Load AI hours from wallet
       try {
-        const licenseRes = await api.license.status();
-        const client = licenseRes.data?.client;
-        if (client && typeof client.hoursBalance === 'number') {
-          setAiHours({
-            balance: client.hoursBalance,
-            used: client.hoursUsed || 0,
-            remaining: client.hoursRemaining ?? client.hoursBalance,
-          });
+        const walletRes = await api.subscriptions.getAiWallet(currentOrgId);
+        const w = walletRes.data?.data;
+        if (w) {
+          const balance = parseFloat(w.total_topped_up || '0') / 60;
+          const used = parseFloat(w.total_spent || '0') / 60;
+          const remaining = parseFloat(w.balance_minutes || '0') / 60;
+          setAiHours({ balance, used, remaining });
         }
       } catch (_) {}
     } catch (err) {
