@@ -421,10 +421,130 @@ router.get('/admin/organizations', authenticate, requireSuperAdmin(), async (_re
     counts.forEach((c: any) => { countMap[c.organization_id] = parseInt(c.member_count); });
 
     const result = orgs.map((o: any) => ({ ...o, member_count: countMap[o.id] || 0 }));
-    res.json({ success: true, data: result });
+    res.json({ success: true, organizations: result });
   } catch (err: any) {
     logger.error('Admin orgs error', err);
     res.status(500).json({ success: false, error: 'Failed' });
+  }
+});
+
+// POST /admin/organizations — super admin creates an organization
+const adminCreateOrgSchema = z.object({
+  name: z.string().min(2).max(200),
+  slug: z.string().min(2).max(100).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
+  ownerEmail: z.string().email(),
+  plan: z.enum(['standard', 'professional', 'enterprise']).default('standard'),
+  currency: z.enum(['USD', 'NGN']).default('USD'),
+});
+
+router.post('/admin/organizations', authenticate, requireSuperAdmin(), validate(adminCreateOrgSchema), async (req: Request, res: Response) => {
+  try {
+    const { name, slug, ownerEmail, plan, currency } = req.body;
+
+    // Check slug uniqueness
+    const existing = await db('organizations').where({ slug }).first();
+    if (existing) {
+      res.status(409).json({ success: false, error: 'Slug already taken' });
+      return;
+    }
+
+    // Find or validate owner user
+    const owner = await db('users').where({ email: ownerEmail.toLowerCase() }).first();
+    if (!owner) {
+      res.status(404).json({ success: false, error: `User with email ${ownerEmail} not found. They must register first.` });
+      return;
+    }
+
+    // Create organization
+    const [org] = await db('organizations')
+      .insert({
+        name,
+        slug,
+        status: 'active',
+        subscription_status: 'active',
+        billing_currency: currency,
+        settings: JSON.stringify({
+          currency,
+          timezone: 'UTC',
+          locale: 'en',
+          aiEnabled: true,
+          features: {
+            chat: true, meetings: true, financials: true, polls: true,
+            events: true, announcements: true, documents: true, committees: true,
+          },
+        }),
+      })
+      .returning('*');
+
+    // Make owner the org_admin
+    await db('memberships').insert({
+      user_id: owner.id,
+      organization_id: org.id,
+      role: 'org_admin',
+    });
+
+    // Create default General channel
+    const [channel] = await db('channels')
+      .insert({
+        organization_id: org.id,
+        name: 'General',
+        type: 'general',
+        description: 'General discussion',
+      })
+      .returning('*');
+
+    await db('channel_members').insert({
+      channel_id: channel.id,
+      user_id: owner.id,
+    });
+
+    // Provision subscription
+    const selectedPlan = await subSvc.getPlanBySlug(plan);
+    if (selectedPlan) {
+      await subSvc.createSubscription({
+        organizationId: org.id,
+        planId: selectedPlan.id,
+        billingCycle: 'annual',
+        currency,
+        amountPaid: 0,
+        createdBy: owner.id,
+      });
+    }
+
+    // Provision wallets
+    await subSvc.getAiWallet(org.id);
+    await subSvc.getTranslationWallet(org.id);
+
+    // Legacy ai_credits
+    try {
+      await db('ai_credits').insert({ organization_id: org.id, total_credits: 0, used_credits: 0 });
+    } catch { /* ignore */ }
+
+    // Generate invite link
+    const invite = await subSvc.createInviteLink(org.id, owner.id, 'member');
+
+    await writeAuditLog({
+      organizationId: org.id,
+      userId: req.user!.userId,
+      action: 'admin_create_org',
+      entityType: 'organization',
+      entityId: org.id,
+      newValue: { name, slug, ownerEmail, plan, currency },
+      ipAddress: req.ip || '',
+      userAgent: req.headers['user-agent'] || '',
+    });
+
+    logger.info(`Admin created organization: ${name} (${slug}) for ${ownerEmail}`);
+
+    res.status(201).json({
+      success: true,
+      organization: org,
+      inviteCode: invite.code,
+      message: `Organization "${name}" created. Owner: ${ownerEmail}. Plan: ${plan}.`,
+    });
+  } catch (err: any) {
+    logger.error('Admin create org error', err);
+    res.status(500).json({ success: false, error: err.message || 'Failed to create organization' });
   }
 });
 
@@ -475,9 +595,12 @@ router.post('/admin/wallet/translation/adjust', authenticate, requireSuperAdmin(
 });
 
 // POST /admin/org/status — suspend or activate
-router.post('/admin/org/status', authenticate, requireSuperAdmin(), validate(orgStatusSchema), async (req: Request, res: Response) => {
+router.post('/admin/org/status', authenticate, requireSuperAdmin(), async (req: Request, res: Response) => {
   try {
-    const { organizationId, action, reason } = req.body;
+    // Accept both camelCase (organizationId, action) and snake_case (organization_id, status) from frontend
+    const organizationId = req.body.organizationId || req.body.organization_id;
+    const action = req.body.action || (req.body.status === 'suspended' ? 'suspend' : 'activate');
+    const reason = req.body.reason || 'Admin action';
     const newStatus = action === 'suspend' ? 'suspended' : 'active';
     await db('organizations').where({ id: organizationId }).update({ subscription_status: newStatus });
     if (action === 'suspend') {

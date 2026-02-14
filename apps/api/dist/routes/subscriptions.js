@@ -413,11 +413,118 @@ router.get('/admin/organizations', middleware_1.authenticate, (0, middleware_1.r
         const countMap = {};
         counts.forEach((c) => { countMap[c.organization_id] = parseInt(c.member_count); });
         const result = orgs.map((o) => ({ ...o, member_count: countMap[o.id] || 0 }));
-        res.json({ success: true, data: result });
+        res.json({ success: true, organizations: result });
     }
     catch (err) {
         logger_1.logger.error('Admin orgs error', err);
         res.status(500).json({ success: false, error: 'Failed' });
+    }
+});
+// POST /admin/organizations — super admin creates an organization
+const adminCreateOrgSchema = zod_1.z.object({
+    name: zod_1.z.string().min(2).max(200),
+    slug: zod_1.z.string().min(2).max(100).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
+    ownerEmail: zod_1.z.string().email(),
+    plan: zod_1.z.enum(['standard', 'professional', 'enterprise']).default('standard'),
+    currency: zod_1.z.enum(['USD', 'NGN']).default('USD'),
+});
+router.post('/admin/organizations', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), (0, middleware_1.validate)(adminCreateOrgSchema), async (req, res) => {
+    try {
+        const { name, slug, ownerEmail, plan, currency } = req.body;
+        // Check slug uniqueness
+        const existing = await (0, db_1.default)('organizations').where({ slug }).first();
+        if (existing) {
+            res.status(409).json({ success: false, error: 'Slug already taken' });
+            return;
+        }
+        // Find or validate owner user
+        const owner = await (0, db_1.default)('users').where({ email: ownerEmail.toLowerCase() }).first();
+        if (!owner) {
+            res.status(404).json({ success: false, error: `User with email ${ownerEmail} not found. They must register first.` });
+            return;
+        }
+        // Create organization
+        const [org] = await (0, db_1.default)('organizations')
+            .insert({
+            name,
+            slug,
+            status: 'active',
+            subscription_status: 'active',
+            billing_currency: currency,
+            settings: JSON.stringify({
+                currency,
+                timezone: 'UTC',
+                locale: 'en',
+                aiEnabled: true,
+                features: {
+                    chat: true, meetings: true, financials: true, polls: true,
+                    events: true, announcements: true, documents: true, committees: true,
+                },
+            }),
+        })
+            .returning('*');
+        // Make owner the org_admin
+        await (0, db_1.default)('memberships').insert({
+            user_id: owner.id,
+            organization_id: org.id,
+            role: 'org_admin',
+        });
+        // Create default General channel
+        const [channel] = await (0, db_1.default)('channels')
+            .insert({
+            organization_id: org.id,
+            name: 'General',
+            type: 'general',
+            description: 'General discussion',
+        })
+            .returning('*');
+        await (0, db_1.default)('channel_members').insert({
+            channel_id: channel.id,
+            user_id: owner.id,
+        });
+        // Provision subscription
+        const selectedPlan = await subSvc.getPlanBySlug(plan);
+        if (selectedPlan) {
+            await subSvc.createSubscription({
+                organizationId: org.id,
+                planId: selectedPlan.id,
+                billingCycle: 'annual',
+                currency,
+                amountPaid: 0,
+                createdBy: owner.id,
+            });
+        }
+        // Provision wallets
+        await subSvc.getAiWallet(org.id);
+        await subSvc.getTranslationWallet(org.id);
+        // Legacy ai_credits
+        try {
+            await (0, db_1.default)('ai_credits').insert({ organization_id: org.id, total_credits: 0, used_credits: 0 });
+        }
+        catch { /* ignore */ }
+        // Generate invite link
+        const invite = await subSvc.createInviteLink(org.id, owner.id, 'member');
+        await (0, audit_1.writeAuditLog)({
+            organizationId: org.id,
+            userId: req.user.userId,
+            action: 'admin_create_org',
+            entityType: 'organization',
+            entityId: org.id,
+            newValue: { name, slug, ownerEmail, plan, currency },
+            ipAddress: req.ip || '',
+            userAgent: req.headers['user-agent'] || '',
+        });
+        logger_1.logger.info(`Admin created organization: ${name} (${slug}) for ${ownerEmail}`);
+        res.status(201).json({
+            success: true,
+            organization: org,
+            inviteCode: invite.code,
+            message: `Organization "${name}" created. Owner: ${ownerEmail}. Plan: ${plan}.`,
+        });
+    }
+    catch (err) {
+        logger_1.logger.error('Admin create org error', err);
+        res.status(500).json({ success: false, error: err.message || 'Failed to create organization' });
     }
 });
 // POST /admin/wallet/ai/adjust
@@ -467,9 +574,12 @@ router.post('/admin/wallet/translation/adjust', middleware_1.authenticate, (0, m
     }
 });
 // POST /admin/org/status — suspend or activate
-router.post('/admin/org/status', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), (0, middleware_1.validate)(orgStatusSchema), async (req, res) => {
+router.post('/admin/org/status', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (req, res) => {
     try {
-        const { organizationId, action, reason } = req.body;
+        // Accept both camelCase (organizationId, action) and snake_case (organization_id, status) from frontend
+        const organizationId = req.body.organizationId || req.body.organization_id;
+        const action = req.body.action || (req.body.status === 'suspended' ? 'suspend' : 'activate');
+        const reason = req.body.reason || 'Admin action';
         const newStatus = action === 'suspend' ? 'suspended' : 'active';
         await (0, db_1.default)('organizations').where({ id: organizationId }).update({ subscription_status: newStatus });
         if (action === 'suspend') {

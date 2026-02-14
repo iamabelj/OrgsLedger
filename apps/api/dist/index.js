@@ -156,10 +156,10 @@ try {
         });
         logger_1.logger.info('Landing page served at / (orgsledger.com only)');
     }
-    // Admin dashboard at /admin
+    // Admin dashboard at /developer/admin
     const adminPage = path_1.default.resolve(landingDir, 'admin.html');
     if (fs_1.default.existsSync(adminPage)) {
-        app.get('/admin', (req, res, next) => {
+        app.get('/developer/admin', (req, res, next) => {
             const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
             if (host === 'orgsledger.com' || host === 'www.orgsledger.com' || host === 'localhost' || host === '127.0.0.1') {
                 return res.sendFile(adminPage);

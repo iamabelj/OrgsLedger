@@ -273,7 +273,9 @@
 
     <!--  ORGANIZATIONS PAGE  -->
     <section class="page" id="page-organizations">
-      <div class="page-header"><h1>Organizations</h1></div>
+      <div class="page-header"><h1>Organizations</h1>
+        <button class="btn btn-primary" onclick="openModal('add-org')">+ New Organization</button>
+      </div>
       <div class="table-wrap">
         <div class="table-header"><h3>All Organizations</h3>
           <div class="actions"><button class="btn btn-ghost btn-sm" onclick="loadOrganizations()">↻ Refresh</button></div>
@@ -394,6 +396,31 @@
 </div>
 
 <!-- MODALS -->
+<div class="modal-overlay" id="modal-add-org">
+  <div class="modal">
+    <h3>Create New Organization</h3>
+    <form onsubmit="createOrganization(event)">
+      <div class="form-group"><label>Organization Name *</label><input id="no-name" required placeholder="e.g. Lagos Alumni Association" /></div>
+      <div class="form-row">
+        <div class="form-group"><label>Slug * <small style="color:var(--gray-500)">(URL-friendly, lowercase)</small></label><input id="no-slug" required placeholder="e.g. lagos-alumni" pattern="[a-z0-9-]+" /></div>
+        <div class="form-group"><label>Owner Email *</label><input type="email" id="no-email" required placeholder="owner@example.com" /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Plan</label>
+          <select id="no-plan"><option value="standard">Standard ($300/yr)</option><option value="professional">Professional ($800/yr)</option><option value="enterprise">Enterprise ($2,500+/yr)</option></select>
+        </div>
+        <div class="form-group"><label>Currency</label>
+          <select id="no-currency"><option value="USD">USD ($)</option><option value="NGN">NGN (₦)</option></select>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModals()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create Organization</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-add-client">
   <div class="modal">
     <h3>Add New AI Client</h3>
@@ -628,11 +655,11 @@ async function loadOrganizations() {
   tbody.innerHTML = '<tr><td colspan="6" class="loading"><div class="spinner"></div>Loading…</td></tr>';
   try {
     const data = await apiFetch('/subscriptions/admin/organizations');
-    const orgs = data.organizations || [];
+    const orgs = data.organizations || data.data || [];
     if (!orgs.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty"><div class="emoji">🏢</div><p>No organizations</p></td></tr>'; return; }
     tbody.innerHTML = orgs.map(o => `<tr>
       <td><strong>${o.name || '—'}</strong></td>
-      <td><span class="badge badge-blue">${(o.subscription_plan || 'none').toUpperCase()}</span></td>
+      <td><span class="badge badge-blue">${(o.plan_slug || o.subscription_plan || 'none').toUpperCase()}</span></td>
       <td><span class="status-${o.subscription_status || 'inactive'}">${o.subscription_status || 'none'}</span></td>
       <td>${fmtNum(o.member_count)}</td>
       <td>${fmtDate(o.created_at)}</td>
@@ -654,6 +681,41 @@ async function toggleOrgStatus(orgId, newStatus) {
     loadOrganizations();
   } catch (err) { toast(err.message, 'error'); }
 }
+
+async function createOrganization(e) {
+  e.preventDefault();
+  const name = document.getElementById('no-name').value;
+  const slug = document.getElementById('no-slug').value;
+  const ownerEmail = document.getElementById('no-email').value;
+  const plan = document.getElementById('no-plan').value;
+  const currency = document.getElementById('no-currency').value;
+  try {
+    const data = await apiFetch('/subscriptions/admin/organizations', {
+      method: 'POST',
+      body: JSON.stringify({ name, slug, ownerEmail, plan, currency }),
+    });
+    toast(data.message || 'Organization created successfully');
+    closeModals();
+    document.getElementById('no-name').value = '';
+    document.getElementById('no-slug').value = '';
+    document.getElementById('no-email').value = '';
+    loadOrganizations();
+  } catch (err) { toast(err.message, 'error'); }
+}
+
+// Auto-generate slug from name
+document.addEventListener('DOMContentLoaded', () => {
+  const nameInput = document.getElementById('no-name');
+  const slugInput = document.getElementById('no-slug');
+  if (nameInput && slugInput) {
+    nameInput.addEventListener('input', () => {
+      if (!slugInput.dataset.manual) {
+        slugInput.value = nameInput.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      }
+    });
+    slugInput.addEventListener('input', () => { slugInput.dataset.manual = '1'; });
+  }
+});
 
 // ── WALLETS ───────────────────────────────────────────────
 async function loadWalletAnalytics() {
