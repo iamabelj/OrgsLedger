@@ -3,1117 +3,975 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>OrgsLedger — AI Gateway Admin</title>
+  <title>OrgsLedger — Platform Admin Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --primary: #2563eb;
-      --primary-dark: #1d4ed8;
-      --primary-light: #3b82f6;
-      --accent: #06d6a0;
-      --accent-dark: #05c090;
-      --dark: #0f172a;
-      --dark-card: #1e293b;
-      --dark-border: #334155;
-      --gray-300: #cbd5e1;
-      --gray-400: #94a3b8;
-      --gray-500: #64748b;
-      --white: #ffffff;
-      --danger: #ef4444;
-      --warning: #f59e0b;
-      --success: #10b981;
-      --radius: 12px;
-      --radius-sm: 8px;
-      --shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+      --primary: #2563eb; --primary-dark: #1d4ed8; --primary-light: #3b82f6;
+      --accent: #06d6a0; --accent-dark: #05c090;
+      --dark: #0f172a; --dark-card: #1e293b; --dark-card-hover: #263548; --dark-border: #334155;
+      --gray-50: #f8fafc; --gray-100: #f1f5f9; --gray-200: #e2e8f0; --gray-300: #cbd5e1;
+      --gray-400: #94a3b8; --gray-500: #64748b; --gray-600: #475569;
+      --gray-700: #334155; --gray-800: #1e293b; --gray-900: #0f172a;
+      --white: #fff; --danger: #ef4444; --warning: #f59e0b; --success: #10b981; --info: #3b82f6;
+      --radius: 12px; --radius-sm: 8px;
     }
-    html, body { height: 100%; font-family: 'Inter', sans-serif; background: var(--dark); color: var(--gray-300); }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Inter', -apple-system, sans-serif; color: var(--gray-300); line-height: 1.5; background: var(--dark); min-height: 100vh; }
+    h1,h2,h3,h4 { font-family: 'Space Grotesk','Inter',sans-serif; line-height: 1.2; color: var(--white); }
+    a { text-decoration: none; color: inherit; }
+    button { font-family: inherit; cursor: pointer; }
+    input, select, textarea { font-family: inherit; }
 
-    /* ── Login Screen ─────────────────────────────────── */
-    #login-screen {
-      display: flex; align-items: center; justify-content: center; height: 100vh;
-      background: linear-gradient(160deg, #0f172a 0%, #1e293b 40%, #0f172a 100%);
-    }
-    .login-box {
-      background: var(--dark-card); border: 1px solid var(--dark-border);
-      padding: 40px; border-radius: var(--radius); width: 100%; max-width: 400px;
-    }
-    .login-box h1 { color: var(--white); font-size: 1.5rem; margin-bottom: 8px; }
-    .login-box p { color: var(--gray-400); margin-bottom: 24px; font-size: 0.875rem; }
-    .login-box .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+    /* Login */
+    .login-overlay { position: fixed; inset: 0; background: var(--dark); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+    .login-box { background: var(--dark-card); border: 1px solid var(--dark-border); border-radius: var(--radius); padding: 40px; width: 100%; max-width: 400px; text-align: center; }
+    .login-box .logo { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px; }
+    .login-box .logo-icon { width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #2563eb, #06d6a0); display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; font-size: 1rem; }
     .login-box .logo span { font-size: 1.3rem; font-weight: 800; color: var(--white); }
-    .login-box .logo-icon {
-      width: 36px; height: 36px; border-radius: 10px;
-      background: linear-gradient(135deg, var(--primary), var(--accent));
-      display: flex; align-items: center; justify-content: center;
-      font-weight: 800; color: var(--white); font-size: 1rem;
-    }
+    .login-box h2 { font-size: 1rem; color: var(--gray-400); font-weight: 500; margin-bottom: 28px; }
+    .login-field { margin-bottom: 16px; text-align: left; }
+    .login-field label { display: block; font-size: .8rem; font-weight: 600; color: var(--gray-400); margin-bottom: 6px; }
+    .login-field input { width: 100%; padding: 12px 14px; background: var(--dark); border: 1px solid var(--dark-border); border-radius: var(--radius-sm); color: var(--white); font-size: .9rem; transition: border-color .2s; }
+    .login-field input:focus { outline: none; border-color: var(--primary); }
+    .login-btn { width: 100%; padding: 12px; background: var(--primary); color: var(--white); border: none; border-radius: var(--radius-sm); font-size: .95rem; font-weight: 700; transition: background .2s; margin-top: 8px; }
+    .login-btn:hover { background: var(--primary-dark); }
+    .login-error { color: var(--danger); font-size: .8rem; margin-top: 12px; display: none; }
 
-    /* ── Form Controls ────────────────────────────────── */
-    .form-group { margin-bottom: 16px; }
-    .form-group label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--gray-400); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
-    .form-group input, .form-group select, .form-group textarea {
-      width: 100%; padding: 10px 14px; border-radius: var(--radius-sm);
-      border: 1px solid var(--dark-border); background: var(--dark);
-      color: var(--white); font-size: 0.9rem; font-family: inherit;
-      transition: border-color 0.2s;
-    }
-    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
-      outline: none; border-color: var(--primary);
-    }
-    .form-group textarea { resize: vertical; min-height: 60px; }
-    .form-group select option { background: var(--dark); }
-
-    /* ── Buttons ───────────────────────────────────────── */
-    .btn {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 10px 20px; border-radius: var(--radius-sm); border: none;
-      font-size: 0.875rem; font-weight: 600; font-family: inherit;
-      cursor: pointer; transition: all 0.2s;
-    }
-    .btn-primary { background: var(--primary); color: var(--white); }
-    .btn-primary:hover { background: var(--primary-dark); }
-    .btn-accent { background: var(--accent); color: var(--dark); }
-    .btn-accent:hover { background: var(--accent-dark); }
-    .btn-danger { background: var(--danger); color: var(--white); }
-    .btn-danger:hover { background: #dc2626; }
-    .btn-ghost { background: transparent; color: var(--gray-400); border: 1px solid var(--dark-border); }
-    .btn-ghost:hover { color: var(--white); border-color: var(--gray-400); }
-    .btn-sm { padding: 6px 12px; font-size: 0.8rem; }
-    .btn-block { width: 100%; justify-content: center; }
-
-    /* ── Layout ────────────────────────────────────────── */
-    #app { display: none; height: 100vh; }
-    .sidebar {
-      position: fixed; left: 0; top: 0; bottom: 0; width: 240px;
-      background: var(--dark-card); border-right: 1px solid var(--dark-border);
-      padding: 20px 0; display: flex; flex-direction: column; z-index: 10;
-    }
-    .sidebar .logo { display: flex; align-items: center; gap: 10px; padding: 0 20px; margin-bottom: 32px; }
-    .sidebar .logo-icon {
-      width: 32px; height: 32px; border-radius: 8px;
-      background: linear-gradient(135deg, var(--primary), var(--accent));
-      display: flex; align-items: center; justify-content: center;
-      font-weight: 800; color: var(--white); font-size: 0.85rem;
-    }
-    .sidebar .logo span { font-weight: 800; color: var(--white); font-size: 1rem; }
-    .sidebar .logo small { display: block; font-size: 0.65rem; color: var(--gray-500); font-weight: 400; }
-    .sidebar nav { flex: 1; }
-    .sidebar nav a {
-      display: flex; align-items: center; gap: 12px;
-      padding: 10px 20px; color: var(--gray-400); text-decoration: none;
-      font-size: 0.875rem; font-weight: 500; transition: all 0.2s;
-      border-left: 3px solid transparent;
-    }
-    .sidebar nav a:hover { color: var(--white); background: rgba(255,255,255,0.03); }
-    .sidebar nav a.active { color: var(--primary-light); border-left-color: var(--primary); background: rgba(37,99,235,0.08); }
-    .sidebar nav a svg { width: 18px; height: 18px; flex-shrink: 0; }
+    /* Layout */
+    .app { display: flex; min-height: 100vh; }
+    .sidebar { width: 260px; background: var(--dark-card); border-right: 1px solid var(--dark-border); padding: 24px 0; display: flex; flex-direction: column; position: fixed; top: 0; bottom: 0; left: 0; z-index: 50; }
+    .sidebar .logo { display: flex; align-items: center; gap: 10px; padding: 0 20px; margin-bottom: 6px; }
+    .sidebar .logo-icon { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #2563eb, #06d6a0); display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; font-size: .8rem; }
+    .sidebar .logo span { font-size: 1.05rem; font-weight: 800; color: var(--white); }
+    .sidebar .subtitle { font-size: .7rem; color: var(--gray-500); padding: 0 20px 20px; border-bottom: 1px solid var(--dark-border); }
+    .sidebar nav { flex: 1; padding: 16px 12px; overflow-y: auto; }
+    .nav-group { margin-bottom: 20px; }
+    .nav-group-label { font-size: .65rem; font-weight: 700; color: var(--gray-500); text-transform: uppercase; letter-spacing: .1em; padding: 0 8px; margin-bottom: 6px; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-sm); color: var(--gray-400); font-size: .85rem; font-weight: 500; cursor: pointer; transition: all .15s; }
+    .nav-item:hover { background: rgba(255,255,255,0.04); color: var(--gray-200); }
+    .nav-item.active { background: rgba(37,99,235,0.12); color: var(--primary-light); font-weight: 600; }
+    .nav-item .icon { font-size: 1.1rem; width: 22px; text-align: center; }
     .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--dark-border); }
-    .sidebar-footer button {
-      display: flex; align-items: center; gap: 8px; background: none; border: none;
-      color: var(--gray-400); font-size: 0.8rem; cursor: pointer; font-family: inherit;
-    }
-    .sidebar-footer button:hover { color: var(--danger); }
+    .sidebar-footer .admin-email { font-size: .75rem; color: var(--gray-500); margin-bottom: 8px; }
+    .sidebar-footer button { width: 100%; padding: 8px; background: transparent; border: 1px solid var(--dark-border); border-radius: var(--radius-sm); color: var(--gray-400); font-size: .8rem; font-weight: 600; transition: all .2s; }
+    .sidebar-footer button:hover { border-color: var(--danger); color: var(--danger); }
 
-    .main-content {
-      margin-left: 240px; padding: 24px 32px; min-height: 100vh;
-      overflow-y: auto;
-    }
-    .page-header { margin-bottom: 24px; }
-    .page-header h2 { color: var(--white); font-size: 1.5rem; font-weight: 700; }
-    .page-header p { color: var(--gray-500); font-size: 0.875rem; margin-top: 4px; }
-    .page-header .actions { display: flex; gap: 10px; margin-top: 12px; }
-
-    /* ── Stat Cards ────────────────────────────────────── */
-    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; margin-bottom: 24px; }
-    .stat-card {
-      background: var(--dark-card); border: 1px solid var(--dark-border);
-      border-radius: var(--radius); padding: 20px;
-    }
-    .stat-card .stat-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gray-500); margin-bottom: 8px; }
-    .stat-card .stat-value { font-size: 1.75rem; font-weight: 800; color: var(--white); }
-    .stat-card .stat-sub { font-size: 0.8rem; color: var(--gray-400); margin-top: 4px; }
-    .stat-card.accent .stat-value { color: var(--accent); }
-    .stat-card.primary .stat-value { color: var(--primary-light); }
-    .stat-card.warning .stat-value { color: var(--warning); }
-    .stat-card.danger .stat-value { color: var(--danger); }
-
-    /* ── Chart ─────────────────────────────────────────── */
-    .chart-card {
-      background: var(--dark-card); border: 1px solid var(--dark-border);
-      border-radius: var(--radius); padding: 20px; margin-bottom: 24px;
-    }
-    .chart-card h3 { color: var(--white); font-size: 1rem; margin-bottom: 16px; }
-    .chart-card canvas { width: 100% !important; height: 200px !important; }
-
-    /* ── Table ─────────────────────────────────────────── */
-    .table-card {
-      background: var(--dark-card); border: 1px solid var(--dark-border);
-      border-radius: var(--radius); overflow: hidden; margin-bottom: 24px;
-    }
-    .table-card .table-header {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 16px 20px; border-bottom: 1px solid var(--dark-border);
-    }
-    .table-card .table-header h3 { color: var(--white); font-size: 1rem; }
-    .table-card .table-header .filters { display: flex; gap: 8px; align-items: center; }
-    .table-card .table-header .filters select, .table-card .table-header .filters input {
-      padding: 6px 10px; border-radius: 6px; border: 1px solid var(--dark-border);
-      background: var(--dark); color: var(--gray-300); font-size: 0.8rem; font-family: inherit;
-    }
-    .table-wrap { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; }
-    th {
-      text-align: left; padding: 10px 16px; font-size: 0.7rem;
-      text-transform: uppercase; letter-spacing: 0.06em; color: var(--gray-500);
-      background: rgba(0,0,0,0.15); font-weight: 600;
-    }
-    td {
-      padding: 12px 16px; font-size: 0.85rem; color: var(--gray-300);
-      border-top: 1px solid var(--dark-border);
-    }
-    tr:hover td { background: rgba(255,255,255,0.02); }
-    .badge {
-      display: inline-block; padding: 3px 10px; border-radius: 100px;
-      font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
-    }
-    .badge-success { background: rgba(16,185,129,0.15); color: var(--success); }
-    .badge-danger { background: rgba(239,68,68,0.15); color: var(--danger); }
-    .badge-primary { background: rgba(37,99,235,0.15); color: var(--primary-light); }
-    .badge-warning { background: rgba(245,158,11,0.15); color: var(--warning); }
-
-    .api-key { font-family: monospace; font-size: 0.78rem; color: var(--gray-500); }
-    .actions-cell { display: flex; gap: 6px; }
-    .icon-btn {
-      width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--dark-border);
-      background: var(--dark); color: var(--gray-400); cursor: pointer;
-      display: flex; align-items: center; justify-content: center; transition: all 0.2s;
-    }
-    .icon-btn:hover { color: var(--white); border-color: var(--gray-400); }
-    .icon-btn.danger:hover { color: var(--danger); border-color: var(--danger); }
-
-    .pagination { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border-top: 1px solid var(--dark-border); }
-    .pagination span { font-size: 0.8rem; color: var(--gray-500); }
-
-    /* ── Modal ─────────────────────────────────────────── */
-    .modal-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100;
-      display: flex; align-items: center; justify-content: center;
-    }
-    .modal {
-      background: var(--dark-card); border: 1px solid var(--dark-border);
-      border-radius: var(--radius); width: 100%; max-width: 500px;
-      max-height: 90vh; overflow-y: auto; padding: 24px;
-    }
-    .modal h3 { color: var(--white); font-size: 1.15rem; margin-bottom: 20px; }
-    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
-
-    /* ── Toast ─────────────────────────────────────────── */
-    .toast-container { position: fixed; top: 20px; right: 20px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
-    .toast {
-      padding: 12px 20px; border-radius: var(--radius-sm);
-      font-size: 0.85rem; font-weight: 500; color: var(--white);
-      animation: slideIn 0.3s ease; min-width: 260px;
-    }
-    .toast-success { background: var(--success); }
-    .toast-error { background: var(--danger); }
-    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-
-    /* ── Page sections ────────────────────────────────── */
+    .main { margin-left: 260px; flex: 1; padding: 28px 32px; min-height: 100vh; }
     .page { display: none; }
     .page.active { display: block; }
+    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; flex-wrap: wrap; gap: 12px; }
+    .page-header h1 { font-size: 1.6rem; }
+    .page-header .badge { display: inline-flex; padding: 4px 12px; border-radius: 50px; font-size: .7rem; font-weight: 700; }
+    .badge-blue { background: rgba(37,99,235,0.15); color: var(--primary-light); }
+    .badge-green { background: rgba(16,185,129,0.15); color: var(--success); }
+    .badge-red { background: rgba(239,68,68,0.15); color: var(--danger); }
+    .badge-yellow { background: rgba(245,158,11,0.15); color: var(--warning); }
 
-    /* ── Empty state ──────────────────────────────────── */
-    .empty-state { text-align: center; padding: 60px 20px; color: var(--gray-500); }
-    .empty-state svg { width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.4; }
-    .empty-state p { font-size: 0.9rem; }
+    /* Stats Grid */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 28px; }
+    .stat-card { background: var(--dark-card); border: 1px solid var(--dark-border); border-radius: var(--radius); padding: 20px; transition: border-color .2s; }
+    .stat-card:hover { border-color: var(--primary); }
+    .stat-card .label { font-size: .75rem; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+    .stat-card .value { font-size: 1.8rem; font-weight: 800; color: var(--white); font-family: 'Space Grotesk', sans-serif; }
+    .stat-card .change { font-size: .75rem; margin-top: 6px; }
+    .stat-card .change.up { color: var(--success); }
+    .stat-card .change.down { color: var(--danger); }
 
-    /* ── Responsive ───────────────────────────────────── */
+    /* Tables */
+    .table-wrap { background: var(--dark-card); border: 1px solid var(--dark-border); border-radius: var(--radius); overflow: hidden; margin-bottom: 24px; }
+    .table-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--dark-border); flex-wrap: wrap; gap: 12px; }
+    .table-header h3 { font-size: 1rem; }
+    .table-header .actions { display: flex; gap: 8px; align-items: center; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; padding: 12px 16px; font-size: .72rem; font-weight: 700; color: var(--gray-500); text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid var(--dark-border); }
+    td { padding: 12px 16px; font-size: .85rem; border-bottom: 1px solid rgba(51,65,85,0.4); color: var(--gray-300); }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    .status-active { color: var(--success); font-weight: 600; }
+    .status-inactive, .status-suspended { color: var(--danger); font-weight: 600; }
+    .status-expired, .status-grace_period { color: var(--warning); font-weight: 600; }
+
+    /* Buttons */
+    .btn { padding: 8px 16px; border: none; border-radius: var(--radius-sm); font-size: .8rem; font-weight: 600; transition: all .15s; display: inline-flex; align-items: center; gap: 6px; }
+    .btn-sm { padding: 5px 10px; font-size: .75rem; }
+    .btn-primary { background: var(--primary); color: var(--white); }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-success { background: var(--success); color: var(--white); }
+    .btn-success:hover { background: #059669; }
+    .btn-danger { background: rgba(239,68,68,0.15); color: var(--danger); border: 1px solid rgba(239,68,68,0.3); }
+    .btn-danger:hover { background: rgba(239,68,68,0.25); }
+    .btn-ghost { background: transparent; color: var(--gray-400); border: 1px solid var(--dark-border); }
+    .btn-ghost:hover { border-color: var(--gray-400); color: var(--gray-200); }
+
+    /* Forms */
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: .8rem; font-weight: 600; color: var(--gray-400); margin-bottom: 6px; }
+    .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px 14px; background: var(--dark); border: 1px solid var(--dark-border); border-radius: var(--radius-sm); color: var(--white); font-size: .88rem; }
+    .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--primary); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    /* Modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 200; display: none; align-items: center; justify-content: center; }
+    .modal-overlay.show { display: flex; }
+    .modal { background: var(--dark-card); border: 1px solid var(--dark-border); border-radius: var(--radius); padding: 28px; width: 100%; max-width: 500px; max-height: 80vh; overflow-y: auto; }
+    .modal h3 { margin-bottom: 20px; }
+
+    /* Cards Grid */
+    .cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .info-card { background: var(--dark-card); border: 1px solid var(--dark-border); border-radius: var(--radius); padding: 24px; }
+    .info-card h4 { font-size: .9rem; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+
+    /* Alert list */
+    .alert-list { list-style: none; }
+    .alert-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid rgba(51,65,85,0.3); }
+    .alert-item:last-child { border-bottom: none; }
+    .alert-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .dot-red { background: var(--danger); }
+    .dot-yellow { background: var(--warning); }
+    .dot-green { background: var(--success); }
+    .alert-item .org-name { font-size: .85rem; font-weight: 600; color: var(--gray-200); }
+    .alert-item .details { font-size: .75rem; color: var(--gray-500); }
+
+    /* Empty state */
+    .empty { text-align: center; padding: 48px 20px; color: var(--gray-500); }
+    .empty .emoji { font-size: 2.5rem; margin-bottom: 12px; }
+    .empty p { font-size: .9rem; }
+
+    /* Loading */
+    .loading { text-align: center; padding: 40px; color: var(--gray-500); }
+    .spinner { width: 32px; height: 32px; border: 3px solid var(--dark-border); border-top-color: var(--primary); border-radius: 50%; animation: spin .6s linear infinite; margin: 0 auto 12px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Toast */
+    .toast { position: fixed; bottom: 24px; right: 24px; padding: 14px 24px; border-radius: var(--radius-sm); font-size: .85rem; font-weight: 600; color: var(--white); z-index: 300; transform: translateY(100px); opacity: 0; transition: all .3s; }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast-success { background: var(--success); }
+    .toast-error { background: var(--danger); }
+
+    /* Responsive */
     @media (max-width: 768px) {
       .sidebar { width: 60px; }
-      .sidebar .logo span, .sidebar .logo small, .sidebar nav a span { display: none; }
-      .sidebar nav a { justify-content: center; padding: 12px; }
-      .main-content { margin-left: 60px; padding: 16px; }
+      .sidebar .logo span, .sidebar .subtitle, .sidebar .nav-group-label, .sidebar .nav-item span, .sidebar-footer .admin-email { display: none; }
+      .sidebar .nav-item { justify-content: center; padding: 12px; }
+      .sidebar .nav-item .icon { margin: 0; }
+      .main { margin-left: 60px; padding: 20px 16px; }
       .stats-grid { grid-template-columns: 1fr 1fr; }
+      .form-row { grid-template-columns: 1fr; }
     }
-    .loading { text-align:center; padding: 40px; color: var(--gray-500); }
   </style>
 </head>
 <body>
 
-<!-- ── Login Screen ──────────────────────────────────── -->
-<div id="login-screen">
+<!-- LOGIN -->
+<div class="login-overlay" id="login-overlay">
   <div class="login-box">
-    <div class="logo">
-      <div class="logo-icon">OL</div>
-      <span>OrgsLedger</span>
-    </div>
-    <h1>AI Gateway Admin</h1>
-    <p>Sign in to manage clients and monitor AI usage.</p>
-    <div class="form-group">
-      <label>Email</label>
-      <input type="email" id="login-email" placeholder="admin@orgsledger.com" />
-    </div>
-    <div class="form-group">
-      <label>Password</label>
-      <input type="password" id="login-password" placeholder="••••••••" />
-    </div>
-    <div id="login-error" style="color:var(--danger);font-size:0.8rem;margin-bottom:12px;display:none"></div>
-    <button class="btn btn-primary btn-block" onclick="handleLogin()">Sign In</button>
+    <div class="logo"><div class="logo-icon">OL</div><span>OrgsLedger</span></div>
+    <h2>Platform Admin Dashboard</h2>
+    <form onsubmit="doLogin(event)">
+      <div class="login-field">
+        <label>Email</label>
+        <input type="email" id="login-email" placeholder="admin@orgsledger.com" required autocomplete="email" />
+      </div>
+      <div class="login-field">
+        <label>Password</label>
+        <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password" />
+      </div>
+      <button type="submit" class="login-btn">Sign In</button>
+      <div class="login-error" id="login-error">Invalid credentials</div>
+    </form>
   </div>
 </div>
 
-<!-- ── App Shell ─────────────────────────────────────── -->
-<div id="app">
-  <!-- Sidebar -->
-  <div class="sidebar">
-    <div class="logo">
-      <div class="logo-icon">OL</div>
-      <div>
-        <span>OrgsLedger</span>
-        <small>AI Gateway</small>
-      </div>
-    </div>
+<!-- APP -->
+<div class="app" id="app" style="display:none;">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="logo"><div class="logo-icon">OL</div><span>OrgsLedger</span></div>
+    <div class="subtitle">Platform Admin</div>
     <nav>
-      <a href="#" class="active" data-page="dashboard" onclick="showPage('dashboard')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        <span>Dashboard</span>
-      </a>
-      <a href="#" data-page="clients" onclick="showPage('clients')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        <span>Clients</span>
-      </a>
-      <a href="#" data-page="logs" onclick="showPage('logs')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        <span>Usage Logs</span>
-      </a>
-      <a href="#" data-page="orders" onclick="showPage('orders')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-        <span>Orders</span>
-      </a>
-      <a href="#" data-page="ai-plans" onclick="showPage('ai-plans')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        <span>AI Plans</span>
-      </a>
+      <div class="nav-group">
+        <div class="nav-group-label">Overview</div>
+        <div class="nav-item active" data-page="overview"><span class="icon">📊</span><span>Dashboard</span></div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">Management</div>
+        <div class="nav-item" data-page="subscriptions"><span class="icon">💳</span><span>Subscriptions</span></div>
+        <div class="nav-item" data-page="organizations"><span class="icon">🏢</span><span>Organizations</span></div>
+        <div class="nav-item" data-page="wallets"><span class="icon">💰</span><span>AI & Wallets</span></div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">Analytics</div>
+        <div class="nav-item" data-page="revenue"><span class="icon">📈</span><span>Revenue</span></div>
+        <div class="nav-item" data-page="risk"><span class="icon">⚠️</span><span>Risk Monitor</span></div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">AI Gateway</div>
+        <div class="nav-item" data-page="clients"><span class="icon">🤖</span><span>AI Clients</span></div>
+        <div class="nav-item" data-page="usage"><span class="icon">📋</span><span>Usage Logs</span></div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">System</div>
+        <div class="nav-item" data-page="plans"><span class="icon">⚙️</span><span>Plan Editor</span></div>
+        <div class="nav-item" data-page="orders"><span class="icon">🧾</span><span>Orders</span></div>
+      </div>
     </nav>
     <div class="sidebar-footer">
-      <button onclick="handleLogout()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        Sign Out
-      </button>
+      <div class="admin-email" id="admin-email">admin@orgsledger.com</div>
+      <button onclick="doLogout()">Sign Out</button>
     </div>
-  </div>
+  </aside>
 
-  <!-- Main Content -->
-  <div class="main-content">
+  <!-- MAIN CONTENT -->
+  <main class="main">
 
-    <!-- ── Dashboard Page ──────────────────────────── -->
-    <div class="page active" id="page-dashboard">
-      <div class="page-header">
-        <h2>Dashboard</h2>
-        <p>AI Gateway overview and usage statistics</p>
+    <!--  OVERVIEW PAGE  -->
+    <section class="page active" id="page-overview">
+      <div class="page-header"><h1>Platform Dashboard</h1><span class="badge badge-green">Live</span></div>
+      <div class="stats-grid" id="overview-stats">
+        <div class="stat-card"><div class="label">Total Organizations</div><div class="value" id="st-orgs">—</div></div>
+        <div class="stat-card"><div class="label">Active Subscriptions</div><div class="value" id="st-subs">—</div></div>
+        <div class="stat-card"><div class="label">Total Revenue</div><div class="value" id="st-revenue">—</div></div>
+        <div class="stat-card"><div class="label">AI Hours Used</div><div class="value" id="st-ai-hours">—</div></div>
+        <div class="stat-card"><div class="label">Translation Hours Used</div><div class="value" id="st-trans-hours">—</div></div>
+        <div class="stat-card"><div class="label">AI Clients</div><div class="value" id="st-ai-clients">—</div></div>
       </div>
-      <div class="stats-grid" id="stats-cards">
-        <div class="stat-card"><div class="stat-label">Total Clients</div><div class="stat-value" id="s-total-clients">—</div></div>
-        <div class="stat-card accent"><div class="stat-label">Active Clients</div><div class="stat-value" id="s-active-clients">—</div></div>
-        <div class="stat-card primary"><div class="stat-label">Requests This Month</div><div class="stat-value" id="s-total-requests">—</div><div class="stat-sub" id="s-success-rate"></div></div>
-        <div class="stat-card warning"><div class="stat-label">Total Hours Assigned</div><div class="stat-value" id="s-total-hours">—</div><div class="stat-sub" id="s-hours-breakdown"></div></div>
-        <div class="stat-card"><div class="stat-label">Estimated Cost</div><div class="stat-value" id="s-total-cost">—</div><div class="stat-sub" id="s-cost-breakdown"></div></div>
+      <div class="cards-grid">
+        <div class="info-card">
+          <h4>⚠️ Low Balance Alerts</h4>
+          <ul class="alert-list" id="overview-low-balances"><li class="loading"><div class="spinner"></div>Loading…</li></ul>
+        </div>
+        <div class="info-card">
+          <h4>📈 Usage Spikes</h4>
+          <ul class="alert-list" id="overview-spikes"><li class="loading"><div class="spinner"></div>Loading…</li></ul>
+        </div>
       </div>
-      <div class="chart-card">
-        <h3>Daily Usage — Last 30 Days</h3>
-        <canvas id="usage-chart"></canvas>
-      </div>
-      <div class="table-card">
-        <div class="table-header"><h3>Top Clients This Month</h3></div>
-        <div class="table-wrap">
+    </section>
+
+    <!--  SUBSCRIPTIONS PAGE  -->
+    <section class="page" id="page-subscriptions">
+      <div class="page-header"><h1>Subscriptions</h1></div>
+      <div class="table-wrap">
+        <div class="table-header"><h3>All Subscriptions</h3>
+          <div class="actions"><button class="btn btn-ghost btn-sm" onclick="loadSubscriptions()">↻ Refresh</button></div>
+        </div>
+        <div style="overflow-x:auto;">
           <table>
-            <thead><tr><th>Client</th><th>Domain</th><th>Hours (Balance / Used)</th><th>Requests</th><th>Cost</th></tr></thead>
-            <tbody id="top-clients-body"></tbody>
+            <thead><tr><th>Organization</th><th>Plan</th><th>Status</th><th>Expires</th><th>Members</th><th>Actions</th></tr></thead>
+            <tbody id="subscriptions-tbody"><tr><td colspan="6" class="loading"><div class="spinner"></div>Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- ── Clients Page ────────────────────────────── -->
-    <div class="page" id="page-clients">
-      <div class="page-header">
-        <h2>Clients</h2>
-        <p>Manage API clients and their hours</p>
-        <div class="actions"><button class="btn btn-accent" onclick="openAddClient()">+ Add Client</button></div>
-      </div>
-      <div class="table-card">
-        <div class="table-wrap">
+    <!--  ORGANIZATIONS PAGE  -->
+    <section class="page" id="page-organizations">
+      <div class="page-header"><h1>Organizations</h1></div>
+      <div class="table-wrap">
+        <div class="table-header"><h3>All Organizations</h3>
+          <div class="actions"><button class="btn btn-ghost btn-sm" onclick="loadOrganizations()">↻ Refresh</button></div>
+        </div>
+        <div style="overflow-x:auto;">
           <table>
-            <thead><tr><th>Client</th><th>Domain</th><th>License Key</th><th>API Key</th><th>Status</th><th>Hours (Balance / Used)</th><th>Usage (month)</th><th>Cost</th><th>Actions</th></tr></thead>
-            <tbody id="clients-body"><tr><td colspan="9" class="loading">Loading...</td></tr></tbody>
+            <thead><tr><th>Name</th><th>Plan</th><th>Status</th><th>Members</th><th>Created</th><th>Actions</th></tr></thead>
+            <tbody id="organizations-tbody"><tr><td colspan="6" class="loading"><div class="spinner"></div>Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- ── Logs Page ───────────────────────────────── -->
-    <div class="page" id="page-logs">
-      <div class="page-header">
-        <h2>Usage Logs</h2>
-        <p>View detailed AI request logs</p>
+    <!--  WALLETS PAGE  -->
+    <section class="page" id="page-wallets">
+      <div class="page-header"><h1>AI &amp; Translation Wallets</h1></div>
+      <div class="stats-grid" id="wallet-stats"></div>
+      <div class="table-wrap">
+        <div class="table-header"><h3>Wallet Balances by Organization</h3>
+          <div class="actions"><button class="btn btn-ghost btn-sm" onclick="loadWalletAnalytics()">↻ Refresh</button></div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead><tr><th>Organization</th><th>AI Balance</th><th>AI Used</th><th>Translation Balance</th><th>Translation Used</th><th>Actions</th></tr></thead>
+            <tbody id="wallets-tbody"><tr><td colspan="6" class="loading"><div class="spinner"></div>Loading…</td></tr></tbody>
+          </table>
+        </div>
       </div>
-      <div class="table-card">
-        <div class="table-header">
-          <h3>Recent Requests</h3>
-          <div class="filters">
-            <select id="filter-client" onchange="fetchLogs()"><option value="">All Clients</option></select>
-            <select id="filter-service" onchange="fetchLogs()">
+    </section>
+
+    <!--  REVENUE PAGE  -->
+    <section class="page" id="page-revenue">
+      <div class="page-header"><h1>Revenue Analytics</h1></div>
+      <div class="stats-grid" id="revenue-stats"></div>
+      <div class="cards-grid" id="revenue-details"></div>
+    </section>
+
+    <!--  RISK PAGE  -->
+    <section class="page" id="page-risk">
+      <div class="page-header"><h1>Risk Monitor</h1><span class="badge badge-yellow">Alerts</span></div>
+      <div class="cards-grid">
+        <div class="info-card">
+          <h4>🔴 Low Balance Organizations</h4>
+          <ul class="alert-list" id="risk-low-balances"><li class="loading"><div class="spinner"></div>Loading…</li></ul>
+        </div>
+        <div class="info-card">
+          <h4>📈 Usage Spike Detections</h4>
+          <ul class="alert-list" id="risk-spikes"><li class="loading"><div class="spinner"></div>Loading…</li></ul>
+        </div>
+      </div>
+    </section>
+
+    <!--  AI CLIENTS PAGE  -->
+    <section class="page" id="page-clients">
+      <div class="page-header"><h1>AI Gateway Clients</h1>
+        <button class="btn btn-primary" onclick="openModal('add-client')">+ New Client</button>
+      </div>
+      <div class="table-wrap">
+        <div class="table-header"><h3>Registered Clients</h3>
+          <div class="actions"><button class="btn btn-ghost btn-sm" onclick="loadClients()">↻ Refresh</button></div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Hours Bal.</th><th>Hours Used</th><th>API Key</th><th>Actions</th></tr></thead>
+            <tbody id="clients-tbody"><tr><td colspan="7" class="loading"><div class="spinner"></div>Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!--  USAGE LOGS PAGE  -->
+    <section class="page" id="page-usage">
+      <div class="page-header"><h1>AI Usage Logs</h1></div>
+      <div class="table-wrap">
+        <div class="table-header"><h3>Recent AI Requests</h3>
+          <div class="actions">
+            <select id="log-service-filter" onchange="loadUsageLogs()" style="padding:6px 10px;background:var(--dark);border:1px solid var(--dark-border);border-radius:6px;color:var(--gray-300);font-size:.8rem;">
               <option value="">All Services</option>
               <option value="speech-to-text">Speech-to-Text</option>
               <option value="openai">OpenAI</option>
+              <option value="translation">Translation</option>
             </select>
-            <select id="filter-status" onchange="fetchLogs()">
-              <option value="">All Status</option>
-              <option value="success">Success</option>
-              <option value="error">Error</option>
-            </select>
+            <button class="btn btn-ghost btn-sm" onclick="loadUsageLogs()">↻ Refresh</button>
           </div>
         </div>
-        <div class="table-wrap">
+        <div style="overflow-x:auto;">
           <table>
-            <thead><tr><th>Time</th><th>Client</th><th>Service</th><th>Audio/Tokens</th><th>Cost</th><th>Status</th></tr></thead>
-            <tbody id="logs-body"><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
-          </table>
-        </div>
-        <div class="pagination">
-          <span id="logs-info">Showing 0 of 0</span>
-          <div style="display:flex;gap:6px">
-            <button class="btn btn-ghost btn-sm" id="logs-prev" onclick="logsPage(-1)" disabled>&larr; Prev</button>
-            <button class="btn btn-ghost btn-sm" id="logs-next" onclick="logsPage(1)">Next &rarr;</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── Orders Page ─────────────────────────────── -->
-    <div class="page" id="page-orders">
-      <div class="page-header">
-        <h2>Orders</h2>
-        <p>Product purchases from the landing page</p>
-      </div>
-      <div class="table-card">
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Date</th><th>Customer</th><th>Items</th><th>Amount</th><th>Gateway</th><th>Status</th></tr></thead>
-            <tbody id="orders-body"><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
+            <thead><tr><th>Time</th><th>Client</th><th>Service</th><th>Status</th><th>Hours</th><th>Cost</th></tr></thead>
+            <tbody id="usage-tbody"><tr><td colspan="6" class="loading"><div class="spinner"></div>Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- ── AI Plans Page (Super Admin Only) ────────── -->
-    <div class="page" id="page-ai-plans">
-      <div class="page-header">
-        <h2>AI Plans & Pricing</h2>
-        <p>Manage AI hour pricing and sell hours to clients. ₦10,000/hr (NGN) · $7/hr (USD)</p>
-      </div>
-      <div class="stats-grid">
-        <div class="stat-card accent">
-          <div class="stat-label">Price Per Hour (NGN)</div>
-          <div class="stat-value">₦10,000</div>
-        </div>
-        <div class="stat-card primary">
-          <div class="stat-label">Price Per Hour (USD)</div>
-          <div class="stat-value">$7.00</div>
-        </div>
-        <div class="stat-card warning">
-          <div class="stat-label">Exchange Rate</div>
-          <div class="stat-value">₦1,500/$1</div>
-        </div>
-      </div>
+    <!--  PLANS PAGE  -->
+    <section class="page" id="page-plans">
+      <div class="page-header"><h1>Plan Editor</h1></div>
+      <div class="cards-grid" id="plans-grid"><div class="loading"><div class="spinner"></div>Loading plans…</div></div>
+    </section>
 
-      <div class="table-card" style="margin-top:24px">
-        <div class="table-header"><h3>Sell AI Hours to Client</h3></div>
-        <div style="padding:20px">
-          <div class="form-group">
-            <label>Select Client</label>
-            <select id="plan-client"></select>
-          </div>
-          <div class="form-group">
-            <label>Hours to Add</label>
-            <input type="number" id="plan-hours" value="10" step="1" min="1" />
-          </div>
-          <div class="form-group">
-            <label>Currency</label>
-            <select id="plan-currency">
-              <option value="NGN">NGN (₦)</option>
-              <option value="USD">USD ($)</option>
-            </select>
-          </div>
-          <div style="padding:16px 0;font-size:1.1rem;font-weight:700;color:var(--accent)" id="plan-cost-display">
-            Total: ₦100,000
-          </div>
-          <button class="btn btn-accent" onclick="sellHours()">💰 Add Hours & Record Sale</button>
+    <!--  ORDERS PAGE  -->
+    <section class="page" id="page-orders">
+      <div class="page-header"><h1>Orders</h1></div>
+      <div class="table-wrap">
+        <div class="table-header"><h3>Recent Orders</h3>
+          <div class="actions"><button class="btn btn-ghost btn-sm" onclick="loadOrders()">↻ Refresh</button></div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead><tr><th>Date</th><th>Customer</th><th>Items</th><th>Amount</th><th>Currency</th><th>Gateway</th><th>Status</th></tr></thead>
+            <tbody id="orders-tbody"><tr><td colspan="7" class="loading"><div class="spinner"></div>Loading…</td></tr></tbody>
+          </table>
         </div>
       </div>
-    </div>
-  </div>
+    </section>
+
+  </main>
 </div>
 
-<!-- ── Toast Container ───────────────────────────────── -->
-<div class="toast-container" id="toast-container"></div>
-
-<!-- ── Client Modal ──────────────────────────────────── -->
-<div class="modal-overlay" id="client-modal" style="display:none" onclick="if(event.target===this)closeModal()">
+<!-- MODALS -->
+<div class="modal-overlay" id="modal-add-client">
   <div class="modal">
-    <h3 id="modal-title">Add Client</h3>
-    <div class="form-group">
-      <label>Name *</label>
-      <input type="text" id="m-name" placeholder="Client name or organization" />
-    </div>
-    <div class="form-group">
-      <label>Email</label>
-      <input type="email" id="m-email" placeholder="client@example.com" />
-    </div>
-    <div class="form-group">
-      <label>Domain</label>
-      <input type="text" id="m-domain" placeholder="client.orgsledger.com or custom-domain.com" />
-    </div>
-    <div class="form-group">
-      <label>AI Hours to Assign</label>
-      <input type="number" id="m-hours" value="10" step="0.5" min="0" />
-      <small style="color:var(--gray-500);font-size:0.75rem">Total hours of AI usage (speech-to-text + summarization)</small>
-    </div>
-    <div class="form-group">
-      <label>Notes</label>
-      <textarea id="m-notes" placeholder="Internal notes about this client..."></textarea>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" id="modal-save-btn" onclick="saveClient()">Save Client</button>
-    </div>
+    <h3>Add New AI Client</h3>
+    <form onsubmit="createClient(event)">
+      <div class="form-group"><label>Client Name *</label><input id="nc-name" required /></div>
+      <div class="form-row">
+        <div class="form-group"><label>Email</label><input type="email" id="nc-email" /></div>
+        <div class="form-group"><label>Domain</label><input id="nc-domain" placeholder="example.com" /></div>
+      </div>
+      <div class="form-group"><label>Initial Hours Balance</label><input type="number" id="nc-hours" value="5" min="0" step="0.5" /></div>
+      <div class="form-group"><label>Notes</label><textarea id="nc-notes" rows="2" style="resize:vertical;"></textarea></div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModals()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create Client</button>
+      </div>
+    </form>
   </div>
 </div>
 
-<!-- ── Gift Hours Modal ──────────────────────────────── -->
-<div class="modal-overlay" id="gift-modal" style="display:none" onclick="if(event.target===this)closeGiftModal()">
+<div class="modal-overlay" id="modal-adjust-wallet">
   <div class="modal">
-    <h3>🎁 Gift AI Hours</h3>
-    <p style="color:var(--gray-400);font-size:0.85rem;margin-bottom:16px" id="gift-client-info">Gift hours to client</p>
-    <div class="form-group">
-      <label>Hours to Gift</label>
-      <input type="number" id="g-hours" value="5" step="0.5" min="0.5" />
-    </div>
-    <div class="form-group">
-      <label>Reason</label>
-      <select id="g-reason-preset" onchange="document.getElementById('g-reason').value=this.value">
-        <option value="">Select a reason or type custom...</option>
-        <option value="Holiday Season Bonus">Holiday Season Bonus</option>
-        <option value="New Year Celebration">New Year Celebration</option>
-        <option value="Easter Bonus">Easter Bonus</option>
-        <option value="Customer Loyalty Reward">Customer Loyalty Reward</option>
-        <option value="First Month Bonus">First Month Bonus</option>
-        <option value="Referral Reward">Referral Reward</option>
-        <option value="Promotional Offer">Promotional Offer</option>
-        <option value="Service Credit">Service Credit</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label>Custom Reason</label>
-      <input type="text" id="g-reason" placeholder="e.g. Christmas Bonus 2025" />
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeGiftModal()">Cancel</button>
-      <button class="btn btn-accent" onclick="submitGift()">🎁 Gift Hours</button>
-    </div>
+    <h3 id="adjust-wallet-title">Adjust Wallet</h3>
+    <form onsubmit="submitWalletAdjust(event)">
+      <input type="hidden" id="aw-org-id" />
+      <input type="hidden" id="aw-type" />
+      <div class="form-group"><label>Hours to Add (negative to deduct)</label><input type="number" id="aw-hours" step="0.5" required /></div>
+      <div class="form-group"><label>Reason</label><input id="aw-reason" placeholder="Admin adjustment" required /></div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModals()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Adjust</button>
+      </div>
+    </form>
   </div>
 </div>
+
+<div class="modal-overlay" id="modal-override-sub">
+  <div class="modal">
+    <h3>Override Subscription</h3>
+    <form onsubmit="submitOverride(event)">
+      <input type="hidden" id="os-org-id" />
+      <div class="form-group"><label>New Plan</label>
+        <select id="os-plan"><option value="standard">Standard</option><option value="professional">Professional</option><option value="enterprise">Enterprise</option></select>
+      </div>
+      <div class="form-group"><label>New Status</label>
+        <select id="os-status"><option value="active">Active</option><option value="suspended">Suspended</option><option value="expired">Expired</option><option value="grace_period">Grace Period</option></select>
+      </div>
+      <div class="form-group"><label>Extension Days (optional)</label><input type="number" id="os-days" min="0" placeholder="0" /></div>
+      <div class="form-group"><label>Reason</label><input id="os-reason" required placeholder="Reason for override" /></div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModals()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Apply Override</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
 
 <script>
-/* ═══════════════════════════════════════════════════════
-   STATE
-   ═══════════════════════════════════════════════════════ */
-let token = localStorage.getItem('ols_admin_token') || '';
-let editingClientId = null;
-let logsOffset = 0;
-const LOGS_LIMIT = 30;
+// ── Config ────────────────────────────────────────────────
+const GATEWAY_URL = ''; // same origin
+const API_URL = (window.location.hostname === 'localhost')
+  ? 'http://localhost:3000/api'
+  : 'https://app.orgsledger.com/api';
+let gatewayToken = localStorage.getItem('gw_token') || '';
+let apiToken = localStorage.getItem('api_token') || '';
 
-/* ═══════════════════════════════════════════════════════
-   AUTH
-   ═══════════════════════════════════════════════════════ */
-function checkAuth() {
-  if (token) {
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    loadDashboard();
+// ── Init ──────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  if (gatewayToken) {
+    showApp();
+    loadOverview();
   }
-}
+  // Nav clicks
+  document.querySelectorAll('.nav-item[data-page]').forEach(item => {
+    item.addEventListener('click', () => navigateTo(item.dataset.page));
+  });
+});
 
-async function handleLogin() {
+// ── Auth ──────────────────────────────────────────────────
+async function doLogin(e) {
+  e.preventDefault();
   const email = document.getElementById('login-email').value;
   const password = document.getElementById('login-password').value;
-  const errEl = document.getElementById('login-error');
-  errEl.style.display = 'none';
-
   try {
-    const res = await api('/api/admin/login', 'POST', { email, password }, true);
-    if (res.token) {
-      token = res.token;
-      localStorage.setItem('ols_admin_token', token);
-      checkAuth();
-    } else {
-      errEl.textContent = res.error || 'Login failed';
-      errEl.style.display = 'block';
-    }
-  } catch (e) {
-    errEl.textContent = 'Connection error';
-    errEl.style.display = 'block';
+    // Login to gateway (landing server)
+    const gwRes = await fetch('/api/admin/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!gwRes.ok) throw new Error('Invalid credentials');
+    const gwData = await gwRes.json();
+    gatewayToken = gwData.token;
+    localStorage.setItem('gw_token', gatewayToken);
+
+    // Also login to main API for subscription/org management
+    try {
+      const apiRes = await fetch(API_URL + '/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (apiRes.ok) {
+        const apiData = await apiRes.json();
+        apiToken = apiData.token;
+        localStorage.setItem('api_token', apiToken);
+      }
+    } catch (_) { /* API may not be reachable locally */ }
+
+    document.getElementById('admin-email').textContent = email;
+    showApp();
+    loadOverview();
+  } catch (err) {
+    const el = document.getElementById('login-error');
+    el.textContent = err.message || 'Login failed';
+    el.style.display = 'block';
   }
 }
 
-function handleLogout() {
-  token = '';
-  localStorage.removeItem('ols_admin_token');
+function doLogout() {
+  gatewayToken = ''; apiToken = '';
+  localStorage.removeItem('gw_token');
+  localStorage.removeItem('api_token');
+  document.getElementById('login-overlay').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
-  document.getElementById('login-screen').style.display = 'flex';
 }
 
-/* ═══════════════════════════════════════════════════════
-   API HELPER
-   ═══════════════════════════════════════════════════════ */
-// Auto-detect base path: when served from /developer (mounted in API),
-// prefix all API calls with /developer. When standalone, use root.
-const API_BASE = window.location.pathname.startsWith('/developer') ? '/developer' : '';
+function showApp() {
+  document.getElementById('login-overlay').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+}
 
-async function api(url, method = 'GET', body = null, noAuth = false) {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
-  if (!noAuth) opts.headers['Authorization'] = 'Bearer ' + token;
-  if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(API_BASE + url, opts);
-  if (res.status === 401) { handleLogout(); throw new Error('Unauthorized'); }
+// ── Navigation ────────────────────────────────────────────
+function navigateTo(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page)?.classList.add('active');
+  document.querySelector(`.nav-item[data-page="${page}"]`)?.classList.add('active');
+
+  const loaders = {
+    overview: loadOverview, subscriptions: loadSubscriptions, organizations: loadOrganizations,
+    wallets: loadWalletAnalytics, revenue: loadRevenue, risk: loadRisk,
+    clients: loadClients, usage: loadUsageLogs, plans: loadPlans, orders: loadOrders,
+  };
+  loaders[page]?.();
+}
+
+// ── API Helpers ───────────────────────────────────────────
+function gwHeaders() { return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + gatewayToken }; }
+function apiHeaders() { return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiToken }; }
+
+async function gwFetch(path, opts = {}) {
+  const res = await fetch(path, { ...opts, headers: { ...gwHeaders(), ...opts.headers } });
+  if (res.status === 401) { doLogout(); throw new Error('Session expired'); }
   return res.json();
 }
 
-/* ═══════════════════════════════════════════════════════
-   PAGES
-   ═══════════════════════════════════════════════════════ */
-function showPage(name) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById('page-' + name).classList.add('active');
-  document.querySelectorAll('.sidebar nav a').forEach(a => {
-    a.classList.toggle('active', a.dataset.page === name);
-  });
-  if (name === 'dashboard') loadDashboard();
-  if (name === 'clients') fetchClients();
-  if (name === 'logs') { logsOffset = 0; populateClientFilter(); fetchLogs(); }
-  if (name === 'orders') fetchOrders();
-  if (name === 'ai-plans') loadAIPlans();
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(API_URL + path, { ...opts, headers: { ...apiHeaders(), ...opts.headers } });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'API request failed');
+  }
+  return res.json();
 }
 
-/* ═══════════════════════════════════════════════════════
-   DASHBOARD
-   ═══════════════════════════════════════════════════════ */
-async function loadDashboard() {
+function toast(msg, type = 'success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast toast-' + type + ' show';
+  setTimeout(() => el.classList.remove('show'), 3500);
+}
+
+function fmtDate(d) { return d ? new Date(d).toLocaleDateString() : '—'; }
+function fmtNum(n) { return n != null ? Number(n).toLocaleString() : '—'; }
+function fmtMoney(n, cur) { return (cur === 'USD' ? '$' : '₦') + fmtNum(Math.round(Number(n || 0))); }
+function truncKey(k) { return k ? k.substring(0, 12) + '…' : '—'; }
+
+// ── OVERVIEW ──────────────────────────────────────────────
+async function loadOverview() {
   try {
-    const data = await api('/api/admin/stats');
-    const c = data.clients;
-    const u = data.usage;
-    const h = data.hours || {};
+    // Gateway stats
+    const gwStats = await gwFetch('/api/admin/stats').catch(() => null);
 
-    document.getElementById('s-total-clients').textContent = c.total_clients;
-    document.getElementById('s-active-clients').textContent = c.active_clients;
-    document.getElementById('s-total-requests').textContent = Number(u.total_requests).toLocaleString();
-    document.getElementById('s-success-rate').textContent = u.total_requests > 0
-      ? `${Math.round(u.success_count / u.total_requests * 100)}% success rate`
-      : 'No requests yet';
-    document.getElementById('s-total-hours').textContent = Number(h.total_hours_assigned || 0).toFixed(1) + 'h';
-    document.getElementById('s-hours-breakdown').textContent = `${Number(h.total_hours_used || 0).toFixed(1)}h used · ${Number(h.total_hours_remaining || 0).toFixed(1)}h remaining`;
-    document.getElementById('s-total-cost').textContent = '$' + Number(u.total_cost).toFixed(2);
-    const audioMin = Math.round(u.total_audio_seconds / 60);
-    document.getElementById('s-cost-breakdown').textContent = `${audioMin} audio min · ${Number(u.total_tokens).toLocaleString()} tokens`;
+    // Main API stats (subscriptions, orgs, revenue)
+    let apiRevenue = null, apiOrgs = null;
+    try {
+      apiRevenue = await apiFetch('/subscriptions/admin/revenue');
+      apiOrgs = await apiFetch('/subscriptions/admin/organizations');
+    } catch (_) {}
 
-    // Top clients
-    const tbody = document.getElementById('top-clients-body');
-    if (data.topClients.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--gray-500)">No usage data yet</td></tr>';
-    } else {
-      tbody.innerHTML = data.topClients.map(cl => {
-        const bal = Number(cl.hours_balance || 0).toFixed(1);
-        const used = Number(cl.hours_used || 0).toFixed(1);
-        return `
-        <tr>
-          <td><strong style="color:var(--white)">${esc(cl.name)}</strong><br><span style="font-size:0.75rem;color:var(--gray-500)">${esc(cl.email || '')}</span></td>
-          <td style="font-size:0.8rem;color:var(--gray-400)">${esc(cl.domain || '—')}</td>
-          <td>${bal}h / ${used}h</td>
-          <td>${cl.request_count}</td>
-          <td>$${Number(cl.total_cost).toFixed(4)}</td>
-        </tr>
-      `}).join('');
-    }
+    // Fill stat cards
+    document.getElementById('st-orgs').textContent = apiOrgs?.organizations?.length ?? '—';
+    document.getElementById('st-subs').textContent = apiOrgs?.organizations?.filter(o => o.subscription_status === 'active').length ?? '—';
+    document.getElementById('st-revenue').textContent = apiRevenue ? fmtMoney(apiRevenue.total_revenue_ngn || 0, 'NGN') : '—';
+    document.getElementById('st-ai-hours').textContent = gwStats?.hours?.total_hours_used ?? '—';
+    document.getElementById('st-trans-hours').textContent = apiRevenue?.total_translation_hours_used ?? '—';
+    document.getElementById('st-ai-clients').textContent = gwStats?.clients?.total_clients ?? '—';
 
-    // Chart
-    drawChart(data.daily);
-  } catch (e) {
-    console.error('Dashboard load error:', e);
+    // Low balances
+    await loadLowBalances('overview-low-balances');
+    await loadSpikes('overview-spikes');
+  } catch (err) {
+    console.error('Overview load error:', err);
   }
 }
 
-/* ═══════════════════════════════════════════════════════
-   CHART
-   ═══════════════════════════════════════════════════════ */
-function drawChart(daily) {
-  const canvas = document.getElementById('usage-chart');
-  const ctx = canvas.getContext('2d');
-  const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.parentElement.getBoundingClientRect();
-  canvas.width = rect.width * dpr;
-  canvas.height = 200 * dpr;
-  canvas.style.width = rect.width + 'px';
-  canvas.style.height = '200px';
-  ctx.scale(dpr, dpr);
-
-  const W = rect.width, H = 200;
-  const pad = { top: 20, right: 20, bottom: 30, left: 50 };
-  const cw = W - pad.left - pad.right;
-  const ch = H - pad.top - pad.bottom;
-
-  ctx.clearRect(0, 0, W, H);
-
-  if (!daily || daily.length === 0) {
-    ctx.fillStyle = '#64748b';
-    ctx.font = '13px Inter, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('No usage data — chart will appear once clients start making requests', W / 2, H / 2);
-    return;
-  }
-
-  const maxReq = Math.max(...daily.map(d => d.requests), 1);
-
-  // Grid lines
-  ctx.strokeStyle = '#1e293b';
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 4; i++) {
-    const y = pad.top + (ch / 4) * i;
-    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
-    ctx.fillStyle = '#475569';
-    ctx.font = '10px Inter, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText(Math.round(maxReq * (1 - i / 4)), pad.left - 8, y + 4);
-  }
-
-  const barW = Math.max((cw / daily.length) - 4, 4);
-
-  // Speech bars
-  daily.forEach((d, i) => {
-    const x = pad.left + (cw / daily.length) * i + 2;
-    const speechH = (d.speech_requests / maxReq) * ch;
-    const openaiH = (d.openai_requests / maxReq) * ch;
-
-    // OpenAI (bottom)
-    ctx.fillStyle = '#2563eb';
-    ctx.beginPath();
-    ctx.roundRect(x, pad.top + ch - openaiH - speechH, barW, openaiH, [3, 3, 0, 0]);
-    ctx.fill();
-
-    // Speech (top)
-    ctx.fillStyle = '#06d6a0';
-    ctx.beginPath();
-    ctx.roundRect(x, pad.top + ch - speechH, barW, speechH, [3, 3, 0, 0]);
-    ctx.fill();
-
-    // Date labels (every 5th)
-    if (i % 5 === 0 || i === daily.length - 1) {
-      ctx.fillStyle = '#475569';
-      ctx.font = '9px Inter, sans-serif';
-      ctx.textAlign = 'center';
-      const dt = new Date(d.date);
-      ctx.fillText(`${dt.getMonth()+1}/${dt.getDate()}`, x + barW / 2, H - 8);
-    }
-  });
-
-  // Legend
-  ctx.fillStyle = '#06d6a0';
-  ctx.fillRect(W - 180, 6, 10, 10);
-  ctx.fillStyle = '#94a3b8';
-  ctx.font = '10px Inter, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText('Speech-to-Text', W - 166, 15);
-  ctx.fillStyle = '#2563eb';
-  ctx.fillRect(W - 80, 6, 10, 10);
-  ctx.fillStyle = '#94a3b8';
-  ctx.fillText('OpenAI', W - 66, 15);
-}
-
-/* ═══════════════════════════════════════════════════════
-   CLIENTS
-   ═══════════════════════════════════════════════════════ */
-async function fetchClients() {
+// ── SUBSCRIPTIONS ─────────────────────────────────────────
+async function loadSubscriptions() {
+  const tbody = document.getElementById('subscriptions-tbody');
+  tbody.innerHTML = '<tr><td colspan="6" class="loading"><div class="spinner"></div>Loading…</td></tr>';
   try {
-    const data = await api('/api/admin/clients');
-    renderClients(data.clients);
-  } catch (e) { console.error(e); }
-}
-
-function renderClients(clients) {
-  const tbody = document.getElementById('clients-body');
-  if (clients.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><p>No clients yet. Add your first client above.</p></td></tr>';
-    return;
+    const data = await apiFetch('/subscriptions/admin/subscriptions');
+    const subs = data.subscriptions || [];
+    if (!subs.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty"><div class="emoji">📭</div><p>No subscriptions</p></td></tr>'; return; }
+    tbody.innerHTML = subs.map(s => `<tr>
+      <td>${s.organization_name || s.org_name || '—'}</td>
+      <td><span class="badge badge-blue">${(s.plan || '').toUpperCase()}</span></td>
+      <td><span class="status-${s.status || s.subscription_status}">${s.status || s.subscription_status}</span></td>
+      <td>${fmtDate(s.expires_at || s.subscription_expires_at)}</td>
+      <td>${fmtNum(s.member_count)}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="openOverrideModal('${s.organization_id || s.org_id}')">Override</button></td>
+    </tr>`).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty"><p>${err.message}</p></td></tr>`;
   }
-  tbody.innerHTML = clients.map(c => {
-    const masked = c.api_key.slice(0, 8) + '••••••••' + c.api_key.slice(-4);
-    const bal = Number(c.hours_balance || 0).toFixed(1);
-    const used = Number(c.hours_used || 0).toFixed(1);
-    const remaining = (Number(c.hours_balance || 0) - Number(c.hours_used || 0)).toFixed(1);
-    const usageMin = ((c.monthly_audio_seconds || 0) / 60).toFixed(1);
-    const usageTok = Number(c.monthly_tokens || 0).toLocaleString();
-    const hoursPercent = c.hours_balance > 0 ? Math.round((c.hours_used / c.hours_balance) * 100) : 0;
-    const barColor = hoursPercent > 80 ? 'var(--danger)' : hoursPercent > 50 ? 'var(--warning)' : 'var(--accent)';
-    const licMasked = c.license_key ? c.license_key.slice(0, 8) + '••••' + c.license_key.slice(-4) : '—';
-    return `<tr>
-      <td><strong style="color:var(--white)">${esc(c.name)}</strong><br><span style="font-size:0.75rem;color:var(--gray-500)">${esc(c.email || '—')}</span></td>
-      <td style="font-size:0.8rem;color:var(--gray-400)">${esc(c.domain || '—')}</td>
-      <td><span class="api-key" title="${esc(c.license_key || '')}">${esc(licMasked)}</span>
-        <button class="icon-btn" style="margin-left:6px;width:24px;height:24px" title="Copy License" onclick="copyKey('${esc(c.license_key || '')}')">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-        </button>
-      </td>
-      <td><span class="api-key" title="${esc(c.api_key)}">${esc(masked)}</span>
-        <button class="icon-btn" style="margin-left:6px;width:24px;height:24px" title="Copy" onclick="copyKey('${esc(c.api_key)}')">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-        </button>
-      </td>
-      <td><span class="badge ${c.active ? 'badge-success' : 'badge-danger'}">${c.active ? 'Active' : 'Disabled'}</span></td>
-      <td>
-        <div style="font-size:0.8rem;margin-bottom:4px"><strong>${bal}h</strong> balance · <strong>${used}h</strong> used · <span style="color:${barColor}">${remaining}h left</span></div>
-        <div style="height:4px;background:var(--dark);border-radius:2px;overflow:hidden"><div style="height:100%;width:${Math.min(hoursPercent, 100)}%;background:${barColor};border-radius:2px"></div></div>
-      </td>
-      <td style="font-size:0.8rem">${usageMin} min / ${usageTok} tok<br><span style="color:var(--gray-500)">${c.monthly_requests || 0} reqs</span></td>
-      <td>$${Number(c.monthly_cost || 0).toFixed(4)}</td>
-      <td>
-        <div class="actions-cell">
-          <button class="icon-btn" title="Gift Hours" onclick="openGiftModal('${c.id}', '${esc(c.name)}')" style="color:var(--accent)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12v10H4V12"/><path d="M2 7h20v5H2z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
-          </button>
-          <button class="icon-btn" title="${c.active ? 'Disable' : 'Enable'}" onclick="toggleClient('${c.id}')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${c.active
-              ? '<path d="M18.36 6.64a9 9 0 0 1-12.73 12.73A9 9 0 0 1 18.36 6.64z"/><line x1="1" y1="1" x2="23" y2="23"/>'
-              : '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>'
-            }</svg>
-          </button>
-          <button class="icon-btn" title="Edit" onclick="editClient('${c.id}')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          </button>
-          <button class="icon-btn" title="Regenerate Key" onclick="regenKey('${c.id}', '${esc(c.name)}')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          </button>
-          <button class="icon-btn danger" title="Delete" onclick="deleteClient('${c.id}', '${esc(c.name)}')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-          </button>
-        </div>
-      </td>
-    </tr>`;
-  }).join('');
 }
 
-function copyKey(key) {
-  navigator.clipboard.writeText(key).then(() => toast('API key copied', 'success'));
+// ── ORGANIZATIONS ─────────────────────────────────────────
+async function loadOrganizations() {
+  const tbody = document.getElementById('organizations-tbody');
+  tbody.innerHTML = '<tr><td colspan="6" class="loading"><div class="spinner"></div>Loading…</td></tr>';
+  try {
+    const data = await apiFetch('/subscriptions/admin/organizations');
+    const orgs = data.organizations || [];
+    if (!orgs.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty"><div class="emoji">🏢</div><p>No organizations</p></td></tr>'; return; }
+    tbody.innerHTML = orgs.map(o => `<tr>
+      <td><strong>${o.name || '—'}</strong></td>
+      <td><span class="badge badge-blue">${(o.subscription_plan || 'none').toUpperCase()}</span></td>
+      <td><span class="status-${o.subscription_status || 'inactive'}">${o.subscription_status || 'none'}</span></td>
+      <td>${fmtNum(o.member_count)}</td>
+      <td>${fmtDate(o.created_at)}</td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="toggleOrgStatus('${o.id}', '${o.subscription_status === 'suspended' ? 'active' : 'suspended'}')">${o.subscription_status === 'suspended' ? 'Activate' : 'Suspend'}</button>
+      </td>
+    </tr>`).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty"><p>${err.message}</p></td></tr>`;
+  }
+}
+
+async function toggleOrgStatus(orgId, newStatus) {
+  try {
+    await apiFetch('/subscriptions/admin/org/status', {
+      method: 'POST', body: JSON.stringify({ organization_id: orgId, status: newStatus, reason: 'Admin toggle from dashboard' }),
+    });
+    toast('Organization status updated');
+    loadOrganizations();
+  } catch (err) { toast(err.message, 'error'); }
+}
+
+// ── WALLETS ───────────────────────────────────────────────
+async function loadWalletAnalytics() {
+  const tbody = document.getElementById('wallets-tbody');
+  const statsEl = document.getElementById('wallet-stats');
+  tbody.innerHTML = '<tr><td colspan="6" class="loading"><div class="spinner"></div>Loading…</td></tr>';
+  try {
+    const data = await apiFetch('/subscriptions/admin/wallet-analytics');
+    const summary = data.summary || {};
+    const orgs = data.organizations || [];
+
+    statsEl.innerHTML = `
+      <div class="stat-card"><div class="label">Total AI Balance</div><div class="value">${fmtNum(summary.total_ai_balance_hours || 0)}h</div></div>
+      <div class="stat-card"><div class="label">Total AI Used</div><div class="value">${fmtNum(summary.total_ai_used_hours || 0)}h</div></div>
+      <div class="stat-card"><div class="label">Total Translation Balance</div><div class="value">${fmtNum(summary.total_translation_balance_hours || 0)}h</div></div>
+      <div class="stat-card"><div class="label">Total Translation Used</div><div class="value">${fmtNum(summary.total_translation_used_hours || 0)}h</div></div>
+    `;
+
+    if (!orgs.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty"><p>No wallet data</p></td></tr>'; return; }
+    tbody.innerHTML = orgs.map(o => `<tr>
+      <td><strong>${o.name}</strong></td>
+      <td>${fmtNum(o.ai_balance_hours || 0)}h</td>
+      <td>${fmtNum(o.ai_used_hours || 0)}h</td>
+      <td>${fmtNum(o.translation_balance_hours || 0)}h</td>
+      <td>${fmtNum(o.translation_used_hours || 0)}h</td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="openAdjustWallet('${o.id}','ai','${o.name}')">+ AI</button>
+        <button class="btn btn-ghost btn-sm" onclick="openAdjustWallet('${o.id}','translation','${o.name}')">+ Trans</button>
+      </td>
+    </tr>`).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty"><p>${err.message}</p></td></tr>`;
+    statsEl.innerHTML = '';
+  }
+}
+
+function openAdjustWallet(orgId, type, name) {
+  document.getElementById('aw-org-id').value = orgId;
+  document.getElementById('aw-type').value = type;
+  document.getElementById('adjust-wallet-title').textContent = `Adjust ${type === 'ai' ? 'AI' : 'Translation'} Wallet — ${name}`;
+  document.getElementById('aw-hours').value = '';
+  document.getElementById('aw-reason').value = '';
+  openModal('adjust-wallet');
+}
+
+async function submitWalletAdjust(e) {
+  e.preventDefault();
+  const orgId = document.getElementById('aw-org-id').value;
+  const type = document.getElementById('aw-type').value;
+  const hours = parseFloat(document.getElementById('aw-hours').value);
+  const reason = document.getElementById('aw-reason').value;
+  try {
+    await apiFetch(`/subscriptions/admin/wallet/${type}/adjust`, {
+      method: 'POST',
+      body: JSON.stringify({ organization_id: orgId, hours, reason }),
+    });
+    toast(`${type === 'ai' ? 'AI' : 'Translation'} wallet adjusted by ${hours}h`);
+    closeModals();
+    loadWalletAnalytics();
+  } catch (err) { toast(err.message, 'error'); }
+}
+
+// ── REVENUE ───────────────────────────────────────────────
+async function loadRevenue() {
+  const statsEl = document.getElementById('revenue-stats');
+  const detailsEl = document.getElementById('revenue-details');
+  statsEl.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
+  try {
+    const data = await apiFetch('/subscriptions/admin/revenue');
+    statsEl.innerHTML = `
+      <div class="stat-card"><div class="label">Subscription Revenue (NGN)</div><div class="value">${fmtMoney(data.subscription_revenue_ngn || 0, 'NGN')}</div></div>
+      <div class="stat-card"><div class="label">Subscription Revenue (USD)</div><div class="value">${fmtMoney(data.subscription_revenue_usd || 0, 'USD')}</div></div>
+      <div class="stat-card"><div class="label">Wallet Revenue (NGN)</div><div class="value">${fmtMoney(data.wallet_revenue_ngn || 0, 'NGN')}</div></div>
+      <div class="stat-card"><div class="label">Wallet Revenue (USD)</div><div class="value">${fmtMoney(data.wallet_revenue_usd || 0, 'USD')}</div></div>
+      <div class="stat-card"><div class="label">Total Revenue</div><div class="value">${fmtMoney(data.total_revenue_ngn || 0, 'NGN')}</div></div>
+    `;
+
+    const byPlan = data.by_plan || [];
+    detailsEl.innerHTML = `
+      <div class="info-card"><h4>💳 Revenue by Plan</h4>
+        ${byPlan.length ? '<table style="width:100%"><thead><tr><th>Plan</th><th>Count</th><th>Revenue</th></tr></thead><tbody>' +
+          byPlan.map(p => `<tr><td>${(p.plan || '').toUpperCase()}</td><td>${p.count || 0}</td><td>${fmtMoney(p.revenue_ngn || 0, 'NGN')}</td></tr>`).join('') +
+          '</tbody></table>' : '<p class="empty">No revenue data yet</p>'}
+      </div>
+    `;
+  } catch (err) {
+    statsEl.innerHTML = `<div class="empty"><p>${err.message}</p></div>`;
+    detailsEl.innerHTML = '';
+  }
+}
+
+// ── RISK MONITOR ──────────────────────────────────────────
+async function loadRisk() {
+  await Promise.all([
+    loadLowBalances('risk-low-balances'),
+    loadSpikes('risk-spikes'),
+  ]);
+}
+
+async function loadLowBalances(targetId) {
+  const el = document.getElementById(targetId);
+  el.innerHTML = '<li class="loading"><div class="spinner"></div>Loading…</li>';
+  try {
+    const data = await apiFetch('/subscriptions/admin/risk/low-balances');
+    const items = data.low_balances || data.organizations || [];
+    if (!items.length) { el.innerHTML = '<li class="empty" style="padding:20px;"><div class="emoji">✅</div><p>No low-balance alerts</p></li>'; return; }
+    el.innerHTML = items.map(i => `<li class="alert-item">
+      <span class="alert-dot dot-${i.type === 'critical' || (Number(i.ai_balance_hours || 0) < 1 && Number(i.translation_balance_hours || 0) < 1) ? 'red' : 'yellow'}"></span>
+      <div>
+        <div class="org-name">${i.name || i.organization_name || '—'}</div>
+        <div class="details">AI: ${fmtNum(i.ai_balance_hours || 0)}h remaining &bull; Translation: ${fmtNum(i.translation_balance_hours || 0)}h remaining</div>
+      </div>
+    </li>`).join('');
+  } catch (err) {
+    el.innerHTML = `<li class="empty"><p>${err.message}</p></li>`;
+  }
+}
+
+async function loadSpikes(targetId) {
+  const el = document.getElementById(targetId);
+  el.innerHTML = '<li class="loading"><div class="spinner"></div>Loading…</li>';
+  try {
+    const data = await apiFetch('/subscriptions/admin/risk/spikes');
+    const items = data.spikes || [];
+    if (!items.length) { el.innerHTML = '<li class="empty" style="padding:20px;"><div class="emoji">✅</div><p>No usage spikes detected</p></li>'; return; }
+    el.innerHTML = items.map(i => `<li class="alert-item">
+      <span class="alert-dot dot-red"></span>
+      <div>
+        <div class="org-name">${i.name || i.organization_name || '—'}</div>
+        <div class="details">${i.spike_type || 'usage'}: ${i.description || `${fmtNum(i.current_usage)} vs avg ${fmtNum(i.average_usage)}`}</div>
+      </div>
+    </li>`).join('');
+  } catch (err) {
+    el.innerHTML = `<li class="empty"><p>${err.message}</p></li>`;
+  }
+}
+
+// ── AI CLIENTS ────────────────────────────────────────────
+async function loadClients() {
+  const tbody = document.getElementById('clients-tbody');
+  tbody.innerHTML = '<tr><td colspan="7" class="loading"><div class="spinner"></div>Loading…</td></tr>';
+  try {
+    const data = await gwFetch('/api/admin/clients');
+    const clients = data.clients || [];
+    if (!clients.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty"><div class="emoji">🤖</div><p>No AI clients yet</p></td></tr>'; return; }
+    tbody.innerHTML = clients.map(c => `<tr>
+      <td><strong>${c.name}</strong></td>
+      <td>${c.email || '—'}</td>
+      <td><span class="status-${c.active ? 'active' : 'inactive'}">${c.active ? 'Active' : 'Disabled'}</span></td>
+      <td>${parseFloat(c.hours_balance || 0).toFixed(1)}</td>
+      <td>${parseFloat(c.hours_used || 0).toFixed(1)}</td>
+      <td><code style="font-size:.7rem;color:var(--gray-400);background:var(--dark);padding:2px 6px;border-radius:4px;user-select:all;">${truncKey(c.api_key)}</code></td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="toggleClient('${c.id}')">${c.active ? 'Disable' : 'Enable'}</button>
+        <button class="btn btn-ghost btn-sm" onclick="giftHours('${c.id}', '${c.name}')">Gift Hours</button>
+      </td>
+    </tr>`).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty"><p>${err.message}</p></td></tr>`;
+  }
+}
+
+async function createClient(e) {
+  e.preventDefault();
+  try {
+    await gwFetch('/api/admin/clients', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: document.getElementById('nc-name').value,
+        email: document.getElementById('nc-email').value,
+        domain: document.getElementById('nc-domain').value,
+        hours_balance: document.getElementById('nc-hours').value,
+        notes: document.getElementById('nc-notes').value,
+      }),
+    });
+    toast('Client created');
+    closeModals();
+    loadClients();
+  } catch (err) { toast(err.message, 'error'); }
 }
 
 async function toggleClient(id) {
   try {
-    await api(`/api/admin/clients/${id}/toggle`, 'POST');
-    toast('Client status updated', 'success');
-    fetchClients();
-  } catch (e) { toast('Failed to toggle', 'error'); }
+    await gwFetch('/api/admin/clients/' + id + '/toggle', { method: 'POST' });
+    toast('Client toggled');
+    loadClients();
+  } catch (err) { toast(err.message, 'error'); }
 }
 
-async function regenKey(id, name) {
-  if (!confirm(`Regenerate API key for "${name}"? The old key will stop working immediately.`)) return;
+async function giftHours(id, name) {
+  const hours = prompt(`Gift hours to "${name}":`, '5');
+  if (!hours) return;
+  const reason = prompt('Reason:', 'Admin gift');
   try {
-    const data = await api(`/api/admin/clients/${id}/regenerate-key`, 'POST');
-    toast('New API key generated', 'success');
-    fetchClients();
-    alert('New API key:\n\n' + data.client.api_key + '\n\nCopy it now — it won\'t be shown again.');
-  } catch (e) { toast('Failed to regenerate key', 'error'); }
-}
-
-async function deleteClient(id, name) {
-  if (!confirm(`Delete client "${name}"? This cannot be undone and all usage logs will be removed.`)) return;
-  try {
-    await api(`/api/admin/clients/${id}`, 'DELETE');
-    toast('Client deleted', 'success');
-    fetchClients();
-  } catch (e) { toast('Failed to delete', 'error'); }
-}
-
-/* ═══════════════════════════════════════════════════════
-   CLIENT MODAL
-   ═══════════════════════════════════════════════════════ */
-let clientsCache = [];
-
-function openAddClient() {
-  editingClientId = null;
-  document.getElementById('modal-title').textContent = 'Add Client';
-  document.getElementById('modal-save-btn').textContent = 'Create Client';
-  document.getElementById('m-name').value = '';
-  document.getElementById('m-email').value = '';
-  document.getElementById('m-domain').value = '';
-  document.getElementById('m-hours').value = '10';
-  document.getElementById('m-notes').value = '';
-  document.getElementById('client-modal').style.display = 'flex';
-}
-
-async function editClient(id) {
-  try {
-    const data = await api(`/api/admin/clients/${id}/usage`);
-    const c = data.client;
-    editingClientId = id;
-    document.getElementById('modal-title').textContent = 'Edit Client';
-    document.getElementById('modal-save-btn').textContent = 'Update Client';
-    document.getElementById('m-name').value = c.name || '';
-    document.getElementById('m-email').value = c.email || '';
-    document.getElementById('m-domain').value = c.domain || '';
-    document.getElementById('m-hours').value = c.hours_balance || 0;
-    document.getElementById('m-notes').value = c.notes || '';
-    document.getElementById('client-modal').style.display = 'flex';
-  } catch (e) { toast('Failed to load client', 'error'); }
-}
-
-function closeModal() {
-  document.getElementById('client-modal').style.display = 'none';
-  editingClientId = null;
-}
-
-async function saveClient() {
-  const name = document.getElementById('m-name').value.trim();
-  if (!name) { toast('Name is required', 'error'); return; }
-
-  const body = {
-    name,
-    email: document.getElementById('m-email').value.trim() || null,
-    domain: document.getElementById('m-domain').value.trim() || null,
-    hours_balance: parseFloat(document.getElementById('m-hours').value) || 0,
-    notes: document.getElementById('m-notes').value.trim() || null,
-  };
-
-  try {
-    if (editingClientId) {
-      await api(`/api/admin/clients/${editingClientId}`, 'PUT', body);
-      toast('Client updated', 'success');
-    } else {
-      const data = await api('/api/admin/clients', 'POST', body);
-      toast('Client created', 'success');
-      alert('Credentials for ' + name + ':\n\nLicense Key:\n' + data.client.license_key + '\n\nAPI Key:\n' + data.client.api_key + '\n\nCopy them now — they won\'t be shown in full again.');
-    }
-    closeModal();
-    fetchClients();
-  } catch (e) { toast('Failed to save client', 'error'); }
-}
-
-/* ═══════════════════════════════════════════════════════
-   GIFT HOURS
-   ═══════════════════════════════════════════════════════ */
-let giftingClientId = null;
-
-function openGiftModal(id, name) {
-  giftingClientId = id;
-  document.getElementById('gift-client-info').textContent = `Gift AI hours to "${name}"`;
-  document.getElementById('g-hours').value = '5';
-  document.getElementById('g-reason-preset').value = '';
-  document.getElementById('g-reason').value = '';
-  document.getElementById('gift-modal').style.display = 'flex';
-}
-
-function closeGiftModal() {
-  document.getElementById('gift-modal').style.display = 'none';
-  giftingClientId = null;
-}
-
-async function submitGift() {
-  const hours = parseFloat(document.getElementById('g-hours').value);
-  const reason = document.getElementById('g-reason').value.trim() || document.getElementById('g-reason-preset').value || 'Admin gift';
-
-  if (!hours || hours <= 0) { toast('Enter valid hours', 'error'); return; }
-  if (!giftingClientId) return;
-
-  try {
-    const data = await api(`/api/admin/clients/${giftingClientId}/gift`, 'POST', { hours, reason });
-    toast(data.message || `Gifted ${hours}h successfully`, 'success');
-    closeGiftModal();
-    fetchClients();
-    loadDashboard();
-  } catch (e) { toast('Failed to gift hours', 'error'); }
-}
-
-/* ═══════════════════════════════════════════════════════
-   LOGS
-   ═══════════════════════════════════════════════════════ */
-async function populateClientFilter() {
-  try {
-    const data = await api('/api/admin/clients');
-    const sel = document.getElementById('filter-client');
-    sel.innerHTML = '<option value="">All Clients</option>';
-    data.clients.forEach(c => {
-      sel.innerHTML += `<option value="${c.id}">${esc(c.name)}</option>`;
+    await gwFetch('/api/admin/clients/' + id + '/gift', {
+      method: 'POST', body: JSON.stringify({ hours: parseFloat(hours), reason }),
     });
-    clientsCache = data.clients;
-  } catch (e) { console.error(e); }
+    toast(`Gifted ${hours}h to ${name}`);
+    loadClients();
+  } catch (err) { toast(err.message, 'error'); }
 }
 
-async function fetchLogs() {
-  const client_id = document.getElementById('filter-client').value;
-  const service = document.getElementById('filter-service').value;
-  const status = document.getElementById('filter-status').value;
-
-  let url = `/api/admin/logs?limit=${LOGS_LIMIT}&offset=${logsOffset}`;
-  if (client_id) url += `&client_id=${client_id}`;
-  if (service) url += `&service=${service}`;
-  if (status) url += `&status=${status}`;
-
+// ── USAGE LOGS ────────────────────────────────────────────
+async function loadUsageLogs() {
+  const tbody = document.getElementById('usage-tbody');
+  tbody.innerHTML = '<tr><td colspan="6" class="loading"><div class="spinner"></div>Loading…</td></tr>';
   try {
-    const data = await api(url);
-    renderLogs(data);
-  } catch (e) { console.error(e); }
-}
-
-function renderLogs(data) {
-  const tbody = document.getElementById('logs-body');
-  if (data.logs.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--gray-500);padding:40px">No logs found</td></tr>';
-  } else {
-    tbody.innerHTML = data.logs.map(l => {
-      const dt = new Date(l.created_at);
-      const time = dt.toLocaleDateString() + ' ' + dt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-      const detail = l.service === 'speech-to-text'
-        ? `${(l.audio_seconds / 60).toFixed(1)} min`
-        : `${Number(l.tokens_used).toLocaleString()} tok`;
-      return `<tr>
-        <td style="font-size:0.8rem;white-space:nowrap">${time}</td>
-        <td><strong style="color:var(--white)">${esc(l.client_name)}</strong></td>
-        <td><span class="badge ${l.service==='openai'?'badge-primary':'badge-success'}">${esc(l.service)}</span></td>
-        <td>${detail}</td>
-        <td>$${Number(l.estimated_cost).toFixed(4)}</td>
-        <td><span class="badge ${l.status==='success'?'badge-success':'badge-danger'}">${esc(l.status)}</span></td>
-      </tr>`;
-    }).join('');
+    const service = document.getElementById('log-service-filter').value;
+    const qs = service ? '?service=' + service : '';
+    const data = await gwFetch('/api/admin/logs' + qs);
+    const logs = data.logs || [];
+    if (!logs.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty"><div class="emoji">📋</div><p>No logs yet</p></td></tr>'; return; }
+    tbody.innerHTML = logs.map(l => `<tr>
+      <td>${new Date(l.created_at).toLocaleString()}</td>
+      <td>${l.client_name || '—'}</td>
+      <td>${l.service}</td>
+      <td><span class="status-${l.status === 'success' ? 'active' : 'inactive'}">${l.status}</span></td>
+      <td>${parseFloat(l.hours_deducted || 0).toFixed(4)}</td>
+      <td>$${parseFloat(l.estimated_cost || 0).toFixed(4)}</td>
+    </tr>`).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty"><p>${err.message}</p></td></tr>`;
   }
-
-  const showing = Math.min(logsOffset + LOGS_LIMIT, data.total);
-  document.getElementById('logs-info').textContent = `Showing ${logsOffset + 1}–${showing} of ${data.total}`;
-  document.getElementById('logs-prev').disabled = logsOffset === 0;
-  document.getElementById('logs-next').disabled = logsOffset + LOGS_LIMIT >= data.total;
 }
 
-function logsPage(dir) {
-  logsOffset = Math.max(0, logsOffset + dir * LOGS_LIMIT);
-  fetchLogs();
-}
-
-/* ═══════════════════════════════════════════════════════
-   HELPERS
-   ═══════════════════════════════════════════════════════ */
-function esc(s) {
-  if (!s) return '';
-  const d = document.createElement('div');
-  d.appendChild(document.createTextNode(s));
-  return d.innerHTML;
-}
-
-function toast(msg, type = 'success') {
-  const c = document.getElementById('toast-container');
-  const el = document.createElement('div');
-  el.className = 'toast toast-' + type;
-  el.textContent = msg;
-  c.appendChild(el);
-  setTimeout(() => { el.remove(); }, 3500);
-}
-
-/* ═══════════════════════════════════════════════════════
-   ORDERS
-   ═══════════════════════════════════════════════════════ */
-async function fetchOrders() {
+// ── PLANS EDITOR ──────────────────────────────────────────
+async function loadPlans() {
+  const grid = document.getElementById('plans-grid');
+  grid.innerHTML = '<div class="loading"><div class="spinner"></div>Loading plans…</div>';
   try {
-    const data = await api('/api/admin/orders');
-    const tbody = document.getElementById('orders-body');
-    if (!data.orders || data.orders.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--gray-500);padding:40px">No orders yet</td></tr>';
-      return;
-    }
-    tbody.innerHTML = data.orders.map(o => {
-      const dt = new Date(o.created_at);
-      const date = dt.toLocaleDateString() + ' ' + dt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-      let items = [];
-      try { items = typeof o.items === 'string' ? JSON.parse(o.items) : o.items; } catch {}
-      const itemNames = items.map(i => i.name || i.id).join(', ');
-      const sym = o.currency === 'USD' ? '$' : '₦';
-      return `<tr>
-        <td style="font-size:0.8rem;white-space:nowrap">${date}</td>
-        <td><strong style="color:var(--white)">${esc(o.customer_name || '—')}</strong><br><span style="font-size:0.75rem;color:var(--gray-500)">${esc(o.customer_email || '')}</span></td>
-        <td style="font-size:0.8rem">${esc(itemNames)}</td>
-        <td style="font-weight:700">${sym}${Number(o.amount).toLocaleString()}</td>
-        <td><span class="badge badge-primary">${esc(o.gateway || '—')}</span></td>
-        <td><span class="badge ${o.status==='completed'?'badge-success':o.status==='pending'?'badge-warning':'badge-danger'}">${esc(o.status)}</span></td>
-      </tr>`;
-    }).join('');
-  } catch (e) { console.error('Orders error:', e); }
+    const data = await apiFetch('/subscriptions/admin/plans');
+    const plans = data.plans || [];
+    if (!plans.length) { grid.innerHTML = '<div class="empty"><div class="emoji">⚙️</div><p>No plans configured</p></div>'; return; }
+    grid.innerHTML = plans.map(p => `<div class="info-card" id="plan-card-${p.id}">
+      <h4>📋 ${(p.name || p.id || '').toUpperCase()}</h4>
+      <div class="form-row">
+        <div class="form-group"><label>Price NGN/yr</label><input type="number" id="pp-${p.id}-ngn" value="${p.price_ngn_annual || p.price_ngn || 0}" /></div>
+        <div class="form-group"><label>Price USD/yr</label><input type="number" id="pp-${p.id}-usd" value="${p.price_usd_annual || p.price_usd || 0}" /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Max Members</label><input type="number" id="pp-${p.id}-members" value="${p.max_members || 0}" /></div>
+        <div class="form-group"><label>Trial Days</label><input type="number" id="pp-${p.id}-trial" value="${p.trial_days || 0}" /></div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="savePlan('${p.id}')">Save Changes</button>
+    </div>`).join('');
+  } catch (err) {
+    grid.innerHTML = `<div class="empty"><p>${err.message}</p></div>`;
+  }
 }
 
-/* ═══════════════════════════════════════════════════════
-   AI PLANS
-   ═══════════════════════════════════════════════════════ */
-function updatePlanCost() {
-  const hours = parseFloat(document.getElementById('plan-hours').value) || 0;
-  const currency = document.getElementById('plan-currency').value;
-  const price = currency === 'USD' ? hours * 7 : hours * 10000;
-  const sym = currency === 'USD' ? '$' : '₦';
-  document.getElementById('plan-cost-display').textContent = `Total: ${sym}${price.toLocaleString()}`;
-}
-
-async function loadAIPlans() {
+async function savePlan(planId) {
   try {
-    const data = await api('/api/admin/clients');
-    const sel = document.getElementById('plan-client');
-    sel.innerHTML = '';
-    (data.clients || []).forEach(c => {
-      sel.innerHTML += `<option value="${c.id}">${esc(c.name)} (${Number(c.hours_balance||0).toFixed(1)}h bal)</option>`;
+    const data = {
+      price_ngn_annual: parseFloat(document.getElementById('pp-' + planId + '-ngn').value),
+      price_usd_annual: parseFloat(document.getElementById('pp-' + planId + '-usd').value),
+      max_members: parseInt(document.getElementById('pp-' + planId + '-members').value),
+      trial_days: parseInt(document.getElementById('pp-' + planId + '-trial').value),
+    };
+    await apiFetch('/subscriptions/admin/plans/' + planId, {
+      method: 'PUT', body: JSON.stringify(data),
     });
-    // Attach event listeners
-    document.getElementById('plan-hours').oninput = updatePlanCost;
-    document.getElementById('plan-currency').onchange = updatePlanCost;
-    updatePlanCost();
-  } catch (e) { console.error(e); }
+    toast('Plan updated');
+  } catch (err) { toast(err.message, 'error'); }
 }
 
-async function sellHours() {
-  const clientId = document.getElementById('plan-client').value;
-  const hours = parseFloat(document.getElementById('plan-hours').value);
-  const currency = document.getElementById('plan-currency').value;
-  if (!clientId || !hours || hours <= 0) { toast('Select client and enter hours', 'error'); return; }
-  const price = currency === 'USD' ? hours * 7 : hours * 10000;
-
-  if (!confirm(`Add ${hours}h to client for ${currency === 'USD' ? '$' : '₦'}${price.toLocaleString()}?`)) return;
-
+// ── ORDERS ────────────────────────────────────────────────
+async function loadOrders() {
+  const tbody = document.getElementById('orders-tbody');
+  tbody.innerHTML = '<tr><td colspan="7" class="loading"><div class="spinner"></div>Loading…</td></tr>';
   try {
-    await api('/api/admin/purchase-hours', 'POST', {
-      clientId, hours, currency,
-      amount: price,
-      email: '',
-      gateway: 'admin_manual',
-    });
-    toast(`Added ${hours}h successfully`, 'success');
-    loadAIPlans();
-  } catch (e) { toast('Failed to add hours', 'error'); }
+    const data = await gwFetch('/api/admin/orders');
+    const orders = data.orders || [];
+    if (!orders.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty"><div class="emoji">🧾</div><p>No orders</p></td></tr>'; return; }
+    tbody.innerHTML = orders.map(o => `<tr>
+      <td>${fmtDate(o.created_at)}</td>
+      <td>${o.customer_email || '—'}</td>
+      <td>${Array.isArray(o.items) ? o.items.map(i => i.name|| '?').join(', ') : '—'}</td>
+      <td>${fmtNum(o.amount)}</td>
+      <td>${o.currency}</td>
+      <td>${o.gateway || '—'}</td>
+      <td><span class="status-${o.status === 'completed' ? 'active' : o.status === 'pending' ? 'expired' : 'inactive'}">${o.status}</span></td>
+    </tr>`).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty"><p>${err.message}</p></td></tr>`;
+  }
 }
 
-// Keyboard handler
-document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && document.getElementById('login-screen').style.display !== 'none') handleLogin();
-  if (e.key === 'Enter' && document.getElementById('client-modal').style.display === 'flex') saveClient();
-  if (e.key === 'Enter' && document.getElementById('gift-modal').style.display === 'flex') submitGift();
-  if (e.key === 'Escape') { closeModal(); closeGiftModal(); }
+// ── SUBSCRIPTION OVERRIDE ─────────────────────────────────
+function openOverrideModal(orgId) {
+  document.getElementById('os-org-id').value = orgId;
+  openModal('override-sub');
+}
+
+async function submitOverride(e) {
+  e.preventDefault();
+  try {
+    await apiFetch('/subscriptions/admin/subscription/override', {
+      method: 'POST',
+      body: JSON.stringify({
+        organization_id: document.getElementById('os-org-id').value,
+        plan: document.getElementById('os-plan').value,
+        status: document.getElementById('os-status').value,
+        extend_days: parseInt(document.getElementById('os-days').value) || 0,
+        reason: document.getElementById('os-reason').value,
+      }),
+    });
+    toast('Subscription override applied');
+    closeModals();
+    loadSubscriptions();
+  } catch (err) { toast(err.message, 'error'); }
+}
+
+// ── Modals ────────────────────────────────────────────────
+function openModal(id) {
+  document.getElementById('modal-' + id).classList.add('show');
+}
+function closeModals() {
+  document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('show'));
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModals(); });
+document.querySelectorAll('.modal-overlay').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m) closeModals(); });
 });
-
-// Init
-checkAuth();
 </script>
 </body>
 </html>
