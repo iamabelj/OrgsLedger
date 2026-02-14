@@ -28,6 +28,7 @@ export const config = {
 
   jwt: {
     secret: process.env.JWT_SECRET || 'CHANGE_ME_IN_PRODUCTION',
+    refreshSecret: process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'CHANGE_ME_IN_PRODUCTION_REFRESH',
     expiresIn: process.env.JWT_EXPIRES_IN || '1h',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   },
@@ -84,13 +85,13 @@ export const config = {
   },
 };
 
-// Warn about critical config in production (but never crash)
-if (config.env === 'production') {
+// Warn about critical config in non-development environments
+if (config.env !== 'development') {
   if (config.jwt.secret === 'CHANGE_ME_IN_PRODUCTION') {
-    console.error('[CONFIG] FATAL: JWT_SECRET is using the default value in production — set JWT_SECRET in env.js or environment variables');
+    console.error(`[CONFIG] FATAL: JWT_SECRET is using the default value in ${config.env} — set JWT_SECRET in env.js or environment variables`);
     process.exit(1);
   }
   if (!process.env.DATABASE_URL && config.db.password === 'orgsledger_dev') {
-    console.warn('[CONFIG] WARNING: DATABASE_URL not set and DB_PASSWORD is default — set it in env.js or environment variables');
+    console.warn(`[CONFIG] WARNING: DATABASE_URL not set and DB_PASSWORD is default in ${config.env} — set it in env.js or environment variables`);
   }
 }

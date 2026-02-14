@@ -39,6 +39,7 @@ const navItems: NavItem[] = [
   { label: 'Polls', icon: 'bar-chart-outline', path: '/polls' },
   { label: 'Documents', icon: 'document-text-outline', path: '/documents' },
   { label: 'Profile', icon: 'person-outline', path: '/(tabs)/profile' },
+  { label: 'Help & Support', icon: 'help-circle-outline', path: '/help' },
 ];
 
 const adminItems: NavItem[] = [
@@ -54,6 +55,7 @@ const adminItems: NavItem[] = [
   { label: 'Analytics', icon: 'analytics-outline', path: '/admin/analytics', adminOnly: true },
   { label: 'Bank Transfers', icon: 'swap-horizontal-outline', path: '/admin/bank-transfers', adminOnly: true },
   { label: 'Pay Config', icon: 'card-outline', path: '/admin/payment-methods', adminOnly: true },
+  { label: 'Subscription', icon: 'ribbon-outline', path: '/admin/subscription', adminOnly: true },
 ];
 
 // Executive gets a subset — no Settings, AI Plans, Pay Config, Bank Transfers, Analytics
@@ -189,6 +191,29 @@ export function NavigationDrawer() {
             })}
           </View>
         )}
+
+        {/* Legal & Compliance */}
+        <View style={styles.navGroup}>
+          <Text style={styles.navGroupTitle}>LEGAL</Text>
+          {[
+            { label: 'Terms of Service', icon: 'document-text-outline', path: '/legal/terms' },
+            { label: 'Privacy Policy', icon: 'shield-checkmark-outline', path: '/legal/privacy' },
+            { label: 'Acceptable Use', icon: 'hand-left-outline', path: '/legal/acceptable-use' },
+          ].map((item) => {
+            const isActive = pathname === item.path;
+            return (
+              <TouchableOpacity
+                key={item.path}
+                style={[styles.navItem, isActive && styles.navItemActive]}
+                onPress={() => handleNavigation(item.path)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name={item.icon as any} size={22} color={isActive ? Colors.highlight : Colors.textLight} />
+                <Text style={[styles.navItemText, isActive && styles.navItemTextActive]}>{item.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </ScrollView>
 
       {/* Footer */}

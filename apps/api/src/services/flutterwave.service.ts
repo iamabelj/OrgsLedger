@@ -4,6 +4,7 @@
 // ============================================================
 
 import axios, { AxiosInstance } from 'axios';
+import crypto from 'crypto';
 import { config } from '../config';
 
 const FLW_BASE = 'https://api.flutterwave.com/v3';
@@ -130,9 +131,18 @@ class FlutterwaveService {
 
   /**
    * Validate a Flutterwave webhook request.
+   * Checks the verif-hash header using timing-safe comparison against the configured webhook hash.
    */
   validateWebhook(secretHash: string): boolean {
-    return secretHash === config.flutterwave.webhookHash;
+    if (!config.flutterwave.webhookHash || !secretHash) return false;
+    try {
+      const expected = Buffer.from(config.flutterwave.webhookHash, 'utf-8');
+      const received = Buffer.from(secretHash, 'utf-8');
+      if (expected.length !== received.length) return false;
+      return crypto.timingSafeEqual(expected, received);
+    } catch {
+      return false;
+    }
   }
 }
 

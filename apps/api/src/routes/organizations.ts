@@ -12,6 +12,7 @@ import db from '../db';
 import {
   authenticate,
   loadMembership,
+  loadMembershipAndSub,
   requireRole,
   requireSuperAdmin,
   validate,
@@ -48,9 +49,9 @@ const logoUpload = multer({
   storage: logoStorage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (_req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'];
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
     if (allowed.includes(file.mimetype)) cb(null, true);
-    else cb(new Error('Only JPEG, PNG, WebP, GIF, and SVG images are allowed'));
+    else cb(new Error('Only JPEG, PNG, WebP, and GIF images are allowed. SVG not permitted for security.'));
   },
 });
 
@@ -247,7 +248,7 @@ router.get(
 router.put(
   '/:orgId/settings',
   authenticate,
-  loadMembership,
+  loadMembershipAndSub,
   requireRole('org_admin'),
   async (req: Request, res: Response) => {
     try {
@@ -360,6 +361,7 @@ router.get(
 );
 
 // ── Join Organization (Self-join) ───────────────────────────
+// Requires org to have public joining enabled in settings, or use invite links instead
 router.post(
   '/:orgId/join',
   authenticate,
@@ -371,6 +373,13 @@ router.post(
       const org = await db('organizations').where({ id: orgId }).first();
       if (!org) {
         res.status(404).json({ success: false, error: 'Organization not found' });
+        return;
+      }
+
+      // Check if public joining is allowed for this org
+      const settings = typeof org.settings === 'string' ? JSON.parse(org.settings || '{}') : (org.settings || {});
+      if (!settings.allowPublicJoin) {
+        res.status(403).json({ success: false, error: 'This organization does not allow public joining. Use an invite link instead.' });
         return;
       }
 
@@ -516,7 +525,7 @@ router.get(
 router.post(
   '/:orgId/members',
   authenticate,
-  loadMembership,
+  loadMembershipAndSub,
   requireRole('org_admin', 'executive'),
   validate(addMemberSchema),
   async (req: Request, res: Response) => {
@@ -585,7 +594,7 @@ router.post(
 router.put(
   '/:orgId/members/:userId',
   authenticate,
-  loadMembership,
+  loadMembershipAndSub,
   requireRole('org_admin'),
   async (req: Request, res: Response) => {
     try {
@@ -626,7 +635,7 @@ router.put(
 router.delete(
   '/:orgId/members/:userId',
   authenticate,
-  loadMembership,
+  loadMembershipAndSub,
   requireRole('org_admin'),
   async (req: Request, res: Response) => {
     try {
@@ -761,7 +770,7 @@ router.get(
 router.post(
   '/:orgId/logo',
   authenticate,
-  loadMembership,
+  loadMembershipAndSub,
   requireRole('org_admin'),
   (req: Request, res: Response, next) => {
     logoUpload.single('logo')(req, res, (err) => {
@@ -796,7 +805,7 @@ router.post(
 router.put(
   '/:orgId/branding',
   authenticate,
-  loadMembership,
+  loadMembershipAndSub,
   requireRole('org_admin'),
   async (req: Request, res: Response) => {
     try {

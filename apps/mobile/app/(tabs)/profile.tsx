@@ -11,7 +11,6 @@ import {
   TouchableOpacity,
   Switch,
   ActivityIndicator,
-  Linking,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -251,9 +250,12 @@ export default function ProfileScreen() {
 
         <Divider />
         <SettingLink icon="lock-closed" color={Colors.highlight} bg={Colors.highlightSubtle} label="Change Password" onPress={() => router.push('/change-password')} />
-        <SettingLink icon="shield-checkmark" color={Colors.success} bg={Colors.successSubtle} label="Privacy Policy" onPress={() => Linking.openURL('https://orgsledger.com/privacy')} />
-        <SettingLink icon="document-text" color={Colors.warning} bg={Colors.warningSubtle} label="Terms of Service" onPress={() => Linking.openURL('https://orgsledger.com/terms')} />
-        <SettingLink icon="information-circle" color={Colors.highlight} bg={Colors.highlightSubtle} label="About OrgsLedger" onPress={() => Alert.alert('OrgsLedger', 'Version 1.0.0\n\nOrganization management platform.\n\n\u00a9 2026 OrgsLedger')} last />
+        <SettingLink icon="shield-checkmark" color={Colors.success} bg={Colors.successSubtle} label="Privacy Policy" onPress={() => router.push('/legal/privacy')} />
+        <SettingLink icon="document-text" color={Colors.warning} bg={Colors.warningSubtle} label="Terms of Service" onPress={() => router.push('/legal/terms')} />
+        <SettingLink icon="hand-left" color={Colors.info} bg={Colors.infoSubtle} label="Acceptable Use Policy" onPress={() => router.push('/legal/acceptable-use')} />
+        <SettingLink icon="briefcase" color={Colors.textLight} bg={Colors.accent} label="Data Processing Agreement" onPress={() => router.push('/legal/dpa')} />
+        <SettingLink icon="help-circle" color={Colors.highlight} bg={Colors.highlightSubtle} label="Help & Support" onPress={() => router.push('/help')} />
+        <SettingLink icon="information-circle" color={Colors.highlight} bg={Colors.highlightSubtle} label="About OrgsLedger" onPress={() => showAlert('OrgsLedger', 'Version 1.0.0\n\nOrganization management platform.\n\n\u00a9 2026 OrgsLedger')} last />
       </Card>
 
       {/* Danger Zone */}

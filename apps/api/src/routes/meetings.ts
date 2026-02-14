@@ -14,6 +14,7 @@ import { logger } from '../logger';
 import { sendPushToOrg } from '../services/push.service';
 import { config } from '../config';
 import { SUPPORTED_LANGUAGES, SPEECH_RECOGNITION_CODES, translateText } from '../services/translation.service';
+import { getAiWallet } from '../services/subscription.service';
 
 const router = Router();
 
@@ -79,15 +80,14 @@ router.post(
     try {
       const { title, description, location, scheduledStart, scheduledEnd, aiEnabled, translationEnabled, agendaItems, recurringPattern, recurringEndDate } = req.body;
 
-      // If AI enabled, check credits
+      // If AI enabled, check AI wallet balance (SaaS wallet, not legacy ai_credits)
       if (aiEnabled) {
-        const credits = await db('ai_credits')
-          .where({ organization_id: req.params.orgId })
-          .first();
-        if (!credits || credits.total_credits - credits.used_credits <= 0) {
+        const wallet = await getAiWallet(req.params.orgId);
+        const balance = parseFloat(wallet.balance_minutes) || 0;
+        if (balance <= 0) {
           res.status(402).json({
             success: false,
-            error: 'Insufficient AI credits. Purchase credits to use AI minutes.',
+            error: 'Insufficient AI wallet balance. Top up your AI hours to use AI features.',
           });
           return;
         }
@@ -210,15 +210,14 @@ router.put(
 
       const { title, description, location, scheduledStart, scheduledEnd, aiEnabled, translationEnabled, recurringPattern, status, agendaItems } = req.body;
 
-      // If enabling AI, check credits
+      // If enabling AI, check AI wallet balance
       if (aiEnabled === true && !meeting.ai_enabled) {
-        const credits = await db('ai_credits')
-          .where({ organization_id: req.params.orgId })
-          .first();
-        if (!credits || credits.total_credits - credits.used_credits <= 0) {
+        const wallet = await getAiWallet(req.params.orgId);
+        const balance = parseFloat(wallet.balance_minutes) || 0;
+        if (balance <= 0) {
           res.status(402).json({
             success: false,
-            error: 'Insufficient AI credits. Purchase credits in AI Plans.',
+            error: 'Insufficient AI wallet balance. Top up your AI hours.',
           });
           return;
         }
@@ -292,15 +291,14 @@ router.post(
 
       const newState = !meeting.ai_enabled;
 
-      // If enabling, check credits
+      // If enabling, check AI wallet balance
       if (newState) {
-        const credits = await db('ai_credits')
-          .where({ organization_id: req.params.orgId })
-          .first();
-        if (!credits || credits.total_credits - credits.used_credits <= 0) {
+        const wallet = await getAiWallet(req.params.orgId);
+        const balance = parseFloat(wallet.balance_minutes) || 0;
+        if (balance <= 0) {
           res.status(402).json({
             success: false,
-            error: 'Insufficient AI credits. Purchase credits in AI Plans.',
+            error: 'Insufficient AI wallet balance. Top up your AI hours.',
           });
           return;
         }

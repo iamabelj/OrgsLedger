@@ -134,14 +134,18 @@ router.post('/:orgId/subscribe', authenticate, loadMembership, requireRole('org_
     }
     const currency = subSvc.getCurrency(billingCountry);
     const price = subSvc.getPlanPrice(plan, currency, billingCycle);
+
+    // If plan has a cost but no payment reference, create as pending (needs webhook confirmation)
+    const isPaid = price <= 0 || !!paymentReference;
     const sub = await subSvc.createSubscription({
       organizationId: req.params.orgId,
       planId: plan.id,
       billingCycle,
       currency,
-      amountPaid: price,
+      amountPaid: isPaid ? price : 0,
       paymentGateway,
       gatewaySubscriptionId: paymentReference,
+      status: isPaid ? 'active' : 'pending',
     });
     res.json({ success: true, data: sub });
   } catch (err: any) {
@@ -214,6 +218,13 @@ router.get('/:orgId/wallet/translation', authenticate, loadMembership, async (re
 router.post('/:orgId/wallet/ai/topup', authenticate, loadMembership, requireRole('org_admin'), validate(topUpSchema), async (req: Request, res: Response) => {
   try {
     const { hours, paymentGateway, paymentReference } = req.body;
+
+    // Require payment reference for real top-ups
+    if (!paymentReference) {
+      res.status(400).json({ success: false, error: 'Payment reference required. Complete payment first.' });
+      return;
+    }
+
     const org = await db('organizations').where({ id: req.params.orgId }).select('billing_currency').first();
     const currency = (org?.billing_currency as string) || 'USD';
     const pricePerHour = currency === 'NGN' ? 18000 : 10;
@@ -238,6 +249,13 @@ router.post('/:orgId/wallet/ai/topup', authenticate, loadMembership, requireRole
 router.post('/:orgId/wallet/translation/topup', authenticate, loadMembership, requireRole('org_admin'), validate(topUpSchema), async (req: Request, res: Response) => {
   try {
     const { hours, paymentGateway, paymentReference } = req.body;
+
+    // Require payment reference for real top-ups
+    if (!paymentReference) {
+      res.status(400).json({ success: false, error: 'Payment reference required. Complete payment first.' });
+      return;
+    }
+
     const org = await db('organizations').where({ id: req.params.orgId }).select('billing_currency').first();
     const currency = (org?.billing_currency as string) || 'USD';
     const pricePerHour = currency === 'NGN' ? 45000 : 25;
@@ -684,13 +702,14 @@ router.get('/admin/risk/low-balances', authenticate, requireSuperAdmin(), async 
 // GET /admin/risk/spikes — detect abnormal usage spikes
 router.get('/admin/risk/spikes', authenticate, requireSuperAdmin(), async (req: Request, res: Response) => {
   try {
-    const daysBack = parseInt(req.query.days as string) || 7;
-    const spikeMultiplier = parseFloat(req.query.multiplier as string) || 3;
+    const daysBack = Math.min(Math.max(parseInt(req.query.days as string) || 7, 1), 365);
+    const spikeMultiplier = Math.min(Math.max(parseFloat(req.query.multiplier as string) || 3, 1.5), 20);
+    const lookbackDays = daysBack + 30;
 
     // Get daily AI usage per org for the analysis period + prior 30 days for baseline
     const aiDaily = await db('ai_wallet_transactions')
       .where('amount_minutes', '<', 0)
-      .where('created_at', '>=', db.raw(`NOW() - INTERVAL '${daysBack + 30} days'`))
+      .where('created_at', '>=', db.raw('NOW() - INTERVAL ? DAY', [lookbackDays]))
       .select(
         'organization_id',
         db.raw("DATE(created_at) as day"),
@@ -702,7 +721,7 @@ router.get('/admin/risk/spikes', authenticate, requireSuperAdmin(), async (req: 
     // Get daily translation usage per org
     const transDaily = await db('translation_wallet_transactions')
       .where('amount_minutes', '<', 0)
-      .where('created_at', '>=', db.raw(`NOW() - INTERVAL '${daysBack + 30} days'`))
+      .where('created_at', '>=', db.raw('NOW() - INTERVAL ? DAY', [lookbackDays]))
       .select(
         'organization_id',
         db.raw("DATE(created_at) as day"),

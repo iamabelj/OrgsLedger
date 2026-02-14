@@ -16,6 +16,14 @@ import { sendPushToUser } from '../services/push.service';
 
 const router = Router();
 
+// ── Safe cents conversion to avoid float precision issues ────
+function toSubunits(amount: number): number {
+  // Multiply by 100 using string arithmetic to avoid float issues
+  const [whole = '0', frac = ''] = String(amount).split('.');
+  const paddedFrac = (frac + '00').slice(0, 2);
+  return parseInt(whole, 10) * 100 + parseInt(paddedFrac, 10);
+}
+
 // ── Initialize Stripe ───────────────────────────────────────
 let stripe: any = null;
 async function getStripe() {
@@ -81,7 +89,7 @@ router.post(
 
         if (stripeClient && paymentMethodId) {
           const paymentIntent = await stripeClient.paymentIntents.create({
-            amount: Math.round(transaction.amount * 100),
+            amount: toSubunits(transaction.amount),
             currency: transaction.currency.toLowerCase(),
             payment_method: paymentMethodId,
             confirm: true,
@@ -142,7 +150,7 @@ router.post(
         const reference = `orgsl_${transactionId.replace(/-/g, '').slice(0, 16)}_${Date.now()}`;
         const result = await paystackService.initializeTransaction({
           email: user?.email || 'user@orgsledger.com',
-          amount: Math.round(transaction.amount * 100), // subunit
+          amount: toSubunits(transaction.amount), // subunit
           currency: transaction.currency,
           reference,
           metadata: {
@@ -333,6 +341,11 @@ async function sendPaymentNotification(req: Request, transaction: any, gatewayId
 }
 
 async function devModeFallback(req: Request, transaction: any) {
+  // CRITICAL: Only allow dev-mode auto-completion in explicit development environment
+  if (config.env !== 'development') {
+    throw new Error('Payment gateway not configured. Contact administrator.');
+  }
+
   await db('transactions')
     .where({ id: transaction.id })
     .update({
@@ -425,7 +438,7 @@ router.post(
         if (stripeClient && transaction.payment_gateway_id) {
           const refund = await stripeClient.refunds.create({
             payment_intent: transaction.payment_gateway_id,
-            amount: Math.round(refundAmount * 100),
+            amount: toSubunits(refundAmount),
           });
           gatewayRefundId = refund.id;
         }
@@ -434,7 +447,7 @@ router.post(
         if (paystackService.isConfigured() && transaction.payment_gateway_id) {
           const result = await paystackService.createRefund({
             transactionReference: transaction.payment_gateway_id,
-            amount: Math.round(refundAmount * 100),
+            amount: toSubunits(refundAmount),
             reason: reason || 'Admin refund',
           });
           gatewayRefundId = result.refundId;
@@ -1206,6 +1219,22 @@ router.get(
 );
 
 // Update org payment methods config (admin only)
+const paymentMethodsSchema = z.object({
+  paymentMethods: z.object({
+    stripe: z.object({ enabled: z.boolean() }).passthrough().optional(),
+    paystack: z.object({ enabled: z.boolean() }).passthrough().optional(),
+    flutterwave: z.object({ enabled: z.boolean() }).passthrough().optional(),
+    bank_transfer: z.object({
+      enabled: z.boolean(),
+      bank_name: z.string().max(200).optional(),
+      account_number: z.string().max(50).optional(),
+      account_name: z.string().max(200).optional(),
+      sort_code: z.string().max(20).optional(),
+      instructions: z.string().max(500).optional(),
+    }).optional(),
+  }),
+});
+
 router.put(
   '/:orgId/payments/methods',
   authenticate,
@@ -1213,7 +1242,12 @@ router.put(
   requireRole('org_admin'),
   async (req: Request, res: Response) => {
     try {
-      const { paymentMethods } = req.body;
+      const parsed = paymentMethodsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ success: false, error: 'Invalid payment methods configuration', details: parsed.error.flatten() });
+        return;
+      }
+      const { paymentMethods } = parsed.data;
 
       const org = await db('organizations')
         .where({ id: req.params.orgId })

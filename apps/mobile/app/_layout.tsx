@@ -73,6 +73,11 @@ export default function RootLayout() {
             <Stack.Screen name="documents" options={{ title: 'Documents' }} />
             <Stack.Screen name="members" options={{ title: 'Members' }} />
             <Stack.Screen name="change-password" options={{ title: 'Change Password' }} />
+            <Stack.Screen name="legal" options={{ headerShown: false }} />
+            <Stack.Screen name="verify-email" options={{ title: 'Verify Email' }} />
+            <Stack.Screen name="create-org" options={{ title: 'Create Organization' }} />
+            <Stack.Screen name="invite/[code]" options={{ title: 'Join Organization' }} />
+            <Stack.Screen name="help" options={{ title: 'Help & Support' }} />
           </Stack>
         </View>
       </View>

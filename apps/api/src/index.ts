@@ -89,6 +89,16 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
+// ── Cap pagination limits to prevent data dumping ────────
+app.use((req, _res, next) => {
+  if (req.query.limit) {
+    const parsed = parseInt(req.query.limit as string);
+    if (isNaN(parsed) || parsed < 1) req.query.limit = '50';
+    else if (parsed > 200) req.query.limit = '200';
+  }
+  next();
+});
+
 // Audit context
 app.use(auditContext);
 
@@ -175,6 +185,25 @@ const authLimiter = rateLimit({
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/forgot-password', authLimiter);
+app.use('/api/auth/reset-password', authLimiter);
+app.use('/api/auth/refresh', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30, // allow more refresh calls than login but still capped
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many requests, please try again later' },
+}));
+
+// ── Webhook Rate Limiting ──
+const webhookLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // max 60 webhook calls per IP per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many webhook requests' },
+});
+app.use('/api/payments/webhooks', webhookLimiter);
+app.use('/api/payments/paystack/callback', webhookLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/organizations', orgRoutes);
 app.use('/api/chat', chatRoutes);

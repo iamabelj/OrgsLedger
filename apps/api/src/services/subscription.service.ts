@@ -32,14 +32,18 @@ export async function getPlanBySlug(slug: string) {
 }
 
 export function getPlanPrice(plan: any, currency: 'USD' | 'NGN', cycle: 'annual' | 'monthly' = 'annual'): number {
+  let price: number;
   if (currency === 'NGN') {
-    return cycle === 'monthly'
-      ? parseFloat(plan.price_ngn_monthly || plan.price_ngn_annual / 12)
-      : parseFloat(plan.price_ngn_annual);
+    price = cycle === 'monthly'
+      ? parseFloat(plan.price_ngn_monthly) || (parseFloat(plan.price_ngn_annual) || 0) / 12
+      : parseFloat(plan.price_ngn_annual) || 0;
+  } else {
+    price = cycle === 'monthly'
+      ? parseFloat(plan.price_usd_monthly) || (parseFloat(plan.price_usd_annual) || 0) / 12
+      : parseFloat(plan.price_usd_annual) || 0;
   }
-  return cycle === 'monthly'
-    ? parseFloat(plan.price_usd_monthly || plan.price_usd_annual / 12)
-    : parseFloat(plan.price_usd_annual);
+  // Guard against NaN from null/undefined fields
+  return isNaN(price) ? 0 : Math.round(price * 100) / 100;
 }
 
 // ── Member Limit Check ────────────────────────────────────
@@ -98,7 +102,9 @@ export async function createSubscription(params: {
   paymentGateway?: string;
   gatewaySubscriptionId?: string;
   createdBy?: string;
+  status?: 'active' | 'pending';
 }) {
+  const initialStatus = params.status || 'active';
   const now = new Date();
   const periodEnd = new Date(now);
   if (params.billingCycle === 'monthly') {
@@ -118,7 +124,7 @@ export async function createSubscription(params: {
   const [sub] = await db('subscriptions').insert({
     organization_id: params.organizationId,
     plan_id: params.planId,
-    status: 'active',
+    status: initialStatus,
     billing_cycle: params.billingCycle,
     currency: params.currency,
     billing_country: params.billingCountry,
@@ -133,7 +139,7 @@ export async function createSubscription(params: {
 
   // Update org
   await db('organizations').where({ id: params.organizationId }).update({
-    subscription_status: 'active',
+    subscription_status: initialStatus === 'active' ? 'active' : 'pending',
     billing_currency: params.currency,
     billing_country: params.billingCountry,
   });

@@ -15,11 +15,36 @@ import { logger } from '../logger';
 
 const router = Router();
 
-// ── Channel Ownership Helper ────────────────────────────────
+// ── Channel Ownership + Membership Helper ───────────────────
 async function verifyChannelOwnership(channelId: string, orgId: string, res: Response): Promise<boolean> {
   const channel = await db('channels').where({ id: channelId, organization_id: orgId }).first();
   if (!channel) {
     res.status(404).json({ success: false, error: 'Channel not found in this organization' });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Verify user has access to a channel.
+ * General/announcement channels are open to all org members.
+ * Other channels require explicit channel_members entry.
+ */
+async function verifyChannelAccess(channelId: string, orgId: string, userId: string, res: Response): Promise<boolean> {
+  const channel = await db('channels').where({ id: channelId, organization_id: orgId }).first();
+  if (!channel) {
+    res.status(404).json({ success: false, error: 'Channel not found in this organization' });
+    return false;
+  }
+  // General and announcement channels are open to all org members
+  if (['general', 'announcement'].includes(channel.type)) return true;
+
+  // Private/committee/direct channels require membership
+  const membership = await db('channel_members')
+    .where({ channel_id: channelId, user_id: userId })
+    .first();
+  if (!membership) {
+    res.status(403).json({ success: false, error: 'Not a member of this channel' });
     return false;
   }
   return true;
@@ -156,7 +181,7 @@ router.get(
   loadMembership,
   async (req: Request, res: Response) => {
     try {
-      if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res))) return;
+      if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user!.userId, res))) return;
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 50;
       const before = req.query.before as string; // cursor-based pagination
@@ -251,7 +276,7 @@ router.post(
   validate(sendMessageSchema),
   async (req: Request, res: Response) => {
     try {
-      if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res))) return;
+      if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user!.userId, res))) return;
       const { content, threadId, attachmentIds } = req.body;
 
       const [message] = await db('messages')

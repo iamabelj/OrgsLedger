@@ -24,9 +24,13 @@ interface AuthenticatedSocket extends Socket {
 }
 
 export function setupSocketIO(httpServer: HttpServer): Server {
+  const allowedOrigins = config.env === 'production'
+    ? ['https://app.orgsledger.com', 'https://orgsledger.com']
+    : '*';
+
   const io = new Server(httpServer, {
     cors: {
-      origin: '*',
+      origin: allowedOrigins,
       methods: ['GET', 'POST'],
     },
     pingTimeout: 60000,
@@ -98,8 +102,35 @@ export function setupSocketIO(httpServer: HttpServer): Server {
     }
 
     // ── Channel Events ──────────────────────────────────
-    socket.on('channel:join', (channelId: string) => {
-      socket.join(`channel:${channelId}`);
+    socket.on('channel:join', async (channelId: string) => {
+      try {
+        // Verify user is a member of this channel (or it's a general/announcement channel in an org they belong to)
+        const channel = await db('channels').where({ id: channelId }).first();
+        if (!channel) return;
+
+        const membership = await db('memberships')
+          .where({ user_id: userId, organization_id: channel.organization_id, is_active: true })
+          .first();
+        if (!membership) {
+          socket.emit('error', { message: 'Not a member of this organization' });
+          return;
+        }
+
+        // For non-general/announcement channels, verify channel membership
+        if (!['general', 'announcement'].includes(channel.type)) {
+          const channelMember = await db('channel_members')
+            .where({ channel_id: channelId, user_id: userId })
+            .first();
+          if (!channelMember) {
+            socket.emit('error', { message: 'Not a member of this channel' });
+            return;
+          }
+        }
+
+        socket.join(`channel:${channelId}`);
+      } catch (err) {
+        logger.error('channel:join authorization error', err);
+      }
     });
 
     socket.on('channel:leave', (channelId: string) => {
@@ -135,12 +166,31 @@ export function setupSocketIO(httpServer: HttpServer): Server {
     });
 
     // ── Meeting Events ──────────────────────────────────
-    socket.on('meeting:join', (meetingId: string) => {
-      socket.join(`meeting:${meetingId}`);
-      socket.to(`meeting:${meetingId}`).emit('meeting:participant-joined', {
-        userId,
-      });
-      logger.debug(`User ${userId} joined meeting ${meetingId}`);
+    socket.on('meeting:join', async (meetingId: string) => {
+      try {
+        // Verify user is a member of the meeting's organization
+        const meeting = await db('meetings').where({ id: meetingId }).select('organization_id').first();
+        if (!meeting) {
+          socket.emit('error', { message: 'Meeting not found' });
+          return;
+        }
+
+        const membership = await db('memberships')
+          .where({ user_id: userId, organization_id: meeting.organization_id, is_active: true })
+          .first();
+        if (!membership) {
+          socket.emit('error', { message: 'Not a member of this organization' });
+          return;
+        }
+
+        socket.join(`meeting:${meetingId}`);
+        socket.to(`meeting:${meetingId}`).emit('meeting:participant-joined', {
+          userId,
+        });
+        logger.debug(`User ${userId} joined meeting ${meetingId}`);
+      } catch (err) {
+        logger.error('meeting:join authorization error', err);
+      }
     });
 
     // ── Audio Streaming for AI ──────────────────────────
@@ -325,8 +375,20 @@ export function setupSocketIO(httpServer: HttpServer): Server {
     });
 
     // ── Financial Updates ───────────────────────────────
-    socket.on('ledger:subscribe', (orgId: string) => {
-      socket.join(`ledger:${orgId}`);
+    socket.on('ledger:subscribe', async (orgId: string) => {
+      try {
+        // Verify user is a member of this organization
+        const membership = await db('memberships')
+          .where({ user_id: userId, organization_id: orgId, is_active: true })
+          .first();
+        if (!membership) {
+          socket.emit('error', { message: 'Not a member of this organization' });
+          return;
+        }
+        socket.join(`ledger:${orgId}`);
+      } catch (err) {
+        logger.error('ledger:subscribe authorization error', err);
+      }
     });
 
     // ── Presence ────────────────────────────────────────

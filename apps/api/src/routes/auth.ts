@@ -6,6 +6,7 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { z } from 'zod';
 import path from 'path';
 import fs from 'fs';
@@ -17,6 +18,19 @@ import { logger } from '../logger';
 import { checkMemberLimit } from '../services/subscription.service';
 
 const router = Router();
+
+// ── Timing-safe string comparison helper ────────────────────
+function timingSafeCompare(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  try {
+    const bufA = Buffer.from(a, 'utf-8');
+    const bufB = Buffer.from(b, 'utf-8');
+    if (bufA.length !== bufB.length) return false;
+    return crypto.timingSafeEqual(bufA, bufB);
+  } catch {
+    return false;
+  }
+}
 
 // ── Multer for avatar uploads ───────────────────────────────
 const avatarStorage = multer.diskStorage({
@@ -64,7 +78,7 @@ function generateTokens(userId: string, email: string, globalRole: string) {
   );
   const refreshToken = jwt.sign(
     { userId, type: 'refresh' },
-    config.jwt.secret,
+    config.jwt.refreshSecret,
     { expiresIn: config.jwt.refreshExpiresIn as any }
   );
   return { accessToken, refreshToken };
@@ -309,7 +323,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
       return;
     }
 
-    const payload = jwt.verify(refreshToken, config.jwt.secret) as { userId: string; type: string };
+    const payload = jwt.verify(refreshToken, config.jwt.refreshSecret) as { userId: string; type: string; iat?: number };
     if (payload.type !== 'refresh') {
       res.status(401).json({ success: false, error: 'Invalid token type' });
       return;
@@ -319,6 +333,15 @@ router.post('/refresh', async (req: Request, res: Response) => {
     if (!user) {
       res.status(401).json({ success: false, error: 'User not found' });
       return;
+    }
+
+    // Reject refresh tokens issued before password change
+    if (user.password_changed_at && payload.iat) {
+      const changedAt = Math.floor(new Date(user.password_changed_at).getTime() / 1000);
+      if (payload.iat < changedAt) {
+        res.status(401).json({ success: false, error: 'Token invalidated — please log in again' });
+        return;
+      }
     }
 
     const tokens = generateTokens(user.id, user.email, user.global_role);
@@ -364,9 +387,21 @@ router.get('/me', authenticate, async (req: Request, res: Response) => {
 });
 
 // ── Update Profile ──────────────────────────────────────────
+const profileUpdateSchema = z.object({
+  firstName: z.string().min(1).max(100).optional(),
+  lastName: z.string().min(1).max(100).optional(),
+  phone: z.string().max(30).optional().nullable(),
+  avatarUrl: z.string().url().max(500).optional().nullable(),
+}).strict();
+
 router.put('/me', authenticate, async (req: Request, res: Response) => {
   try {
-    const { firstName, lastName, phone, avatarUrl } = req.body;
+    const parsed = profileUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: 'Invalid input', details: parsed.error.flatten() });
+      return;
+    }
+    const { firstName, lastName, phone, avatarUrl } = parsed.data;
     const updates: Record<string, any> = {};
     if (firstName) updates.first_name = firstName;
     if (lastName) updates.last_name = lastName;
@@ -427,7 +462,7 @@ router.post('/forgot-password', validate(forgotPasswordSchema), async (req: Requ
     }
 
     // Generate a 6-digit reset code
-    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const resetCode = crypto.randomInt(100000, 999999).toString();
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
 
     // Store reset code in DB (use a simple column approach)
@@ -487,7 +522,7 @@ router.post('/reset-password', validate(resetPasswordSchema), async (req: Reques
     const { email, code, newPassword } = req.body;
     const user = await db('users').where({ email, is_active: true }).first();
 
-    if (!user || user.reset_code !== code) {
+    if (!user || !user.reset_code || !timingSafeCompare(user.reset_code, code)) {
       res.status(400).json({ success: false, error: 'Invalid or expired reset code' });
       return;
     }
@@ -502,6 +537,7 @@ router.post('/reset-password', validate(resetPasswordSchema), async (req: Reques
       password_hash: passwordHash,
       reset_code: null,
       reset_code_expires_at: null,
+      password_changed_at: new Date(),
     });
 
     await writeAuditLog({
@@ -535,7 +571,7 @@ router.post('/send-verification', authenticate, async (req: Request, res: Respon
       return;
     }
 
-    const verifyCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const verifyCode = crypto.randomInt(100000, 999999).toString();
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
     await db('users').where({ id: user.id }).update({
@@ -590,7 +626,7 @@ router.post('/verify-email', authenticate, validate(verifyEmailSchema), async (r
       return;
     }
 
-    if (user.verification_code !== code) {
+    if (!timingSafeCompare(user.verification_code || '', code)) {
       res.status(400).json({ success: false, error: 'Invalid verification code' });
       return;
     }
@@ -635,9 +671,15 @@ router.put('/change-password', authenticate, validate(changePasswordSchema), asy
     }
 
     const passwordHash = await bcrypt.hash(newPassword, 12);
-    await db('users').where({ id: user.id }).update({ password_hash: passwordHash });
+    await db('users').where({ id: user.id }).update({
+      password_hash: passwordHash,
+      password_changed_at: new Date(),
+    });
 
-    res.json({ success: true, message: 'Password changed successfully' });
+    // Generate new tokens so the user stays logged in with fresh tokens
+    const tokens = generateTokens(user.id, user.email, user.global_role);
+
+    res.json({ success: true, message: 'Password changed successfully', data: tokens });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Failed to change password' });
   }
