@@ -30,7 +30,7 @@
     .login-overlay { position: fixed; inset: 0; background: var(--dark); z-index: 1000; display: flex; align-items: center; justify-content: center; }
     .login-box { background: var(--dark-card); border: 1px solid var(--dark-border); border-radius: var(--radius); padding: 40px; width: 100%; max-width: 400px; text-align: center; }
     .login-box .logo { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px; }
-    .login-box .logo-icon { width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #2563eb, #06d6a0); display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; font-size: 1rem; }
+    .login-box .logo-icon { width: 40px; height: 40px; border-radius: 10px; object-fit: contain; }
     .login-box .logo span { font-size: 1.3rem; font-weight: 800; color: var(--white); }
     .login-box h2 { font-size: 1rem; color: var(--gray-400); font-weight: 500; margin-bottom: 28px; }
     .login-field { margin-bottom: 16px; text-align: left; }
@@ -45,7 +45,7 @@
     .app { display: flex; min-height: 100vh; }
     .sidebar { width: 260px; background: var(--dark-card); border-right: 1px solid var(--dark-border); padding: 24px 0; display: flex; flex-direction: column; position: fixed; top: 0; bottom: 0; left: 0; z-index: 50; }
     .sidebar .logo { display: flex; align-items: center; gap: 10px; padding: 0 20px; margin-bottom: 6px; }
-    .sidebar .logo-icon { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #2563eb, #06d6a0); display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; font-size: .8rem; }
+    .sidebar .logo-icon { width: 32px; height: 32px; border-radius: 8px; object-fit: contain; }
     .sidebar .logo span { font-size: 1.05rem; font-weight: 800; color: var(--white); }
     .sidebar .subtitle { font-size: .7rem; color: var(--gray-500); padding: 0 20px 20px; border-bottom: 1px solid var(--dark-border); }
     .sidebar nav { flex: 1; padding: 16px 12px; overflow-y: auto; }
@@ -168,7 +168,7 @@
 <!-- LOGIN -->
 <div class="login-overlay" id="login-overlay">
   <div class="login-box">
-    <div class="logo"><div class="logo-icon">OL</div><span>OrgsLedger</span></div>
+    <div class="logo"><img src="/logo.png" alt="OrgsLedger" class="logo-icon" /><span>OrgsLedger</span></div>
     <h2>Platform Admin Dashboard</h2>
     <form onsubmit="doLogin(event)">
       <div class="login-field">
@@ -189,7 +189,7 @@
 <div class="app" id="app" style="display:none;">
   <!-- SIDEBAR -->
   <aside class="sidebar">
-    <div class="logo"><div class="logo-icon">OL</div><span>OrgsLedger</span></div>
+    <div class="logo"><img src="/logo.png" alt="OrgsLedger" class="logo-icon" /><span>OrgsLedger</span></div>
     <div class="subtitle">Platform Admin</div>
     <nav>
       <div class="nav-group">

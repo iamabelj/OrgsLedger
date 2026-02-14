@@ -184,6 +184,8 @@ async function apiKeyAuth(req, res, next) {
 }
 
 // ── Static Files ──────────────────────────────────────────
+app.use(express.static(path.join(__dirname), { maxAge: '1d', index: false }));
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });

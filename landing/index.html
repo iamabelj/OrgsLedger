@@ -77,7 +77,7 @@
     .nav.scrolled { background: rgba(10,15,30,0.92); backdrop-filter: blur(20px) saturate(1.6); border-bottom: 1px solid rgba(255,255,255,0.06); }
     .nav .container { display: flex; align-items: center; justify-content: space-between; height: 80px; }
     .nav-logo { display: flex; align-items: center; gap: 12px; }
-    .nav-logo-icon { width: 38px; height: 38px; border-radius: 10px; background: var(--gradient-brand); display: flex; align-items: center; justify-content: center; font-weight: 900; color: var(--white); font-size: .95rem; letter-spacing: -.02em; box-shadow: 0 4px 20px rgba(37,99,235,0.3); }
+    .nav-logo-icon { width: 38px; height: 38px; border-radius: 10px; object-fit: contain; }
     .nav-logo-text { font-size: 1.15rem; font-weight: 800; color: var(--white); letter-spacing: -.02em; }
     .nav-links { display: flex; align-items: center; gap: 32px; }
     .nav-links a { color: var(--gray-400); font-size: .88rem; font-weight: 500; transition: color .2s; }
@@ -360,7 +360,7 @@
     .footer { padding: 80px 0 32px; background: var(--dark-2); border-top: 1px solid var(--dark-border); }
     .footer-grid { display: grid; grid-template-columns: 2.2fr 1fr 1fr 1fr; gap: 48px; margin-bottom: 48px; }
     .footer-brand-text { font-size: 1.1rem; font-weight: 800; color: var(--white); display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-    .footer-brand-text .f-icon { width: 30px; height: 30px; border-radius: 8px; background: var(--gradient-brand); display: flex; align-items: center; justify-content: center; font-weight: 900; color: var(--white); font-size: .75rem; }
+    .footer-brand-text .f-icon { width: 30px; height: 30px; border-radius: 8px; object-fit: contain; }
     .footer-brand p { color: var(--gray-500); font-size: .85rem; max-width: 300px; line-height: 1.65; }
     .footer-col h5 { color: var(--gray-200); font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 16px; }
     .footer-col a { display: block; color: var(--gray-500); font-size: .85rem; padding: 5px 0; transition: color .2s; }
@@ -395,7 +395,7 @@
 <header class="nav" id="nav">
   <div class="container">
     <a href="/" class="nav-logo">
-      <div class="nav-logo-icon">OL</div>
+      <img src="/logo.png" alt="OrgsLedger" class="nav-logo-icon" />
       <span class="nav-logo-text">OrgsLedger</span>
     </a>
     <div class="nav-links" id="nav-links">
@@ -611,7 +611,7 @@
         <div class="pricing-amount">
           <span class="currency" data-cur>$</span><span data-price="enterprise">2,500<sup style="font-size:.5em;vertical-align:super;color:var(--gray-500);">+</sup></span><span class="period" data-per>/year</span>
         </div>
-        <div class="pricing-desc">For large organizations up to <strong>10,000 members</strong>.</div>
+        <div class="pricing-desc">For large organizations up to <strong>500 members</strong>.</div>
         <ul class="pricing-features">
           <li><span class="feat-check">&#10003;</span> Everything in Professional</li>
           <li><span class="feat-check">&#10003;</span> AI Meeting Summaries *</li>
@@ -806,7 +806,7 @@
   <div class="container">
     <div class="footer-grid">
       <div class="footer-brand">
-        <div class="footer-brand-text"><div class="f-icon">OL</div> OrgsLedger</div>
+        <div class="footer-brand-text"><img src="/logo.png" alt="OrgsLedger" class="f-icon" /> OrgsLedger</div>
         <p>The cross-border organizational infrastructure platform. AI-powered meetings, real-time translation, financial management &mdash; fully hosted, fully secure.</p>
       </div>
       <div class="footer-col">
