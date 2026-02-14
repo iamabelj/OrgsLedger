@@ -42,7 +42,7 @@ export default function AnnouncementsScreen() {
   const memberships = useAuthStore((s) => s.memberships);
   const globalRole = useAuthStore((s) => s.user?.globalRole);
   const membership = memberships.find((m) => m.organization_id === currentOrgId);
-  const isAdmin = globalRole === 'super_admin' || membership?.role === 'org_admin' || membership?.role === 'executive';
+  const isAdmin = globalRole === 'super_admin' || globalRole === 'developer' || membership?.role === 'org_admin' || membership?.role === 'executive';
   const responsive = useResponsive();
 
   const loadAnnouncements = useCallback(async () => {

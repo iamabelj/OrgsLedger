@@ -25,7 +25,7 @@ type Tab = 'overview' | 'orgs' | 'adjust';
 
 export default function SaasDashboard() {
   const globalRole = useAuthStore((s) => s.user?.globalRole);
-  const isSuperAdmin = globalRole === 'super_admin';
+  const isSuperAdmin = globalRole === 'developer';
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

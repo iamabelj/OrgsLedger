@@ -13,8 +13,8 @@ import { logger } from '../logger';
  */
 export async function requireActiveSubscription(req: Request, res: Response, next: NextFunction) {
   try {
-    // Super admins bypass
-    if (req.user?.globalRole === 'super_admin') return next();
+    // Super admins and developers bypass
+    if (req.user?.globalRole === 'super_admin' || req.user?.globalRole === 'developer') return next();
 
     const orgId = req.params.orgId || (req as any).organizationId;
     if (!orgId) return next(); // No org context — skip

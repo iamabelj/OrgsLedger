@@ -156,8 +156,8 @@ router.post('/', middleware_1.authenticate, (0, middleware_1.validate)(createOrg
 router.get('/', middleware_1.authenticate, async (req, res) => {
     try {
         let query = (0, db_1.default)('organizations');
-        // Super admin sees all
-        if (req.user.globalRole !== 'super_admin') {
+        // Super admin and developer see all
+        if (req.user.globalRole !== 'super_admin' && req.user.globalRole !== 'developer') {
             const orgIds = await (0, db_1.default)('memberships')
                 .where({ user_id: req.user.userId, is_active: true })
                 .pluck('organization_id');
@@ -525,7 +525,7 @@ router.delete('/:orgId/members/:userId', middleware_1.authenticate, middleware_1
     }
 });
 // ── Platform: List All Orgs (Super Admin) ───────────────────
-router.get('/platform/all', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (req, res) => {
+router.get('/platform/all', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 50;

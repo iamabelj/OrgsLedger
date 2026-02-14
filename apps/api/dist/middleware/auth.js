@@ -59,10 +59,10 @@ async function loadMembership(req, res, next) {
             res.status(400).json({ success: false, error: 'Organization ID required' });
             return;
         }
-        // Super admins get admin-level access everywhere
-        if (req.user.globalRole === 'super_admin') {
+        // Super admins and developers get admin-level access everywhere
+        if (req.user.globalRole === 'super_admin' || req.user.globalRole === 'developer') {
             req.membership = {
-                id: 'super_admin',
+                id: req.user.globalRole,
                 role: 'org_admin',
                 organizationId: orgId,
                 isActive: true,

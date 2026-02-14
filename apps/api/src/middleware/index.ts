@@ -3,7 +3,7 @@ import { loadMembership as _loadMembership } from './auth';
 import { requireActiveSubscription as _requireActiveSubscription } from './subscription';
 
 export { authenticate, loadMembership } from './auth';
-export { requireRole, requireSuperAdmin } from './rbac';
+export { requireRole, requireSuperAdmin, requireDeveloper } from './rbac';
 export { auditContext, writeAuditLog } from './audit';
 export { validate } from './validate';
 export { requireActiveSubscription, checkAiWallet, checkTranslationWallet } from './subscription';

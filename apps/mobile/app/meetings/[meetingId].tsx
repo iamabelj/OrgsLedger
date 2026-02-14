@@ -65,7 +65,7 @@ export default function MeetingDetailScreen() {
   const recordingRef = useRef<any>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const isAdmin = globalRole === 'super_admin' || (membership &&
+  const isAdmin = globalRole === 'super_admin' || globalRole === 'developer' || (membership &&
     ['org_admin', 'executive'].includes(membership.role));
 
   useEffect(() => {

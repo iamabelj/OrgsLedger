@@ -4,6 +4,7 @@
 // ============================================================
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.requireRole = requireRole;
+exports.requireDeveloper = requireDeveloper;
 exports.requireSuperAdmin = requireSuperAdmin;
 const ROLE_HIERARCHY = {
     guest: 0,
@@ -11,6 +12,7 @@ const ROLE_HIERARCHY = {
     executive: 2,
     org_admin: 3,
     super_admin: 4,
+    developer: 5,
 };
 /**
  * Require minimum role level to access a route.
@@ -22,8 +24,8 @@ function requireRole(...allowedRoles) {
             res.status(401).json({ success: false, error: 'Authentication required' });
             return;
         }
-        // Super admin bypasses all checks
-        if (req.user.globalRole === 'super_admin') {
+        // Super admin and developer bypass all checks
+        if (req.user.globalRole === 'super_admin' || req.user.globalRole === 'developer') {
             return next();
         }
         if (!req.membership) {
@@ -47,11 +49,28 @@ function requireRole(...allowedRoles) {
     };
 }
 /**
- * Require super admin access (platform-level).
+ * Require developer access (platform-level SaaS owner).
+ * Developer is the GOD OF THEM ALL — above super_admin.
+ */
+function requireDeveloper() {
+    return (req, res, next) => {
+        if (!req.user || req.user.globalRole !== 'developer') {
+            res.status(403).json({
+                success: false,
+                error: 'Developer admin access required',
+            });
+            return;
+        }
+        next();
+    };
+}
+/**
+ * Require super admin access (organization-level God) or higher.
+ * Both super_admin and developer pass this check.
  */
 function requireSuperAdmin() {
     return (req, res, next) => {
-        if (!req.user || req.user.globalRole !== 'super_admin') {
+        if (!req.user || (req.user.globalRole !== 'super_admin' && req.user.globalRole !== 'developer')) {
             res.status(403).json({
                 success: false,
                 error: 'Super admin access required',

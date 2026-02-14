@@ -14,12 +14,12 @@ import {
   getAllOrgUsage,
   getDailyTrends,
 } from '../services/analytics.service';
-import { authenticate, requireSuperAdmin } from '../middleware';
+import { authenticate, requireDeveloper } from '../middleware';
 
 const router = Router();
 
 // All observability routes require super admin
-router.use(authenticate, requireSuperAdmin);
+router.use(authenticate, requireDeveloper);
 
 // ── Metrics Dashboard ─────────────────────────────────────
 router.get('/metrics', (_req: Request, res: Response) => {

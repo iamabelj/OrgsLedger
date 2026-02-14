@@ -81,7 +81,8 @@ export function NavigationDrawer() {
   const currentMembership = memberships.find((m) => m.organization_id === currentOrgId);
   const userRole = currentMembership?.role || 'member';
   const globalRole = user?.globalRole;
-  const isSuperAdmin = globalRole === 'super_admin';
+  const isDeveloper = globalRole === 'developer';
+  const isSuperAdmin = globalRole === 'super_admin' || isDeveloper;
   const isOrgAdmin = userRole === 'org_admin' || isSuperAdmin;
   const isExecutive = userRole === 'executive';
   const isAdmin = isOrgAdmin || isExecutive;

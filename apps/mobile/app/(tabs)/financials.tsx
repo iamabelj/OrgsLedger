@@ -69,7 +69,7 @@ export default function FinancialsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [donationCampaigns, setDonationCampaigns] = useState<any[]>([]);
 
-  const isAdmin = globalRole === 'super_admin' || (membership &&
+  const isAdmin = globalRole === 'super_admin' || globalRole === 'developer' || (membership &&
     ['org_admin', 'executive'].includes(membership.role));
 
   const loadAll = useCallback(async () => {

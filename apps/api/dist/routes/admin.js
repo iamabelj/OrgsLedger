@@ -40,7 +40,7 @@ const updateConfigSchema = zod_1.z.object({
 // ══════════════════════════════════════════════════════════════
 // LICENSE MANAGEMENT (Super Admin only)
 // ══════════════════════════════════════════════════════════════
-router.post('/licenses', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), (0, middleware_1.validate)(createLicenseSchema), async (req, res) => {
+router.post('/licenses', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), (0, middleware_1.validate)(createLicenseSchema), async (req, res) => {
     try {
         const data = req.body;
         const [license] = await (0, db_1.default)('licenses')
@@ -90,7 +90,7 @@ router.post('/licenses', middleware_1.authenticate, (0, middleware_1.requireSupe
         res.status(500).json({ success: false, error: 'Failed to create license' });
     }
 });
-router.get('/licenses', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (req, res) => {
+router.get('/licenses', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (req, res) => {
     try {
         const licenses = await (0, db_1.default)('licenses')
             .leftJoin('organizations', 'licenses.id', 'organizations.license_id')
@@ -102,7 +102,7 @@ router.get('/licenses', middleware_1.authenticate, (0, middleware_1.requireSuper
         res.status(500).json({ success: false, error: 'Failed to list licenses' });
     }
 });
-router.put('/licenses/:licenseId', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (req, res) => {
+router.put('/licenses/:licenseId', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (req, res) => {
     try {
         const { type, maxMembers, features, isActive, priceMonthly } = req.body;
         const previous = await (0, db_1.default)('licenses').where({ id: req.params.licenseId }).first();
@@ -146,7 +146,7 @@ router.put('/licenses/:licenseId', middleware_1.authenticate, (0, middleware_1.r
 // ══════════════════════════════════════════════════════════════
 // PLATFORM CONFIG (Super Admin)
 // ══════════════════════════════════════════════════════════════
-router.get('/config', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (req, res) => {
+router.get('/config', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (req, res) => {
     try {
         const configs = await (0, db_1.default)('platform_config').select('*').orderBy('key');
         res.json({ success: true, data: configs });
@@ -158,7 +158,7 @@ router.get('/config', middleware_1.authenticate, (0, middleware_1.requireSuperAd
 // ══════════════════════════════════════════════════════════════
 // GRANT AI CREDITS (Super Admin)
 // ══════════════════════════════════════════════════════════════
-router.post('/ai-credits/grant', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (req, res) => {
+router.post('/ai-credits/grant', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (req, res) => {
     try {
         const { organizationId, credits, reason } = req.body;
         if (!organizationId || !credits || credits < 1) {
@@ -201,7 +201,7 @@ router.post('/ai-credits/grant', middleware_1.authenticate, (0, middleware_1.req
         res.status(500).json({ success: false, error: 'Failed to grant credits' });
     }
 });
-router.put('/config', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), (0, middleware_1.validate)(updateConfigSchema), async (req, res) => {
+router.put('/config', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), (0, middleware_1.validate)(updateConfigSchema), async (req, res) => {
     try {
         const { key, value, description } = req.body;
         await (0, db_1.default)('platform_config')
@@ -227,7 +227,7 @@ router.put('/config', middleware_1.authenticate, (0, middleware_1.requireSuperAd
 // ══════════════════════════════════════════════════════════════
 // PLATFORM ANALYTICS (Super Admin)
 // ══════════════════════════════════════════════════════════════
-router.get('/analytics', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (req, res) => {
+router.get('/analytics', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (req, res) => {
     try {
         const totalOrgs = await (0, db_1.default)('organizations').count('id as count').first();
         const totalUsers = await (0, db_1.default)('users').count('id as count').first();
@@ -270,7 +270,7 @@ router.get('/analytics', middleware_1.authenticate, (0, middleware_1.requireSupe
 // ══════════════════════════════════════════════════════════════
 // AUDIT LOGS (Admin)
 // ══════════════════════════════════════════════════════════════
-router.get('/audit-logs', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (req, res) => {
+router.get('/audit-logs', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 50;

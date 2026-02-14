@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.checkTranslationWallet = exports.checkAiWallet = exports.requireActiveSubscription = exports.validate = exports.writeAuditLog = exports.auditContext = exports.requireSuperAdmin = exports.requireRole = exports.loadMembership = exports.authenticate = void 0;
+exports.checkTranslationWallet = exports.checkAiWallet = exports.requireActiveSubscription = exports.validate = exports.writeAuditLog = exports.auditContext = exports.requireDeveloper = exports.requireSuperAdmin = exports.requireRole = exports.loadMembership = exports.authenticate = void 0;
 exports.loadMembershipAndSub = loadMembershipAndSub;
 const auth_1 = require("./auth");
 const subscription_1 = require("./subscription");
@@ -10,6 +10,7 @@ Object.defineProperty(exports, "loadMembership", { enumerable: true, get: functi
 var rbac_1 = require("./rbac");
 Object.defineProperty(exports, "requireRole", { enumerable: true, get: function () { return rbac_1.requireRole; } });
 Object.defineProperty(exports, "requireSuperAdmin", { enumerable: true, get: function () { return rbac_1.requireSuperAdmin; } });
+Object.defineProperty(exports, "requireDeveloper", { enumerable: true, get: function () { return rbac_1.requireDeveloper; } });
 var audit_1 = require("./audit");
 Object.defineProperty(exports, "auditContext", { enumerable: true, get: function () { return audit_1.auditContext; } });
 Object.defineProperty(exports, "writeAuditLog", { enumerable: true, get: function () { return audit_1.writeAuditLog; } });

@@ -6,7 +6,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import db from '../db';
-import { authenticate, requireSuperAdmin, validate } from '../middleware';
+import { authenticate, requireDeveloper, validate } from '../middleware';
 import { logger } from '../logger';
 
 const router = Router();
@@ -44,7 +44,7 @@ const updateConfigSchema = z.object({
 router.post(
   '/licenses',
   authenticate,
-  requireSuperAdmin(),
+  requireDeveloper(),
   validate(createLicenseSchema),
   async (req: Request, res: Response) => {
     try {
@@ -109,7 +109,7 @@ router.post(
 router.get(
   '/licenses',
   authenticate,
-  requireSuperAdmin(),
+  requireDeveloper(),
   async (req: Request, res: Response) => {
     try {
       const licenses = await db('licenses')
@@ -131,7 +131,7 @@ router.get(
 router.put(
   '/licenses/:licenseId',
   authenticate,
-  requireSuperAdmin(),
+  requireDeveloper(),
   async (req: Request, res: Response) => {
     try {
       const { type, maxMembers, features, isActive, priceMonthly } = req.body;
@@ -181,7 +181,7 @@ router.put(
 router.get(
   '/config',
   authenticate,
-  requireSuperAdmin(),
+  requireDeveloper(),
   async (req: Request, res: Response) => {
     try {
       const configs = await db('platform_config').select('*').orderBy('key');
@@ -198,7 +198,7 @@ router.get(
 router.post(
   '/ai-credits/grant',
   authenticate,
-  requireSuperAdmin(),
+  requireDeveloper(),
   async (req: Request, res: Response) => {
     try {
       const { organizationId, credits, reason } = req.body;
@@ -250,7 +250,7 @@ router.post(
 router.put(
   '/config',
   authenticate,
-  requireSuperAdmin(),
+  requireDeveloper(),
   validate(updateConfigSchema),
   async (req: Request, res: Response) => {
     try {
@@ -286,7 +286,7 @@ router.put(
 router.get(
   '/analytics',
   authenticate,
-  requireSuperAdmin(),
+  requireDeveloper(),
   async (req: Request, res: Response) => {
     try {
       const totalOrgs = await db('organizations').count('id as count').first();
@@ -342,7 +342,7 @@ router.get(
 router.get(
   '/audit-logs',
   authenticate,
-  requireSuperAdmin(),
+  requireDeveloper(),
   async (req: Request, res: Response) => {
     try {
       const page = parseInt(req.query.page as string) || 1;

@@ -25,18 +25,20 @@ import { Card, Badge, Avatar, SearchBar, EmptyState, SectionHeader, PoweredByFoo
 import { useResponsive } from '../../src/hooks/useResponsive';
 import { showAlert } from '../../src/utils/alert';
 
-const ROLES = ['member', 'executive', 'org_admin', 'super_admin'] as const;
+const ROLES = ['member', 'executive', 'org_admin', 'super_admin', 'developer'] as const;
 const ROLE_LABELS: Record<string, string> = {
   member: 'Member',
   executive: 'Executive',
   org_admin: 'Admin',
   super_admin: 'Super Admin',
+  developer: 'Developer',
 };
 const ROLE_COLORS: Record<string, 'neutral' | 'info' | 'gold' | 'danger'> = {
   member: 'neutral',
   executive: 'info',
   org_admin: 'gold',
   super_admin: 'danger',
+  developer: 'danger',
 };
 
 interface Member {

@@ -26,7 +26,7 @@ async function seed() {
           password_hash: await hashPassword(DEFAULT_ADMIN_PASSWORD),
           first_name: 'Platform',
           last_name: 'Admin',
-          global_role: 'super_admin',
+          global_role: 'developer',
           email_verified: true,
         })
         .returning('*');

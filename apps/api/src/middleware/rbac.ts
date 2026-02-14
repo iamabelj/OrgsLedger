@@ -10,6 +10,7 @@ const ROLE_HIERARCHY: Record<string, number> = {
   executive: 2,
   org_admin: 3,
   super_admin: 4,
+  developer: 5,
 };
 
 /**
@@ -23,8 +24,8 @@ export function requireRole(...allowedRoles: string[]) {
       return;
     }
 
-    // Super admin bypasses all checks
-    if (req.user.globalRole === 'super_admin') {
+    // Super admin and developer bypass all checks
+    if (req.user.globalRole === 'super_admin' || req.user.globalRole === 'developer') {
       return next();
     }
 
@@ -56,11 +57,29 @@ export function requireRole(...allowedRoles: string[]) {
 }
 
 /**
- * Require super admin access (platform-level).
+ * Require developer access (platform-level SaaS owner).
+ * Developer is the GOD OF THEM ALL — above super_admin.
+ */
+export function requireDeveloper() {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.user || req.user.globalRole !== 'developer') {
+      res.status(403).json({
+        success: false,
+        error: 'Developer admin access required',
+      });
+      return;
+    }
+    next();
+  };
+}
+
+/**
+ * Require super admin access (organization-level God) or higher.
+ * Both super_admin and developer pass this check.
  */
 export function requireSuperAdmin() {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (!req.user || req.user.globalRole !== 'super_admin') {
+    if (!req.user || (req.user.globalRole !== 'super_admin' && req.user.globalRole !== 'developer')) {
       res.status(403).json({
         success: false,
         error: 'Super admin access required',

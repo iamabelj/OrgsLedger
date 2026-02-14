@@ -28,6 +28,7 @@ import {
 import { showAlert } from '../../src/utils/alert';
 
 const ROLE_CONFIG: Record<string, { color: string; bg: string; label: string }> = {
+  developer:    { color: Colors.highlight, bg: Colors.highlightSubtle, label: 'Developer' },
   org_admin:    { color: Colors.highlight, bg: Colors.highlightSubtle, label: 'Admin' },
   super_admin:  { color: Colors.highlight, bg: Colors.highlightSubtle, label: 'Super Admin' },
   executive:    { color: Colors.info, bg: Colors.infoSubtle, label: 'Executive' },

@@ -6,7 +6,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import db from '../db';
-import { authenticate, loadMembership, requireRole, requireSuperAdmin, requireActiveSubscription, validate } from '../middleware';
+import { authenticate, loadMembership, requireRole, requireDeveloper, requireActiveSubscription, validate } from '../middleware';
 import { logger } from '../logger';
 import * as subSvc from '../services/subscription.service';
 import { writeAuditLog } from '../middleware/audit';
@@ -350,7 +350,7 @@ router.delete('/:orgId/invite/:inviteId', authenticate, loadMembership, requireR
 // ════════════════════════════════════════════════════════════
 
 // GET /admin/revenue
-router.get('/admin/revenue', authenticate, requireSuperAdmin(), async (_req: Request, res: Response) => {
+router.get('/admin/revenue', authenticate, requireDeveloper(), async (_req: Request, res: Response) => {
   try {
     const revenue = await subSvc.getPlatformRevenue();
     res.json({ success: true, data: revenue });
@@ -361,7 +361,7 @@ router.get('/admin/revenue', authenticate, requireSuperAdmin(), async (_req: Req
 });
 
 // GET /admin/subscriptions
-router.get('/admin/subscriptions', authenticate, requireSuperAdmin(), async (req: Request, res: Response) => {
+router.get('/admin/subscriptions', authenticate, requireDeveloper(), async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 100;
     const offset = parseInt(req.query.offset as string) || 0;
@@ -385,7 +385,7 @@ router.get('/admin/subscriptions', authenticate, requireSuperAdmin(), async (req
 });
 
 // GET /admin/organizations — list all orgs with subscription + wallet info
-router.get('/admin/organizations', authenticate, requireSuperAdmin(), async (_req: Request, res: Response) => {
+router.get('/admin/organizations', authenticate, requireDeveloper(), async (_req: Request, res: Response) => {
   try {
     const orgs = await db('organizations')
       .leftJoin('subscriptions', function () {
@@ -440,7 +440,7 @@ const adminCreateOrgSchema = z.object({
   currency: z.enum(['USD', 'NGN']).default('USD'),
 });
 
-router.post('/admin/organizations', authenticate, requireSuperAdmin(), validate(adminCreateOrgSchema), async (req: Request, res: Response) => {
+router.post('/admin/organizations', authenticate, requireDeveloper(), validate(adminCreateOrgSchema), async (req: Request, res: Response) => {
   try {
     const { name, slug, ownerEmail, plan, currency } = req.body;
 
@@ -552,7 +552,7 @@ router.post('/admin/organizations', authenticate, requireSuperAdmin(), validate(
 });
 
 // POST /admin/wallet/ai/adjust
-router.post('/admin/wallet/ai/adjust', authenticate, requireSuperAdmin(), validate(adjustWalletSchema), async (req: Request, res: Response) => {
+router.post('/admin/wallet/ai/adjust', authenticate, requireDeveloper(), validate(adjustWalletSchema), async (req: Request, res: Response) => {
   try {
     const organizationId = req.body.organizationId || req.body.organization_id;
     const hours = req.body.hours;
@@ -577,7 +577,7 @@ router.post('/admin/wallet/ai/adjust', authenticate, requireSuperAdmin(), valida
 });
 
 // POST /admin/wallet/translation/adjust
-router.post('/admin/wallet/translation/adjust', authenticate, requireSuperAdmin(), validate(adjustWalletSchema), async (req: Request, res: Response) => {
+router.post('/admin/wallet/translation/adjust', authenticate, requireDeveloper(), validate(adjustWalletSchema), async (req: Request, res: Response) => {
   try {
     const organizationId = req.body.organizationId || req.body.organization_id;
     const hours = req.body.hours;
@@ -602,7 +602,7 @@ router.post('/admin/wallet/translation/adjust', authenticate, requireSuperAdmin(
 });
 
 // POST /admin/org/status — suspend or activate
-router.post('/admin/org/status', authenticate, requireSuperAdmin(), async (req: Request, res: Response) => {
+router.post('/admin/org/status', authenticate, requireDeveloper(), async (req: Request, res: Response) => {
   try {
     // Accept both camelCase (organizationId, action) and snake_case (organization_id, status) from frontend
     const organizationId = req.body.organizationId || req.body.organization_id;
@@ -638,7 +638,7 @@ router.post('/admin/org/status', authenticate, requireSuperAdmin(), async (req: 
 });
 
 // POST /admin/subscription/override
-router.post('/admin/subscription/override', authenticate, requireSuperAdmin(), validate(overrideSchema), async (req: Request, res: Response) => {
+router.post('/admin/subscription/override', authenticate, requireDeveloper(), validate(overrideSchema), async (req: Request, res: Response) => {
   try {
     const { organizationId, planSlug, status, periodEnd } = req.body;
     const updates: any = {};
@@ -679,7 +679,7 @@ router.post('/admin/subscription/override', authenticate, requireSuperAdmin(), v
 });
 
 // GET /admin/wallet-analytics
-router.get('/admin/wallet-analytics', authenticate, requireSuperAdmin(), async (_req: Request, res: Response) => {
+router.get('/admin/wallet-analytics', authenticate, requireDeveloper(), async (_req: Request, res: Response) => {
   try {
     // AI wallet totals
     const aiStats = await db('ai_wallet')
@@ -729,7 +729,7 @@ router.get('/admin/wallet-analytics', authenticate, requireSuperAdmin(), async (
 });
 
 // GET /admin/plans
-router.get('/admin/plans', authenticate, requireSuperAdmin(), async (_req: Request, res: Response) => {
+router.get('/admin/plans', authenticate, requireDeveloper(), async (_req: Request, res: Response) => {
   try {
     const plans = await db('subscription_plans').orderBy('sort_order', 'asc');
     res.json({ success: true, data: plans });
@@ -739,7 +739,7 @@ router.get('/admin/plans', authenticate, requireSuperAdmin(), async (_req: Reque
 });
 
 // PUT /admin/plans/:planId
-router.put('/admin/plans/:planId', authenticate, requireSuperAdmin(), async (req: Request, res: Response) => {
+router.put('/admin/plans/:planId', authenticate, requireDeveloper(), async (req: Request, res: Response) => {
   try {
     const allowed = ['name', 'description', 'price_usd_annual', 'price_usd_monthly', 'price_ngn_annual', 'price_ngn_monthly', 'max_members', 'features', 'is_active', 'sort_order'];
     const updates: any = {};
@@ -761,7 +761,7 @@ router.put('/admin/plans/:planId', authenticate, requireSuperAdmin(), async (req
 // ════════════════════════════════════════════════════════════
 
 // GET /admin/risk/low-balances — orgs with wallets below threshold
-router.get('/admin/risk/low-balances', authenticate, requireSuperAdmin(), async (req: Request, res: Response) => {
+router.get('/admin/risk/low-balances', authenticate, requireDeveloper(), async (req: Request, res: Response) => {
   try {
     const thresholdMinutes = parseFloat(req.query.threshold as string) || 60; // default 1 hour
 
@@ -830,7 +830,7 @@ router.get('/admin/risk/low-balances', authenticate, requireSuperAdmin(), async 
 });
 
 // GET /admin/risk/spikes — detect abnormal usage spikes
-router.get('/admin/risk/spikes', authenticate, requireSuperAdmin(), async (req: Request, res: Response) => {
+router.get('/admin/risk/spikes', authenticate, requireDeveloper(), async (req: Request, res: Response) => {
   try {
     const daysBack = Math.min(Math.max(parseInt(req.query.days as string) || 7, 1), 365);
     const spikeMultiplier = Math.min(Math.max(parseFloat(req.query.multiplier as string) || 3, 1.5), 20);

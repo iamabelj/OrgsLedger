@@ -33,8 +33,8 @@ async function verifyChannelOwnership(channelId, orgId, res) {
  * Super admins bypass all channel access checks.
  */
 async function verifyChannelAccess(channelId, orgId, userId, res, req) {
-    // Super admin bypasses channel membership check
-    if (req?.user?.globalRole === 'super_admin')
+    // Super admin and developer bypass channel membership check
+    if (req?.user?.globalRole === 'super_admin' || req?.user?.globalRole === 'developer')
         return true;
     const channel = await (0, db_1.default)('channels').where({ id: channelId, organization_id: orgId }).first();
     if (!channel) {

@@ -362,7 +362,7 @@ router.delete('/:orgId/invite/:inviteId', middleware_1.authenticate, middleware_
 // SUPER ADMIN ROUTES
 // ════════════════════════════════════════════════════════════
 // GET /admin/revenue
-router.get('/admin/revenue', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (_req, res) => {
+router.get('/admin/revenue', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (_req, res) => {
     try {
         const revenue = await subSvc.getPlatformRevenue();
         res.json({ success: true, data: revenue });
@@ -373,7 +373,7 @@ router.get('/admin/revenue', middleware_1.authenticate, (0, middleware_1.require
     }
 });
 // GET /admin/subscriptions
-router.get('/admin/subscriptions', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (req, res) => {
+router.get('/admin/subscriptions', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (req, res) => {
     try {
         const limit = parseInt(req.query.limit) || 100;
         const offset = parseInt(req.query.offset) || 0;
@@ -392,7 +392,7 @@ router.get('/admin/subscriptions', middleware_1.authenticate, (0, middleware_1.r
     }
 });
 // GET /admin/organizations — list all orgs with subscription + wallet info
-router.get('/admin/organizations', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (_req, res) => {
+router.get('/admin/organizations', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (_req, res) => {
     try {
         const orgs = await (0, db_1.default)('organizations')
             .leftJoin('subscriptions', function () {
@@ -431,7 +431,7 @@ const adminCreateOrgSchema = zod_1.z.object({
     plan: zod_1.z.enum(['standard', 'professional', 'enterprise']).default('standard'),
     currency: zod_1.z.enum(['USD', 'NGN']).default('USD'),
 });
-router.post('/admin/organizations', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), (0, middleware_1.validate)(adminCreateOrgSchema), async (req, res) => {
+router.post('/admin/organizations', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), (0, middleware_1.validate)(adminCreateOrgSchema), async (req, res) => {
     try {
         const { name, slug, ownerEmail, plan, currency } = req.body;
         // Check slug uniqueness
@@ -531,7 +531,7 @@ router.post('/admin/organizations', middleware_1.authenticate, (0, middleware_1.
     }
 });
 // POST /admin/wallet/ai/adjust
-router.post('/admin/wallet/ai/adjust', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), (0, middleware_1.validate)(adjustWalletSchema), async (req, res) => {
+router.post('/admin/wallet/ai/adjust', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), (0, middleware_1.validate)(adjustWalletSchema), async (req, res) => {
     try {
         const organizationId = req.body.organizationId || req.body.organization_id;
         const hours = req.body.hours;
@@ -556,7 +556,7 @@ router.post('/admin/wallet/ai/adjust', middleware_1.authenticate, (0, middleware
     }
 });
 // POST /admin/wallet/translation/adjust
-router.post('/admin/wallet/translation/adjust', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), (0, middleware_1.validate)(adjustWalletSchema), async (req, res) => {
+router.post('/admin/wallet/translation/adjust', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), (0, middleware_1.validate)(adjustWalletSchema), async (req, res) => {
     try {
         const organizationId = req.body.organizationId || req.body.organization_id;
         const hours = req.body.hours;
@@ -581,7 +581,7 @@ router.post('/admin/wallet/translation/adjust', middleware_1.authenticate, (0, m
     }
 });
 // POST /admin/org/status — suspend or activate
-router.post('/admin/org/status', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (req, res) => {
+router.post('/admin/org/status', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (req, res) => {
     try {
         // Accept both camelCase (organizationId, action) and snake_case (organization_id, status) from frontend
         const organizationId = req.body.organizationId || req.body.organization_id;
@@ -618,7 +618,7 @@ router.post('/admin/org/status', middleware_1.authenticate, (0, middleware_1.req
     }
 });
 // POST /admin/subscription/override
-router.post('/admin/subscription/override', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), (0, middleware_1.validate)(overrideSchema), async (req, res) => {
+router.post('/admin/subscription/override', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), (0, middleware_1.validate)(overrideSchema), async (req, res) => {
     try {
         const { organizationId, planSlug, status, periodEnd } = req.body;
         const updates = {};
@@ -661,7 +661,7 @@ router.post('/admin/subscription/override', middleware_1.authenticate, (0, middl
     }
 });
 // GET /admin/wallet-analytics
-router.get('/admin/wallet-analytics', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (_req, res) => {
+router.get('/admin/wallet-analytics', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (_req, res) => {
     try {
         // AI wallet totals
         const aiStats = await (0, db_1.default)('ai_wallet')
@@ -697,7 +697,7 @@ router.get('/admin/wallet-analytics', middleware_1.authenticate, (0, middleware_
     }
 });
 // GET /admin/plans
-router.get('/admin/plans', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (_req, res) => {
+router.get('/admin/plans', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (_req, res) => {
     try {
         const plans = await (0, db_1.default)('subscription_plans').orderBy('sort_order', 'asc');
         res.json({ success: true, data: plans });
@@ -707,7 +707,7 @@ router.get('/admin/plans', middleware_1.authenticate, (0, middleware_1.requireSu
     }
 });
 // PUT /admin/plans/:planId
-router.put('/admin/plans/:planId', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (req, res) => {
+router.put('/admin/plans/:planId', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (req, res) => {
     try {
         const allowed = ['name', 'description', 'price_usd_annual', 'price_usd_monthly', 'price_ngn_annual', 'price_ngn_monthly', 'max_members', 'features', 'is_active', 'sort_order'];
         const updates = {};
@@ -729,7 +729,7 @@ router.put('/admin/plans/:planId', middleware_1.authenticate, (0, middleware_1.r
 // RISK MONITORING ENDPOINTS
 // ════════════════════════════════════════════════════════════
 // GET /admin/risk/low-balances — orgs with wallets below threshold
-router.get('/admin/risk/low-balances', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (req, res) => {
+router.get('/admin/risk/low-balances', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (req, res) => {
     try {
         const thresholdMinutes = parseFloat(req.query.threshold) || 60; // default 1 hour
         const lowAi = await (0, db_1.default)('ai_wallet')
@@ -773,7 +773,7 @@ router.get('/admin/risk/low-balances', middleware_1.authenticate, (0, middleware
     }
 });
 // GET /admin/risk/spikes — detect abnormal usage spikes
-router.get('/admin/risk/spikes', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (req, res) => {
+router.get('/admin/risk/spikes', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (req, res) => {
     try {
         const daysBack = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 365);
         const spikeMultiplier = Math.min(Math.max(parseFloat(req.query.multiplier) || 3, 1.5), 20);

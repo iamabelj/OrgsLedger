@@ -29,7 +29,7 @@ export default function WalletsScreen() {
   const memberships = useAuthStore((s) => s.memberships);
   const globalRole = useAuthStore((s) => s.user?.globalRole);
   const currentMembership = memberships.find((m) => m.organization_id === currentOrgId);
-  const isAdmin = globalRole === 'super_admin' || currentMembership?.role === 'org_admin';
+  const isAdmin = globalRole === 'super_admin' || globalRole === 'developer' || currentMembership?.role === 'org_admin';
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

@@ -14,7 +14,7 @@ import {
   loadMembership,
   loadMembershipAndSub,
   requireRole,
-  requireSuperAdmin,
+  requireDeveloper,
   validate,
 } from '../middleware';
 import { logger } from '../logger';
@@ -187,8 +187,8 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
   try {
     let query = db('organizations');
 
-    // Super admin sees all
-    if (req.user!.globalRole !== 'super_admin') {
+    // Super admin and developer see all
+    if (req.user!.globalRole !== 'super_admin' && req.user!.globalRole !== 'developer') {
       const orgIds = await db('memberships')
         .where({ user_id: req.user!.userId, is_active: true })
         .pluck('organization_id');
@@ -661,7 +661,7 @@ router.delete(
 router.get(
   '/platform/all',
   authenticate,
-  requireSuperAdmin(),
+  requireDeveloper(),
   async (req: Request, res: Response) => {
     try {
       const page = parseInt(req.query.page as string) || 1;

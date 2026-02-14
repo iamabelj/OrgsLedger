@@ -49,7 +49,7 @@ export default function MeetingsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const canCreate = globalRole === 'super_admin' || (membership &&
+  const canCreate = globalRole === 'super_admin' || globalRole === 'developer' || (membership &&
     ['org_admin', 'executive'].includes(membership.role));
 
   const loadMeetings = async () => {

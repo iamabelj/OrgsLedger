@@ -15,8 +15,8 @@ const logger_1 = require("../logger");
  */
 async function requireActiveSubscription(req, res, next) {
     try {
-        // Super admins bypass
-        if (req.user?.globalRole === 'super_admin')
+        // Super admins and developers bypass
+        if (req.user?.globalRole === 'super_admin' || req.user?.globalRole === 'developer')
             return next();
         const orgId = req.params.orgId || req.organizationId;
         if (!orgId)
