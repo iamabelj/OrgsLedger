@@ -138,32 +138,81 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// ── Landing / Sales Page ──────────────────────────────────
-// Serve the sales landing page at root "/" FIRST — before any static middleware
-// so orgsledger.com visitors always see the sales page.
-const landingPage = path.resolve(__dirname, '../../../landing/index.html');
-if (fs.existsSync(landingPage)) {
-  app.get('/', (req, res, next) => {
+// ── Landing / Gateway (orgsledger.com) ────────────────────
+// Mount the full landing app (marketing + admin + checkout + AI proxy)
+// at root level for orgsledger.com. On app.orgsledger.com these routes are skipped.
+try {
+  process.env.NO_LISTEN = 'true'; // Prevent gateway from auto-listening
+  const gatewayApp = require('../../../landing/server');
+  const landingDir = path.resolve(__dirname, '../../../landing');
+
+  // Serve landing static files (logo.png, CSS, etc.) on orgsledger.com
+  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
     const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
-    // Only serve landing/sales page on orgsledger.com — test/client sites go to SPA
     if (host === 'orgsledger.com' || host === 'www.orgsledger.com' || host === 'localhost' || host === '127.0.0.1') {
-      return res.sendFile(landingPage);
+      return express.static(landingDir, { index: false })(req, res, next);
     }
-    next(); // Let SPA static middleware or SPA fallback handle it
+    next();
   });
-  logger.info('Landing page served at / (orgsledger.com only)');
+
+  // Landing page at /
+  const landingPage = path.resolve(landingDir, 'index.html');
+  if (fs.existsSync(landingPage)) {
+    app.get('/', (req, res, next) => {
+      const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
+      if (host === 'orgsledger.com' || host === 'www.orgsledger.com' || host === 'localhost' || host === '127.0.0.1') {
+        return res.sendFile(landingPage);
+      }
+      next();
+    });
+    logger.info('Landing page served at / (orgsledger.com only)');
+  }
+
+  // Admin dashboard at /admin
+  const adminPage = path.resolve(landingDir, 'admin.html');
+  if (fs.existsSync(adminPage)) {
+    app.get('/admin', (req, res, next) => {
+      const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
+      if (host === 'orgsledger.com' || host === 'www.orgsledger.com' || host === 'localhost' || host === '127.0.0.1') {
+        return res.sendFile(adminPage);
+      }
+      next();
+    });
+  }
+
+  // Gateway API routes (admin login, checkout, AI proxy, geo, license, health)
+  // on orgsledger.com — these take priority over main API admin routes
+  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
+    if (host === 'orgsledger.com' || host === 'www.orgsledger.com' || host === 'localhost' || host === '127.0.0.1') {
+      // Let gateway handle its routes: /api/admin/*, /api/checkout/*, /api/ai/*, /api/geo, /api/license/*, /health
+      const p = req.path;
+      if (p.startsWith('/api/admin') || p.startsWith('/api/checkout') || p.startsWith('/api/ai') ||
+          p.startsWith('/api/geo') || p.startsWith('/api/license') || p.startsWith('/api/webhooks') ||
+          p === '/health') {
+        return gatewayApp(req, res, next);
+      }
+    }
+    next();
+  });
+
+  // Also keep /developer as a fallback access point
+  app.use('/developer', (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    return gatewayApp(req, res, next);
+  });
+  logger.info('Landing gateway mounted (orgsledger.com: root, all: /developer)');
+} catch (err: any) {
+  logger.warn('Landing gateway not loaded: ' + (err.message || err));
 }
 
 // ── Serve Web Frontend (production) ──────────────────────
-// __dirname = apps/api/dist in production, web build is at apps/api/web
-// On orgsledger.com, do NOT serve SPA static files — only landing + developer gateway
+// Expo web build at apps/api/web — only served on app.orgsledger.com (not orgsledger.com)
 const webDir = path.resolve(__dirname, '../web');
 if (fs.existsSync(webDir)) {
   app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
     const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
-    // Block SPA static files on orgsledger.com — only landing page + /developer
     if (host === 'orgsledger.com' || host === 'www.orgsledger.com') {
-      return next();
+      return next(); // Landing domain — no SPA
     }
     express.static(webDir)(req, res, next);
   });
@@ -221,27 +270,6 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/admin/observability', observabilityRoutes);
-
-// ── Developer Gateway (AI Client Management, Hours, Proxy) ──
-// Only mount on the main orgsledger.com domain — NEVER shipped with client deployments
-try {
-  process.env.NO_LISTEN = 'true'; // Prevent gateway from auto-listening
-  const gatewayApp = require('../../../landing/server');
-  app.use('/developer', (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
-    // Only allow developer gateway on orgsledger.com and localhost
-    if (host === 'orgsledger.com' || host === 'www.orgsledger.com' || host === 'localhost' || host === '127.0.0.1') {
-      return gatewayApp(req, res, next);
-    }
-    // All other domains (app.orgsledger.com, client domains): developer routes don't exist
-    res.status(404).json({ success: false, error: 'Route not found' });
-  });
-  logger.info('Developer gateway mounted at /developer (orgsledger.com only)');
-} catch (err: any) {
-  logger.warn('Developer gateway not loaded: ' + (err.message || err));
-}
-
-// (Landing page is registered above, before static middleware)
 
 // ── 404 Handler ───────────────────────────────────────────
 // API 404 — only for /api/* routes
