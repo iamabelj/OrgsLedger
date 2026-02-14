@@ -17,6 +17,10 @@ import { requestLogger } from './middleware/request-logger';
 import { setupSocketIO } from './socket';
 import { AIService } from './services/ai.service';
 
+// Observability
+import { metricsMiddleware } from './services/metrics.service';
+import { errorMonitorMiddleware, setupProcessErrorHandlers } from './services/error-monitor.service';
+
 // Route imports
 import authRoutes from './routes/auth';
 import orgRoutes from './routes/organizations';
@@ -34,10 +38,14 @@ import documentRoutes from './routes/documents';
 import analyticsRoutes from './routes/analytics';
 import expenseRoutes from './routes/expenses';
 import subscriptionRoutes from './routes/subscriptions';
+import observabilityRoutes from './routes/observability';
 import { startScheduler } from './services/scheduler.service';
 
 const app = express();
 const server = http.createServer(app);
+
+// Set up process-level error handlers (uncaughtException, unhandledRejection)
+setupProcessErrorHandlers();
 
 // Ensure upload directory exists
 const uploadDir = path.resolve(config.upload.dir);
@@ -84,6 +92,9 @@ app.use(limiter);
 // Audit context
 app.use(auditContext);
 
+// ── Observability Middleware ──────────────────────────────
+app.use(metricsMiddleware);
+
 // ── Full Request Logging (temporary observability) ────────
 app.use(requestLogger);
 
@@ -110,6 +121,10 @@ app.get('/health', (_req, res) => {
     version: '1.0.0',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
+    memory: {
+      rss: +(process.memoryUsage().rss / 1048576).toFixed(1),
+      heapUsed: +(process.memoryUsage().heapUsed / 1048576).toFixed(1),
+    },
   });
 });
 
@@ -176,6 +191,7 @@ app.use('/api/documents', documentRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/admin/observability', observabilityRoutes);
 
 // ── Developer Gateway (AI Client Management, Hours, Proxy) ──
 // Only mount on the main orgsledger.com domain — NEVER shipped with client deployments
@@ -226,6 +242,7 @@ if (fs.existsSync(webDir)) {
 }
 
 // ── Global Error Handler ──────────────────────────────────
+app.use(errorMonitorMiddleware); // Capture errors before responding
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error('Unhandled error', { error: err.message, stack: err.stack });
   res.status(err.status || 500).json({
