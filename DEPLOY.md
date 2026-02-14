@@ -110,8 +110,8 @@ git push origin main
 |---------|-------|
 | **Node.js version** | 20.x (latest LTS) |
 | **Application mode** | Production |
-| **Application root** | `domains/app.orgsledger.com/OrgsLedger/apps/api` |
-| **Application startup file** | `dist/index.js` |
+| **Application root** | `domains/app.orgsledger.com/OrgsLedger` (folder containing `server.js`) |
+| **Application startup file** | `server.js` |
 | **Linked domain** | `app.orgsledger.com` |
 
 4. Click **Create**
@@ -257,7 +257,7 @@ No. Everything is done through hPanel GUI (Git import, file manager, Node.js pan
 
 | Problem | Fix |
 |---------|-----|
-| **502 / App won't start** | hPanel → Node.js → check status. Click Restart. Make sure `dist/index.js` exists (rebuild locally if needed). |
+| **502 / App won't start** | hPanel → Node.js → check status. Click Restart. Make sure `server.js` exists at the application root. Startup file must be `server.js` (not `dist/index.js`). |
 | **Database connection fails** | Check `DATABASE_URL` in env vars. Neon free tier sleeps after 5 min — first request is ~1s slow. |
 | **CORS error** | Check `CORS_ORIGINS` includes `https://app.orgsledger.com`. Restart. |
 | **Blank web page** | Rebuild locally: `cd apps/mobile && npx expo export --platform web`. Push. Pull in hPanel. Restart. |
