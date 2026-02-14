@@ -235,7 +235,7 @@
       font-family: inherit;
     }
     .pricing-region-btn.active { background: var(--primary); color: var(--white); box-shadow: 0 2px 10px rgba(37,99,235,0.3); }
-    .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; max-width: 1020px; margin: 0 auto; }
+    .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; max-width: 1280px; margin: 0 auto; }
     .pricing-card {
       background: var(--dark-3);
       border: 1px solid var(--dark-border-2);
@@ -375,7 +375,7 @@
       .section { padding: 80px 0; }
       .hero { padding: 120px 0 80px; }
       .footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; }
-      .pricing-grid { grid-template-columns: 1fr; }
+      .pricing-grid { grid-template-columns: 1fr 1fr; }
       .addons-grid { grid-template-columns: 1fr; }
       .hero-proof { gap: 20px; }
       .infra-grid { grid-template-columns: 1fr 1fr; }
@@ -609,7 +609,7 @@
       <div class="pricing-card anim anim-delay-2">
         <div class="pricing-plan-name">Enterprise</div>
         <div class="pricing-amount">
-          <span class="currency" data-cur>$</span><span data-price="enterprise">2,500<sup style="font-size:.5em;vertical-align:super;color:var(--gray-500);">+</sup></span><span class="period" data-per>/year</span>
+          <span class="currency" data-cur>$</span><span data-price="enterprise">2,500</span><span class="period" data-per>/year</span>
         </div>
         <div class="pricing-desc">For large organizations up to <strong>500 members</strong>.</div>
         <ul class="pricing-features">
@@ -624,7 +624,29 @@
           <li><span class="feat-check">&#10003;</span> Unlimited Committees</li>
           <li><span class="feat-check">&#10003;</span> Onboarding Assistance</li>
         </ul>
-        <button class="pricing-cta btn-primary" onclick="location.href='https://app.orgsledger.com/register?plan=enterprise'">Contact Sales</button>
+        <button class="pricing-cta btn-primary" onclick="location.href='https://app.orgsledger.com/register?plan=enterprise'">Start Your Organization</button>
+      </div>
+
+      <!-- Enterprise Pro -->
+      <div class="pricing-card anim anim-delay-3">
+        <div class="pricing-plan-name">Enterprise Pro</div>
+        <div class="pricing-amount" style="font-size:1.8rem;margin-bottom:4px;">
+          Custom Pricing
+        </div>
+        <div class="pricing-desc">For organizations with <strong>500+ members</strong>. Tailored to your scale.</div>
+        <ul class="pricing-features">
+          <li><span class="feat-check">&#10003;</span> Everything in Enterprise</li>
+          <li><span class="feat-check">&#10003;</span> Unlimited Members</li>
+          <li><span class="feat-check">&#10003;</span> Dedicated Infrastructure</li>
+          <li><span class="feat-check">&#10003;</span> Custom SLA &amp; Uptime Guarantee</li>
+          <li><span class="feat-check">&#10003;</span> White-Label Options</li>
+          <li><span class="feat-check">&#10003;</span> Custom Integrations &amp; API</li>
+          <li><span class="feat-check">&#10003;</span> Priority Onboarding &amp; Training</li>
+          <li><span class="feat-check">&#10003;</span> Dedicated Account Manager</li>
+          <li><span class="feat-check">&#10003;</span> Volume Pricing Discounts</li>
+          <li><span class="feat-check">&#10003;</span> 24/7 Phone &amp; Chat Support</li>
+        </ul>
+        <button class="pricing-cta btn-outline" onclick="location.href='mailto:sales@orgsledger.com?subject=Enterprise%20Pro%20Inquiry'">Contact Sales</button>
       </div>
     </div>
 
