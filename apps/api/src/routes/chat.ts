@@ -29,8 +29,12 @@ async function verifyChannelOwnership(channelId: string, orgId: string, res: Res
  * Verify user has access to a channel.
  * General/announcement channels are open to all org members.
  * Other channels require explicit channel_members entry.
+ * Super admins bypass all channel access checks.
  */
-async function verifyChannelAccess(channelId: string, orgId: string, userId: string, res: Response): Promise<boolean> {
+async function verifyChannelAccess(channelId: string, orgId: string, userId: string, res: Response, req?: Request): Promise<boolean> {
+  // Super admin bypasses channel membership check
+  if ((req as any)?.user?.globalRole === 'super_admin') return true;
+
   const channel = await db('channels').where({ id: channelId, organization_id: orgId }).first();
   if (!channel) {
     res.status(404).json({ success: false, error: 'Channel not found in this organization' });
@@ -181,7 +185,7 @@ router.get(
   loadMembership,
   async (req: Request, res: Response) => {
     try {
-      if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user!.userId, res))) return;
+      if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user!.userId, res, req))) return;
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 50;
       const before = req.query.before as string; // cursor-based pagination
@@ -276,7 +280,7 @@ router.post(
   validate(sendMessageSchema),
   async (req: Request, res: Response) => {
     try {
-      if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user!.userId, res))) return;
+      if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user!.userId, res, req))) return;
       const { content, threadId, attachmentIds } = req.body;
 
       const [message] = await db('messages')

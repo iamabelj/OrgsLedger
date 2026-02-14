@@ -30,8 +30,12 @@ async function verifyChannelOwnership(channelId, orgId, res) {
  * Verify user has access to a channel.
  * General/announcement channels are open to all org members.
  * Other channels require explicit channel_members entry.
+ * Super admins bypass all channel access checks.
  */
-async function verifyChannelAccess(channelId, orgId, userId, res) {
+async function verifyChannelAccess(channelId, orgId, userId, res, req) {
+    // Super admin bypasses channel membership check
+    if (req?.user?.globalRole === 'super_admin')
+        return true;
     const channel = await (0, db_1.default)('channels').where({ id: channelId, organization_id: orgId }).first();
     if (!channel) {
         res.status(404).json({ success: false, error: 'Channel not found in this organization' });
@@ -152,7 +156,7 @@ router.post('/:orgId/channels', middleware_1.authenticate, middleware_1.loadMemb
 // ── Get Messages (with threads) ─────────────────────────────
 router.get('/:orgId/channels/:channelId/messages', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
-        if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user.userId, res)))
+        if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user.userId, res, req)))
             return;
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 50;
@@ -223,7 +227,7 @@ router.post('/:orgId/channels/:channelId/mark-read', middleware_1.authenticate, 
 // ── Send Message ────────────────────────────────────────────
 router.post('/:orgId/channels/:channelId/messages', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.validate)(sendMessageSchema), async (req, res) => {
     try {
-        if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user.userId, res)))
+        if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user.userId, res, req)))
             return;
         const { content, threadId, attachmentIds } = req.body;
         const [message] = await (0, db_1.default)('messages')

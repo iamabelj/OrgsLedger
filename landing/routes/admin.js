@@ -129,8 +129,8 @@ module.exports = function (pool) {
       const licenseKey = 'OLS-' + crypto.randomBytes(4).toString('hex').toUpperCase() + '-' + crypto.randomBytes(4).toString('hex').toUpperCase() + '-' + crypto.randomBytes(4).toString('hex').toUpperCase() + '-' + crypto.randomBytes(4).toString('hex').toUpperCase();
 
       const result = await pool.query(`
-        INSERT INTO ai_clients (name, email, domain, api_key, license_key, hours_balance, hours_used, notes)
-        VALUES ($1, $2, $3, $4, $5, $6, 0, $7)
+        INSERT INTO ai_clients (name, email, domain, api_key, license_key, hours_balance, hours_used, translation_hours_balance, translation_hours_used, notes)
+        VALUES ($1, $2, $3, $4, $5, $6, 0, $7, 0, $8)
         RETURNING *
       `, [
         name,
@@ -139,6 +139,7 @@ module.exports = function (pool) {
         apiKey,
         licenseKey,
         parseFloat(hours_balance) || 0,
+        parseFloat(req.body.translation_hours_balance) || 0,
         notes || null,
       ]);
 
@@ -282,15 +283,18 @@ module.exports = function (pool) {
   // ── Gift Hours to Client ────────────────────────────────
   router.post('/clients/:id/gift', async (req, res) => {
     try {
-      const { hours, reason } = req.body;
+      const { hours, reason, type } = req.body;
       const hoursNum = parseFloat(hours);
       if (!hoursNum || hoursNum <= 0) {
         return res.status(400).json({ error: 'Hours must be a positive number' });
       }
 
+      const walletType = type === 'translation' ? 'translation' : 'ai';
+      const balanceCol = walletType === 'translation' ? 'translation_hours_balance' : 'hours_balance';
+
       // Add hours to client balance
       const clientResult = await pool.query(
-        'UPDATE ai_clients SET hours_balance = hours_balance + $2, updated_at = NOW() WHERE id = $1 RETURNING *',
+        `UPDATE ai_clients SET ${balanceCol} = COALESCE(${balanceCol}, 0) + $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
         [req.params.id, hoursNum]
       );
 
@@ -301,12 +305,12 @@ module.exports = function (pool) {
       // Log the gift
       await pool.query(
         'INSERT INTO ai_token_gifts (client_id, hours, reason) VALUES ($1, $2, $3)',
-        [req.params.id, hoursNum, reason || 'Admin gift']
+        [req.params.id, hoursNum, `[${walletType.toUpperCase()}] ${reason || 'Admin gift'}`]
       );
 
       res.json({ 
         client: clientResult.rows[0],
-        message: `Successfully gifted ${hoursNum} hour(s) to ${clientResult.rows[0].name}` 
+        message: `Successfully gifted ${hoursNum} ${walletType} hour(s) to ${clientResult.rows[0].name}` 
       });
     } catch (err) {
       console.error('Gift hours error:', err);

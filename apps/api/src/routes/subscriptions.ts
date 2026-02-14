@@ -40,10 +40,13 @@ const createInviteSchema = z.object({
 });
 
 const adjustWalletSchema = z.object({
-  organizationId: z.string().uuid(),
+  organizationId: z.string().uuid().optional(),
+  organization_id: z.string().uuid().optional(),
   hours: z.number(),
-  description: z.string().min(1),
-});
+  description: z.string().min(1).optional(),
+  reason: z.string().min(1).optional(),
+}).refine(d => d.organizationId || d.organization_id, { message: 'organizationId or organization_id required' })
+  .refine(d => d.description || d.reason, { message: 'description or reason required' });
 
 const orgStatusSchema = z.object({
   organizationId: z.string().uuid(),
@@ -411,7 +414,7 @@ router.get('/admin/organizations', authenticate, requireSuperAdmin(), async (_re
     // Add member count
     const orgIds = orgs.map((o: any) => o.id);
     const counts = orgIds.length > 0
-      ? await db('organization_members')
+      ? await db('memberships')
           .whereIn('organization_id', orgIds)
           .groupBy('organization_id')
           .select('organization_id')
@@ -551,7 +554,9 @@ router.post('/admin/organizations', authenticate, requireSuperAdmin(), validate(
 // POST /admin/wallet/ai/adjust
 router.post('/admin/wallet/ai/adjust', authenticate, requireSuperAdmin(), validate(adjustWalletSchema), async (req: Request, res: Response) => {
   try {
-    const { organizationId, hours, description } = req.body;
+    const organizationId = req.body.organizationId || req.body.organization_id;
+    const hours = req.body.hours;
+    const description = req.body.description || req.body.reason;
     const minutes = hours * 60;
     const wallet = await subSvc.adminAdjustAiWallet(organizationId, minutes, description);
     await writeAuditLog({
@@ -574,7 +579,9 @@ router.post('/admin/wallet/ai/adjust', authenticate, requireSuperAdmin(), valida
 // POST /admin/wallet/translation/adjust
 router.post('/admin/wallet/translation/adjust', authenticate, requireSuperAdmin(), validate(adjustWalletSchema), async (req: Request, res: Response) => {
   try {
-    const { organizationId, hours, description } = req.body;
+    const organizationId = req.body.organizationId || req.body.organization_id;
+    const hours = req.body.hours;
+    const description = req.body.description || req.body.reason;
     const minutes = hours * 60;
     const wallet = await subSvc.adminAdjustTranslationWallet(organizationId, minutes, description);
     await writeAuditLog({

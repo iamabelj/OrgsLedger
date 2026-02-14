@@ -339,8 +339,8 @@
         </div>
         <div style="overflow-x:auto;">
           <table>
-            <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Hours Bal.</th><th>Hours Used</th><th>API Key</th><th>Actions</th></tr></thead>
-            <tbody id="clients-tbody"><tr><td colspan="7" class="loading"><div class="spinner"></div>Loading…</td></tr></tbody>
+            <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>AI Hrs</th><th>AI Used</th><th>Trans Hrs</th><th>Trans Used</th><th>API Key</th><th>Actions</th></tr></thead>
+            <tbody id="clients-tbody"><tr><td colspan="9" class="loading"><div class="spinner"></div>Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -430,7 +430,10 @@
         <div class="form-group"><label>Email</label><input type="email" id="nc-email" /></div>
         <div class="form-group"><label>Domain</label><input id="nc-domain" placeholder="example.com" /></div>
       </div>
-      <div class="form-group"><label>Initial Hours Balance</label><input type="number" id="nc-hours" value="5" min="0" step="0.5" /></div>
+      <div class="form-row">
+        <div class="form-group"><label>Initial AI Hours</label><input type="number" id="nc-hours" value="5" min="0" step="0.5" /></div>
+        <div class="form-group"><label>Initial Translation Hours</label><input type="number" id="nc-trans-hours" value="5" min="0" step="0.5" /></div>
+      </div>
       <div class="form-group"><label>Notes</label><textarea id="nc-notes" rows="2" style="resize:vertical;"></textarea></div>
       <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
         <button type="button" class="btn btn-ghost" onclick="closeModals()">Cancel</button>
@@ -856,25 +859,28 @@ async function loadSpikes(targetId) {
 // ── AI CLIENTS ────────────────────────────────────────────
 async function loadClients() {
   const tbody = document.getElementById('clients-tbody');
-  tbody.innerHTML = '<tr><td colspan="7" class="loading"><div class="spinner"></div>Loading…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" class="loading"><div class="spinner"></div>Loading…</td></tr>';
   try {
     const data = await gwFetch('/api/admin/clients');
     const clients = data.clients || [];
-    if (!clients.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty"><div class="emoji">🤖</div><p>No AI clients yet</p></td></tr>'; return; }
+    if (!clients.length) { tbody.innerHTML = '<tr><td colspan="9" class="empty"><div class="emoji">🤖</div><p>No AI clients yet</p></td></tr>'; return; }
     tbody.innerHTML = clients.map(c => `<tr>
       <td><strong>${c.name}</strong></td>
       <td>${c.email || '—'}</td>
       <td><span class="status-${c.active ? 'active' : 'inactive'}">${c.active ? 'Active' : 'Disabled'}</span></td>
       <td>${parseFloat(c.hours_balance || 0).toFixed(1)}</td>
       <td>${parseFloat(c.hours_used || 0).toFixed(1)}</td>
+      <td>${parseFloat(c.translation_hours_balance || 0).toFixed(1)}</td>
+      <td>${parseFloat(c.translation_hours_used || 0).toFixed(1)}</td>
       <td><code style="font-size:.7rem;color:var(--gray-400);background:var(--dark);padding:2px 6px;border-radius:4px;user-select:all;">${truncKey(c.api_key)}</code></td>
       <td>
         <button class="btn btn-ghost btn-sm" onclick="toggleClient('${c.id}')">${c.active ? 'Disable' : 'Enable'}</button>
-        <button class="btn btn-ghost btn-sm" onclick="giftHours('${c.id}', '${c.name}')">Gift Hours</button>
+        <button class="btn btn-ghost btn-sm" onclick="giftHours('${c.id}', '${c.name}', 'ai')">Gift AI</button>
+        <button class="btn btn-ghost btn-sm" onclick="giftHours('${c.id}', '${c.name}', 'translation')">Gift Trans</button>
       </td>
     </tr>`).join('');
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="7" class="empty"><p>${err.message}</p></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="empty"><p>${err.message}</p></td></tr>`;
   }
 }
 
@@ -888,6 +894,7 @@ async function createClient(e) {
         email: document.getElementById('nc-email').value,
         domain: document.getElementById('nc-domain').value,
         hours_balance: document.getElementById('nc-hours').value,
+        translation_hours_balance: document.getElementById('nc-trans-hours').value,
         notes: document.getElementById('nc-notes').value,
       }),
     });
@@ -905,15 +912,16 @@ async function toggleClient(id) {
   } catch (err) { toast(err.message, 'error'); }
 }
 
-async function giftHours(id, name) {
-  const hours = prompt(`Gift hours to "${name}":`, '5');
+async function giftHours(id, name, type) {
+  const label = type === 'translation' ? 'translation' : 'AI';
+  const hours = prompt(`Gift ${label} hours to "${name}":`, '5');
   if (!hours) return;
   const reason = prompt('Reason:', 'Admin gift');
   try {
     await gwFetch('/api/admin/clients/' + id + '/gift', {
-      method: 'POST', body: JSON.stringify({ hours: parseFloat(hours), reason }),
+      method: 'POST', body: JSON.stringify({ hours: parseFloat(hours), reason, type }),
     });
-    toast(`Gifted ${hours}h to ${name}`);
+    toast(`Gifted ${hours} ${label} hour(s) to ${name}`);
     loadClients();
   } catch (err) { toast(err.message, 'error'); }
 }

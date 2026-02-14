@@ -71,10 +71,13 @@ const createInviteSchema = zod_1.z.object({
     expiresAt: zod_1.z.string().optional(),
 });
 const adjustWalletSchema = zod_1.z.object({
-    organizationId: zod_1.z.string().uuid(),
+    organizationId: zod_1.z.string().uuid().optional(),
+    organization_id: zod_1.z.string().uuid().optional(),
     hours: zod_1.z.number(),
-    description: zod_1.z.string().min(1),
-});
+    description: zod_1.z.string().min(1).optional(),
+    reason: zod_1.z.string().min(1).optional(),
+}).refine(d => d.organizationId || d.organization_id, { message: 'organizationId or organization_id required' })
+    .refine(d => d.description || d.reason, { message: 'description or reason required' });
 const orgStatusSchema = zod_1.z.object({
     organizationId: zod_1.z.string().uuid(),
     action: zod_1.z.enum(['suspend', 'activate']),
@@ -404,7 +407,7 @@ router.get('/admin/organizations', middleware_1.authenticate, (0, middleware_1.r
         // Add member count
         const orgIds = orgs.map((o) => o.id);
         const counts = orgIds.length > 0
-            ? await (0, db_1.default)('organization_members')
+            ? await (0, db_1.default)('memberships')
                 .whereIn('organization_id', orgIds)
                 .groupBy('organization_id')
                 .select('organization_id')
@@ -530,7 +533,9 @@ router.post('/admin/organizations', middleware_1.authenticate, (0, middleware_1.
 // POST /admin/wallet/ai/adjust
 router.post('/admin/wallet/ai/adjust', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), (0, middleware_1.validate)(adjustWalletSchema), async (req, res) => {
     try {
-        const { organizationId, hours, description } = req.body;
+        const organizationId = req.body.organizationId || req.body.organization_id;
+        const hours = req.body.hours;
+        const description = req.body.description || req.body.reason;
         const minutes = hours * 60;
         const wallet = await subSvc.adminAdjustAiWallet(organizationId, minutes, description);
         await (0, audit_1.writeAuditLog)({
@@ -553,7 +558,9 @@ router.post('/admin/wallet/ai/adjust', middleware_1.authenticate, (0, middleware
 // POST /admin/wallet/translation/adjust
 router.post('/admin/wallet/translation/adjust', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), (0, middleware_1.validate)(adjustWalletSchema), async (req, res) => {
     try {
-        const { organizationId, hours, description } = req.body;
+        const organizationId = req.body.organizationId || req.body.organization_id;
+        const hours = req.body.hours;
+        const description = req.body.description || req.body.reason;
         const minutes = hours * 60;
         const wallet = await subSvc.adminAdjustTranslationWallet(organizationId, minutes, description);
         await (0, audit_1.writeAuditLog)({
