@@ -16,7 +16,6 @@ const helmet_1 = __importDefault(require("helmet"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const config_1 = require("./config");
 const logger_1 = require("./logger");
-const db_1 = __importDefault(require("./db"));
 const middleware_1 = require("./middleware");
 const socket_1 = require("./socket");
 const ai_service_1 = require("./services/ai.service");
@@ -36,58 +35,8 @@ const polls_1 = __importDefault(require("./routes/polls"));
 const documents_1 = __importDefault(require("./routes/documents"));
 const analytics_1 = __importDefault(require("./routes/analytics"));
 const expenses_1 = __importDefault(require("./routes/expenses"));
+const subscriptions_1 = __importDefault(require("./routes/subscriptions"));
 const scheduler_service_1 = require("./services/scheduler.service");
-// ── License Verification ──────────────────────────────────
-async function verifyLicense() {
-    // Ensure app_settings table exists
-    try {
-        await db_1.default.raw(`
-      CREATE TABLE IF NOT EXISTS app_settings (
-        key VARCHAR(255) PRIMARY KEY,
-        value TEXT,
-        updated_at TIMESTAMP DEFAULT NOW()
-      )
-    `);
-    }
-    catch (e) { /* table may already exist */ }
-    // Check database for stored license first
-    try {
-        const row = await (0, db_1.default)('app_settings').where('key', 'license_key').first();
-        if (row?.value) {
-            logger_1.logger.info('License key found in database');
-            return true;
-        }
-    }
-    catch (e) { /* table may not exist yet */ }
-    // Fall back to env var
-    const { license } = config_1.config;
-    if (!license.key) {
-        logger_1.logger.warn('No LICENSE_KEY set — running in unlicensed mode. Set LICENSE_KEY env var to activate.');
-        return false;
-    }
-    try {
-        const axios = require('axios');
-        const { data } = await axios.post(`${license.gatewayUrl}/developer/api/license/verify`, {
-            license_key: license.key,
-        }, { timeout: 10000 });
-        if (data.valid) {
-            logger_1.logger.info(`License verified ✔ — ${data.client.name} (${data.client.domain || 'no domain'})`);
-            logger_1.logger.info(`AI hours: ${data.client.hoursRemaining.toFixed(1)}h remaining of ${data.client.hoursBalance.toFixed(1)}h`);
-            // Store in DB so it persists
-            await (0, db_1.default)('app_settings').insert({ key: 'license_key', value: license.key }).onConflict('key').merge();
-            return true;
-        }
-        else {
-            logger_1.logger.warn(`License invalid: ${data.error}`);
-            return false;
-        }
-    }
-    catch (err) {
-        const msg = err.response?.data?.error || err.message;
-        logger_1.logger.warn(`License verification failed: ${msg} — continuing without license`);
-        return false;
-    }
-}
 const app = (0, express_1.default)();
 exports.app = app;
 const server = http_1.default.createServer(app);
@@ -154,97 +103,6 @@ app.get('/health', (_req, res) => {
         uptime: process.uptime(),
     });
 });
-// ── License Status (public — no auth needed) ──────────────
-app.get('/api/license/status', async (_req, res) => {
-    try {
-        const row = await (0, db_1.default)('app_settings').where('key', 'license_key').first();
-        if (row?.value) {
-            // Live-verify with gateway to get fresh hours balance
-            try {
-                const axios = require('axios');
-                const gatewayUrl = config_1.config.license.gatewayUrl;
-                const { data } = await axios.post(`${gatewayUrl}/developer/api/license/verify`, {
-                    license_key: row.value,
-                }, { timeout: 10000 });
-                if (data.valid && data.client) {
-                    // Update stored client info with fresh data from gateway
-                    await (0, db_1.default)('app_settings')
-                        .insert({ key: 'license_client', value: JSON.stringify(data.client) })
-                        .onConflict('key').merge();
-                    return res.json({ licensed: true, client: data.client });
-                }
-                else {
-                    // License was revoked or invalidated — remove stored key
-                    logger_1.logger.warn('License revoked by gateway — clearing stored key');
-                    await (0, db_1.default)('app_settings').where('key', 'license_key').delete();
-                    await (0, db_1.default)('app_settings').where('key', 'license_client').delete();
-                    return res.json({ licensed: false, error: data.error || 'License revoked' });
-                }
-            }
-            catch (e) {
-                // Gateway unavailable — fall back to stored data (don't block users)
-                if (e.response?.status === 403 || e.response?.status === 404) {
-                    // Gateway explicitly rejected — license is invalid
-                    logger_1.logger.warn('License rejected by gateway — clearing stored key');
-                    await (0, db_1.default)('app_settings').where('key', 'license_key').delete();
-                    await (0, db_1.default)('app_settings').where('key', 'license_client').delete();
-                    return res.json({ licensed: false, error: e.response?.data?.error || 'License invalid' });
-                }
-                logger_1.logger.warn('Gateway unreachable for license status, using cached data');
-            }
-            // Fallback: return stored client info (only if gateway was unreachable)
-            let clientInfo = null;
-            try {
-                const infoRow = await (0, db_1.default)('app_settings').where('key', 'license_client').first();
-                if (infoRow?.value)
-                    clientInfo = JSON.parse(infoRow.value);
-            }
-            catch (e) { /* ignore */ }
-            return res.json({ licensed: true, client: clientInfo });
-        }
-        res.json({ licensed: false });
-    }
-    catch {
-        res.json({ licensed: false });
-    }
-});
-// ── License Activate (public — one-time setup by admin) ───
-app.post('/api/license/activate', async (req, res) => {
-    try {
-        // Check if already activated
-        const existing = await (0, db_1.default)('app_settings').where('key', 'license_key').first();
-        if (existing?.value) {
-            return res.json({ success: true, message: 'License already activated' });
-        }
-        const { license_key } = req.body;
-        if (!license_key) {
-            return res.status(400).json({ success: false, error: 'License key is required' });
-        }
-        // Verify with gateway
-        const gatewayUrl = config_1.config.license.gatewayUrl;
-        const axios = require('axios');
-        const { data } = await axios.post(`${gatewayUrl}/developer/api/license/verify`, {
-            license_key,
-        }, { timeout: 10000 });
-        if (!data.valid) {
-            return res.status(400).json({ success: false, error: data.error || 'Invalid license key' });
-        }
-        // Store license in database
-        await (0, db_1.default)('app_settings').insert({ key: 'license_key', value: license_key }).onConflict('key').merge();
-        await (0, db_1.default)('app_settings').insert({ key: 'license_client', value: JSON.stringify(data.client) }).onConflict('key').merge();
-        logger_1.logger.info(`License activated: ${data.client.name} (${data.client.domain || 'no domain'})`);
-        res.json({
-            success: true,
-            message: 'License activated successfully',
-            client: data.client,
-        });
-    }
-    catch (err) {
-        const msg = err.response?.data?.error || err.message;
-        logger_1.logger.error('License activation error:', msg);
-        res.status(500).json({ success: false, error: msg || 'Activation failed' });
-    }
-});
 // ── Landing / Sales Page ──────────────────────────────────
 // Serve the sales landing page at root "/" FIRST — before any static middleware
 // so orgsledger.com visitors always see the sales page.
@@ -305,6 +163,7 @@ app.use('/api/polls', polls_1.default);
 app.use('/api/documents', documents_1.default);
 app.use('/api/analytics', analytics_1.default);
 app.use('/api/expenses', expenses_1.default);
+app.use('/api/subscriptions', subscriptions_1.default);
 // ── Developer Gateway (AI Client Management, Hours, Proxy) ──
 // Only mount on the main orgsledger.com domain — NEVER shipped with client deployments
 try {
@@ -361,13 +220,10 @@ app.use((err, _req, res, _next) => {
 });
 // ── Start Server ──────────────────────────────────────────
 (async () => {
-    // Verify license before starting
-    await verifyLicense();
     server.listen(config_1.config.port, '0.0.0.0', () => {
         logger_1.logger.info(`OrgsLedger API running on port ${config_1.config.port}`);
         logger_1.logger.info(`Environment: ${config_1.config.env}`);
         logger_1.logger.info(`Socket.io enabled`);
-        logger_1.logger.info(`Developer gateway: /developer/admin`);
         // Start recurring dues scheduler
         (0, scheduler_service_1.startScheduler)();
     });

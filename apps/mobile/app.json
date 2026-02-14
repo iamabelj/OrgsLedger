@@ -8,6 +8,8 @@
     "userInterfaceStyle": "automatic",
     "scheme": "orgsledger",
     "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
       "backgroundColor": "#1a1a2e"
     },
     "assetBundlePatterns": ["**/*"],
@@ -20,6 +22,7 @@
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1a1a2e"
       },
       "package": "com.orgsledger.app",
@@ -27,6 +30,11 @@
         "RECORD_AUDIO",
         "RECEIVE_NOTIFICATIONS"
       ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",

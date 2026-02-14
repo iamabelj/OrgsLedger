@@ -15,6 +15,7 @@ import {
   Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Speech from 'expo-speech';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../theme';
 import { socketClient } from '../../api/socket';
 import { api } from '../../api/client';
@@ -276,15 +277,24 @@ export default function LiveTranslation({ meetingId, userId }: LiveTranslationPr
     setInterimText('');
   }, []);
 
-  // ── Text-to-Speech ─────────────────────────────────────
+  // ── Text-to-Speech (Web + Android + iOS) ───────────────
   const speak = useCallback((text: string, lang: string) => {
-    if (Platform.OS !== 'web') return;
+    const langCode = SPEECH_CODES[lang] || 'en-US';
     try {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = SPEECH_CODES[lang] || 'en-US';
-      utterance.rate = 0.9;
-      utterance.volume = 0.8;
-      window.speechSynthesis.speak(utterance);
+      if (Platform.OS === 'web') {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = langCode;
+        utterance.rate = 0.9;
+        utterance.volume = 0.8;
+        window.speechSynthesis.speak(utterance);
+      } else {
+        Speech.speak(text, {
+          language: langCode,
+          rate: 0.9,
+          pitch: 1.0,
+          onError: (err) => console.warn('TTS failed', err),
+        });
+      }
     } catch (e) {
       console.warn('TTS failed', e);
     }
@@ -296,6 +306,8 @@ export default function LiveTranslation({ meetingId, userId }: LiveTranslationPr
       stopListening();
       if (Platform.OS === 'web') {
         try { window.speechSynthesis.cancel(); } catch (e) {}
+      } else {
+        Speech.stop();
       }
     };
   }, []);

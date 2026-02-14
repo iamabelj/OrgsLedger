@@ -31,7 +31,7 @@ const emptyModule = path.resolve(shimsDir, '__empty_module.js');
 
 // react-native-web export aliases for known modules
 const rnWebExportsDir = path.resolve(
-  monorepoRoot,
+  projectRoot,
   'node_modules/react-native-web/dist/exports'
 );
 

@@ -52,6 +52,9 @@ export default function AdminLayout() {
       <Stack.Screen name="reports" options={{ title: 'Financial Reports' }} />
       <Stack.Screen name="settings" options={{ title: 'Organization Settings' }} />
       <Stack.Screen name="plans" options={{ title: 'Subscription Plans' }} />
+      <Stack.Screen name="wallets" options={{ title: 'Wallets' }} />
+      <Stack.Screen name="invites" options={{ title: 'Invite Links' }} />
+      <Stack.Screen name="saas-dashboard" options={{ title: 'SaaS Dashboard' }} />
       <Stack.Screen name="analytics" options={{ title: 'Analytics' }} />
       <Stack.Screen name="member-detail/[userId]" options={{ title: 'Member Details' }} />
       <Stack.Screen name="bank-transfers" options={{ title: 'Bank Transfers' }} />

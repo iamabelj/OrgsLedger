@@ -16,6 +16,7 @@ const db_1 = __importDefault(require("../db"));
 const middleware_1 = require("../middleware");
 const logger_1 = require("../logger");
 const config_1 = require("../config");
+const subscription_service_1 = require("../services/subscription.service");
 const router = (0, express_1.Router)();
 // ── Multer for logo uploads ────────────────────────────────
 const logoStorage = multer_1.default.diskStorage({
@@ -66,43 +67,28 @@ router.post('/', middleware_1.authenticate, (0, middleware_1.validate)(createOrg
             res.status(409).json({ success: false, error: 'Slug already taken' });
             return;
         }
-        // Create free license for org
-        const [license] = await (0, db_1.default)('licenses')
-            .insert({
-            type: 'free',
-            max_members: 50,
-            features: JSON.stringify({
-                chat: true,
-                meetings: true,
-                aiMinutes: false,
-                financials: true,
-                donations: true,
-                voting: true,
-            }),
-            ai_credits_included: 0,
-            price_monthly: 0,
-        })
-            .returning('*');
-        // Create org
+        // Create org (SaaS — no legacy license)
         const [org] = await (0, db_1.default)('organizations')
             .insert({
             name,
             slug,
             status: 'active',
-            license_id: license.id,
+            subscription_status: 'active',
+            billing_currency: currency === 'NGN' ? 'NGN' : 'USD',
             settings: JSON.stringify({
                 currency,
                 timezone,
                 locale: 'en',
-                aiEnabled: false,
-                maxMembers: 50,
+                aiEnabled: true,
                 features: {
                     chat: true,
                     meetings: true,
-                    aiMinutes: false,
                     financials: true,
-                    donations: true,
-                    voting: true,
+                    polls: true,
+                    events: true,
+                    announcements: true,
+                    documents: true,
+                    committees: true,
                 },
             }),
         })
@@ -126,12 +112,31 @@ router.post('/', middleware_1.authenticate, (0, middleware_1.validate)(createOrg
             channel_id: channel.id,
             user_id: req.user.userId,
         });
-        // Initialize AI credits
-        await (0, db_1.default)('ai_credits').insert({
-            organization_id: org.id,
-            total_credits: 0,
-            used_credits: 0,
-        });
+        // Provision SaaS: Standard plan subscription + wallets
+        const standardPlan = await (0, subscription_service_1.getPlanBySlug)('standard');
+        if (standardPlan) {
+            await (0, subscription_service_1.createSubscription)({
+                organizationId: org.id,
+                planId: standardPlan.id,
+                billingCycle: 'annual',
+                currency: currency === 'NGN' ? 'NGN' : 'USD',
+                amountPaid: 0,
+                createdBy: req.user.userId,
+            });
+        }
+        await (0, subscription_service_1.getAiWallet)(org.id); // auto-creates
+        await (0, subscription_service_1.getTranslationWallet)(org.id); // auto-creates
+        // Generate initial invite link for org admin
+        const invite = await (0, subscription_service_1.createInviteLink)(org.id, req.user.userId, 'member');
+        // Keep legacy ai_credits for backward compatibility
+        try {
+            await (0, db_1.default)('ai_credits').insert({
+                organization_id: org.id,
+                total_credits: 0,
+                used_credits: 0,
+            });
+        }
+        catch { /* ignore if exists */ }
         await req.audit?.({
             organizationId: org.id,
             action: 'create',
@@ -177,13 +182,20 @@ router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, as
             .where({ organization_id: req.params.orgId, is_active: true })
             .count('id as count')
             .first();
-        const license = await (0, db_1.default)('licenses').where({ id: org.license_id }).first();
+        // SaaS subscription + wallet info
+        const subscription = await (0, subscription_service_1.getOrgSubscription)(req.params.orgId);
+        const [aiWallet, translationWallet] = await Promise.all([
+            (0, subscription_service_1.getAiWallet)(req.params.orgId),
+            (0, subscription_service_1.getTranslationWallet)(req.params.orgId),
+        ]);
         res.json({
             success: true,
             data: {
                 ...org,
                 memberCount: parseInt(memberCount?.count) || 0,
-                license,
+                subscription,
+                aiWallet,
+                translationWallet,
             },
         });
     }
@@ -300,13 +312,14 @@ router.post('/:orgId/join', middleware_1.authenticate, async (req, res) => {
             await (0, db_1.default)('memberships').where({ id: existing.id }).update({ is_active: true, role: 'member' });
         }
         else {
-            // Check member limit
-            const settings = typeof org.settings === 'string' ? JSON.parse(org.settings) : (org.settings || {});
+            // Check member limit from subscription plan
+            const sub = await (0, subscription_service_1.getOrgSubscription)(orgId);
+            const maxMembers = sub?.plan?.max_members || 100;
             const memberCount = await (0, db_1.default)('memberships')
                 .where({ organization_id: orgId, is_active: true })
                 .count('id as count').first();
-            if (settings.maxMembers && parseInt(memberCount?.count) >= settings.maxMembers) {
-                res.status(403).json({ success: false, error: 'Organization has reached its member limit' });
+            if (parseInt(memberCount?.count) >= maxMembers) {
+                res.status(403).json({ success: false, error: 'Organization has reached its member limit. An admin needs to upgrade the plan.' });
                 return;
             }
             await (0, db_1.default)('memberships').insert({

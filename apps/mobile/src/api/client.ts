@@ -265,18 +265,66 @@ class ApiClient {
       this.client.delete(`/committees/${orgId}/committees/${committeeId}/members/${userId}`),
   };
 
-  // ── AI Credits ────────────────────────────────────────
+  // ── Subscriptions & Wallets (SaaS) ────────────────────
+  subscriptions = {
+    getPlans: () => this.client.get('/subscriptions/plans'),
+    getSubscription: (orgId: string) =>
+      this.client.get(`/subscriptions/${orgId}/subscription`),
+    subscribe: (orgId: string, data: { planSlug: string; billingCycle?: string; billingCountry?: string; paymentGateway?: string; paymentReference?: string }) =>
+      this.client.post(`/subscriptions/${orgId}/subscribe`, data),
+    renew: (orgId: string, data?: { paymentReference?: string; amountPaid?: number }) =>
+      this.client.post(`/subscriptions/${orgId}/renew`, data || {}),
+    getWallets: (orgId: string) =>
+      this.client.get(`/subscriptions/${orgId}/wallets`),
+    getAiWallet: (orgId: string) =>
+      this.client.get(`/subscriptions/${orgId}/wallet/ai`),
+    getTranslationWallet: (orgId: string) =>
+      this.client.get(`/subscriptions/${orgId}/wallet/translation`),
+    topUpAi: (orgId: string, data: { hours: number; paymentGateway?: string; paymentReference?: string }) =>
+      this.client.post(`/subscriptions/${orgId}/wallet/ai/topup`, data),
+    topUpTranslation: (orgId: string, data: { hours: number; paymentGateway?: string; paymentReference?: string }) =>
+      this.client.post(`/subscriptions/${orgId}/wallet/translation/topup`, data),
+    getAiHistory: (orgId: string, params?: any) =>
+      this.client.get(`/subscriptions/${orgId}/wallet/ai/history`, { params }),
+    getTranslationHistory: (orgId: string, params?: any) =>
+      this.client.get(`/subscriptions/${orgId}/wallet/translation/history`, { params }),
+    // Invite links
+    createInvite: (orgId: string, data?: { role?: string; maxUses?: number; expiresAt?: string }) =>
+      this.client.post(`/subscriptions/${orgId}/invite`, data || {}),
+    getInvites: (orgId: string) =>
+      this.client.get(`/subscriptions/${orgId}/invites`),
+    deleteInvite: (orgId: string, inviteId: string) =>
+      this.client.delete(`/subscriptions/${orgId}/invite/${inviteId}`),
+    validateInvite: (code: string) =>
+      this.client.get(`/subscriptions/invite/${code}`),
+    joinViaInvite: (code: string) =>
+      this.client.post(`/subscriptions/invite/${code}/join`),
+    // Super admin
+    adminRevenue: () => this.client.get('/subscriptions/admin/revenue'),
+    adminSubscriptions: (params?: any) =>
+      this.client.get('/subscriptions/admin/subscriptions', { params }),
+    adminOrganizations: () => this.client.get('/subscriptions/admin/organizations'),
+    adminAdjustAiWallet: (data: { organizationId: string; hours: number; description: string }) =>
+      this.client.post('/subscriptions/admin/wallet/ai/adjust', data),
+    adminAdjustTranslationWallet: (data: { organizationId: string; hours: number; description: string }) =>
+      this.client.post('/subscriptions/admin/wallet/translation/adjust', data),
+    adminOrgStatus: (data: { organizationId: string; action: 'suspend' | 'activate'; reason?: string }) =>
+      this.client.post('/subscriptions/admin/org/status', data),
+    adminOverrideSubscription: (data: any) =>
+      this.client.post('/subscriptions/admin/subscription/override', data),
+    adminWalletAnalytics: () => this.client.get('/subscriptions/admin/wallet-analytics'),
+    adminPlans: () => this.client.get('/subscriptions/admin/plans'),
+    adminUpdatePlan: (planId: string, data: any) =>
+      this.client.put(`/subscriptions/admin/plans/${planId}`, data),
+  };
+
+  // ── AI Credits (legacy — kept for backward compatibility) ─
   aiCredits = {
     get: (orgId: string) => this.client.get(`/payments/${orgId}/ai-credits`),
     purchase: (orgId: string, data: { credits: number }) =>
       this.client.post(`/payments/${orgId}/ai-credits/purchase`, data),
     grant: (data: { organizationId: string; credits: number; reason?: string }) =>
       this.client.post('/admin/ai-credits/grant', data),
-  };
-
-  // ── License / Token Status ────────────────────────────
-  license = {
-    status: () => this.client.get('/license/status'),
   };
 
   // ── Notifications ─────────────────────────────────────

@@ -1,66 +1,38 @@
 // ============================================================
 // OrgsLedger Mobile — Root Index (Auth Gate)
+// SaaS — no license gate, direct auth routing
 // ============================================================
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { router } from 'expo-router';
-import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { ActivityIndicator, View, Text, StyleSheet, Image } from 'react-native';
 import { useAuthStore } from '../src/stores/auth.store';
 import { Colors, FontSize, FontWeight, Spacing } from '../src/theme';
-
-const API_BASE_URL = __DEV__
-  ? 'http://localhost:3000'
-  : (typeof window !== 'undefined' ? window.location.origin : 'https://test.orgsledger.com');
 
 export default function Index() {
   const { isAuthenticated, isLoading } = useAuthStore();
   const hasNavigated = useRef(false);
-  const [licenseChecked, setLicenseChecked] = useState(false);
-  const [hasLicense, setHasLicense] = useState(false);
-
-  // Check license status from the API server (not local storage)
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/license/status`);
-        const data = await res.json();
-        setHasLicense(data.licensed === true);
-      } catch {
-        // If API is unreachable, skip license gate (don't block users)
-        setHasLicense(true);
-      }
-      setLicenseChecked(true);
-    })();
-  }, []);
 
   useEffect(() => {
-    if (!licenseChecked) return;
-    console.log('[Index] State changed:', { isLoading, isAuthenticated, hasLicense, hasNavigated: hasNavigated.current });
+    if (isLoading || hasNavigated.current) return;
 
-    if (!hasLicense && !hasNavigated.current) {
-      hasNavigated.current = true;
-      console.log('[Index] No license key — navigating to activate...');
-      router.replace('/activate');
-      return;
+    hasNavigated.current = true;
+    if (isAuthenticated) {
+      router.replace('/(tabs)/home');
+    } else {
+      router.replace('/(auth)/login');
     }
-
-    if (!isLoading && !hasNavigated.current) {
-      hasNavigated.current = true;
-      if (isAuthenticated) {
-        console.log('[Index] Navigating to home...');
-        router.replace('/(tabs)/home');
-      } else {
-        console.log('[Index] Navigating to login...');
-        router.replace('/(auth)/login');
-      }
-    }
-  }, [isLoading, isAuthenticated, licenseChecked, hasLicense]);
+  }, [isLoading, isAuthenticated]);
 
   return (
     <View style={styles.splash}>
-      <Ionicons name="shield-checkmark" size={48} color={Colors.highlight} />
+      <Image
+        source={require('../assets/logo-no-bg.png')}
+        style={styles.logo}
+        resizeMode="contain"
+      />
       <Text style={styles.brand}>OrgsLedger</Text>
+      <Text style={styles.tagline}>Cross-Border Organizational Infrastructure</Text>
       <ActivityIndicator size="large" color={Colors.highlight} style={{ marginTop: Spacing.lg }} />
     </View>
   );
@@ -68,5 +40,7 @@ export default function Index() {
 
 const styles = StyleSheet.create({
   splash: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.primary },
-  brand: { fontSize: FontSize.header, fontWeight: FontWeight.bold as any, color: Colors.highlight, marginTop: Spacing.md, letterSpacing: 1 },
+  logo: { width: 80, height: 80, marginBottom: Spacing.sm },
+  brand: { fontSize: FontSize.header, fontWeight: FontWeight.bold as any, color: Colors.highlight, letterSpacing: 1 },
+  tagline: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: Spacing.xs, textAlign: 'center', paddingHorizontal: Spacing.xl },
 });

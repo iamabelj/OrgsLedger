@@ -18,6 +18,16 @@ import {
 } from '../middleware';
 import { logger } from '../logger';
 import { config } from '../config';
+import {
+  getOrgSubscription,
+  createSubscription,
+  getAiWallet,
+  getTranslationWallet,
+  getPlanBySlug,
+  getPlanPrice,
+  getCurrency,
+  createInviteLink,
+} from '../services/subscription.service';
 
 const router = Router();
 
@@ -76,44 +86,28 @@ router.post(
         return;
       }
 
-      // Create free license for org
-      const [license] = await db('licenses')
-        .insert({
-          type: 'free',
-          max_members: 50,
-          features: JSON.stringify({
-            chat: true,
-            meetings: true,
-            aiMinutes: false,
-            financials: true,
-            donations: true,
-            voting: true,
-          }),
-          ai_credits_included: 0,
-          price_monthly: 0,
-        })
-        .returning('*');
-
-      // Create org
+      // Create org (SaaS — no legacy license)
       const [org] = await db('organizations')
         .insert({
           name,
           slug,
           status: 'active',
-          license_id: license.id,
+          subscription_status: 'active',
+          billing_currency: currency === 'NGN' ? 'NGN' : 'USD',
           settings: JSON.stringify({
             currency,
             timezone,
             locale: 'en',
-            aiEnabled: false,
-            maxMembers: 50,
+            aiEnabled: true,
             features: {
               chat: true,
               meetings: true,
-              aiMinutes: false,
               financials: true,
-              donations: true,
-              voting: true,
+              polls: true,
+              events: true,
+              announcements: true,
+              documents: true,
+              committees: true,
             },
           }),
         })
@@ -141,12 +135,32 @@ router.post(
         user_id: req.user!.userId,
       });
 
-      // Initialize AI credits
-      await db('ai_credits').insert({
-        organization_id: org.id,
-        total_credits: 0,
-        used_credits: 0,
-      });
+      // Provision SaaS: Standard plan subscription + wallets
+      const standardPlan = await getPlanBySlug('standard');
+      if (standardPlan) {
+        await createSubscription({
+          organizationId: org.id,
+          planId: standardPlan.id,
+          billingCycle: 'annual',
+          currency: currency === 'NGN' ? 'NGN' : 'USD',
+          amountPaid: 0,
+          createdBy: req.user!.userId,
+        });
+      }
+      await getAiWallet(org.id); // auto-creates
+      await getTranslationWallet(org.id); // auto-creates
+
+      // Generate initial invite link for org admin
+      const invite = await createInviteLink(org.id, req.user!.userId, 'member');
+
+      // Keep legacy ai_credits for backward compatibility
+      try {
+        await db('ai_credits').insert({
+          organization_id: org.id,
+          total_credits: 0,
+          used_credits: 0,
+        });
+      } catch { /* ignore if exists */ }
 
       await (req as any).audit?.({
         organizationId: org.id,
@@ -205,14 +219,21 @@ router.get(
         .count('id as count')
         .first();
 
-      const license = await db('licenses').where({ id: org.license_id }).first();
+      // SaaS subscription + wallet info
+      const subscription = await getOrgSubscription(req.params.orgId);
+      const [aiWallet, translationWallet] = await Promise.all([
+        getAiWallet(req.params.orgId),
+        getTranslationWallet(req.params.orgId),
+      ]);
 
       res.json({
         success: true,
         data: {
           ...org,
           memberCount: parseInt(memberCount?.count as string) || 0,
-          license,
+          subscription,
+          aiWallet,
+          translationWallet,
         },
       });
     } catch (err) {
@@ -364,13 +385,14 @@ router.post(
         // Reactivate
         await db('memberships').where({ id: existing.id }).update({ is_active: true, role: 'member' });
       } else {
-        // Check member limit
-        const settings = typeof org.settings === 'string' ? JSON.parse(org.settings) : (org.settings || {});
+        // Check member limit from subscription plan
+        const sub = await getOrgSubscription(orgId);
+        const maxMembers = sub?.plan?.max_members || 100;
         const memberCount = await db('memberships')
           .where({ organization_id: orgId, is_active: true })
           .count('id as count').first();
-        if (settings.maxMembers && parseInt(memberCount?.count as string) >= settings.maxMembers) {
-          res.status(403).json({ success: false, error: 'Organization has reached its member limit' });
+        if (parseInt(memberCount?.count as string) >= maxMembers) {
+          res.status(403).json({ success: false, error: 'Organization has reached its member limit. An admin needs to upgrade the plan.' });
           return;
         }
 
