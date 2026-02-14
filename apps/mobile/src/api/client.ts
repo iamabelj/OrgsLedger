@@ -109,6 +109,8 @@ class ApiClient {
       this.client.get(`/organizations/${orgId}/members/${userId}`),
     getMemberActivity: (orgId: string, userId: string, params?: any) =>
       this.client.get(`/organizations/${orgId}/members/${userId}/activity`, { params }),
+    getAuditLogs: (orgId: string, params?: { page?: number; limit?: number; action?: string; entityType?: string }) =>
+      this.client.get(`/organizations/${orgId}/audit-logs`, { params }),
     getSubscription: (orgId: string) =>
       this.client.get(`/organizations/${orgId}/subscription`),
     lookupBySlug: (slug: string) =>

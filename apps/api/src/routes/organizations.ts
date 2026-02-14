@@ -691,6 +691,54 @@ router.get(
   }
 );
 
+// ── Organization Audit Log (for compliance dashboard) ───────
+router.get(
+  '/:orgId/audit-logs',
+  authenticate,
+  loadMembership,
+  requireRole('org_admin'),
+  async (req: Request, res: Response) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const action = req.query.action as string;
+      const entityType = req.query.entityType as string;
+
+      let query = db('audit_logs')
+        .where({ 'audit_logs.organization_id': req.params.orgId })
+        .leftJoin('users', 'audit_logs.user_id', 'users.id')
+        .select(
+          'audit_logs.id',
+          'audit_logs.action',
+          'audit_logs.entity_type',
+          'audit_logs.entity_id',
+          'audit_logs.ip_address',
+          'audit_logs.created_at',
+          'users.email',
+          'users.first_name',
+          'users.last_name'
+        );
+
+      if (action) query = query.where({ 'audit_logs.action': action });
+      if (entityType) query = query.where({ 'audit_logs.entity_type': entityType });
+
+      const total = await query.clone().clear('select').count('audit_logs.id as count').first();
+      const logs = await query
+        .orderBy('audit_logs.created_at', 'desc')
+        .offset((page - 1) * limit)
+        .limit(limit);
+
+      res.json({
+        success: true,
+        data: logs,
+        meta: { page, limit, total: parseInt(total?.count as string) || 0 },
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, error: 'Failed to get audit logs' });
+    }
+  }
+);
+
 // ── Get Member Activity Log ─────────────────────────────────
 router.get(
   '/:orgId/members/:userId/activity',

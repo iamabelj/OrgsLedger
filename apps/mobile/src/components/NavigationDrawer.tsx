@@ -56,6 +56,7 @@ const adminItems: NavItem[] = [
   { label: 'Bank Transfers', icon: 'swap-horizontal-outline', path: '/admin/bank-transfers', adminOnly: true },
   { label: 'Pay Config', icon: 'card-outline', path: '/admin/payment-methods', adminOnly: true },
   { label: 'Subscription', icon: 'ribbon-outline', path: '/admin/subscription', adminOnly: true },
+  { label: 'Compliance', icon: 'shield-checkmark-outline', path: '/admin/compliance', adminOnly: true },
 ];
 
 // Executive gets a subset — no Settings, AI Plans, Pay Config, Bank Transfers, Analytics
