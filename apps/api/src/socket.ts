@@ -11,6 +11,7 @@ import db from './db';
 import { logger } from './logger';
 import { translateToMultiple, SUPPORTED_LANGUAGES } from './services/translation.service';
 import { getOrgSubscription, getTranslationWallet, deductTranslationWallet } from './services/subscription.service';
+import { writeAuditLog } from './middleware/audit';
 
 // In-memory store for meeting translation sessions
 // meetingId -> Map<userId, { language, name }>
@@ -179,6 +180,19 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       });
 
       logger.debug(`User ${userId} set translation language to ${language} for meeting ${meetingId}`);
+
+      // Audit log for translation session start
+      const meetingForAudit = await db('meetings').where({ id: meetingId }).select('organization_id').first();
+      if (meetingForAudit?.organization_id) {
+        writeAuditLog({
+          organizationId: meetingForAudit.organization_id,
+          userId,
+          action: 'translation_session_start',
+          entityType: 'meeting',
+          entityId: meetingId,
+          newValue: { language, participantCount: participants.length },
+        }).catch(() => {});
+      }
     });
 
     // User sends spoken text for translation

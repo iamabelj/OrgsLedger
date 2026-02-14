@@ -9,6 +9,7 @@ import db from '../db';
 import { authenticate, loadMembership, requireRole, requireSuperAdmin, requireActiveSubscription, validate } from '../middleware';
 import { logger } from '../logger';
 import * as subSvc from '../services/subscription.service';
+import { writeAuditLog } from '../middleware/audit';
 
 const router = Router();
 
@@ -378,6 +379,7 @@ router.get('/admin/organizations', authenticate, requireSuperAdmin(), async (_re
         'organizations.name',
         'organizations.subscription_status',
         'organizations.billing_currency',
+        'organizations.billing_country',
         'organizations.created_at',
         'subscription_plans.name as plan_name',
         'subscription_plans.slug as plan_slug',
@@ -414,6 +416,16 @@ router.post('/admin/wallet/ai/adjust', authenticate, requireSuperAdmin(), valida
     const { organizationId, hours, description } = req.body;
     const minutes = hours * 60;
     const wallet = await subSvc.adminAdjustAiWallet(organizationId, minutes, description);
+    await writeAuditLog({
+      organizationId,
+      userId: req.user!.userId,
+      action: 'admin_adjust',
+      entityType: 'ai_wallet',
+      entityId: organizationId,
+      newValue: { hours, minutes, description },
+      ipAddress: req.ip || '',
+      userAgent: req.headers['user-agent'] || '',
+    });
     res.json({ success: true, data: wallet });
   } catch (err: any) {
     logger.error('Admin adjust AI error', err);
@@ -427,6 +439,16 @@ router.post('/admin/wallet/translation/adjust', authenticate, requireSuperAdmin(
     const { organizationId, hours, description } = req.body;
     const minutes = hours * 60;
     const wallet = await subSvc.adminAdjustTranslationWallet(organizationId, minutes, description);
+    await writeAuditLog({
+      organizationId,
+      userId: req.user!.userId,
+      action: 'admin_adjust',
+      entityType: 'translation_wallet',
+      entityId: organizationId,
+      newValue: { hours, minutes, description },
+      ipAddress: req.ip || '',
+      userAgent: req.headers['user-agent'] || '',
+    });
     res.json({ success: true, data: wallet });
   } catch (err: any) {
     logger.error('Admin adjust translation error', err);
@@ -450,6 +472,16 @@ router.post('/admin/org/status', authenticate, requireSuperAdmin(), validate(org
       }
     }
     logger.info(`Admin ${action} org ${organizationId}: ${reason || 'no reason'}`);
+    await writeAuditLog({
+      organizationId,
+      userId: req.user!.userId,
+      action: `admin_${action}`,
+      entityType: 'organization',
+      entityId: organizationId,
+      newValue: { action, reason: reason || null, newStatus },
+      ipAddress: req.ip || '',
+      userAgent: req.headers['user-agent'] || '',
+    });
     res.json({ success: true, message: `Organization ${action}d` });
   } catch (err: any) {
     logger.error('Admin org status error', err);
@@ -480,6 +512,17 @@ router.post('/admin/subscription/override', authenticate, requireSuperAdmin(), v
     }
     await db('subscriptions').where({ id: sub.id }).update(updates);
     logger.info(`Admin override subscription for org ${organizationId}`, updates);
+    await writeAuditLog({
+      organizationId,
+      userId: req.user!.userId,
+      action: 'admin_override',
+      entityType: 'subscription',
+      entityId: sub.id,
+      previousValue: { planId: sub.plan_id, status: sub.status, periodEnd: sub.current_period_end },
+      newValue: { planSlug, status, periodEnd },
+      ipAddress: req.ip || '',
+      userAgent: req.headers['user-agent'] || '',
+    });
     res.json({ success: true, message: 'Subscription overridden' });
   } catch (err: any) {
     logger.error('Admin override error', err);
@@ -562,6 +605,191 @@ router.put('/admin/plans/:planId', authenticate, requireSuperAdmin(), async (req
   } catch (err: any) {
     logger.error('Update plan error', err);
     res.status(500).json({ success: false, error: 'Failed to update plan' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// RISK MONITORING ENDPOINTS
+// ════════════════════════════════════════════════════════════
+
+// GET /admin/risk/low-balances — orgs with wallets below threshold
+router.get('/admin/risk/low-balances', authenticate, requireSuperAdmin(), async (req: Request, res: Response) => {
+  try {
+    const thresholdMinutes = parseFloat(req.query.threshold as string) || 60; // default 1 hour
+
+    const lowAi = await db('ai_wallet')
+      .join('organizations', 'ai_wallet.organization_id', 'organizations.id')
+      .where('ai_wallet.balance_minutes', '<', thresholdMinutes)
+      .where('ai_wallet.balance_minutes', '>', 0)
+      .select(
+        'organizations.id as org_id',
+        'organizations.name as org_name',
+        'ai_wallet.balance_minutes',
+        db.raw("'ai' as wallet_type"),
+      )
+      .orderBy('ai_wallet.balance_minutes', 'asc');
+
+    const lowTranslation = await db('translation_wallet')
+      .join('organizations', 'translation_wallet.organization_id', 'organizations.id')
+      .where('translation_wallet.balance_minutes', '<', thresholdMinutes)
+      .where('translation_wallet.balance_minutes', '>', 0)
+      .select(
+        'organizations.id as org_id',
+        'organizations.name as org_name',
+        'translation_wallet.balance_minutes',
+        db.raw("'translation' as wallet_type"),
+      )
+      .orderBy('translation_wallet.balance_minutes', 'asc');
+
+    const emptyAi = await db('ai_wallet')
+      .join('organizations', 'ai_wallet.organization_id', 'organizations.id')
+      .where('ai_wallet.balance_minutes', '<=', 0)
+      .select(
+        'organizations.id as org_id',
+        'organizations.name as org_name',
+        'ai_wallet.balance_minutes',
+        db.raw("'ai' as wallet_type"),
+      );
+
+    const emptyTranslation = await db('translation_wallet')
+      .join('organizations', 'translation_wallet.organization_id', 'organizations.id')
+      .where('translation_wallet.balance_minutes', '<=', 0)
+      .select(
+        'organizations.id as org_id',
+        'organizations.name as org_name',
+        'translation_wallet.balance_minutes',
+        db.raw("'translation' as wallet_type"),
+      );
+
+    res.json({
+      success: true,
+      data: {
+        thresholdMinutes,
+        lowBalance: [...lowAi, ...lowTranslation],
+        emptyWallets: [...emptyAi, ...emptyTranslation],
+        summary: {
+          lowAiCount: lowAi.length,
+          lowTranslationCount: lowTranslation.length,
+          emptyAiCount: emptyAi.length,
+          emptyTranslationCount: emptyTranslation.length,
+        },
+      },
+    });
+  } catch (err: any) {
+    logger.error('Low balance check error', err);
+    res.status(500).json({ success: false, error: 'Failed' });
+  }
+});
+
+// GET /admin/risk/spikes — detect abnormal usage spikes
+router.get('/admin/risk/spikes', authenticate, requireSuperAdmin(), async (req: Request, res: Response) => {
+  try {
+    const daysBack = parseInt(req.query.days as string) || 7;
+    const spikeMultiplier = parseFloat(req.query.multiplier as string) || 3;
+
+    // Get daily AI usage per org for the analysis period + prior 30 days for baseline
+    const aiDaily = await db('ai_wallet_transactions')
+      .where('amount_minutes', '<', 0)
+      .where('created_at', '>=', db.raw(`NOW() - INTERVAL '${daysBack + 30} days'`))
+      .select(
+        'organization_id',
+        db.raw("DATE(created_at) as day"),
+        db.raw('SUM(ABS(amount_minutes)) as daily_usage'),
+      )
+      .groupBy('organization_id', db.raw('DATE(created_at)'))
+      .orderBy('organization_id');
+
+    // Get daily translation usage per org
+    const transDaily = await db('translation_wallet_transactions')
+      .where('amount_minutes', '<', 0)
+      .where('created_at', '>=', db.raw(`NOW() - INTERVAL '${daysBack + 30} days'`))
+      .select(
+        'organization_id',
+        db.raw("DATE(created_at) as day"),
+        db.raw('SUM(ABS(amount_minutes)) as daily_usage'),
+      )
+      .groupBy('organization_id', db.raw('DATE(created_at)'))
+      .orderBy('organization_id');
+
+    // Detect spikes: days in the recent period where usage > multiplier * average of prior period
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - daysBack);
+
+    function detectSpikes(rows: any[], walletType: string) {
+      const byOrg: Record<string, { baseline: number[]; recent: number[] }> = {};
+      for (const r of rows) {
+        if (!byOrg[r.organization_id]) byOrg[r.organization_id] = { baseline: [], recent: [] };
+        const day = new Date(r.day);
+        const usage = parseFloat(r.daily_usage);
+        if (day >= cutoff) {
+          byOrg[r.organization_id].recent.push(usage);
+        } else {
+          byOrg[r.organization_id].baseline.push(usage);
+        }
+      }
+
+      const spikes: any[] = [];
+      for (const [orgId, data] of Object.entries(byOrg)) {
+        if (data.baseline.length === 0) continue;
+        const avg = data.baseline.reduce((a, b) => a + b, 0) / data.baseline.length;
+        if (avg === 0) continue;
+        const maxRecent = Math.max(...data.recent, 0);
+        if (maxRecent > avg * spikeMultiplier) {
+          spikes.push({
+            organization_id: orgId,
+            wallet_type: walletType,
+            baseline_avg_minutes: +avg.toFixed(1),
+            recent_max_minutes: +maxRecent.toFixed(1),
+            spike_ratio: +(maxRecent / avg).toFixed(1),
+          });
+        }
+      }
+      return spikes;
+    }
+
+    const aiSpikes = detectSpikes(aiDaily, 'ai');
+    const transSpikes = detectSpikes(transDaily, 'translation');
+
+    // Get failed payments in recent period
+    const failedPayments = await db('transactions')
+      .where({ status: 'failed' })
+      .where('created_at', '>=', db.raw(`NOW() - INTERVAL '${daysBack} days'`))
+      .join('organizations', 'transactions.organization_id', 'organizations.id')
+      .select(
+        'transactions.organization_id',
+        'organizations.name as org_name',
+        db.raw('COUNT(*) as failed_count'),
+        db.raw('SUM(transactions.amount) as failed_amount'),
+      )
+      .groupBy('transactions.organization_id', 'organizations.name')
+      .orderBy('failed_count', 'desc');
+
+    // Enrich spikes with org names
+    const orgIds = [...new Set([...aiSpikes, ...transSpikes].map(s => s.organization_id))];
+    const orgNames: Record<string, string> = {};
+    if (orgIds.length > 0) {
+      const orgs = await db('organizations').whereIn('id', orgIds).select('id', 'name');
+      orgs.forEach((o: any) => { orgNames[o.id] = o.name; });
+    }
+    aiSpikes.forEach(s => { s.org_name = orgNames[s.organization_id] || 'Unknown'; });
+    transSpikes.forEach(s => { s.org_name = orgNames[s.organization_id] || 'Unknown'; });
+
+    res.json({
+      success: true,
+      data: {
+        period: { daysBack, spikeMultiplier },
+        usageSpikes: [...aiSpikes, ...transSpikes],
+        failedPayments,
+        summary: {
+          aiSpikeCount: aiSpikes.length,
+          translationSpikeCount: transSpikes.length,
+          failedPaymentOrgs: failedPayments.length,
+        },
+      },
+    });
+  } catch (err: any) {
+    logger.error('Spike detection error', err);
+    res.status(500).json({ success: false, error: 'Failed' });
   }
 });
 

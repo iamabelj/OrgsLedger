@@ -5,6 +5,7 @@
 
 import db from '../db';
 import { logger } from '../logger';
+import { writeAuditLog } from '../middleware/audit';
 import crypto from 'crypto';
 
 // ── Currency Helpers ──────────────────────────────────────
@@ -143,6 +144,15 @@ export async function createSubscription(params: {
     gateway: params.paymentGateway || 'none',
   });
 
+  await writeAuditLog({
+    organizationId: params.organizationId,
+    userId: params.createdBy || 'system',
+    action: 'subscription_created',
+    entityType: 'subscription',
+    entityId: sub.id,
+    newValue: { planId: params.planId, billingCycle: params.billingCycle, currency: params.currency, amountPaid: params.amountPaid, periodEnd: periodEnd.toISOString() },
+  });
+
   return sub;
 }
 
@@ -182,6 +192,16 @@ export async function renewSubscription(orgId: string, amountPaid: number, payme
     organization_id: orgId,
     action: 'renewed',
     metadata: JSON.stringify({ amountPaid, paymentRef }),
+  });
+
+  await writeAuditLog({
+    organizationId: orgId,
+    userId: 'system',
+    action: 'subscription_renewed',
+    entityType: 'subscription',
+    entityId: sub.id,
+    previousValue: { status: sub.status, periodEnd: sub.current_period_end },
+    newValue: { status: 'active', periodEnd: newEnd.toISOString(), amountPaid },
   });
 
   return db('subscriptions').where({ id: sub.id }).first();
@@ -247,6 +267,15 @@ export async function topUpAiWallet(params: {
     gateway: params.paymentGateway || 'none',
   });
 
+  await writeAuditLog({
+    organizationId: params.orgId,
+    userId: 'system',
+    action: 'wallet_topup',
+    entityType: 'ai_wallet',
+    entityId: params.orgId,
+    newValue: { minutes: params.minutes, hours: +(params.minutes / 60).toFixed(1), cost: params.cost, currency: params.currency, gateway: params.paymentGateway || 'none' },
+  });
+
   return getAiWallet(params.orgId);
 }
 
@@ -287,11 +316,20 @@ export async function topUpTranslationWallet(params: {
     gateway: params.paymentGateway || 'none',
   });
 
+  await writeAuditLog({
+    organizationId: params.orgId,
+    userId: 'system',
+    action: 'wallet_topup',
+    entityType: 'translation_wallet',
+    entityId: params.orgId,
+    newValue: { minutes: params.minutes, hours: +(params.minutes / 60).toFixed(1), cost: params.cost, currency: params.currency, gateway: params.paymentGateway || 'none' },
+  });
+
   return getTranslationWallet(params.orgId);
 }
 
 export async function deductAiWallet(orgId: string, minutes: number, description?: string) {
-  return db.transaction(async (trx) => {
+  const result = await db.transaction(async (trx) => {
     // Lock row to prevent concurrent deductions (TOCTOU race)
     const wallet = await trx('ai_wallet')
       .where({ organization_id: orgId })
@@ -327,10 +365,24 @@ export async function deductAiWallet(orgId: string, minutes: number, description
 
     return { success: true };
   });
+
+  // Audit log after successful transaction commit (fire-and-forget)
+  if (result.success) {
+    writeAuditLog({
+      organizationId: orgId,
+      userId: 'system',
+      action: 'wallet_deduction',
+      entityType: 'ai_wallet',
+      entityId: orgId,
+      newValue: { minutes, description: description || `AI usage: ${minutes.toFixed(1)} minutes` },
+    }).catch(() => {});
+  }
+
+  return result;
 }
 
 export async function deductTranslationWallet(orgId: string, minutes: number, description?: string) {
-  return db.transaction(async (trx) => {
+  const result = await db.transaction(async (trx) => {
     // Lock row to prevent concurrent deductions (TOCTOU race)
     const wallet = await trx('translation_wallet')
       .where({ organization_id: orgId })
@@ -366,6 +418,20 @@ export async function deductTranslationWallet(orgId: string, minutes: number, de
 
     return { success: true };
   });
+
+  // Audit log after successful transaction commit (fire-and-forget)
+  if (result.success) {
+    writeAuditLog({
+      organizationId: orgId,
+      userId: 'system',
+      action: 'wallet_deduction',
+      entityType: 'translation_wallet',
+      entityId: orgId,
+      newValue: { minutes, description: description || `Translation usage: ${minutes.toFixed(1)} minutes` },
+    }).catch(() => {});
+  }
+
+  return result;
 }
 
 export async function getAiWalletHistory(orgId: string, limit = 50, offset = 0) {
