@@ -20,6 +20,9 @@ const middleware_1 = require("./middleware");
 const request_logger_1 = require("./middleware/request-logger");
 const socket_1 = require("./socket");
 const ai_service_1 = require("./services/ai.service");
+// Observability
+const metrics_service_1 = require("./services/metrics.service");
+const error_monitor_service_1 = require("./services/error-monitor.service");
 // Route imports
 const auth_1 = __importDefault(require("./routes/auth"));
 const organizations_1 = __importDefault(require("./routes/organizations"));
@@ -37,11 +40,14 @@ const documents_1 = __importDefault(require("./routes/documents"));
 const analytics_1 = __importDefault(require("./routes/analytics"));
 const expenses_1 = __importDefault(require("./routes/expenses"));
 const subscriptions_1 = __importDefault(require("./routes/subscriptions"));
+const observability_1 = __importDefault(require("./routes/observability"));
 const scheduler_service_1 = require("./services/scheduler.service");
 const app = (0, express_1.default)();
 exports.app = app;
 const server = http_1.default.createServer(app);
 exports.server = server;
+// Set up process-level error handlers (uncaughtException, unhandledRejection)
+(0, error_monitor_service_1.setupProcessErrorHandlers)();
 // Ensure upload directory exists
 const uploadDir = path_1.default.resolve(config_1.config.upload.dir);
 if (!fs_1.default.existsSync(uploadDir)) {
@@ -58,7 +64,7 @@ app.set('aiService', aiService);
 app.use((0, helmet_1.default)());
 app.use((0, cors_1.default)({
     origin: config_1.config.env === 'production'
-        ? (process.env.CORS_ORIGINS || 'https://orgsledger.com').split(',')
+        ? (process.env.CORS_ORIGINS || 'https://orgsledger.com,https://app.orgsledger.com').split(',')
         : '*',
     credentials: true,
 }));
@@ -77,8 +83,21 @@ const limiter = (0, express_rate_limit_1.default)({
     legacyHeaders: false,
 });
 app.use(limiter);
+// ── Cap pagination limits to prevent data dumping ────────
+app.use((req, _res, next) => {
+    if (req.query.limit) {
+        const parsed = parseInt(req.query.limit);
+        if (isNaN(parsed) || parsed < 1)
+            req.query.limit = '50';
+        else if (parsed > 200)
+            req.query.limit = '200';
+    }
+    next();
+});
 // Audit context
 app.use(middleware_1.auditContext);
+// ── Observability Middleware ──────────────────────────────
+app.use(metrics_service_1.metricsMiddleware);
 // ── Full Request Logging (temporary observability) ────────
 app.use(request_logger_1.requestLogger);
 // Serve uploaded files (require valid JWT)
@@ -104,6 +123,10 @@ app.get('/health', (_req, res) => {
         version: '1.0.0',
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
+        memory: {
+            rss: +(process.memoryUsage().rss / 1048576).toFixed(1),
+            heapUsed: +(process.memoryUsage().heapUsed / 1048576).toFixed(1),
+        },
     });
 });
 // ── Landing / Sales Page ──────────────────────────────────
@@ -151,6 +174,24 @@ const authLimiter = (0, express_rate_limit_1.default)({
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/forgot-password', authLimiter);
+app.use('/api/auth/reset-password', authLimiter);
+app.use('/api/auth/refresh', (0, express_rate_limit_1.default)({
+    windowMs: 15 * 60 * 1000,
+    max: 30, // allow more refresh calls than login but still capped
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, error: 'Too many requests, please try again later' },
+}));
+// ── Webhook Rate Limiting ──
+const webhookLimiter = (0, express_rate_limit_1.default)({
+    windowMs: 60 * 1000, // 1 minute
+    max: 60, // max 60 webhook calls per IP per minute
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, error: 'Too many webhook requests' },
+});
+app.use('/api/payments/webhooks', webhookLimiter);
+app.use('/api/payments/paystack/callback', webhookLimiter);
 app.use('/api/auth', auth_1.default);
 app.use('/api/organizations', organizations_1.default);
 app.use('/api/chat', chat_1.default);
@@ -167,6 +208,7 @@ app.use('/api/documents', documents_1.default);
 app.use('/api/analytics', analytics_1.default);
 app.use('/api/expenses', expenses_1.default);
 app.use('/api/subscriptions', subscriptions_1.default);
+app.use('/api/admin/observability', observability_1.default);
 // ── Developer Gateway (AI Client Management, Hours, Proxy) ──
 // Only mount on the main orgsledger.com domain — NEVER shipped with client deployments
 try {
@@ -178,7 +220,7 @@ try {
         if (host === 'orgsledger.com' || host === 'www.orgsledger.com' || host === 'localhost' || host === '127.0.0.1') {
             return gatewayApp(req, res, next);
         }
-        // All other domains (test.orgsledger.com, client domains): developer routes don't exist
+        // All other domains (app.orgsledger.com, client domains): developer routes don't exist
         res.status(404).json({ success: false, error: 'Route not found' });
     });
     logger_1.logger.info('Developer gateway mounted at /developer (orgsledger.com only)');
@@ -194,7 +236,7 @@ app.all('/api/*', (_req, res) => {
 });
 // SPA fallback — serve web frontend for all other routes (except /)
 // orgsledger.com = sales/landing site only (no SPA login/register)
-// test.orgsledger.com + client domains = full SPA app
+// app.orgsledger.com + client domains = full SPA app
 if (fs_1.default.existsSync(webDir)) {
     app.get('*', (req, res) => {
         const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
@@ -203,7 +245,7 @@ if (fs_1.default.existsSync(webDir)) {
             res.redirect(301, '/');
             return;
         }
-        // All other domains (test.orgsledger.com, client deployments, localhost): serve SPA
+        // All other domains (app.orgsledger.com, client deployments, localhost): serve SPA
         res.sendFile(path_1.default.join(webDir, 'index.html'));
     });
 }
@@ -214,6 +256,7 @@ else {
     });
 }
 // ── Global Error Handler ──────────────────────────────────
+app.use(error_monitor_service_1.errorMonitorMiddleware); // Capture errors before responding
 app.use((err, _req, res, _next) => {
     logger_1.logger.error('Unhandled error', { error: err.message, stack: err.stack });
     res.status(err.status || 500).json({

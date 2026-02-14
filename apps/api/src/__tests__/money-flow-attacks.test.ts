@@ -205,7 +205,7 @@ describe('Malicious Money Attack Simulations', () => {
       expect(true).toBe(true);
     });
 
-    it('BUG: getPlanPrice can return NaN or 0 with missing plan data', () => {
+    it('getPlanPrice safely returns 0 for null/missing plan data', () => {
       const brokenPlan = {
         price_usd_annual: null,
         price_usd_monthly: null,
@@ -213,12 +213,10 @@ describe('Malicious Money Attack Simulations', () => {
         price_ngn_monthly: null,
       };
 
-      // USD monthly: null || (null / 12) = 0 → parseFloat(0) = 0 (wrong but not NaN)
+      // All null prices safely default to 0 — no NaN leakage
       expect(getPlanPrice(brokenPlan, 'USD', 'monthly')).toBe(0);
-      // NGN annual: parseFloat(null) = NaN
-      expect(Number.isNaN(getPlanPrice(brokenPlan, 'NGN', 'annual'))).toBe(true);
-      // USD annual: parseFloat(null) = NaN
-      expect(Number.isNaN(getPlanPrice(brokenPlan, 'USD', 'annual'))).toBe(true);
+      expect(getPlanPrice(brokenPlan, 'NGN', 'annual')).toBe(0);
+      expect(getPlanPrice(brokenPlan, 'USD', 'annual')).toBe(0);
     });
 
     it('subscription with NaN price creates corrupted record', async () => {

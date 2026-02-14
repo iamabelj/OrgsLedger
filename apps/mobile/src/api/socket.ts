@@ -26,15 +26,15 @@ class SocketClient {
     });
 
     this.socket.on('connect', () => {
-      console.log('Socket connected');
+      // connected
     });
 
-    this.socket.on('disconnect', (reason) => {
-      console.log('Socket disconnected:', reason);
+    this.socket.on('disconnect', (_reason) => {
+      // disconnected
     });
 
-    this.socket.on('connect_error', (err) => {
-      console.error('Socket connection error:', err.message);
+    this.socket.on('connect_error', (_err) => {
+      // connection error — will auto-retry
     });
 
     // Re-attach listeners

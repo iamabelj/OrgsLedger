@@ -1,0 +1,1 @@
+{"version":3,"file":"security-sql-injection.test.d.ts","sourceRoot":"","sources":["../../src/__tests__/security-sql-injection.test.ts"],"names":[],"mappings":"AAQA,QAAA,MAAM,eAAe,EAAE,KAAK,CAAC;IAAE,KAAK,EAAE,MAAM,CAAC;IAAC,MAAM,EAAE,MAAM,CAAC;IAAC,IAAI,EAAE,GAAG,EAAE,CAAA;CAAE,CAAM,CAAC;AAElF,QAAA,MAAM,SAAS,QAAO,GAyBrB,CAAC;AAEF,QAAA,MAAM,EAAE,EAAE,GAIR,CAAC"}

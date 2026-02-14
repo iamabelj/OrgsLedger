@@ -35,11 +35,11 @@ const logoUpload = (0, multer_1.default)({
     storage: logoStorage,
     limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
     fileFilter: (_req, file, cb) => {
-        const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'];
+        const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
         if (allowed.includes(file.mimetype))
             cb(null, true);
         else
-            cb(new Error('Only JPEG, PNG, WebP, GIF, and SVG images are allowed'));
+            cb(new Error('Only JPEG, PNG, WebP, and GIF images are allowed. SVG not permitted for security.'));
     },
 });
 // ── Schemas ─────────────────────────────────────────────────
@@ -204,7 +204,7 @@ router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, as
     }
 });
 // ── Update Organization Settings ────────────────────────────
-router.put('/:orgId/settings', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
+router.put('/:orgId/settings', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
         const previous = await (0, db_1.default)('organizations').where({ id: req.params.orgId }).first();
         const { name, settings } = req.body;
@@ -290,6 +290,7 @@ router.get('/lookup/:slug', middleware_1.authenticate, async (req, res) => {
     }
 });
 // ── Join Organization (Self-join) ───────────────────────────
+// Requires org to have public joining enabled in settings, or use invite links instead
 router.post('/:orgId/join', middleware_1.authenticate, async (req, res) => {
     try {
         const userId = req.user.userId;
@@ -297,6 +298,12 @@ router.post('/:orgId/join', middleware_1.authenticate, async (req, res) => {
         const org = await (0, db_1.default)('organizations').where({ id: orgId }).first();
         if (!org) {
             res.status(404).json({ success: false, error: 'Organization not found' });
+            return;
+        }
+        // Check if public joining is allowed for this org
+        const settings = typeof org.settings === 'string' ? JSON.parse(org.settings || '{}') : (org.settings || {});
+        if (!settings.allowPublicJoin) {
+            res.status(403).json({ success: false, error: 'This organization does not allow public joining. Use an invite link instead.' });
             return;
         }
         // Check if already a member
@@ -313,13 +320,9 @@ router.post('/:orgId/join', middleware_1.authenticate, async (req, res) => {
         }
         else {
             // Check member limit from subscription plan
-            const sub = await (0, subscription_service_1.getOrgSubscription)(orgId);
-            const maxMembers = sub?.plan?.max_members || 100;
-            const memberCount = await (0, db_1.default)('memberships')
-                .where({ organization_id: orgId, is_active: true })
-                .count('id as count').first();
-            if (parseInt(memberCount?.count) >= maxMembers) {
-                res.status(403).json({ success: false, error: 'Organization has reached its member limit. An admin needs to upgrade the plan.' });
+            const { allowed, current, max } = await (0, subscription_service_1.checkMemberLimit)(orgId);
+            if (!allowed) {
+                res.status(403).json({ success: false, error: `Organization has reached its member limit (${current}/${max}). An admin needs to upgrade the plan.` });
                 return;
             }
             await (0, db_1.default)('memberships').insert({
@@ -415,7 +418,7 @@ router.get('/:orgId/members/:userId', middleware_1.authenticate, middleware_1.lo
     }
 });
 // ── Add Member ──────────────────────────────────────────────
-router.post('/:orgId/members', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(addMemberSchema), async (req, res) => {
+router.post('/:orgId/members', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(addMemberSchema), async (req, res) => {
     try {
         const { email, role } = req.body;
         const user = await (0, db_1.default)('users').where({ email }).first();
@@ -435,15 +438,10 @@ router.post('/:orgId/members', middleware_1.authenticate, middleware_1.loadMembe
             await (0, db_1.default)('memberships').where({ id: existing.id }).update({ is_active: true, role });
         }
         else {
-            // Check member limit
-            const org = await (0, db_1.default)('organizations').where({ id: req.params.orgId }).first();
-            const settings = typeof org.settings === 'string' ? JSON.parse(org.settings) : org.settings;
-            const memberCount = await (0, db_1.default)('memberships')
-                .where({ organization_id: req.params.orgId, is_active: true })
-                .count('id as count')
-                .first();
-            if (parseInt(memberCount?.count) >= settings.maxMembers) {
-                res.status(403).json({ success: false, error: 'Member limit reached for this license' });
+            // Check member limit from subscription plan
+            const { allowed, current, max } = await (0, subscription_service_1.checkMemberLimit)(req.params.orgId);
+            if (!allowed) {
+                res.status(403).json({ success: false, error: `Organization has reached its member limit (${current}/${max}). Upgrade the plan to add more members.` });
                 return;
             }
             await (0, db_1.default)('memberships').insert({
@@ -477,7 +475,7 @@ router.post('/:orgId/members', middleware_1.authenticate, middleware_1.loadMembe
     }
 });
 // ── Update Member Role ──────────────────────────────────────
-router.put('/:orgId/members/:userId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
+router.put('/:orgId/members/:userId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
         const { role, isActive } = req.body;
         const membership = await (0, db_1.default)('memberships')
@@ -509,7 +507,7 @@ router.put('/:orgId/members/:userId', middleware_1.authenticate, middleware_1.lo
     }
 });
 // ── Remove Member ───────────────────────────────────────────
-router.delete('/:orgId/members/:userId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
+router.delete('/:orgId/members/:userId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
         await (0, db_1.default)('memberships')
             .where({ user_id: req.params.userId, organization_id: req.params.orgId })
@@ -546,6 +544,36 @@ router.get('/platform/all', middleware_1.authenticate, (0, middleware_1.requireS
     }
     catch (err) {
         res.status(500).json({ success: false, error: 'Failed to list all organizations' });
+    }
+});
+// ── Organization Audit Log (for compliance dashboard) ───────
+router.get('/:orgId/audit-logs', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 50;
+        const action = req.query.action;
+        const entityType = req.query.entityType;
+        let query = (0, db_1.default)('audit_logs')
+            .where({ 'audit_logs.organization_id': req.params.orgId })
+            .leftJoin('users', 'audit_logs.user_id', 'users.id')
+            .select('audit_logs.id', 'audit_logs.action', 'audit_logs.entity_type', 'audit_logs.entity_id', 'audit_logs.ip_address', 'audit_logs.created_at', 'users.email', 'users.first_name', 'users.last_name');
+        if (action)
+            query = query.where({ 'audit_logs.action': action });
+        if (entityType)
+            query = query.where({ 'audit_logs.entity_type': entityType });
+        const total = await query.clone().clear('select').count('audit_logs.id as count').first();
+        const logs = await query
+            .orderBy('audit_logs.created_at', 'desc')
+            .offset((page - 1) * limit)
+            .limit(limit);
+        res.json({
+            success: true,
+            data: logs,
+            meta: { page, limit, total: parseInt(total?.count) || 0 },
+        });
+    }
+    catch (err) {
+        res.status(500).json({ success: false, error: 'Failed to get audit logs' });
     }
 });
 // ── Get Member Activity Log ─────────────────────────────────
@@ -608,7 +636,7 @@ router.get('/:orgId/subscription', middleware_1.authenticate, middleware_1.loadM
     }
 });
 // ── Upload Organization Logo ──────────────────────────────
-router.post('/:orgId/logo', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), (req, res, next) => {
+router.post('/:orgId/logo', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), (req, res, next) => {
     logoUpload.single('logo')(req, res, (err) => {
         if (err)
             return res.status(400).json({ success: false, error: err.message });
@@ -634,7 +662,7 @@ router.post('/:orgId/logo', middleware_1.authenticate, middleware_1.loadMembersh
     }
 });
 // ── Update Organization Branding ──────────────────────────
-router.put('/:orgId/branding', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
+router.put('/:orgId/branding', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
         const { primaryColor, secondaryColor, accentColor, tagline, description, website } = req.body;
         const org = await (0, db_1.default)('organizations').where({ id: req.params.orgId }).first();

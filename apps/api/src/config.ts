@@ -28,7 +28,7 @@ export const config = {
 
   jwt: {
     secret: process.env.JWT_SECRET || 'CHANGE_ME_IN_PRODUCTION',
-    refreshSecret: process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'CHANGE_ME_IN_PRODUCTION_REFRESH',
+    refreshSecret: process.env.JWT_REFRESH_SECRET || (process.env.JWT_SECRET ? process.env.JWT_SECRET + '_refresh' : 'CHANGE_ME_IN_PRODUCTION_REFRESH'),
     expiresIn: process.env.JWT_EXPIRES_IN || '1h',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   },
@@ -89,6 +89,10 @@ export const config = {
 if (config.env !== 'development') {
   if (config.jwt.secret === 'CHANGE_ME_IN_PRODUCTION') {
     console.error(`[CONFIG] FATAL: JWT_SECRET is using the default value in ${config.env} — set JWT_SECRET in env.js or environment variables`);
+    process.exit(1);
+  }
+  if (config.jwt.secret === config.jwt.refreshSecret) {
+    console.error(`[CONFIG] FATAL: JWT_SECRET and JWT_REFRESH_SECRET must be different in ${config.env} — set JWT_REFRESH_SECRET`);
     process.exit(1);
   }
   if (!process.env.DATABASE_URL && config.db.password === 'orgsledger_dev') {

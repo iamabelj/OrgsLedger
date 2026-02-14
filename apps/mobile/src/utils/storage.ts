@@ -18,28 +18,23 @@ if (Platform.OS === 'web') {
   storage = {
     getItemAsync: async (key: string) => {
       try {
-        const value = localStorage.getItem(key);
-        console.log('[Storage] getItemAsync web:', key, value ? 'found' : 'null');
-        return value;
-      } catch (error) {
-        console.error('[Storage] getItemAsync web error:', error);
+        return localStorage.getItem(key);
+      } catch {
         return null;
       }
     },
     setItemAsync: async (key: string, value: string) => {
       try {
         localStorage.setItem(key, value);
-        console.log('[Storage] setItemAsync web:', key, 'saved');
-      } catch (error) {
-        console.error('[Storage] setItemAsync web error:', error);
+      } catch {
+        // silently fail
       }
     },
     deleteItemAsync: async (key: string) => {
       try {
         localStorage.removeItem(key);
-        console.log('[Storage] deleteItemAsync web:', key, 'removed');
-      } catch (error) {
-        console.error('[Storage] deleteItemAsync web error:', error);
+      } catch {
+        // silently fail
       }
     },
   };

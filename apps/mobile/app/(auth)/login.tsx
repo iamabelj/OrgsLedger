@@ -32,22 +32,18 @@ export default function LoginScreen() {
   const responsive = useResponsive();
 
   const handleLogin = async () => {
-    console.log('[Login] Starting login...');
     if (!email || !password) {
       showAlert('Error', 'Please enter email and password');
       return;
     }
     setLoading(true);
     try {
-      console.log('[Login] Calling auth login...');
       await login(email.trim().toLowerCase(), password);
-      console.log('[Login] Login successful, navigating to home...');
       // Use setTimeout to ensure state update completes before navigation
       setTimeout(() => {
         router.replace('/(tabs)/home');
       }, 100);
     } catch (err: any) {
-      console.error('[Login] Login failed:', err);
       showAlert(
         'Login Failed',
         err.response?.data?.error || 'Invalid credentials'

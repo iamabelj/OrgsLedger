@@ -199,6 +199,7 @@ export function NavigationDrawer() {
           {[
             { label: 'Terms of Service', icon: 'document-text-outline', path: '/legal/terms' },
             { label: 'Privacy Policy', icon: 'shield-checkmark-outline', path: '/legal/privacy' },
+            { label: 'Data Processing', icon: 'server-outline', path: '/legal/dpa' },
             { label: 'Acceptable Use', icon: 'hand-left-outline', path: '/legal/acceptable-use' },
           ].map((item) => {
             const isActive = pathname === item.path;

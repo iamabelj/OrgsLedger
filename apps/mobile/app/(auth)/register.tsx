@@ -50,7 +50,6 @@ export default function RegisterScreen() {
   }, [params.org]);
 
   const handleRegister = async () => {
-    console.log('[Register] Starting registration...');
     if (!firstName || !lastName || !email || !password) {
       showAlert('Error', 'Please fill in all fields');
       return;
@@ -66,7 +65,6 @@ export default function RegisterScreen() {
 
     setLoading(true);
     try {
-      console.log('[Register] Calling auth register with orgSlug:', orgSlug);
       await register({
         email: email.trim().toLowerCase(),
         password,
@@ -75,13 +73,11 @@ export default function RegisterScreen() {
         phone: phone.trim() || undefined,
         orgSlug: orgSlug || undefined,
       });
-      console.log('[Register] Registration successful, navigating to home...');
       // Use setTimeout to ensure state update completes before navigation
       setTimeout(() => {
         router.replace('/(tabs)/home');
       }, 100);
     } catch (err: any) {
-      console.error('[Register] Registration failed:', err);
       showAlert(
         'Registration Failed',
         err.response?.data?.error || 'Something went wrong'

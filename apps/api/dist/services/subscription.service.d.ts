@@ -4,6 +4,11 @@ export declare function getPlans(): Promise<any[]>;
 export declare function getPlanById(id: string): Promise<any>;
 export declare function getPlanBySlug(slug: string): Promise<any>;
 export declare function getPlanPrice(plan: any, currency: 'USD' | 'NGN', cycle?: 'annual' | 'monthly'): number;
+export declare function checkMemberLimit(orgId: string): Promise<{
+    allowed: boolean;
+    current: number;
+    max: number;
+}>;
 export declare function getOrgSubscription(orgId: string): Promise<any>;
 export declare function createSubscription(params: {
     organizationId: string;
@@ -15,6 +20,7 @@ export declare function createSubscription(params: {
     paymentGateway?: string;
     gatewaySubscriptionId?: string;
     createdBy?: string;
+    status?: 'active' | 'pending';
 }): Promise<any>;
 export declare function renewSubscription(orgId: string, amountPaid: number, paymentRef?: string): Promise<any>;
 export declare function getAiWallet(orgId: string): Promise<any>;

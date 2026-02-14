@@ -14,6 +14,7 @@ export declare const config: {
     };
     jwt: {
         secret: string;
+        refreshSecret: string;
         expiresIn: string;
         refreshExpiresIn: string;
     };

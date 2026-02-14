@@ -16,9 +16,14 @@ const app = express();
 // ── Config ────────────────────────────────────────────────
 const PORT = process.env.PORT || 4000;
 const DATABASE_URL = process.env.DATABASE_URL;
-const JWT_SECRET = process.env.GATEWAY_JWT_SECRET || process.env.JWT_SECRET || 'gateway-secret-change-me';
+const JWT_SECRET = process.env.GATEWAY_JWT_SECRET || process.env.JWT_SECRET;
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@orgsledger.com';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'SuperAdmin123!';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+
+if (!JWT_SECRET || !ADMIN_PASSWORD) {
+  console.error('FATAL: GATEWAY_JWT_SECRET and ADMIN_PASSWORD environment variables are required');
+  if (process.env.NODE_ENV === 'production') process.exit(1);
+}
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
 const FLUTTERWAVE_SECRET_KEY = process.env.FLUTTERWAVE_SECRET_KEY || '';

@@ -51,6 +51,13 @@ const flutterwave_service_1 = require("../services/flutterwave.service");
 const socket_1 = require("../socket");
 const push_service_1 = require("../services/push.service");
 const router = (0, express_1.Router)();
+// ── Safe cents conversion to avoid float precision issues ────
+function toSubunits(amount) {
+    // Multiply by 100 using string arithmetic to avoid float issues
+    const [whole = '0', frac = ''] = String(amount).split('.');
+    const paddedFrac = (frac + '00').slice(0, 2);
+    return parseInt(whole, 10) * 100 + parseInt(paddedFrac, 10);
+}
 // ── Initialize Stripe ───────────────────────────────────────
 let stripe = null;
 async function getStripe() {
@@ -69,6 +76,15 @@ const payTransactionSchema = zod_1.z.object({
 });
 const purchaseCreditsSchema = zod_1.z.object({
     credits: zod_1.z.number().int().min(1), // minimum 1 credit (= 1 hour)
+});
+const refundSchema = zod_1.z.object({
+    transactionId: zod_1.z.string().uuid(),
+    amount: zod_1.z.number().positive().max(999_999_999).optional(),
+    reason: zod_1.z.string().max(500).optional(),
+});
+const approveTransferSchema = zod_1.z.object({
+    transactionId: zod_1.z.string().uuid(),
+    approved: zod_1.z.boolean(),
 });
 // ── Pay a Transaction ───────────────────────────────────────
 router.post('/:orgId/payments/pay', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.validate)(payTransactionSchema), async (req, res) => {
@@ -92,7 +108,7 @@ router.post('/:orgId/payments/pay', middleware_1.authenticate, middleware_1.load
             const stripeClient = await getStripe();
             if (stripeClient && paymentMethodId) {
                 const paymentIntent = await stripeClient.paymentIntents.create({
-                    amount: Math.round(transaction.amount * 100),
+                    amount: toSubunits(transaction.amount),
                     currency: transaction.currency.toLowerCase(),
                     payment_method: paymentMethodId,
                     confirm: true,
@@ -150,7 +166,7 @@ router.post('/:orgId/payments/pay', middleware_1.authenticate, middleware_1.load
             const reference = `orgsl_${transactionId.replace(/-/g, '').slice(0, 16)}_${Date.now()}`;
             const result = await paystack_service_1.paystackService.initializeTransaction({
                 email: user?.email || 'user@orgsledger.com',
-                amount: Math.round(transaction.amount * 100), // subunit
+                amount: toSubunits(transaction.amount), // subunit
                 currency: transaction.currency,
                 reference,
                 metadata: {
@@ -317,6 +333,10 @@ async function sendPaymentNotification(req, transaction, gatewayId) {
     }
 }
 async function devModeFallback(req, transaction) {
+    // CRITICAL: Only allow dev-mode auto-completion in explicit development environment
+    if (config_1.config.env !== 'development') {
+        throw new Error('Payment gateway not configured. Contact administrator.');
+    }
     await (0, db_1.default)('transactions')
         .where({ id: transaction.id })
         .update({
@@ -361,7 +381,7 @@ router.post('/:orgId/payments/setup-intent', middleware_1.authenticate, middlewa
     }
 });
 // ── Request Refund ──────────────────────────────────────────
-router.post('/:orgId/payments/refund', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
+router.post('/:orgId/payments/refund', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), (0, middleware_1.validate)(refundSchema), async (req, res) => {
     try {
         const { transactionId, amount, reason } = req.body;
         const transaction = await (0, db_1.default)('transactions')
@@ -388,7 +408,7 @@ router.post('/:orgId/payments/refund', middleware_1.authenticate, middleware_1.l
             if (stripeClient && transaction.payment_gateway_id) {
                 const refund = await stripeClient.refunds.create({
                     payment_intent: transaction.payment_gateway_id,
-                    amount: Math.round(refundAmount * 100),
+                    amount: toSubunits(refundAmount),
                 });
                 gatewayRefundId = refund.id;
             }
@@ -398,7 +418,7 @@ router.post('/:orgId/payments/refund', middleware_1.authenticate, middleware_1.l
             if (paystack_service_1.paystackService.isConfigured() && transaction.payment_gateway_id) {
                 const result = await paystack_service_1.paystackService.createRefund({
                     transactionReference: transaction.payment_gateway_id,
-                    amount: Math.round(refundAmount * 100),
+                    amount: toSubunits(refundAmount),
                     reason: reason || 'Admin refund',
                 });
                 gatewayRefundId = result.refundId;
@@ -941,7 +961,7 @@ router.get('/:orgId/payments/pending-transfers', middleware_1.authenticate, midd
     }
 });
 // Approve or reject bank transfer
-router.post('/:orgId/payments/approve-transfer', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
+router.post('/:orgId/payments/approve-transfer', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), (0, middleware_1.validate)(approveTransferSchema), async (req, res) => {
     try {
         const { transactionId, approved } = req.body;
         const transaction = await (0, db_1.default)('transactions')
@@ -1046,9 +1066,29 @@ router.get('/:orgId/payments/methods', middleware_1.authenticate, middleware_1.l
     }
 });
 // Update org payment methods config (admin only)
+const paymentMethodsSchema = zod_1.z.object({
+    paymentMethods: zod_1.z.object({
+        stripe: zod_1.z.object({ enabled: zod_1.z.boolean() }).passthrough().optional(),
+        paystack: zod_1.z.object({ enabled: zod_1.z.boolean() }).passthrough().optional(),
+        flutterwave: zod_1.z.object({ enabled: zod_1.z.boolean() }).passthrough().optional(),
+        bank_transfer: zod_1.z.object({
+            enabled: zod_1.z.boolean(),
+            bank_name: zod_1.z.string().max(200).optional(),
+            account_number: zod_1.z.string().max(50).optional(),
+            account_name: zod_1.z.string().max(200).optional(),
+            sort_code: zod_1.z.string().max(20).optional(),
+            instructions: zod_1.z.string().max(500).optional(),
+        }).optional(),
+    }),
+});
 router.put('/:orgId/payments/methods', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
-        const { paymentMethods } = req.body;
+        const parsed = paymentMethodsSchema.safeParse(req.body);
+        if (!parsed.success) {
+            res.status(400).json({ success: false, error: 'Invalid payment methods configuration', details: parsed.error.flatten() });
+            return;
+        }
+        const { paymentMethods } = parsed.data;
         const org = await (0, db_1.default)('organizations')
             .where({ id: req.params.orgId })
             .select('settings')

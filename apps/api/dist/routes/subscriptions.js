@@ -46,6 +46,7 @@ const db_1 = __importDefault(require("../db"));
 const middleware_1 = require("../middleware");
 const logger_1 = require("../logger");
 const subSvc = __importStar(require("../services/subscription.service"));
+const audit_1 = require("../middleware/audit");
 const router = (0, express_1.Router)();
 // ── Schemas ─────────────────────────────────────────────────
 const subscribeSchema = zod_1.z.object({
@@ -159,14 +160,17 @@ router.post('/:orgId/subscribe', middleware_1.authenticate, middleware_1.loadMem
         }
         const currency = subSvc.getCurrency(billingCountry);
         const price = subSvc.getPlanPrice(plan, currency, billingCycle);
+        // If plan has a cost but no payment reference, create as pending (needs webhook confirmation)
+        const isPaid = price <= 0 || !!paymentReference;
         const sub = await subSvc.createSubscription({
             organizationId: req.params.orgId,
             planId: plan.id,
             billingCycle,
             currency,
-            amountPaid: price,
+            amountPaid: isPaid ? price : 0,
             paymentGateway,
             gatewaySubscriptionId: paymentReference,
+            status: isPaid ? 'active' : 'pending',
         });
         res.json({ success: true, data: sub });
     }
@@ -238,6 +242,11 @@ router.get('/:orgId/wallet/translation', middleware_1.authenticate, middleware_1
 router.post('/:orgId/wallet/ai/topup', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), (0, middleware_1.validate)(topUpSchema), async (req, res) => {
     try {
         const { hours, paymentGateway, paymentReference } = req.body;
+        // Require payment reference for real top-ups
+        if (!paymentReference) {
+            res.status(400).json({ success: false, error: 'Payment reference required. Complete payment first.' });
+            return;
+        }
         const org = await (0, db_1.default)('organizations').where({ id: req.params.orgId }).select('billing_currency').first();
         const currency = org?.billing_currency || 'USD';
         const pricePerHour = currency === 'NGN' ? 18000 : 10;
@@ -262,6 +271,11 @@ router.post('/:orgId/wallet/ai/topup', middleware_1.authenticate, middleware_1.l
 router.post('/:orgId/wallet/translation/topup', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), (0, middleware_1.validate)(topUpSchema), async (req, res) => {
     try {
         const { hours, paymentGateway, paymentReference } = req.body;
+        // Require payment reference for real top-ups
+        if (!paymentReference) {
+            res.status(400).json({ success: false, error: 'Payment reference required. Complete payment first.' });
+            return;
+        }
         const org = await (0, db_1.default)('organizations').where({ id: req.params.orgId }).select('billing_currency').first();
         const currency = org?.billing_currency || 'USD';
         const pricePerHour = currency === 'NGN' ? 45000 : 25;
@@ -385,7 +399,7 @@ router.get('/admin/organizations', middleware_1.authenticate, (0, middleware_1.r
             .leftJoin('subscription_plans', 'subscriptions.plan_id', 'subscription_plans.id')
             .leftJoin('ai_wallet', 'organizations.id', 'ai_wallet.organization_id')
             .leftJoin('translation_wallet', 'organizations.id', 'translation_wallet.organization_id')
-            .select('organizations.id', 'organizations.name', 'organizations.subscription_status', 'organizations.billing_currency', 'organizations.created_at', 'subscription_plans.name as plan_name', 'subscription_plans.slug as plan_slug', 'subscriptions.status as sub_status', 'subscriptions.current_period_end', 'ai_wallet.balance_minutes as ai_balance_minutes', 'translation_wallet.balance_minutes as translation_balance_minutes')
+            .select('organizations.id', 'organizations.name', 'organizations.subscription_status', 'organizations.billing_currency', 'organizations.billing_country', 'organizations.created_at', 'subscription_plans.name as plan_name', 'subscription_plans.slug as plan_slug', 'subscriptions.status as sub_status', 'subscriptions.current_period_end', 'ai_wallet.balance_minutes as ai_balance_minutes', 'translation_wallet.balance_minutes as translation_balance_minutes')
             .orderBy('organizations.created_at', 'desc');
         // Add member count
         const orgIds = orgs.map((o) => o.id);
@@ -412,6 +426,16 @@ router.post('/admin/wallet/ai/adjust', middleware_1.authenticate, (0, middleware
         const { organizationId, hours, description } = req.body;
         const minutes = hours * 60;
         const wallet = await subSvc.adminAdjustAiWallet(organizationId, minutes, description);
+        await (0, audit_1.writeAuditLog)({
+            organizationId,
+            userId: req.user.userId,
+            action: 'admin_adjust',
+            entityType: 'ai_wallet',
+            entityId: organizationId,
+            newValue: { hours, minutes, description },
+            ipAddress: req.ip || '',
+            userAgent: req.headers['user-agent'] || '',
+        });
         res.json({ success: true, data: wallet });
     }
     catch (err) {
@@ -425,6 +449,16 @@ router.post('/admin/wallet/translation/adjust', middleware_1.authenticate, (0, m
         const { organizationId, hours, description } = req.body;
         const minutes = hours * 60;
         const wallet = await subSvc.adminAdjustTranslationWallet(organizationId, minutes, description);
+        await (0, audit_1.writeAuditLog)({
+            organizationId,
+            userId: req.user.userId,
+            action: 'admin_adjust',
+            entityType: 'translation_wallet',
+            entityId: organizationId,
+            newValue: { hours, minutes, description },
+            ipAddress: req.ip || '',
+            userAgent: req.headers['user-agent'] || '',
+        });
         res.json({ success: true, data: wallet });
     }
     catch (err) {
@@ -449,6 +483,16 @@ router.post('/admin/org/status', middleware_1.authenticate, (0, middleware_1.req
             }
         }
         logger_1.logger.info(`Admin ${action} org ${organizationId}: ${reason || 'no reason'}`);
+        await (0, audit_1.writeAuditLog)({
+            organizationId,
+            userId: req.user.userId,
+            action: `admin_${action}`,
+            entityType: 'organization',
+            entityId: organizationId,
+            newValue: { action, reason: reason || null, newStatus },
+            ipAddress: req.ip || '',
+            userAgent: req.headers['user-agent'] || '',
+        });
         res.json({ success: true, message: `Organization ${action}d` });
     }
     catch (err) {
@@ -481,6 +525,17 @@ router.post('/admin/subscription/override', middleware_1.authenticate, (0, middl
         }
         await (0, db_1.default)('subscriptions').where({ id: sub.id }).update(updates);
         logger_1.logger.info(`Admin override subscription for org ${organizationId}`, updates);
+        await (0, audit_1.writeAuditLog)({
+            organizationId,
+            userId: req.user.userId,
+            action: 'admin_override',
+            entityType: 'subscription',
+            entityId: sub.id,
+            previousValue: { planId: sub.plan_id, status: sub.status, periodEnd: sub.current_period_end },
+            newValue: { planSlug, status, periodEnd },
+            ipAddress: req.ip || '',
+            userAgent: req.headers['user-agent'] || '',
+        });
         res.json({ success: true, message: 'Subscription overridden' });
     }
     catch (err) {
@@ -551,6 +606,148 @@ router.put('/admin/plans/:planId', middleware_1.authenticate, (0, middleware_1.r
     catch (err) {
         logger_1.logger.error('Update plan error', err);
         res.status(500).json({ success: false, error: 'Failed to update plan' });
+    }
+});
+// ════════════════════════════════════════════════════════════
+// RISK MONITORING ENDPOINTS
+// ════════════════════════════════════════════════════════════
+// GET /admin/risk/low-balances — orgs with wallets below threshold
+router.get('/admin/risk/low-balances', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (req, res) => {
+    try {
+        const thresholdMinutes = parseFloat(req.query.threshold) || 60; // default 1 hour
+        const lowAi = await (0, db_1.default)('ai_wallet')
+            .join('organizations', 'ai_wallet.organization_id', 'organizations.id')
+            .where('ai_wallet.balance_minutes', '<', thresholdMinutes)
+            .where('ai_wallet.balance_minutes', '>', 0)
+            .select('organizations.id as org_id', 'organizations.name as org_name', 'ai_wallet.balance_minutes', db_1.default.raw("'ai' as wallet_type"))
+            .orderBy('ai_wallet.balance_minutes', 'asc');
+        const lowTranslation = await (0, db_1.default)('translation_wallet')
+            .join('organizations', 'translation_wallet.organization_id', 'organizations.id')
+            .where('translation_wallet.balance_minutes', '<', thresholdMinutes)
+            .where('translation_wallet.balance_minutes', '>', 0)
+            .select('organizations.id as org_id', 'organizations.name as org_name', 'translation_wallet.balance_minutes', db_1.default.raw("'translation' as wallet_type"))
+            .orderBy('translation_wallet.balance_minutes', 'asc');
+        const emptyAi = await (0, db_1.default)('ai_wallet')
+            .join('organizations', 'ai_wallet.organization_id', 'organizations.id')
+            .where('ai_wallet.balance_minutes', '<=', 0)
+            .select('organizations.id as org_id', 'organizations.name as org_name', 'ai_wallet.balance_minutes', db_1.default.raw("'ai' as wallet_type"));
+        const emptyTranslation = await (0, db_1.default)('translation_wallet')
+            .join('organizations', 'translation_wallet.organization_id', 'organizations.id')
+            .where('translation_wallet.balance_minutes', '<=', 0)
+            .select('organizations.id as org_id', 'organizations.name as org_name', 'translation_wallet.balance_minutes', db_1.default.raw("'translation' as wallet_type"));
+        res.json({
+            success: true,
+            data: {
+                thresholdMinutes,
+                lowBalance: [...lowAi, ...lowTranslation],
+                emptyWallets: [...emptyAi, ...emptyTranslation],
+                summary: {
+                    lowAiCount: lowAi.length,
+                    lowTranslationCount: lowTranslation.length,
+                    emptyAiCount: emptyAi.length,
+                    emptyTranslationCount: emptyTranslation.length,
+                },
+            },
+        });
+    }
+    catch (err) {
+        logger_1.logger.error('Low balance check error', err);
+        res.status(500).json({ success: false, error: 'Failed' });
+    }
+});
+// GET /admin/risk/spikes — detect abnormal usage spikes
+router.get('/admin/risk/spikes', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (req, res) => {
+    try {
+        const daysBack = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 365);
+        const spikeMultiplier = Math.min(Math.max(parseFloat(req.query.multiplier) || 3, 1.5), 20);
+        const lookbackDays = daysBack + 30;
+        // Get daily AI usage per org for the analysis period + prior 30 days for baseline
+        const aiDaily = await (0, db_1.default)('ai_wallet_transactions')
+            .where('amount_minutes', '<', 0)
+            .where('created_at', '>=', db_1.default.raw('NOW() - INTERVAL ? DAY', [lookbackDays]))
+            .select('organization_id', db_1.default.raw("DATE(created_at) as day"), db_1.default.raw('SUM(ABS(amount_minutes)) as daily_usage'))
+            .groupBy('organization_id', db_1.default.raw('DATE(created_at)'))
+            .orderBy('organization_id');
+        // Get daily translation usage per org
+        const transDaily = await (0, db_1.default)('translation_wallet_transactions')
+            .where('amount_minutes', '<', 0)
+            .where('created_at', '>=', db_1.default.raw('NOW() - INTERVAL ? DAY', [lookbackDays]))
+            .select('organization_id', db_1.default.raw("DATE(created_at) as day"), db_1.default.raw('SUM(ABS(amount_minutes)) as daily_usage'))
+            .groupBy('organization_id', db_1.default.raw('DATE(created_at)'))
+            .orderBy('organization_id');
+        // Detect spikes: days in the recent period where usage > multiplier * average of prior period
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - daysBack);
+        function detectSpikes(rows, walletType) {
+            const byOrg = {};
+            for (const r of rows) {
+                if (!byOrg[r.organization_id])
+                    byOrg[r.organization_id] = { baseline: [], recent: [] };
+                const day = new Date(r.day);
+                const usage = parseFloat(r.daily_usage);
+                if (day >= cutoff) {
+                    byOrg[r.organization_id].recent.push(usage);
+                }
+                else {
+                    byOrg[r.organization_id].baseline.push(usage);
+                }
+            }
+            const spikes = [];
+            for (const [orgId, data] of Object.entries(byOrg)) {
+                if (data.baseline.length === 0)
+                    continue;
+                const avg = data.baseline.reduce((a, b) => a + b, 0) / data.baseline.length;
+                if (avg === 0)
+                    continue;
+                const maxRecent = Math.max(...data.recent, 0);
+                if (maxRecent > avg * spikeMultiplier) {
+                    spikes.push({
+                        organization_id: orgId,
+                        wallet_type: walletType,
+                        baseline_avg_minutes: +avg.toFixed(1),
+                        recent_max_minutes: +maxRecent.toFixed(1),
+                        spike_ratio: +(maxRecent / avg).toFixed(1),
+                    });
+                }
+            }
+            return spikes;
+        }
+        const aiSpikes = detectSpikes(aiDaily, 'ai');
+        const transSpikes = detectSpikes(transDaily, 'translation');
+        // Get failed payments in recent period
+        const failedPayments = await (0, db_1.default)('transactions')
+            .where({ status: 'failed' })
+            .where('created_at', '>=', db_1.default.raw(`NOW() - INTERVAL '${daysBack} days'`))
+            .join('organizations', 'transactions.organization_id', 'organizations.id')
+            .select('transactions.organization_id', 'organizations.name as org_name', db_1.default.raw('COUNT(*) as failed_count'), db_1.default.raw('SUM(transactions.amount) as failed_amount'))
+            .groupBy('transactions.organization_id', 'organizations.name')
+            .orderBy('failed_count', 'desc');
+        // Enrich spikes with org names
+        const orgIds = [...new Set([...aiSpikes, ...transSpikes].map(s => s.organization_id))];
+        const orgNames = {};
+        if (orgIds.length > 0) {
+            const orgs = await (0, db_1.default)('organizations').whereIn('id', orgIds).select('id', 'name');
+            orgs.forEach((o) => { orgNames[o.id] = o.name; });
+        }
+        aiSpikes.forEach(s => { s.org_name = orgNames[s.organization_id] || 'Unknown'; });
+        transSpikes.forEach(s => { s.org_name = orgNames[s.organization_id] || 'Unknown'; });
+        res.json({
+            success: true,
+            data: {
+                period: { daysBack, spikeMultiplier },
+                usageSpikes: [...aiSpikes, ...transSpikes],
+                failedPayments,
+                summary: {
+                    aiSpikeCount: aiSpikes.length,
+                    translationSpikeCount: transSpikes.length,
+                    failedPaymentOrgs: failedPayments.length,
+                },
+            },
+        });
+    }
+    catch (err) {
+        logger_1.logger.error('Spike detection error', err);
+        res.status(500).json({ success: false, error: 'Failed' });
     }
 });
 exports.default = router;

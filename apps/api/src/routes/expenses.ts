@@ -4,7 +4,8 @@
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { db } from '../db';
+import db from '../db';
+import { logger } from '../logger';
 import { authenticate, loadMembershipAndSub as loadMembership, requireRole, validate } from '../middleware';
 
 const router = Router();
@@ -72,6 +73,7 @@ router.get(
         },
       });
     } catch (err) {
+      logger.error('Failed to list expenses', err);
       res.status(500).json({ success: false, error: 'Failed to list expenses' });
     }
   }
@@ -95,6 +97,7 @@ router.get(
 
       res.json({ success: true, data: expense });
     } catch (err) {
+      logger.error('Failed to get expense', err);
       res.status(500).json({ success: false, error: 'Failed to get expense' });
     }
   }
@@ -135,6 +138,7 @@ router.post(
 
       res.status(201).json({ success: true, data: expense });
     } catch (err) {
+      logger.error('Failed to create expense', err);
       res.status(500).json({ success: false, error: 'Failed to create expense' });
     }
   }
@@ -186,6 +190,7 @@ router.put(
 
       res.json({ success: true, data: updated });
     } catch (err) {
+      logger.error('Failed to update expense', err);
       res.status(500).json({ success: false, error: 'Failed to update expense' });
     }
   }
@@ -219,6 +224,7 @@ router.delete(
 
       res.json({ success: true, message: 'Expense deleted' });
     } catch (err) {
+      logger.error('Failed to delete expense', err);
       res.status(500).json({ success: false, error: 'Failed to delete expense' });
     }
   }

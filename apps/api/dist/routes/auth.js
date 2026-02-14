@@ -10,6 +10,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const crypto_1 = __importDefault(require("crypto"));
 const zod_1 = require("zod");
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
@@ -18,7 +19,23 @@ const db_1 = __importDefault(require("../db"));
 const config_1 = require("../config");
 const middleware_1 = require("../middleware");
 const logger_1 = require("../logger");
+const subscription_service_1 = require("../services/subscription.service");
 const router = (0, express_1.Router)();
+// ── Timing-safe string comparison helper ────────────────────
+function timingSafeCompare(a, b) {
+    if (!a || !b)
+        return false;
+    try {
+        const bufA = Buffer.from(a, 'utf-8');
+        const bufB = Buffer.from(b, 'utf-8');
+        if (bufA.length !== bufB.length)
+            return false;
+        return crypto_1.default.timingSafeEqual(bufA, bufB);
+    }
+    catch {
+        return false;
+    }
+}
 // ── Multer for avatar uploads ───────────────────────────────
 const avatarStorage = multer_1.default.diskStorage({
     destination: (_req, _file, cb) => {
@@ -59,7 +76,7 @@ const loginSchema = zod_1.z.object({
 // ── Helpers ─────────────────────────────────────────────────
 function generateTokens(userId, email, globalRole) {
     const accessToken = jsonwebtoken_1.default.sign({ userId, email, globalRole }, config_1.config.jwt.secret, { expiresIn: config_1.config.jwt.expiresIn });
-    const refreshToken = jsonwebtoken_1.default.sign({ userId, type: 'refresh' }, config_1.config.jwt.secret, { expiresIn: config_1.config.jwt.refreshExpiresIn });
+    const refreshToken = jsonwebtoken_1.default.sign({ userId, type: 'refresh' }, config_1.config.jwt.refreshSecret, { expiresIn: config_1.config.jwt.refreshExpiresIn });
     return { accessToken, refreshToken };
 }
 // ── Register ────────────────────────────────────────────────
@@ -100,24 +117,31 @@ router.post('/register', (0, middleware_1.validate)(registerSchema), async (req,
                 .where({ user_id: user.id, organization_id: org.id })
                 .first();
             if (!existingMembership) {
-                await (0, db_1.default)('memberships').insert({
-                    user_id: user.id,
-                    organization_id: org.id,
-                    role: 'member',
-                    is_active: true,
-                    joined_at: db_1.default.fn.now(),
-                });
-                // Add to general channel if it exists
-                const generalChannel = await (0, db_1.default)('channels')
-                    .where({ organization_id: org.id, name: 'General' })
-                    .first();
-                if (generalChannel) {
-                    await (0, db_1.default)('channel_members').insert({
-                        channel_id: generalChannel.id,
-                        user_id: user.id,
-                    }).onConflict(['channel_id', 'user_id']).ignore();
+                // Check member limit before auto-joining
+                const { allowed, current, max } = await (0, subscription_service_1.checkMemberLimit)(org.id);
+                if (!allowed) {
+                    logger_1.logger.warn(`User ${email} cannot auto-join org ${org.slug}: member limit reached (${current}/${max})`);
                 }
-                logger_1.logger.info(`User ${email} auto-joined org ${org.slug}`);
+                else {
+                    await (0, db_1.default)('memberships').insert({
+                        user_id: user.id,
+                        organization_id: org.id,
+                        role: 'member',
+                        is_active: true,
+                        joined_at: db_1.default.fn.now(),
+                    });
+                    // Add to general channel if it exists
+                    const generalChannel = await (0, db_1.default)('channels')
+                        .where({ organization_id: org.id, name: 'General' })
+                        .first();
+                    if (generalChannel) {
+                        await (0, db_1.default)('channel_members').insert({
+                            channel_id: generalChannel.id,
+                            user_id: user.id,
+                        }).onConflict(['channel_id', 'user_id']).ignore();
+                    }
+                    logger_1.logger.info(`User ${email} auto-joined org ${org.slug}`);
+                }
             }
             // Load memberships
             memberships = await (0, db_1.default)('memberships')
@@ -194,29 +218,35 @@ router.post('/login', (0, middleware_1.validate)(loginSchema), async (req, res) 
             try {
                 const defaultOrg = await (0, db_1.default)('organizations').orderBy('created_at', 'asc').first();
                 if (defaultOrg) {
-                    await (0, db_1.default)('memberships').insert({
-                        user_id: user.id,
-                        organization_id: defaultOrg.id,
-                        role: 'member',
-                        is_active: true,
-                        joined_at: db_1.default.fn.now(),
-                    });
-                    // Add to general channel
-                    const generalChannel = await (0, db_1.default)('channels')
-                        .where({ organization_id: defaultOrg.id, name: 'General' })
-                        .first();
-                    if (generalChannel) {
-                        await (0, db_1.default)('channel_members').insert({
-                            channel_id: generalChannel.id,
-                            user_id: user.id,
-                        }).onConflict(['channel_id', 'user_id']).ignore();
+                    const { allowed, current, max } = await (0, subscription_service_1.checkMemberLimit)(defaultOrg.id);
+                    if (!allowed) {
+                        logger_1.logger.warn(`User ${email} cannot auto-join org ${defaultOrg.slug} on login: member limit reached (${current}/${max})`);
                     }
-                    logger_1.logger.info(`User ${email} auto-joined default org ${defaultOrg.slug} on login`);
-                    // Reload memberships
-                    memberships = await (0, db_1.default)('memberships')
-                        .join('organizations', 'memberships.organization_id', 'organizations.id')
-                        .where({ 'memberships.user_id': user.id, 'memberships.is_active': true })
-                        .select('memberships.id', 'memberships.role', 'organizations.id as organizationId', 'organizations.name as organizationName', 'organizations.slug as organizationSlug');
+                    else {
+                        await (0, db_1.default)('memberships').insert({
+                            user_id: user.id,
+                            organization_id: defaultOrg.id,
+                            role: 'member',
+                            is_active: true,
+                            joined_at: db_1.default.fn.now(),
+                        });
+                        // Add to general channel
+                        const generalChannel = await (0, db_1.default)('channels')
+                            .where({ organization_id: defaultOrg.id, name: 'General' })
+                            .first();
+                        if (generalChannel) {
+                            await (0, db_1.default)('channel_members').insert({
+                                channel_id: generalChannel.id,
+                                user_id: user.id,
+                            }).onConflict(['channel_id', 'user_id']).ignore();
+                        }
+                        logger_1.logger.info(`User ${email} auto-joined default org ${defaultOrg.slug} on login`);
+                        // Reload memberships
+                        memberships = await (0, db_1.default)('memberships')
+                            .join('organizations', 'memberships.organization_id', 'organizations.id')
+                            .where({ 'memberships.user_id': user.id, 'memberships.is_active': true })
+                            .select('memberships.id', 'memberships.role', 'organizations.id as organizationId', 'organizations.name as organizationName', 'organizations.slug as organizationSlug');
+                    }
                 }
             }
             catch (autoJoinErr) {
@@ -253,7 +283,7 @@ router.post('/refresh', async (req, res) => {
             res.status(400).json({ success: false, error: 'Refresh token required' });
             return;
         }
-        const payload = jsonwebtoken_1.default.verify(refreshToken, config_1.config.jwt.secret);
+        const payload = jsonwebtoken_1.default.verify(refreshToken, config_1.config.jwt.refreshSecret);
         if (payload.type !== 'refresh') {
             res.status(401).json({ success: false, error: 'Invalid token type' });
             return;
@@ -262,6 +292,14 @@ router.post('/refresh', async (req, res) => {
         if (!user) {
             res.status(401).json({ success: false, error: 'User not found' });
             return;
+        }
+        // Reject refresh tokens issued before password change
+        if (user.password_changed_at && payload.iat) {
+            const changedAt = Math.floor(new Date(user.password_changed_at).getTime() / 1000);
+            if (payload.iat < changedAt) {
+                res.status(401).json({ success: false, error: 'Token invalidated — please log in again' });
+                return;
+            }
         }
         const tokens = generateTokens(user.id, user.email, user.global_role);
         res.json({ success: true, data: tokens });
@@ -298,9 +336,20 @@ router.get('/me', middleware_1.authenticate, async (req, res) => {
     }
 });
 // ── Update Profile ──────────────────────────────────────────
+const profileUpdateSchema = zod_1.z.object({
+    firstName: zod_1.z.string().min(1).max(100).optional(),
+    lastName: zod_1.z.string().min(1).max(100).optional(),
+    phone: zod_1.z.string().max(30).optional().nullable(),
+    avatarUrl: zod_1.z.string().url().max(500).optional().nullable(),
+}).strict();
 router.put('/me', middleware_1.authenticate, async (req, res) => {
     try {
-        const { firstName, lastName, phone, avatarUrl } = req.body;
+        const parsed = profileUpdateSchema.safeParse(req.body);
+        if (!parsed.success) {
+            res.status(400).json({ success: false, error: 'Invalid input', details: parsed.error.flatten() });
+            return;
+        }
+        const { firstName, lastName, phone, avatarUrl } = parsed.data;
         const updates = {};
         if (firstName)
             updates.first_name = firstName;
@@ -359,7 +408,7 @@ router.post('/forgot-password', (0, middleware_1.validate)(forgotPasswordSchema)
             return;
         }
         // Generate a 6-digit reset code
-        const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const resetCode = crypto_1.default.randomInt(100000, 999999).toString();
         const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
         // Store reset code in DB (use a simple column approach)
         await (0, db_1.default)('users').where({ id: user.id }).update({
@@ -415,7 +464,7 @@ router.post('/reset-password', (0, middleware_1.validate)(resetPasswordSchema), 
     try {
         const { email, code, newPassword } = req.body;
         const user = await (0, db_1.default)('users').where({ email, is_active: true }).first();
-        if (!user || user.reset_code !== code) {
+        if (!user || !user.reset_code || !timingSafeCompare(user.reset_code, code)) {
             res.status(400).json({ success: false, error: 'Invalid or expired reset code' });
             return;
         }
@@ -428,6 +477,7 @@ router.post('/reset-password', (0, middleware_1.validate)(resetPasswordSchema), 
             password_hash: passwordHash,
             reset_code: null,
             reset_code_expires_at: null,
+            password_changed_at: new Date(),
         });
         await (0, middleware_1.writeAuditLog)({
             userId: user.id,
@@ -457,7 +507,7 @@ router.post('/send-verification', middleware_1.authenticate, async (req, res) =>
             res.json({ success: true, message: 'Email is already verified' });
             return;
         }
-        const verifyCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const verifyCode = crypto_1.default.randomInt(100000, 999999).toString();
         const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
         await (0, db_1.default)('users').where({ id: user.id }).update({
             verification_code: verifyCode,
@@ -507,7 +557,7 @@ router.post('/verify-email', middleware_1.authenticate, (0, middleware_1.validat
             res.json({ success: true, message: 'Email is already verified' });
             return;
         }
-        if (user.verification_code !== code) {
+        if (!timingSafeCompare(user.verification_code || '', code)) {
             res.status(400).json({ success: false, error: 'Invalid verification code' });
             return;
         }
@@ -545,8 +595,13 @@ router.put('/change-password', middleware_1.authenticate, (0, middleware_1.valid
             return;
         }
         const passwordHash = await bcryptjs_1.default.hash(newPassword, 12);
-        await (0, db_1.default)('users').where({ id: user.id }).update({ password_hash: passwordHash });
-        res.json({ success: true, message: 'Password changed successfully' });
+        await (0, db_1.default)('users').where({ id: user.id }).update({
+            password_hash: passwordHash,
+            password_changed_at: new Date(),
+        });
+        // Generate new tokens so the user stays logged in with fresh tokens
+        const tokens = generateTokens(user.id, user.email, user.global_role);
+        res.json({ success: true, message: 'Password changed successfully', data: tokens });
     }
     catch (err) {
         res.status(500).json({ success: false, error: 'Failed to change password' });

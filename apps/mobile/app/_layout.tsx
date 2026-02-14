@@ -30,10 +30,7 @@ export default function RootLayout() {
   const loadUser = useAuthStore((s) => s.loadUser);
 
   useEffect(() => {
-    loadUser().then(() => {
-    }).catch(err => {
-      console.error('[RootLayout] loadUser error:', err);
-    });
+    loadUser().catch(() => {});
   }, []);
 
   const content = (

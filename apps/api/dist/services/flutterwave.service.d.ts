@@ -47,6 +47,7 @@ declare class FlutterwaveService {
     }>;
     /**
      * Validate a Flutterwave webhook request.
+     * Checks the verif-hash header using timing-safe comparison against the configured webhook hash.
      */
     validateWebhook(secretHash: string): boolean;
 }

@@ -30,6 +30,15 @@ async function authenticate(req, res, next) {
             res.status(401).json({ success: false, error: 'User not found or deactivated' });
             return;
         }
+        // Check if password was changed after this token was issued
+        if (user.password_changed_at && payload.iat) {
+            const changedAt = Math.floor(new Date(user.password_changed_at).getTime() / 1000);
+            if (payload.iat < changedAt) {
+                logger_1.logger.warn('[AUTH] Token issued before password change', { userId: payload.userId });
+                res.status(401).json({ success: false, error: 'Token invalidated — please log in again' });
+                return;
+            }
+        }
         logger_1.logger.debug('[AUTH] Authenticated', { userId: payload.userId, email: payload.email, role: payload.globalRole, path: req.originalUrl });
         req.user = payload;
         next();

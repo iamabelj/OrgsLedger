@@ -33,17 +33,17 @@ export async function getPlanBySlug(slug: string) {
 
 export function getPlanPrice(plan: any, currency: 'USD' | 'NGN', cycle: 'annual' | 'monthly' = 'annual'): number {
   let price: number;
+  const parse = (v: any) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
   if (currency === 'NGN') {
     price = cycle === 'monthly'
-      ? parseFloat(plan.price_ngn_monthly) || (parseFloat(plan.price_ngn_annual) || 0) / 12
-      : parseFloat(plan.price_ngn_annual) || 0;
+      ? (parse(plan.price_ngn_monthly) ?? (parse(plan.price_ngn_annual) ?? 0) / 12)
+      : (parse(plan.price_ngn_annual) ?? 0);
   } else {
     price = cycle === 'monthly'
-      ? parseFloat(plan.price_usd_monthly) || (parseFloat(plan.price_usd_annual) || 0) / 12
-      : parseFloat(plan.price_usd_annual) || 0;
+      ? (parse(plan.price_usd_monthly) ?? (parse(plan.price_usd_annual) ?? 0) / 12)
+      : (parse(plan.price_usd_annual) ?? 0);
   }
-  // Guard against NaN from null/undefined fields
-  return isNaN(price) ? 0 : Math.round(price * 100) / 100;
+  return Math.round(price * 100) / 100;
 }
 
 // ── Member Limit Check ────────────────────────────────────

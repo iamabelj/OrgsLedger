@@ -17,11 +17,35 @@ const middleware_1 = require("../middleware");
 const config_1 = require("../config");
 const logger_1 = require("../logger");
 const router = (0, express_1.Router)();
-// ── Channel Ownership Helper ────────────────────────────────
+// ── Channel Ownership + Membership Helper ───────────────────
 async function verifyChannelOwnership(channelId, orgId, res) {
     const channel = await (0, db_1.default)('channels').where({ id: channelId, organization_id: orgId }).first();
     if (!channel) {
         res.status(404).json({ success: false, error: 'Channel not found in this organization' });
+        return false;
+    }
+    return true;
+}
+/**
+ * Verify user has access to a channel.
+ * General/announcement channels are open to all org members.
+ * Other channels require explicit channel_members entry.
+ */
+async function verifyChannelAccess(channelId, orgId, userId, res) {
+    const channel = await (0, db_1.default)('channels').where({ id: channelId, organization_id: orgId }).first();
+    if (!channel) {
+        res.status(404).json({ success: false, error: 'Channel not found in this organization' });
+        return false;
+    }
+    // General and announcement channels are open to all org members
+    if (['general', 'announcement'].includes(channel.type))
+        return true;
+    // Private/committee/direct channels require membership
+    const membership = await (0, db_1.default)('channel_members')
+        .where({ channel_id: channelId, user_id: userId })
+        .first();
+    if (!membership) {
+        res.status(403).json({ success: false, error: 'Not a member of this channel' });
         return false;
     }
     return true;
@@ -128,7 +152,7 @@ router.post('/:orgId/channels', middleware_1.authenticate, middleware_1.loadMemb
 // ── Get Messages (with threads) ─────────────────────────────
 router.get('/:orgId/channels/:channelId/messages', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
-        if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res)))
+        if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user.userId, res)))
             return;
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 50;
@@ -199,7 +223,7 @@ router.post('/:orgId/channels/:channelId/mark-read', middleware_1.authenticate, 
 // ── Send Message ────────────────────────────────────────────
 router.post('/:orgId/channels/:channelId/messages', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.validate)(sendMessageSchema), async (req, res) => {
     try {
-        if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res)))
+        if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user.userId, res)))
             return;
         const { content, threadId, attachmentIds } = req.body;
         const [message] = await (0, db_1.default)('messages')
