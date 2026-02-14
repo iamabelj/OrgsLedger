@@ -1,14 +1,14 @@
-export declare const getOrgSubscription: any;
-export declare const getAiWallet: any;
-export declare const getTranslationWallet: any;
-export declare const deductAiWallet: any;
-export declare const deductTranslationWallet: any;
-export declare const getPlans: any;
-export declare const getPlanById: any;
-export declare const getPlanBySlug: any;
-export declare const getPlanPrice: any;
-export declare const isNigeria: any;
-export declare const getCurrency: any;
-export declare const topUpAiWallet: any;
-export declare const topUpTranslationWallet: any;
+export declare const getOrgSubscription: jest.Mock<any, any, any>;
+export declare const getAiWallet: jest.Mock<any, any, any>;
+export declare const getTranslationWallet: jest.Mock<any, any, any>;
+export declare const deductAiWallet: jest.Mock<any, any, any>;
+export declare const deductTranslationWallet: jest.Mock<any, any, any>;
+export declare const getPlans: jest.Mock<any, any, any>;
+export declare const getPlanById: jest.Mock<any, any, any>;
+export declare const getPlanBySlug: jest.Mock<any, any, any>;
+export declare const getPlanPrice: jest.Mock<any, any, any>;
+export declare const isNigeria: jest.Mock<any, any, any>;
+export declare const getCurrency: jest.Mock<any, any, any>;
+export declare const topUpAiWallet: jest.Mock<any, any, any>;
+export declare const topUpTranslationWallet: jest.Mock<any, any, any>;
 //# sourceMappingURL=subscription.service.d.ts.map
