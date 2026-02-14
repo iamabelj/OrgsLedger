@@ -17,6 +17,15 @@ const middleware_1 = require("../middleware");
 const config_1 = require("../config");
 const logger_1 = require("../logger");
 const router = (0, express_1.Router)();
+// ── Channel Ownership Helper ────────────────────────────────
+async function verifyChannelOwnership(channelId, orgId, res) {
+    const channel = await (0, db_1.default)('channels').where({ id: channelId, organization_id: orgId }).first();
+    if (!channel) {
+        res.status(404).json({ success: false, error: 'Channel not found in this organization' });
+        return false;
+    }
+    return true;
+}
 // ── Multer config ───────────────────────────────────────────
 const storage = multer_1.default.diskStorage({
     destination: (_req, _file, cb) => {
@@ -52,7 +61,7 @@ const sendMessageSchema = zod_1.z.object({
     attachmentIds: zod_1.z.array(zod_1.z.string().uuid()).optional(),
 });
 // ── List Channels ───────────────────────────────────────────
-router.get('/:orgId/channels', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/channels', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const userId = req.user.userId;
         const channelData = await (0, db_1.default)('channels')
@@ -80,7 +89,7 @@ router.get('/:orgId/channels', middleware_1.authenticate, middleware_1.loadMembe
     }
 });
 // ── Create Channel ──────────────────────────────────────────
-router.post('/:orgId/channels', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createChannelSchema), async (req, res) => {
+router.post('/:orgId/channels', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createChannelSchema), async (req, res) => {
     try {
         const { name, type, description, memberIds, committeeId } = req.body;
         const [channel] = await (0, db_1.default)('channels')
@@ -117,8 +126,10 @@ router.post('/:orgId/channels', middleware_1.authenticate, middleware_1.loadMemb
     }
 });
 // ── Get Messages (with threads) ─────────────────────────────
-router.get('/:orgId/channels/:channelId/messages', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/channels/:channelId/messages', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
+        if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res)))
+            return;
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 50;
         const before = req.query.before; // cursor-based pagination
@@ -163,8 +174,10 @@ router.get('/:orgId/channels/:channelId/messages', middleware_1.authenticate, mi
     }
 });
 // ── Mark Channel as Read (explicit) ─────────────────────────
-router.post('/:orgId/channels/:channelId/mark-read', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.post('/:orgId/channels/:channelId/mark-read', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
+        if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res)))
+            return;
         await (0, db_1.default)('channel_members')
             .where({ channel_id: req.params.channelId, user_id: req.user.userId })
             .update({ last_read_at: db_1.default.fn.now() });
@@ -184,8 +197,10 @@ router.post('/:orgId/channels/:channelId/mark-read', middleware_1.authenticate, 
     }
 });
 // ── Send Message ────────────────────────────────────────────
-router.post('/:orgId/channels/:channelId/messages', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.validate)(sendMessageSchema), async (req, res) => {
+router.post('/:orgId/channels/:channelId/messages', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.validate)(sendMessageSchema), async (req, res) => {
     try {
+        if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res)))
+            return;
         const { content, threadId, attachmentIds } = req.body;
         const [message] = await (0, db_1.default)('messages')
             .insert({
@@ -231,8 +246,10 @@ router.post('/:orgId/channels/:channelId/messages', middleware_1.authenticate, m
     }
 });
 // ── Get Thread Replies ──────────────────────────────────────
-router.get('/:orgId/channels/:channelId/messages/:messageId/thread', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/channels/:channelId/messages/:messageId/thread', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
+        if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res)))
+            return;
         const replies = await (0, db_1.default)('messages')
             .join('users', 'messages.sender_id', 'users.id')
             .where({
@@ -248,7 +265,7 @@ router.get('/:orgId/channels/:channelId/messages/:messageId/thread', middleware_
     }
 });
 // ── Search Messages ─────────────────────────────────────────
-router.get('/:orgId/messages/search', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/messages/search', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const query = req.query.q;
         if (!query || query.length < 2) {
@@ -280,8 +297,10 @@ router.get('/:orgId/messages/search', middleware_1.authenticate, middleware_1.lo
     }
 });
 // ── Edit Message ────────────────────────────────────────────
-router.put('/:orgId/channels/:channelId/messages/:messageId', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.put('/:orgId/channels/:channelId/messages/:messageId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
+        if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res)))
+            return;
         const message = await (0, db_1.default)('messages')
             .where({ id: req.params.messageId, sender_id: req.user.userId })
             .first();
@@ -306,8 +325,10 @@ router.put('/:orgId/channels/:channelId/messages/:messageId', middleware_1.authe
     }
 });
 // ── Delete Message ──────────────────────────────────────────
-router.delete('/:orgId/channels/:channelId/messages/:messageId', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.delete('/:orgId/channels/:channelId/messages/:messageId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
+        if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res)))
+            return;
         const message = await (0, db_1.default)('messages')
             .where({ id: req.params.messageId })
             .first();
@@ -337,8 +358,10 @@ router.delete('/:orgId/channels/:channelId/messages/:messageId', middleware_1.au
     }
 });
 // ── Upload Attachment ───────────────────────────────────────
-router.post('/:orgId/channels/:channelId/upload', middleware_1.authenticate, middleware_1.loadMembership, upload.array('files', 5), async (req, res) => {
+router.post('/:orgId/channels/:channelId/upload', middleware_1.authenticate, middleware_1.loadMembershipAndSub, upload.array('files', 5), async (req, res) => {
     try {
+        if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res)))
+            return;
         const files = req.files;
         if (!files || !files.length) {
             res.status(400).json({ success: false, error: 'No files uploaded' });

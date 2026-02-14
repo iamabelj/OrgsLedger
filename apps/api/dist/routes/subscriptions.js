@@ -133,7 +133,7 @@ router.post('/invite/:code/join', middleware_1.authenticate, async (req, res) =>
 // ORG-SCOPED ROUTES (authenticated)
 // ════════════════════════════════════════════════════════════
 // GET /:orgId/subscription
-router.get('/:orgId/subscription', middleware_1.authenticate, async (req, res) => {
+router.get('/:orgId/subscription', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
     try {
         const sub = await subSvc.getOrgSubscription(req.params.orgId);
         if (!sub) {
@@ -149,7 +149,7 @@ router.get('/:orgId/subscription', middleware_1.authenticate, async (req, res) =
     }
 });
 // POST /:orgId/subscribe
-router.post('/:orgId/subscribe', middleware_1.authenticate, (0, middleware_1.validate)(subscribeSchema), async (req, res) => {
+router.post('/:orgId/subscribe', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), (0, middleware_1.validate)(subscribeSchema), async (req, res) => {
     try {
         const { planSlug, billingCycle, billingCountry, paymentGateway, paymentReference } = req.body;
         const plan = await subSvc.getPlanBySlug(planSlug);
@@ -176,7 +176,7 @@ router.post('/:orgId/subscribe', middleware_1.authenticate, (0, middleware_1.val
     }
 });
 // POST /:orgId/renew
-router.post('/:orgId/renew', middleware_1.authenticate, async (req, res) => {
+router.post('/:orgId/renew', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
         const sub = await subSvc.getOrgSubscription(req.params.orgId);
         if (!sub) {
@@ -201,7 +201,7 @@ router.post('/:orgId/renew', middleware_1.authenticate, async (req, res) => {
 });
 // ── Wallets ─────────────────────────────────────────────────
 // GET /:orgId/wallets — combined
-router.get('/:orgId/wallets', middleware_1.authenticate, async (req, res) => {
+router.get('/:orgId/wallets', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
     try {
         const [ai, translation] = await Promise.all([
             subSvc.getAiWallet(req.params.orgId),
@@ -215,7 +215,7 @@ router.get('/:orgId/wallets', middleware_1.authenticate, async (req, res) => {
     }
 });
 // GET /:orgId/wallet/ai
-router.get('/:orgId/wallet/ai', middleware_1.authenticate, async (req, res) => {
+router.get('/:orgId/wallet/ai', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
     try {
         const wallet = await subSvc.getAiWallet(req.params.orgId);
         res.json({ success: true, data: wallet });
@@ -225,7 +225,7 @@ router.get('/:orgId/wallet/ai', middleware_1.authenticate, async (req, res) => {
     }
 });
 // GET /:orgId/wallet/translation
-router.get('/:orgId/wallet/translation', middleware_1.authenticate, async (req, res) => {
+router.get('/:orgId/wallet/translation', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
     try {
         const wallet = await subSvc.getTranslationWallet(req.params.orgId);
         res.json({ success: true, data: wallet });
@@ -235,7 +235,7 @@ router.get('/:orgId/wallet/translation', middleware_1.authenticate, async (req, 
     }
 });
 // POST /:orgId/wallet/ai/topup
-router.post('/:orgId/wallet/ai/topup', middleware_1.authenticate, (0, middleware_1.validate)(topUpSchema), async (req, res) => {
+router.post('/:orgId/wallet/ai/topup', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), (0, middleware_1.validate)(topUpSchema), async (req, res) => {
     try {
         const { hours, paymentGateway, paymentReference } = req.body;
         const org = await (0, db_1.default)('organizations').where({ id: req.params.orgId }).select('billing_currency').first();
@@ -259,7 +259,7 @@ router.post('/:orgId/wallet/ai/topup', middleware_1.authenticate, (0, middleware
     }
 });
 // POST /:orgId/wallet/translation/topup
-router.post('/:orgId/wallet/translation/topup', middleware_1.authenticate, (0, middleware_1.validate)(topUpSchema), async (req, res) => {
+router.post('/:orgId/wallet/translation/topup', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), (0, middleware_1.validate)(topUpSchema), async (req, res) => {
     try {
         const { hours, paymentGateway, paymentReference } = req.body;
         const org = await (0, db_1.default)('organizations').where({ id: req.params.orgId }).select('billing_currency').first();
@@ -283,7 +283,7 @@ router.post('/:orgId/wallet/translation/topup', middleware_1.authenticate, (0, m
     }
 });
 // GET /:orgId/wallet/ai/history
-router.get('/:orgId/wallet/ai/history', middleware_1.authenticate, async (req, res) => {
+router.get('/:orgId/wallet/ai/history', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
     try {
         const limit = parseInt(req.query.limit) || 50;
         const offset = parseInt(req.query.offset) || 0;
@@ -295,7 +295,7 @@ router.get('/:orgId/wallet/ai/history', middleware_1.authenticate, async (req, r
     }
 });
 // GET /:orgId/wallet/translation/history
-router.get('/:orgId/wallet/translation/history', middleware_1.authenticate, async (req, res) => {
+router.get('/:orgId/wallet/translation/history', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
     try {
         const limit = parseInt(req.query.limit) || 50;
         const offset = parseInt(req.query.offset) || 0;
@@ -308,7 +308,7 @@ router.get('/:orgId/wallet/translation/history', middleware_1.authenticate, asyn
 });
 // ── Invite Links ────────────────────────────────────────────
 // POST /:orgId/invite
-router.post('/:orgId/invite', middleware_1.authenticate, (0, middleware_1.validate)(createInviteSchema), async (req, res) => {
+router.post('/:orgId/invite', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), (0, middleware_1.validate)(createInviteSchema), async (req, res) => {
     try {
         const { role, maxUses, expiresAt } = req.body;
         const invite = await subSvc.createInviteLink(req.params.orgId, req.user.userId, role || 'member', maxUses || 50, expiresAt);
@@ -320,7 +320,7 @@ router.post('/:orgId/invite', middleware_1.authenticate, (0, middleware_1.valida
     }
 });
 // GET /:orgId/invites
-router.get('/:orgId/invites', middleware_1.authenticate, async (req, res) => {
+router.get('/:orgId/invites', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
     try {
         const invites = await (0, db_1.default)('invite_links')
             .where({ organization_id: req.params.orgId })
@@ -332,7 +332,7 @@ router.get('/:orgId/invites', middleware_1.authenticate, async (req, res) => {
     }
 });
 // DELETE /:orgId/invite/:inviteId
-router.delete('/:orgId/invite/:inviteId', middleware_1.authenticate, async (req, res) => {
+router.delete('/:orgId/invite/:inviteId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
         await (0, db_1.default)('invite_links').where({ id: req.params.inviteId, organization_id: req.params.orgId }).del();
         res.json({ success: true });
@@ -345,7 +345,7 @@ router.delete('/:orgId/invite/:inviteId', middleware_1.authenticate, async (req,
 // SUPER ADMIN ROUTES
 // ════════════════════════════════════════════════════════════
 // GET /admin/revenue
-router.get('/admin/revenue', middleware_1.authenticate, middleware_1.requireSuperAdmin, async (_req, res) => {
+router.get('/admin/revenue', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (_req, res) => {
     try {
         const revenue = await subSvc.getPlatformRevenue();
         res.json({ success: true, data: revenue });
@@ -356,7 +356,7 @@ router.get('/admin/revenue', middleware_1.authenticate, middleware_1.requireSupe
     }
 });
 // GET /admin/subscriptions
-router.get('/admin/subscriptions', middleware_1.authenticate, middleware_1.requireSuperAdmin, async (req, res) => {
+router.get('/admin/subscriptions', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (req, res) => {
     try {
         const limit = parseInt(req.query.limit) || 100;
         const offset = parseInt(req.query.offset) || 0;
@@ -375,7 +375,7 @@ router.get('/admin/subscriptions', middleware_1.authenticate, middleware_1.requi
     }
 });
 // GET /admin/organizations — list all orgs with subscription + wallet info
-router.get('/admin/organizations', middleware_1.authenticate, middleware_1.requireSuperAdmin, async (_req, res) => {
+router.get('/admin/organizations', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (_req, res) => {
     try {
         const orgs = await (0, db_1.default)('organizations')
             .leftJoin('subscriptions', function () {
@@ -407,7 +407,7 @@ router.get('/admin/organizations', middleware_1.authenticate, middleware_1.requi
     }
 });
 // POST /admin/wallet/ai/adjust
-router.post('/admin/wallet/ai/adjust', middleware_1.authenticate, middleware_1.requireSuperAdmin, (0, middleware_1.validate)(adjustWalletSchema), async (req, res) => {
+router.post('/admin/wallet/ai/adjust', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), (0, middleware_1.validate)(adjustWalletSchema), async (req, res) => {
     try {
         const { organizationId, hours, description } = req.body;
         const minutes = hours * 60;
@@ -420,7 +420,7 @@ router.post('/admin/wallet/ai/adjust', middleware_1.authenticate, middleware_1.r
     }
 });
 // POST /admin/wallet/translation/adjust
-router.post('/admin/wallet/translation/adjust', middleware_1.authenticate, middleware_1.requireSuperAdmin, (0, middleware_1.validate)(adjustWalletSchema), async (req, res) => {
+router.post('/admin/wallet/translation/adjust', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), (0, middleware_1.validate)(adjustWalletSchema), async (req, res) => {
     try {
         const { organizationId, hours, description } = req.body;
         const minutes = hours * 60;
@@ -433,7 +433,7 @@ router.post('/admin/wallet/translation/adjust', middleware_1.authenticate, middl
     }
 });
 // POST /admin/org/status — suspend or activate
-router.post('/admin/org/status', middleware_1.authenticate, middleware_1.requireSuperAdmin, (0, middleware_1.validate)(orgStatusSchema), async (req, res) => {
+router.post('/admin/org/status', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), (0, middleware_1.validate)(orgStatusSchema), async (req, res) => {
     try {
         const { organizationId, action, reason } = req.body;
         const newStatus = action === 'suspend' ? 'suspended' : 'active';
@@ -457,7 +457,7 @@ router.post('/admin/org/status', middleware_1.authenticate, middleware_1.require
     }
 });
 // POST /admin/subscription/override
-router.post('/admin/subscription/override', middleware_1.authenticate, middleware_1.requireSuperAdmin, (0, middleware_1.validate)(overrideSchema), async (req, res) => {
+router.post('/admin/subscription/override', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), (0, middleware_1.validate)(overrideSchema), async (req, res) => {
     try {
         const { organizationId, planSlug, status, periodEnd } = req.body;
         const updates = {};
@@ -489,7 +489,7 @@ router.post('/admin/subscription/override', middleware_1.authenticate, middlewar
     }
 });
 // GET /admin/wallet-analytics
-router.get('/admin/wallet-analytics', middleware_1.authenticate, middleware_1.requireSuperAdmin, async (_req, res) => {
+router.get('/admin/wallet-analytics', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (_req, res) => {
     try {
         // AI wallet totals
         const aiStats = await (0, db_1.default)('ai_wallet')
@@ -525,7 +525,7 @@ router.get('/admin/wallet-analytics', middleware_1.authenticate, middleware_1.re
     }
 });
 // GET /admin/plans
-router.get('/admin/plans', middleware_1.authenticate, middleware_1.requireSuperAdmin, async (_req, res) => {
+router.get('/admin/plans', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (_req, res) => {
     try {
         const plans = await (0, db_1.default)('subscription_plans').orderBy('sort_order', 'asc');
         res.json({ success: true, data: plans });
@@ -535,7 +535,7 @@ router.get('/admin/plans', middleware_1.authenticate, middleware_1.requireSuperA
     }
 });
 // PUT /admin/plans/:planId
-router.put('/admin/plans/:planId', middleware_1.authenticate, middleware_1.requireSuperAdmin, async (req, res) => {
+router.put('/admin/plans/:planId', middleware_1.authenticate, (0, middleware_1.requireSuperAdmin)(), async (req, res) => {
     try {
         const allowed = ['name', 'description', 'price_usd_annual', 'price_usd_monthly', 'price_ngn_annual', 'price_ngn_monthly', 'max_members', 'features', 'is_active', 'sort_order'];
         const updates = {};

@@ -29,7 +29,7 @@ const addMemberSchema = zod_1.z.object({
     userId: zod_1.z.string().uuid(),
 });
 // ── List Committees ─────────────────────────────────────────
-router.get('/:orgId/committees', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/committees', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const rows = await (0, db_1.default)('committees')
             .leftJoin('committee_members as cm', 'committees.id', 'cm.committee_id')
@@ -55,7 +55,7 @@ router.get('/:orgId/committees', middleware_1.authenticate, middleware_1.loadMem
     }
 });
 // ── Get Committee Detail ────────────────────────────────────
-router.get('/:orgId/committees/:committeeId', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/committees/:committeeId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const committee = await (0, db_1.default)('committees')
             .where({ id: req.params.committeeId, organization_id: req.params.orgId })
@@ -95,7 +95,7 @@ router.get('/:orgId/committees/:committeeId', middleware_1.authenticate, middlew
     }
 });
 // ── Create Committee ────────────────────────────────────────
-router.post('/:orgId/committees', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createCommitteeSchema), async (req, res) => {
+router.post('/:orgId/committees', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createCommitteeSchema), async (req, res) => {
     try {
         const { name, description, chairUserId, memberIds } = req.body;
         const [committee] = await (0, db_1.default)('committees')
@@ -153,7 +153,7 @@ router.post('/:orgId/committees', middleware_1.authenticate, middleware_1.loadMe
     }
 });
 // ── Update Committee ────────────────────────────────────────
-router.put('/:orgId/committees/:committeeId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(updateCommitteeSchema), async (req, res) => {
+router.put('/:orgId/committees/:committeeId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(updateCommitteeSchema), async (req, res) => {
     try {
         const { name, description, chairUserId } = req.body;
         const previous = await (0, db_1.default)('committees')
@@ -200,7 +200,7 @@ router.put('/:orgId/committees/:committeeId', middleware_1.authenticate, middlew
     }
 });
 // ── Delete Committee ────────────────────────────────────────
-router.delete('/:orgId/committees/:committeeId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
+router.delete('/:orgId/committees/:committeeId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
         const committee = await (0, db_1.default)('committees')
             .where({ id: req.params.committeeId, organization_id: req.params.orgId })
@@ -230,7 +230,7 @@ router.delete('/:orgId/committees/:committeeId', middleware_1.authenticate, midd
     }
 });
 // ── Add Member to Committee ─────────────────────────────────
-router.post('/:orgId/committees/:committeeId/members', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(addMemberSchema), async (req, res) => {
+router.post('/:orgId/committees/:committeeId/members', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(addMemberSchema), async (req, res) => {
     try {
         const { userId } = req.body;
         // Verify user is an org member
@@ -282,7 +282,7 @@ router.post('/:orgId/committees/:committeeId/members', middleware_1.authenticate
     }
 });
 // ── Remove Member from Committee ────────────────────────────
-router.delete('/:orgId/committees/:committeeId/members/:userId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
+router.delete('/:orgId/committees/:committeeId/members/:userId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
     try {
         await (0, db_1.default)('committee_members')
             .where({

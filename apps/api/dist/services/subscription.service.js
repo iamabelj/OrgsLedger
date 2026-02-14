@@ -203,21 +203,23 @@ async function getTranslationWallet(orgId) {
     return wallet;
 }
 async function topUpAiWallet(params) {
-    await (0, db_1.default)('ai_wallet')
-        .where({ organization_id: params.orgId })
-        .update({
-        balance_minutes: db_1.default.raw('balance_minutes + ?', [params.minutes]),
-        updated_at: db_1.default.fn.now(),
-    });
-    await (0, db_1.default)('ai_wallet_transactions').insert({
-        organization_id: params.orgId,
-        type: 'topup',
-        amount_minutes: params.minutes,
-        cost: params.cost,
-        currency: params.currency,
-        payment_ref: params.paymentRef,
-        payment_gateway: params.paymentGateway,
-        description: `Top-up: ${(params.minutes / 60).toFixed(1)} hours`,
+    await db_1.default.transaction(async (trx) => {
+        await trx('ai_wallet')
+            .where({ organization_id: params.orgId })
+            .update({
+            balance_minutes: trx.raw('balance_minutes + ?', [params.minutes]),
+            updated_at: trx.fn.now(),
+        });
+        await trx('ai_wallet_transactions').insert({
+            organization_id: params.orgId,
+            type: 'topup',
+            amount_minutes: params.minutes,
+            cost: params.cost,
+            currency: params.currency,
+            payment_ref: params.paymentRef,
+            payment_gateway: params.paymentGateway,
+            description: `Top-up: ${(params.minutes / 60).toFixed(1)} hours`,
+        });
     });
     logger_1.logger.info('[WALLET] AI wallet topped up', {
         orgId: params.orgId,
@@ -230,21 +232,23 @@ async function topUpAiWallet(params) {
     return getAiWallet(params.orgId);
 }
 async function topUpTranslationWallet(params) {
-    await (0, db_1.default)('translation_wallet')
-        .where({ organization_id: params.orgId })
-        .update({
-        balance_minutes: db_1.default.raw('balance_minutes + ?', [params.minutes]),
-        updated_at: db_1.default.fn.now(),
-    });
-    await (0, db_1.default)('translation_wallet_transactions').insert({
-        organization_id: params.orgId,
-        type: 'topup',
-        amount_minutes: params.minutes,
-        cost: params.cost,
-        currency: params.currency,
-        payment_ref: params.paymentRef,
-        payment_gateway: params.paymentGateway,
-        description: `Top-up: ${(params.minutes / 60).toFixed(1)} hours`,
+    await db_1.default.transaction(async (trx) => {
+        await trx('translation_wallet')
+            .where({ organization_id: params.orgId })
+            .update({
+            balance_minutes: trx.raw('balance_minutes + ?', [params.minutes]),
+            updated_at: trx.fn.now(),
+        });
+        await trx('translation_wallet_transactions').insert({
+            organization_id: params.orgId,
+            type: 'topup',
+            amount_minutes: params.minutes,
+            cost: params.cost,
+            currency: params.currency,
+            payment_ref: params.paymentRef,
+            payment_gateway: params.paymentGateway,
+            description: `Top-up: ${(params.minutes / 60).toFixed(1)} hours`,
+        });
     });
     logger_1.logger.info('[WALLET] Translation wallet topped up', {
         orgId: params.orgId,
@@ -257,48 +261,68 @@ async function topUpTranslationWallet(params) {
     return getTranslationWallet(params.orgId);
 }
 async function deductAiWallet(orgId, minutes, description) {
-    const wallet = await getAiWallet(orgId);
-    const balanceBefore = parseFloat(wallet.balance_minutes);
-    if (balanceBefore < minutes) {
-        logger_1.logger.warn('[WALLET] AI deduction failed - insufficient balance', { orgId, requested: minutes, available: balanceBefore });
-        return { success: false, error: 'Insufficient AI wallet balance' };
-    }
-    await (0, db_1.default)('ai_wallet')
-        .where({ organization_id: orgId })
-        .update({
-        balance_minutes: db_1.default.raw('balance_minutes - ?', [minutes]),
-        updated_at: db_1.default.fn.now(),
+    return db_1.default.transaction(async (trx) => {
+        // Lock row to prevent concurrent deductions (TOCTOU race)
+        const wallet = await trx('ai_wallet')
+            .where({ organization_id: orgId })
+            .forUpdate()
+            .first();
+        if (!wallet) {
+            logger_1.logger.warn('[WALLET] AI wallet not found', { orgId });
+            return { success: false, error: 'AI wallet not found' };
+        }
+        const balanceBefore = parseFloat(wallet.balance_minutes);
+        if (balanceBefore < minutes) {
+            logger_1.logger.warn('[WALLET] AI deduction failed - insufficient balance', { orgId, requested: minutes, available: balanceBefore });
+            return { success: false, error: 'Insufficient AI wallet balance' };
+        }
+        await trx('ai_wallet')
+            .where({ organization_id: orgId })
+            .update({
+            balance_minutes: trx.raw('balance_minutes - ?', [minutes]),
+            updated_at: trx.fn.now(),
+        });
+        await trx('ai_wallet_transactions').insert({
+            organization_id: orgId,
+            type: 'usage',
+            amount_minutes: -minutes,
+            description: description || `AI usage: ${minutes.toFixed(1)} minutes`,
+        });
+        logger_1.logger.info('[WALLET] AI wallet deducted', { orgId, minutes, balanceBefore, balanceAfter: balanceBefore - minutes, description });
+        return { success: true };
     });
-    await (0, db_1.default)('ai_wallet_transactions').insert({
-        organization_id: orgId,
-        type: 'usage',
-        amount_minutes: -minutes,
-        description: description || `AI usage: ${minutes.toFixed(1)} minutes`,
-    });
-    logger_1.logger.info('[WALLET] AI wallet deducted', { orgId, minutes, balanceBefore, balanceAfter: balanceBefore - minutes, description });
-    return { success: true };
 }
 async function deductTranslationWallet(orgId, minutes, description) {
-    const wallet = await getTranslationWallet(orgId);
-    const balanceBefore = parseFloat(wallet.balance_minutes);
-    if (balanceBefore < minutes) {
-        logger_1.logger.warn('[WALLET] Translation deduction failed - insufficient balance', { orgId, requested: minutes, available: balanceBefore });
-        return { success: false, error: 'Insufficient translation wallet balance' };
-    }
-    await (0, db_1.default)('translation_wallet')
-        .where({ organization_id: orgId })
-        .update({
-        balance_minutes: db_1.default.raw('balance_minutes - ?', [minutes]),
-        updated_at: db_1.default.fn.now(),
+    return db_1.default.transaction(async (trx) => {
+        // Lock row to prevent concurrent deductions (TOCTOU race)
+        const wallet = await trx('translation_wallet')
+            .where({ organization_id: orgId })
+            .forUpdate()
+            .first();
+        if (!wallet) {
+            logger_1.logger.warn('[WALLET] Translation wallet not found', { orgId });
+            return { success: false, error: 'Translation wallet not found' };
+        }
+        const balanceBefore = parseFloat(wallet.balance_minutes);
+        if (balanceBefore < minutes) {
+            logger_1.logger.warn('[WALLET] Translation deduction failed - insufficient balance', { orgId, requested: minutes, available: balanceBefore });
+            return { success: false, error: 'Insufficient translation wallet balance' };
+        }
+        await trx('translation_wallet')
+            .where({ organization_id: orgId })
+            .update({
+            balance_minutes: trx.raw('balance_minutes - ?', [minutes]),
+            updated_at: trx.fn.now(),
+        });
+        await trx('translation_wallet_transactions').insert({
+            organization_id: orgId,
+            type: 'usage',
+            amount_minutes: -minutes,
+            description: description || `Translation usage: ${minutes.toFixed(1)} minutes`,
+        });
+        logger_1.logger.info('[WALLET] Translation wallet deducted', { orgId, minutes, balanceBefore, balanceAfter: balanceBefore - minutes, description });
+        return { success: true };
     });
-    await (0, db_1.default)('translation_wallet_transactions').insert({
-        organization_id: orgId,
-        type: 'usage',
-        amount_minutes: -minutes,
-        description: description || `Translation usage: ${minutes.toFixed(1)} minutes`,
-    });
-    logger_1.logger.info('[WALLET] Translation wallet deducted', { orgId, minutes, balanceBefore, balanceAfter: balanceBefore - minutes, description });
-    return { success: true };
 }
 async function getAiWalletHistory(orgId, limit = 50, offset = 0) {
     return (0, db_1.default)('ai_wallet_transactions')

@@ -71,7 +71,7 @@ const purchaseCreditsSchema = zod_1.z.object({
     credits: zod_1.z.number().int().min(1), // minimum 1 credit (= 1 hour)
 });
 // ── Pay a Transaction ───────────────────────────────────────
-router.post('/:orgId/payments/pay', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.validate)(payTransactionSchema), async (req, res) => {
+router.post('/:orgId/payments/pay', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.validate)(payTransactionSchema), async (req, res) => {
     try {
         const { transactionId, gateway, paymentMethodId } = req.body;
         const transaction = await (0, db_1.default)('transactions')
@@ -338,7 +338,7 @@ async function devModeFallback(req, transaction) {
     });
 }
 // ── Create Stripe Setup Intent ──────────────────────────────
-router.post('/:orgId/payments/setup-intent', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.post('/:orgId/payments/setup-intent', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const stripeClient = await getStripe();
         if (!stripeClient) {
@@ -361,7 +361,7 @@ router.post('/:orgId/payments/setup-intent', middleware_1.authenticate, middlewa
     }
 });
 // ── Request Refund ──────────────────────────────────────────
-router.post('/:orgId/payments/refund', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
+router.post('/:orgId/payments/refund', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
         const { transactionId, amount, reason } = req.body;
         const transaction = await (0, db_1.default)('transactions')
@@ -755,7 +755,7 @@ router.get('/flutterwave/callback', async (req, res) => {
     }
 });
 // ── Available Gateways (org-configurable + bank_transfer) ───
-router.get('/:orgId/payments/gateways', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/payments/gateways', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     let orgMethods = null;
     try {
         const org = await (0, db_1.default)('organizations').where({ id: req.params.orgId }).select('settings').first();
@@ -804,7 +804,7 @@ router.get('/:orgId/payments/gateways', middleware_1.authenticate, middleware_1.
     res.json({ success: true, data: gateways });
 });
 // ── Verify Payment (for mobile to check status after redirect) ──
-router.get('/:orgId/payments/verify/:transactionId', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/payments/verify/:transactionId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const transaction = await (0, db_1.default)('transactions')
             .where({
@@ -835,7 +835,7 @@ router.get('/:orgId/payments/verify/:transactionId', middleware_1.authenticate, 
 // ══════════════════════════════════════════════════════════════
 // AI CREDITS
 // ══════════════════════════════════════════════════════════════
-router.get('/:orgId/ai-credits', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/ai-credits', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const credits = await (0, db_1.default)('ai_credits')
             .where({ organization_id: req.params.orgId })
@@ -859,7 +859,7 @@ router.get('/:orgId/ai-credits', middleware_1.authenticate, middleware_1.loadMem
         res.status(500).json({ success: false, error: 'Failed to get AI credits' });
     }
 });
-router.post('/:orgId/ai-credits/purchase', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), (0, middleware_1.validate)(purchaseCreditsSchema), async (req, res) => {
+router.post('/:orgId/ai-credits/purchase', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), (0, middleware_1.validate)(purchaseCreditsSchema), async (req, res) => {
     try {
         const { credits: creditsToPurchase } = req.body;
         const existingCredits = await (0, db_1.default)('ai_credits')
@@ -923,7 +923,7 @@ router.post('/:orgId/ai-credits/purchase', middleware_1.authenticate, middleware
 // BANK TRANSFER — ADMIN APPROVAL
 // ══════════════════════════════════════════════════════════════
 // List pending bank transfers
-router.get('/:orgId/payments/pending-transfers', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
+router.get('/:orgId/payments/pending-transfers', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
         const transfers = await (0, db_1.default)('transactions')
             .leftJoin('users', 'transactions.user_id', 'users.id')
@@ -941,7 +941,7 @@ router.get('/:orgId/payments/pending-transfers', middleware_1.authenticate, midd
     }
 });
 // Approve or reject bank transfer
-router.post('/:orgId/payments/approve-transfer', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
+router.post('/:orgId/payments/approve-transfer', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
         const { transactionId, approved } = req.body;
         const transaction = await (0, db_1.default)('transactions')
@@ -1017,7 +1017,7 @@ router.post('/:orgId/payments/approve-transfer', middleware_1.authenticate, midd
 // PAYMENT METHOD CONFIGURATION (ORG ADMIN)
 // ══════════════════════════════════════════════════════════════
 // Get org payment methods config
-router.get('/:orgId/payments/methods', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/payments/methods', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const org = await (0, db_1.default)('organizations')
             .where({ id: req.params.orgId })
@@ -1046,7 +1046,7 @@ router.get('/:orgId/payments/methods', middleware_1.authenticate, middleware_1.l
     }
 });
 // Update org payment methods config (admin only)
-router.put('/:orgId/payments/methods', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
+router.put('/:orgId/payments/methods', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
         const { paymentMethods } = req.body;
         const org = await (0, db_1.default)('organizations')

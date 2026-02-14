@@ -5,7 +5,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import db from '../db';
-import { authenticate, loadMembership, requireRole, validate } from '../middleware';
+import { authenticate, loadMembershipAndSub as loadMembership, requireRole, validate } from '../middleware';
 import { logger } from '../logger';
 import { sendPushToOrg } from '../services/push.service';
 

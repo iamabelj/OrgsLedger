@@ -8,7 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
 import db from '../db';
-import { authenticate, loadMembership, requireRole, validate } from '../middleware';
+import { authenticate, loadMembershipAndSub as loadMembership, requireRole, validate } from '../middleware';
 import { logger } from '../logger';
 import { config } from '../config';
 
@@ -112,9 +112,10 @@ router.get(
       if (category) query = query.where({ category });
       if (folderId) query = query.where({ folder_id: folderId });
       if (search) {
+        const escapedSearch = search.replace(/[%_\\]/g, '\\$&');
         query = query.where(function () {
-          this.whereILike('title', `%${search}%`)
-            .orWhereILike('description', `%${search}%`);
+          this.whereILike('title', `%${escapedSearch}%`)
+            .orWhereILike('description', `%${escapedSearch}%`);
         });
       }
 

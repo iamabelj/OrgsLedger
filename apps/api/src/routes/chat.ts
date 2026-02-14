@@ -9,11 +9,21 @@ import multer from 'multer';
 import path from 'path';
 import crypto from 'crypto';
 import db from '../db';
-import { authenticate, loadMembership, requireRole, validate } from '../middleware';
+import { authenticate, loadMembershipAndSub as loadMembership, requireRole, validate } from '../middleware';
 import { config } from '../config';
 import { logger } from '../logger';
 
 const router = Router();
+
+// ── Channel Ownership Helper ────────────────────────────────
+async function verifyChannelOwnership(channelId: string, orgId: string, res: Response): Promise<boolean> {
+  const channel = await db('channels').where({ id: channelId, organization_id: orgId }).first();
+  if (!channel) {
+    res.status(404).json({ success: false, error: 'Channel not found in this organization' });
+    return false;
+  }
+  return true;
+}
 
 // ── Multer config ───────────────────────────────────────────
 const storage = multer.diskStorage({
@@ -146,6 +156,7 @@ router.get(
   loadMembership,
   async (req: Request, res: Response) => {
     try {
+      if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res))) return;
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 50;
       const before = req.query.before as string; // cursor-based pagination
@@ -210,6 +221,7 @@ router.post(
   loadMembership,
   async (req: Request, res: Response) => {
     try {
+      if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res))) return;
       await db('channel_members')
         .where({ channel_id: req.params.channelId, user_id: req.user!.userId })
         .update({ last_read_at: db.fn.now() });
@@ -239,6 +251,7 @@ router.post(
   validate(sendMessageSchema),
   async (req: Request, res: Response) => {
     try {
+      if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res))) return;
       const { content, threadId, attachmentIds } = req.body;
 
       const [message] = await db('messages')
@@ -296,6 +309,7 @@ router.get(
   loadMembership,
   async (req: Request, res: Response) => {
     try {
+      if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res))) return;
       const replies = await db('messages')
         .join('users', 'messages.sender_id', 'users.id')
         .where({
@@ -369,6 +383,7 @@ router.put(
   loadMembership,
   async (req: Request, res: Response) => {
     try {
+      if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res))) return;
       const message = await db('messages')
         .where({ id: req.params.messageId, sender_id: req.user!.userId })
         .first();
@@ -403,6 +418,7 @@ router.delete(
   loadMembership,
   async (req: Request, res: Response) => {
     try {
+      if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res))) return;
       const message = await db('messages')
         .where({ id: req.params.messageId })
         .first();
@@ -446,6 +462,7 @@ router.post(
   upload.array('files', 5),
   async (req: Request, res: Response) => {
     try {
+      if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res))) return;
       const files = req.files as Express.Multer.File[];
       if (!files || !files.length) {
         res.status(400).json({ success: false, error: 'No files uploaded' });

@@ -47,6 +47,7 @@ const logger_1 = require("../logger");
 const audit_1 = require("../middleware/audit");
 const email_service_1 = require("./email.service");
 const push_service_1 = require("./push.service");
+const subscription_service_1 = require("./subscription.service");
 class AIService {
     io;
     constructor(io) {
@@ -66,13 +67,29 @@ class AIService {
             const meeting = await (0, db_1.default)('meetings').where({ id: meetingId }).first();
             if (!meeting)
                 throw new Error('Meeting not found');
-            // Check credits
-            const credits = await (0, db_1.default)('ai_credits')
-                .where({ organization_id: organizationId })
-                .first();
-            if (!credits || credits.total_credits - credits.used_credits <= 0) {
-                logger_1.logger.warn('[AI] Insufficient credits', { meetingId, organizationId, available: credits ? credits.total_credits - credits.used_credits : 0 });
-                throw new Error('Insufficient AI credits');
+            // Check AI wallet balance (use new wallet system)
+            const wallet = await (0, subscription_service_1.getAiWallet)(organizationId);
+            const balance = parseFloat(wallet.balance_minutes);
+            if (balance <= 0) {
+                logger_1.logger.warn('[AI] Insufficient wallet balance', { meetingId, organizationId, available: balance });
+                throw new Error('Insufficient AI wallet balance');
+            }
+            // Calculate meeting duration in minutes (actual, not rounded up to hours)
+            const meetingDurationMinutes = meeting.actual_start && meeting.actual_end
+                ? Math.max(1, Math.ceil((new Date(meeting.actual_end).getTime() - new Date(meeting.actual_start).getTime()) /
+                    (1000 * 60)))
+                : 60; // default 60 minutes
+            // Verify sufficient balance for the meeting duration
+            if (balance < meetingDurationMinutes) {
+                logger_1.logger.warn('[AI] Insufficient wallet minutes for meeting duration', {
+                    meetingId, organizationId, required: meetingDurationMinutes, available: balance,
+                });
+                throw new Error(`Insufficient AI wallet balance. Need ${meetingDurationMinutes} min, have ${balance.toFixed(1)} min`);
+            }
+            // Deduct wallet BEFORE processing to prevent free usage on crash
+            const deduction = await (0, subscription_service_1.deductAiWallet)(organizationId, meetingDurationMinutes, `AI minutes for "${meeting.title}" (${meetingDurationMinutes} min)`);
+            if (!deduction.success) {
+                throw new Error(deduction.error || 'Wallet deduction failed');
             }
             // Step 1: Transcribe audio
             const transcriptStart = Date.now();
@@ -83,10 +100,8 @@ class AIService {
             const minutes = await this.generateMinutes(transcript, meeting);
             logger_1.logger.info('[AI] Summarization complete', { meetingId, durationMs: Date.now() - summarizeStart });
             // Calculate duration in credits (1 credit = 1 hour, rounded up)
-            const meetingDurationCredits = meeting.actual_start && meeting.actual_end
-                ? Math.ceil((new Date(meeting.actual_end).getTime() - new Date(meeting.actual_start).getTime()) /
-                    (1000 * 60 * 60))
-                : 1; // default 1 credit (1 hour)
+            // NOTE: Credits already deducted before processing via deductAiWallet()
+            const meetingDurationCredits = meetingDurationMinutes;
             // Step 3: Store results
             await (0, db_1.default)('meeting_minutes')
                 .where({ meeting_id: meetingId })
@@ -101,25 +116,12 @@ class AIService {
                 status: 'completed',
                 generated_at: db_1.default.fn.now(),
             });
-            // Step 4: Deduct credits (1 credit per hour)
-            await (0, db_1.default)('ai_credits')
-                .where({ organization_id: organizationId })
-                .update({
-                used_credits: db_1.default.raw('used_credits + ?', [meetingDurationCredits]),
-            });
-            logger_1.logger.info('[AI] Credits deducted', {
+            logger_1.logger.info('[AI] Minutes processed and stored', {
                 meetingId,
                 organizationId,
                 creditsUsed: meetingDurationCredits,
                 totalDurationMs: Date.now() - startTime,
                 meetingTitle: meeting.title,
-            });
-            await (0, db_1.default)('ai_credit_transactions').insert({
-                organization_id: organizationId,
-                type: 'usage',
-                amount: -meetingDurationCredits,
-                meeting_id: meetingId,
-                description: `AI minutes for "${meeting.title}" (${meetingDurationCredits} credit${meetingDurationCredits > 1 ? 's' : ''})`,
             });
             // Step 5: Notify
             const members = await (0, db_1.default)('memberships')

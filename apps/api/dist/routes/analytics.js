@@ -11,7 +11,7 @@ const db_1 = __importDefault(require("../db"));
 const middleware_1 = require("../middleware");
 const router = (0, express_1.Router)();
 // ── Dashboard Analytics ─────────────────────────────────────
-router.get('/:orgId/dashboard', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive', 'treasurer'), async (req, res) => {
+router.get('/:orgId/dashboard', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive', 'treasurer'), async (req, res) => {
     try {
         const orgId = req.params.orgId;
         const now = new Date();
@@ -125,7 +125,7 @@ router.get('/:orgId/dashboard', middleware_1.authenticate, middleware_1.loadMemb
     }
 });
 // ── Member payment status ───────────────────────────────────
-router.get('/:orgId/member-payments', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive', 'treasurer'), async (req, res) => {
+router.get('/:orgId/member-payments', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive', 'treasurer'), async (req, res) => {
     try {
         const orgId = req.params.orgId;
         const members = await (0, db_1.default)('memberships')
@@ -153,7 +153,7 @@ router.get('/:orgId/member-payments', middleware_1.authenticate, middleware_1.lo
     }
 });
 // ── Receipt / Invoice Generation ────────────────────────────
-router.get('/:orgId/receipt/:recordId', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/receipt/:recordId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const record = await (0, db_1.default)('transactions')
             .where({ id: req.params.recordId, organization_id: req.params.orgId })

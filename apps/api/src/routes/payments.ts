@@ -6,7 +6,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import db from '../db';
-import { authenticate, loadMembership, requireRole, validate } from '../middleware';
+import { authenticate, loadMembershipAndSub as loadMembership, requireRole, validate } from '../middleware';
 import { config } from '../config';
 import { logger } from '../logger';
 import { paystackService } from '../services/paystack.service';

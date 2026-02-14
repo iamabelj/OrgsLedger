@@ -26,7 +26,7 @@ const createEventSchema = zod_1.z.object({
     rsvpRequired: zod_1.z.boolean().default(false),
 });
 // ── Create Event ────────────────────────────────────────────
-router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createEventSchema), async (req, res) => {
+router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createEventSchema), async (req, res) => {
     try {
         const { title, description, location, startDate, endDate, allDay, category, maxAttendees, rsvpRequired } = req.body;
         const [event] = await (0, db_1.default)('events')
@@ -58,7 +58,7 @@ router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, (
     }
 });
 // ── List Events ─────────────────────────────────────────────
-router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 50;
@@ -100,7 +100,7 @@ router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, as
     }
 });
 // ── Get Event Detail ────────────────────────────────────────
-router.get('/:orgId/:eventId', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/:eventId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const event = await (0, db_1.default)('events')
             .where({ id: req.params.eventId, organization_id: req.params.orgId })
@@ -123,7 +123,7 @@ router.get('/:orgId/:eventId', middleware_1.authenticate, middleware_1.loadMembe
     }
 });
 // ── RSVP to Event ───────────────────────────────────────────
-router.post('/:orgId/:eventId/rsvp', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.post('/:orgId/:eventId/rsvp', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const status = req.body.status || 'attending'; // attending, declined, maybe
         const event = await (0, db_1.default)('events')
@@ -167,7 +167,7 @@ router.post('/:orgId/:eventId/rsvp', middleware_1.authenticate, middleware_1.loa
     }
 });
 // ── Delete Event ────────────────────────────────────────────
-router.delete('/:orgId/:eventId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
+router.delete('/:orgId/:eventId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
         await (0, db_1.default)('event_rsvps').where({ event_id: req.params.eventId }).delete();
         await (0, db_1.default)('events')

@@ -10,6 +10,7 @@ import { config } from './config';
 import db from './db';
 import { logger } from './logger';
 import { translateToMultiple, SUPPORTED_LANGUAGES } from './services/translation.service';
+import { getOrgSubscription, getTranslationWallet, deductTranslationWallet } from './services/subscription.service';
 
 // In-memory store for meeting translation sessions
 // meetingId -> Map<userId, { language, name }>
@@ -18,6 +19,7 @@ const meetingLanguages = new Map<string, Map<string, { language: string; name: s
 interface AuthenticatedSocket extends Socket {
   userId?: string;
   email?: string;
+  globalRole?: string;
 }
 
 export function setupSocketIO(httpServer: HttpServer): Server {
@@ -56,6 +58,7 @@ export function setupSocketIO(httpServer: HttpServer): Server {
 
       socket.userId = payload.userId;
       socket.email = payload.email;
+      socket.globalRole = user.global_role || 'member';
       next();
     } catch (err) {
       next(new Error('Invalid token'));
@@ -220,7 +223,38 @@ export function setupSocketIO(httpServer: HttpServer): Server {
         let translations: Record<string, string> = {};
 
         if (targetLangs.size > 0) {
-          translations = await translateToMultiple(text, [...targetLangs], sourceLang);
+          // Check translation wallet before making API calls
+          // Find the org for this meeting
+          const meeting = await db('meetings').where({ id: meetingId }).select('organization_id').first();
+          if (meeting?.organization_id) {
+            const wallet = await getTranslationWallet(meeting.organization_id);
+            const balance = parseFloat(wallet.balance_minutes);
+            if (balance <= 0) {
+              socket.emit('translation:error', {
+                meetingId,
+                error: 'Translation wallet empty. Please top up to continue translations.',
+                code: 'WALLET_EMPTY',
+              });
+              return;
+            }
+
+            translations = await translateToMultiple(text, [...targetLangs], sourceLang);
+
+            // Deduct translation wallet — estimate ~0.5 minutes per translation batch
+            const deductMinutes = 0.5;
+            const deduction = await deductTranslationWallet(
+              meeting.organization_id,
+              deductMinutes,
+              `Live translation: ${targetLangs.size} language(s) in meeting`
+            );
+            if (!deduction.success) {
+              logger.warn('[TRANSLATION] Wallet deduction failed but translation was served', {
+                meetingId, orgId: meeting.organization_id,
+              });
+            }
+          } else {
+            translations = await translateToMultiple(text, [...targetLangs], sourceLang);
+          }
         }
 
         // Always include the original language

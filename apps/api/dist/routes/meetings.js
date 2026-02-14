@@ -65,7 +65,7 @@ const createVoteSchema = zod_1.z.object({
     options: zod_1.z.array(zod_1.z.string().min(1)).min(2).max(10),
 });
 // ── Create Meeting ──────────────────────────────────────────
-router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createMeetingSchema), async (req, res) => {
+router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createMeetingSchema), async (req, res) => {
     try {
         const { title, description, location, scheduledStart, scheduledEnd, aiEnabled, translationEnabled, agendaItems, recurringPattern, recurringEndDate } = req.body;
         // If AI enabled, check credits
@@ -163,7 +163,7 @@ const updateMeetingSchema = zod_1.z.object({
     }))
         .optional(),
 });
-router.put('/:orgId/:meetingId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(updateMeetingSchema), async (req, res) => {
+router.put('/:orgId/:meetingId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(updateMeetingSchema), async (req, res) => {
     try {
         const meeting = await (0, db_1.default)('meetings')
             .where({ id: req.params.meetingId, organization_id: req.params.orgId })
@@ -243,7 +243,7 @@ router.put('/:orgId/:meetingId', middleware_1.authenticate, middleware_1.loadMem
     }
 });
 // ── Toggle AI on existing meeting ───────────────────────────
-router.post('/:orgId/:meetingId/toggle-ai', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
+router.post('/:orgId/:meetingId/toggle-ai', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
     try {
         const meeting = await (0, db_1.default)('meetings')
             .where({ id: req.params.meetingId, organization_id: req.params.orgId })
@@ -280,7 +280,7 @@ router.post('/:orgId/:meetingId/toggle-ai', middleware_1.authenticate, middlewar
     }
 });
 // ── List Meetings ───────────────────────────────────────────
-router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const status = req.query.status;
         const page = parseInt(req.query.page) || 1;
@@ -318,7 +318,7 @@ router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, as
     }
 });
 // ── Get Meeting Detail ──────────────────────────────────────
-router.get('/:orgId/:meetingId', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/:meetingId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const meeting = await (0, db_1.default)('meetings')
             .where({ id: req.params.meetingId, organization_id: req.params.orgId })
@@ -362,7 +362,7 @@ router.get('/:orgId/:meetingId', middleware_1.authenticate, middleware_1.loadMem
     }
 });
 // ── Start Meeting (go LIVE) ─────────────────────────────────
-router.post('/:orgId/:meetingId/start', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
+router.post('/:orgId/:meetingId/start', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
     try {
         const meeting = await (0, db_1.default)('meetings')
             .where({ id: req.params.meetingId, organization_id: req.params.orgId })
@@ -400,7 +400,7 @@ router.post('/:orgId/:meetingId/start', middleware_1.authenticate, middleware_1.
     }
 });
 // ── End Meeting ─────────────────────────────────────────────
-router.post('/:orgId/:meetingId/end', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
+router.post('/:orgId/:meetingId/end', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
     try {
         const meeting = await (0, db_1.default)('meetings')
             .where({ id: req.params.meetingId, organization_id: req.params.orgId })
@@ -449,7 +449,7 @@ router.post('/:orgId/:meetingId/end', middleware_1.authenticate, middleware_1.lo
     }
 });
 // ── Record Attendance ───────────────────────────────────────
-router.post('/:orgId/:meetingId/attendance', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.post('/:orgId/:meetingId/attendance', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const existing = await (0, db_1.default)('meeting_attendance')
             .where({ meeting_id: req.params.meetingId, user_id: req.user.userId })
@@ -459,7 +459,7 @@ router.post('/:orgId/:meetingId/attendance', middleware_1.authenticate, middlewa
             return;
         }
         const meeting = await (0, db_1.default)('meetings')
-            .where({ id: req.params.meetingId })
+            .where({ id: req.params.meetingId, organization_id: req.params.orgId })
             .first();
         let status = 'present';
         if (meeting?.actual_start) {
@@ -483,7 +483,7 @@ router.post('/:orgId/:meetingId/attendance', middleware_1.authenticate, middlewa
     }
 });
 // ── Bulk Attendance (Admin) ─────────────────────────────────
-router.post('/:orgId/:meetingId/attendance/bulk', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
+router.post('/:orgId/:meetingId/attendance/bulk', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
     try {
         const { attendees } = req.body; // [{ userId, status }]
         if (!Array.isArray(attendees)) {
@@ -508,7 +508,7 @@ router.post('/:orgId/:meetingId/attendance/bulk', middleware_1.authenticate, mid
     }
 });
 // ── Create Vote ─────────────────────────────────────────────
-router.post('/:orgId/:meetingId/votes', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createVoteSchema), async (req, res) => {
+router.post('/:orgId/:meetingId/votes', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createVoteSchema), async (req, res) => {
     try {
         const { title, description, options } = req.body;
         const [vote] = await (0, db_1.default)('votes')
@@ -531,9 +531,13 @@ router.post('/:orgId/:meetingId/votes', middleware_1.authenticate, middleware_1.
     }
 });
 // ── Cast Vote ───────────────────────────────────────────────
-router.post('/:orgId/:meetingId/votes/:voteId/cast', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.post('/:orgId/:meetingId/votes/:voteId/cast', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
-        const vote = await (0, db_1.default)('votes').where({ id: req.params.voteId }).first();
+        const vote = await (0, db_1.default)('votes')
+            .join('meetings', 'votes.meeting_id', 'meetings.id')
+            .where({ 'votes.id': req.params.voteId, 'meetings.organization_id': req.params.orgId })
+            .select('votes.*')
+            .first();
         if (!vote || vote.status !== 'open') {
             res.status(400).json({ success: false, error: 'Vote not found or closed' });
             return;
@@ -559,10 +563,11 @@ router.post('/:orgId/:meetingId/votes/:voteId/cast', middleware_1.authenticate, 
     }
 });
 // ── Close Vote ──────────────────────────────────────────────
-router.post('/:orgId/:meetingId/votes/:voteId/close', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
+router.post('/:orgId/:meetingId/votes/:voteId/close', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
     try {
         await (0, db_1.default)('votes')
             .where({ id: req.params.voteId })
+            .whereIn('meeting_id', (0, db_1.default)('meetings').where({ organization_id: req.params.orgId }).select('id'))
             .update({ status: 'closed', closed_at: db_1.default.fn.now() });
         // Get results
         const ballots = await (0, db_1.default)('vote_ballots')
@@ -583,7 +588,7 @@ router.post('/:orgId/:meetingId/votes/:voteId/close', middleware_1.authenticate,
     }
 });
 // ── Upload Audio for AI Processing ──────────────────────────
-router.post('/:orgId/:meetingId/audio', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), audioUpload.single('audio'), async (req, res) => {
+router.post('/:orgId/:meetingId/audio', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), audioUpload.single('audio'), async (req, res) => {
     try {
         let audioUrl;
         if (req.file) {

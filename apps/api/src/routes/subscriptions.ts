@@ -6,7 +6,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import db from '../db';
-import { authenticate, requireSuperAdmin, validate } from '../middleware';
+import { authenticate, loadMembership, requireRole, requireSuperAdmin, requireActiveSubscription, validate } from '../middleware';
 import { logger } from '../logger';
 import * as subSvc from '../services/subscription.service';
 
@@ -107,7 +107,7 @@ router.post('/invite/:code/join', authenticate, async (req: Request, res: Respon
 // ════════════════════════════════════════════════════════════
 
 // GET /:orgId/subscription
-router.get('/:orgId/subscription', authenticate, async (req: Request, res: Response) => {
+router.get('/:orgId/subscription', authenticate, loadMembership, async (req: Request, res: Response) => {
   try {
     const sub = await subSvc.getOrgSubscription(req.params.orgId);
     if (!sub) {
@@ -123,7 +123,7 @@ router.get('/:orgId/subscription', authenticate, async (req: Request, res: Respo
 });
 
 // POST /:orgId/subscribe
-router.post('/:orgId/subscribe', authenticate, validate(subscribeSchema), async (req: Request, res: Response) => {
+router.post('/:orgId/subscribe', authenticate, loadMembership, requireRole('org_admin'), validate(subscribeSchema), async (req: Request, res: Response) => {
   try {
     const { planSlug, billingCycle, billingCountry, paymentGateway, paymentReference } = req.body;
     const plan = await subSvc.getPlanBySlug(planSlug);
@@ -150,7 +150,7 @@ router.post('/:orgId/subscribe', authenticate, validate(subscribeSchema), async 
 });
 
 // POST /:orgId/renew
-router.post('/:orgId/renew', authenticate, async (req: Request, res: Response) => {
+router.post('/:orgId/renew', authenticate, loadMembership, requireRole('org_admin'), async (req: Request, res: Response) => {
   try {
     const sub = await subSvc.getOrgSubscription(req.params.orgId);
     if (!sub) {
@@ -176,7 +176,7 @@ router.post('/:orgId/renew', authenticate, async (req: Request, res: Response) =
 // ── Wallets ─────────────────────────────────────────────────
 
 // GET /:orgId/wallets — combined
-router.get('/:orgId/wallets', authenticate, async (req: Request, res: Response) => {
+router.get('/:orgId/wallets', authenticate, loadMembership, async (req: Request, res: Response) => {
   try {
     const [ai, translation] = await Promise.all([
       subSvc.getAiWallet(req.params.orgId),
@@ -190,7 +190,7 @@ router.get('/:orgId/wallets', authenticate, async (req: Request, res: Response) 
 });
 
 // GET /:orgId/wallet/ai
-router.get('/:orgId/wallet/ai', authenticate, async (req: Request, res: Response) => {
+router.get('/:orgId/wallet/ai', authenticate, loadMembership, async (req: Request, res: Response) => {
   try {
     const wallet = await subSvc.getAiWallet(req.params.orgId);
     res.json({ success: true, data: wallet });
@@ -200,7 +200,7 @@ router.get('/:orgId/wallet/ai', authenticate, async (req: Request, res: Response
 });
 
 // GET /:orgId/wallet/translation
-router.get('/:orgId/wallet/translation', authenticate, async (req: Request, res: Response) => {
+router.get('/:orgId/wallet/translation', authenticate, loadMembership, async (req: Request, res: Response) => {
   try {
     const wallet = await subSvc.getTranslationWallet(req.params.orgId);
     res.json({ success: true, data: wallet });
@@ -210,7 +210,7 @@ router.get('/:orgId/wallet/translation', authenticate, async (req: Request, res:
 });
 
 // POST /:orgId/wallet/ai/topup
-router.post('/:orgId/wallet/ai/topup', authenticate, validate(topUpSchema), async (req: Request, res: Response) => {
+router.post('/:orgId/wallet/ai/topup', authenticate, loadMembership, requireRole('org_admin'), validate(topUpSchema), async (req: Request, res: Response) => {
   try {
     const { hours, paymentGateway, paymentReference } = req.body;
     const org = await db('organizations').where({ id: req.params.orgId }).select('billing_currency').first();
@@ -234,7 +234,7 @@ router.post('/:orgId/wallet/ai/topup', authenticate, validate(topUpSchema), asyn
 });
 
 // POST /:orgId/wallet/translation/topup
-router.post('/:orgId/wallet/translation/topup', authenticate, validate(topUpSchema), async (req: Request, res: Response) => {
+router.post('/:orgId/wallet/translation/topup', authenticate, loadMembership, requireRole('org_admin'), validate(topUpSchema), async (req: Request, res: Response) => {
   try {
     const { hours, paymentGateway, paymentReference } = req.body;
     const org = await db('organizations').where({ id: req.params.orgId }).select('billing_currency').first();
@@ -258,7 +258,7 @@ router.post('/:orgId/wallet/translation/topup', authenticate, validate(topUpSche
 });
 
 // GET /:orgId/wallet/ai/history
-router.get('/:orgId/wallet/ai/history', authenticate, async (req: Request, res: Response) => {
+router.get('/:orgId/wallet/ai/history', authenticate, loadMembership, async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 50;
     const offset = parseInt(req.query.offset as string) || 0;
@@ -270,7 +270,7 @@ router.get('/:orgId/wallet/ai/history', authenticate, async (req: Request, res: 
 });
 
 // GET /:orgId/wallet/translation/history
-router.get('/:orgId/wallet/translation/history', authenticate, async (req: Request, res: Response) => {
+router.get('/:orgId/wallet/translation/history', authenticate, loadMembership, async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 50;
     const offset = parseInt(req.query.offset as string) || 0;
@@ -284,7 +284,7 @@ router.get('/:orgId/wallet/translation/history', authenticate, async (req: Reque
 // ── Invite Links ────────────────────────────────────────────
 
 // POST /:orgId/invite
-router.post('/:orgId/invite', authenticate, validate(createInviteSchema), async (req: Request, res: Response) => {
+router.post('/:orgId/invite', authenticate, loadMembership, requireRole('org_admin'), validate(createInviteSchema), async (req: Request, res: Response) => {
   try {
     const { role, maxUses, expiresAt } = req.body;
     const invite = await subSvc.createInviteLink(
@@ -302,7 +302,7 @@ router.post('/:orgId/invite', authenticate, validate(createInviteSchema), async 
 });
 
 // GET /:orgId/invites
-router.get('/:orgId/invites', authenticate, async (req: Request, res: Response) => {
+router.get('/:orgId/invites', authenticate, loadMembership, async (req: Request, res: Response) => {
   try {
     const invites = await db('invite_links')
       .where({ organization_id: req.params.orgId })
@@ -314,7 +314,7 @@ router.get('/:orgId/invites', authenticate, async (req: Request, res: Response) 
 });
 
 // DELETE /:orgId/invite/:inviteId
-router.delete('/:orgId/invite/:inviteId', authenticate, async (req: Request, res: Response) => {
+router.delete('/:orgId/invite/:inviteId', authenticate, loadMembership, requireRole('org_admin'), async (req: Request, res: Response) => {
   try {
     await db('invite_links').where({ id: req.params.inviteId, organization_id: req.params.orgId }).del();
     res.json({ success: true });
@@ -328,7 +328,7 @@ router.delete('/:orgId/invite/:inviteId', authenticate, async (req: Request, res
 // ════════════════════════════════════════════════════════════
 
 // GET /admin/revenue
-router.get('/admin/revenue', authenticate, requireSuperAdmin, async (_req: Request, res: Response) => {
+router.get('/admin/revenue', authenticate, requireSuperAdmin(), async (_req: Request, res: Response) => {
   try {
     const revenue = await subSvc.getPlatformRevenue();
     res.json({ success: true, data: revenue });
@@ -339,7 +339,7 @@ router.get('/admin/revenue', authenticate, requireSuperAdmin, async (_req: Reque
 });
 
 // GET /admin/subscriptions
-router.get('/admin/subscriptions', authenticate, requireSuperAdmin, async (req: Request, res: Response) => {
+router.get('/admin/subscriptions', authenticate, requireSuperAdmin(), async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 100;
     const offset = parseInt(req.query.offset as string) || 0;
@@ -363,7 +363,7 @@ router.get('/admin/subscriptions', authenticate, requireSuperAdmin, async (req: 
 });
 
 // GET /admin/organizations — list all orgs with subscription + wallet info
-router.get('/admin/organizations', authenticate, requireSuperAdmin, async (_req: Request, res: Response) => {
+router.get('/admin/organizations', authenticate, requireSuperAdmin(), async (_req: Request, res: Response) => {
   try {
     const orgs = await db('organizations')
       .leftJoin('subscriptions', function () {
@@ -409,7 +409,7 @@ router.get('/admin/organizations', authenticate, requireSuperAdmin, async (_req:
 });
 
 // POST /admin/wallet/ai/adjust
-router.post('/admin/wallet/ai/adjust', authenticate, requireSuperAdmin, validate(adjustWalletSchema), async (req: Request, res: Response) => {
+router.post('/admin/wallet/ai/adjust', authenticate, requireSuperAdmin(), validate(adjustWalletSchema), async (req: Request, res: Response) => {
   try {
     const { organizationId, hours, description } = req.body;
     const minutes = hours * 60;
@@ -422,7 +422,7 @@ router.post('/admin/wallet/ai/adjust', authenticate, requireSuperAdmin, validate
 });
 
 // POST /admin/wallet/translation/adjust
-router.post('/admin/wallet/translation/adjust', authenticate, requireSuperAdmin, validate(adjustWalletSchema), async (req: Request, res: Response) => {
+router.post('/admin/wallet/translation/adjust', authenticate, requireSuperAdmin(), validate(adjustWalletSchema), async (req: Request, res: Response) => {
   try {
     const { organizationId, hours, description } = req.body;
     const minutes = hours * 60;
@@ -435,7 +435,7 @@ router.post('/admin/wallet/translation/adjust', authenticate, requireSuperAdmin,
 });
 
 // POST /admin/org/status — suspend or activate
-router.post('/admin/org/status', authenticate, requireSuperAdmin, validate(orgStatusSchema), async (req: Request, res: Response) => {
+router.post('/admin/org/status', authenticate, requireSuperAdmin(), validate(orgStatusSchema), async (req: Request, res: Response) => {
   try {
     const { organizationId, action, reason } = req.body;
     const newStatus = action === 'suspend' ? 'suspended' : 'active';
@@ -458,7 +458,7 @@ router.post('/admin/org/status', authenticate, requireSuperAdmin, validate(orgSt
 });
 
 // POST /admin/subscription/override
-router.post('/admin/subscription/override', authenticate, requireSuperAdmin, validate(overrideSchema), async (req: Request, res: Response) => {
+router.post('/admin/subscription/override', authenticate, requireSuperAdmin(), validate(overrideSchema), async (req: Request, res: Response) => {
   try {
     const { organizationId, planSlug, status, periodEnd } = req.body;
     const updates: any = {};
@@ -488,7 +488,7 @@ router.post('/admin/subscription/override', authenticate, requireSuperAdmin, val
 });
 
 // GET /admin/wallet-analytics
-router.get('/admin/wallet-analytics', authenticate, requireSuperAdmin, async (_req: Request, res: Response) => {
+router.get('/admin/wallet-analytics', authenticate, requireSuperAdmin(), async (_req: Request, res: Response) => {
   try {
     // AI wallet totals
     const aiStats = await db('ai_wallet')
@@ -538,7 +538,7 @@ router.get('/admin/wallet-analytics', authenticate, requireSuperAdmin, async (_r
 });
 
 // GET /admin/plans
-router.get('/admin/plans', authenticate, requireSuperAdmin, async (_req: Request, res: Response) => {
+router.get('/admin/plans', authenticate, requireSuperAdmin(), async (_req: Request, res: Response) => {
   try {
     const plans = await db('subscription_plans').orderBy('sort_order', 'asc');
     res.json({ success: true, data: plans });
@@ -548,7 +548,7 @@ router.get('/admin/plans', authenticate, requireSuperAdmin, async (_req: Request
 });
 
 // PUT /admin/plans/:planId
-router.put('/admin/plans/:planId', authenticate, requireSuperAdmin, async (req: Request, res: Response) => {
+router.put('/admin/plans/:planId', authenticate, requireSuperAdmin(), async (req: Request, res: Response) => {
   try {
     const allowed = ['name', 'description', 'price_usd_annual', 'price_usd_monthly', 'price_ngn_annual', 'price_ngn_monthly', 'max_members', 'features', 'is_active', 'sort_order'];
     const updates: any = {};

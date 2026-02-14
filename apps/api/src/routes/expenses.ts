@@ -4,7 +4,7 @@
 
 import { Router, Request, Response } from 'express';
 import { db } from '../db';
-import { authenticate, loadMembership, requireRole } from '../middleware';
+import { authenticate, loadMembershipAndSub as loadMembership, requireRole } from '../middleware';
 
 const router = Router();
 

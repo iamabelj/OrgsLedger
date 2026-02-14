@@ -23,7 +23,7 @@ const createPollSchema = zod_1.z.object({
     expiresAt: zod_1.z.string().datetime().optional(),
 });
 // ── Create Poll ─────────────────────────────────────────────
-router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createPollSchema), async (req, res) => {
+router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createPollSchema), async (req, res) => {
     try {
         const { title, description, options, multipleChoice, anonymous, expiresAt } = req.body;
         const [poll] = await (0, db_1.default)('polls')
@@ -60,7 +60,7 @@ router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, (
     }
 });
 // ── List Polls ──────────────────────────────────────────────
-router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
@@ -114,7 +114,7 @@ router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, as
     }
 });
 // ── Get Poll Detail ─────────────────────────────────────────
-router.get('/:orgId/:pollId', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/:pollId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const poll = await (0, db_1.default)('polls')
             .where({ id: req.params.pollId, organization_id: req.params.orgId })
@@ -163,7 +163,7 @@ router.get('/:orgId/:pollId', middleware_1.authenticate, middleware_1.loadMember
     }
 });
 // ── Vote on Poll ────────────────────────────────────────────
-router.post('/:orgId/:pollId/vote', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.post('/:orgId/:pollId/vote', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const { optionId } = req.body;
         const poll = await (0, db_1.default)('polls')
@@ -219,7 +219,7 @@ router.post('/:orgId/:pollId/vote', middleware_1.authenticate, middleware_1.load
     }
 });
 // ── Close Poll ──────────────────────────────────────────────
-router.put('/:orgId/:pollId/close', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
+router.put('/:orgId/:pollId/close', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
     try {
         await (0, db_1.default)('polls')
             .where({ id: req.params.pollId, organization_id: req.params.orgId })
@@ -231,7 +231,7 @@ router.put('/:orgId/:pollId/close', middleware_1.authenticate, middleware_1.load
     }
 });
 // ── Delete Poll ─────────────────────────────────────────────
-router.delete('/:orgId/:pollId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
+router.delete('/:orgId/:pollId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
         await (0, db_1.default)('poll_votes').where({ poll_id: req.params.pollId }).delete();
         await (0, db_1.default)('poll_options').where({ poll_id: req.params.pollId }).delete();

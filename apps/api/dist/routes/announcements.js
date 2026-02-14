@@ -21,7 +21,7 @@ const createAnnouncementSchema = zod_1.z.object({
     pinned: zod_1.z.boolean().default(false),
 });
 // ── Create Announcement ─────────────────────────────────────
-router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createAnnouncementSchema), async (req, res) => {
+router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createAnnouncementSchema), async (req, res) => {
     try {
         const { title, body, priority, pinned } = req.body;
         const [announcement] = await (0, db_1.default)('announcements')
@@ -62,7 +62,7 @@ router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, (
     }
 });
 // ── List Announcements ──────────────────────────────────────
-router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
@@ -87,7 +87,7 @@ router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, as
     }
 });
 // ── Get Announcement ────────────────────────────────────────
-router.get('/:orgId/:announcementId', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/:announcementId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const announcement = await (0, db_1.default)('announcements')
             .join('users', 'announcements.created_by', 'users.id')
@@ -105,7 +105,7 @@ router.get('/:orgId/:announcementId', middleware_1.authenticate, middleware_1.lo
     }
 });
 // ── Delete Announcement ─────────────────────────────────────
-router.delete('/:orgId/:announcementId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
+router.delete('/:orgId/:announcementId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
         await (0, db_1.default)('announcements')
             .where({ id: req.params.announcementId, organization_id: req.params.orgId })
@@ -117,7 +117,7 @@ router.delete('/:orgId/:announcementId', middleware_1.authenticate, middleware_1
     }
 });
 // ── Toggle Pin ──────────────────────────────────────────────
-router.put('/:orgId/:announcementId/pin', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
+router.put('/:orgId/:announcementId/pin', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
     try {
         const announcement = await (0, db_1.default)('announcements')
             .where({ id: req.params.announcementId, organization_id: req.params.orgId })

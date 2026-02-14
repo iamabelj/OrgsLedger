@@ -56,7 +56,7 @@ const upload = (0, multer_1.default)({
     },
 });
 // ── Upload Document ─────────────────────────────────────────
-router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, upload.single('file'), async (req, res) => {
+router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, upload.single('file'), async (req, res) => {
     try {
         if (!req.file) {
             res.status(400).json({ success: false, error: 'No file provided' });
@@ -85,7 +85,7 @@ router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, u
     }
 });
 // ── List Documents ──────────────────────────────────────────
-router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
@@ -99,9 +99,10 @@ router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, as
         if (folderId)
             query = query.where({ folder_id: folderId });
         if (search) {
+            const escapedSearch = search.replace(/[%_\\]/g, '\\$&');
             query = query.where(function () {
-                this.whereILike('title', `%${search}%`)
-                    .orWhereILike('description', `%${search}%`);
+                this.whereILike('title', `%${escapedSearch}%`)
+                    .orWhereILike('description', `%${escapedSearch}%`);
             });
         }
         const total = await query.clone().clear('select').count('id as count').first();
@@ -122,7 +123,7 @@ router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, as
     }
 });
 // ── Create Folder ───────────────────────────────────────────
-router.post('/:orgId/folders', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
+router.post('/:orgId/folders', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
     try {
         const { name, parentId } = req.body;
         const [folder] = await (0, db_1.default)('document_folders')
@@ -140,7 +141,7 @@ router.post('/:orgId/folders', middleware_1.authenticate, middleware_1.loadMembe
     }
 });
 // ── List Folders ────────────────────────────────────────────
-router.get('/:orgId/folders', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/folders', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const folders = await (0, db_1.default)('document_folders')
             .where({ organization_id: req.params.orgId })
@@ -152,7 +153,7 @@ router.get('/:orgId/folders', middleware_1.authenticate, middleware_1.loadMember
     }
 });
 // ── Get Document ────────────────────────────────────────────
-router.get('/:orgId/:docId', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/:docId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const doc = await (0, db_1.default)('documents')
             .join('users', 'documents.uploaded_by', 'users.id')
@@ -170,7 +171,7 @@ router.get('/:orgId/:docId', middleware_1.authenticate, middleware_1.loadMembers
     }
 });
 // ── Delete Document ─────────────────────────────────────────
-router.delete('/:orgId/:docId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
+router.delete('/:orgId/:docId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
     try {
         const doc = await (0, db_1.default)('documents')
             .where({ id: req.params.docId, organization_id: req.params.orgId })

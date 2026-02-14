@@ -9,7 +9,7 @@ import multer from 'multer';
 import path from 'path';
 import crypto from 'crypto';
 import db from '../db';
-import { authenticate, loadMembership, requireRole, validate } from '../middleware';
+import { authenticate, loadMembershipAndSub as loadMembership, requireRole, validate } from '../middleware';
 import { logger } from '../logger';
 import { sendPushToOrg } from '../services/push.service';
 import { config } from '../config';
@@ -557,7 +557,7 @@ router.post(
       }
 
       const meeting = await db('meetings')
-        .where({ id: req.params.meetingId })
+        .where({ id: req.params.meetingId, organization_id: req.params.orgId })
         .first();
 
       let status = 'present';
@@ -656,7 +656,11 @@ router.post(
   loadMembership,
   async (req: Request, res: Response) => {
     try {
-      const vote = await db('votes').where({ id: req.params.voteId }).first();
+      const vote = await db('votes')
+        .join('meetings', 'votes.meeting_id', 'meetings.id')
+        .where({ 'votes.id': req.params.voteId, 'meetings.organization_id': req.params.orgId })
+        .select('votes.*')
+        .first();
       if (!vote || vote.status !== 'open') {
         res.status(400).json({ success: false, error: 'Vote not found or closed' });
         return;
@@ -695,6 +699,7 @@ router.post(
     try {
       await db('votes')
         .where({ id: req.params.voteId })
+        .whereIn('meeting_id', db('meetings').where({ organization_id: req.params.orgId }).select('id'))
         .update({ status: 'closed', closed_at: db.fn.now() });
 
       // Get results

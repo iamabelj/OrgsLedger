@@ -53,7 +53,7 @@ const makeDonationSchema = zod_1.z.object({
 // ══════════════════════════════════════════════════════════════
 // DUES
 // ══════════════════════════════════════════════════════════════
-router.post('/:orgId/dues', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createDueSchema), async (req, res) => {
+router.post('/:orgId/dues', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createDueSchema), async (req, res) => {
     try {
         const data = req.body;
         const [due] = await (0, db_1.default)('dues')
@@ -132,7 +132,7 @@ router.post('/:orgId/dues', middleware_1.authenticate, middleware_1.loadMembersh
         res.status(500).json({ success: false, error: 'Failed to create due' });
     }
 });
-router.get('/:orgId/dues', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/dues', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const dues = await (0, db_1.default)('dues')
             .where({ organization_id: req.params.orgId })
@@ -154,7 +154,7 @@ router.get('/:orgId/dues', middleware_1.authenticate, middleware_1.loadMembershi
 // ══════════════════════════════════════════════════════════════
 // FINES
 // ══════════════════════════════════════════════════════════════
-router.post('/:orgId/fines', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createFineSchema), async (req, res) => {
+router.post('/:orgId/fines', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createFineSchema), async (req, res) => {
     try {
         const data = req.body;
         // Verify target user is a member
@@ -229,7 +229,7 @@ router.post('/:orgId/fines', middleware_1.authenticate, middleware_1.loadMembers
         res.status(500).json({ success: false, error: 'Failed to create fine' });
     }
 });
-router.get('/:orgId/fines', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/fines', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         let query = (0, db_1.default)('fines')
             .join('users as fined_user', 'fines.user_id', 'fined_user.id')
@@ -250,7 +250,7 @@ router.get('/:orgId/fines', middleware_1.authenticate, middleware_1.loadMembersh
 // ══════════════════════════════════════════════════════════════
 // DONATIONS
 // ══════════════════════════════════════════════════════════════
-router.post('/:orgId/donation-campaigns', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createDonationCampaignSchema), async (req, res) => {
+router.post('/:orgId/donation-campaigns', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createDonationCampaignSchema), async (req, res) => {
     try {
         const data = req.body;
         const [campaign] = await (0, db_1.default)('donation_campaigns')
@@ -271,7 +271,7 @@ router.post('/:orgId/donation-campaigns', middleware_1.authenticate, middleware_
         res.status(500).json({ success: false, error: 'Failed to create campaign' });
     }
 });
-router.get('/:orgId/donation-campaigns', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/donation-campaigns', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const campaigns = await (0, db_1.default)('donation_campaigns')
             .where({ organization_id: req.params.orgId })
@@ -289,7 +289,7 @@ router.get('/:orgId/donation-campaigns', middleware_1.authenticate, middleware_1
         res.status(500).json({ success: false, error: 'Failed to list campaigns' });
     }
 });
-router.post('/:orgId/donations', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.validate)(makeDonationSchema), async (req, res) => {
+router.post('/:orgId/donations', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.validate)(makeDonationSchema), async (req, res) => {
     try {
         const data = req.body;
         const [donation] = await (0, db_1.default)('donations')
@@ -325,7 +325,7 @@ router.post('/:orgId/donations', middleware_1.authenticate, middleware_1.loadMem
 // ══════════════════════════════════════════════════════════════
 // ORGANIZATION LEDGER (REAL-TIME FINANCIAL RECORDS)
 // ══════════════════════════════════════════════════════════════
-router.get('/:orgId/ledger', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/ledger', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 50;
@@ -376,7 +376,7 @@ router.get('/:orgId/ledger', middleware_1.authenticate, middleware_1.loadMembers
     }
 });
 // ── Per-User Payment History ────────────────────────────────
-router.get('/:orgId/ledger/user/:userId', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+router.get('/:orgId/ledger/user/:userId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         // Members can only see their own unless admin
         if (req.params.userId !== req.user.userId &&
@@ -421,7 +421,7 @@ router.get('/:orgId/ledger/user/:userId', middleware_1.authenticate, middleware_
     }
 });
 // ── Export Financial Report ─────────────────────────────────
-router.get('/:orgId/ledger/export', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
+router.get('/:orgId/ledger/export', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
     try {
         const fromDate = req.query.from;
         const toDate = req.query.to;
