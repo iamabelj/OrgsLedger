@@ -3,13 +3,14 @@ import config from './knexfile';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
-// Developer (platform owner) — hidden from regular users
-const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'abel@globull.dev';
-const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || '@@@AAAbel111090thanks';
+// Super admin — highest role in the app (admin@orgsledger.com)
+// Logs in at app.orgsledger.com/login
+const SUPER_ADMIN_EMAIL = process.env.DEFAULT_ADMIN_EMAIL || 'admin@orgsledger.com';
+const SUPER_ADMIN_PASSWORD = process.env.DEFAULT_ADMIN_PASSWORD || 'SuperAdmin1234!';
 
-// Demo org admin — visible org-level admin
-const ORG_ADMIN_EMAIL = process.env.DEFAULT_ADMIN_EMAIL || 'admin@orgsledger.com';
-const ORG_ADMIN_PASSWORD = process.env.DEFAULT_ADMIN_PASSWORD || 'SuperAdmin1234!';
+// NOTE: Developer (abel@globull.dev) does NOT have a database account.
+// Developer logs in at orgsledger.com/developer/admin using env vars
+// (ADMIN_EMAIL + ADMIN_PASSWORD in env.js). That's a separate auth system.
 
 async function seed() {
   const db = knex(config);
@@ -17,8 +18,8 @@ async function seed() {
     console.log('╔══════════════════════════════════════════════╗');
     console.log('║       OrgsLedger — Database Seeding          ║');
     console.log('╚══════════════════════════════════════════════╝');
-    console.log(`  Developer: ${DEVELOPER_EMAIL}`);
-    console.log(`  Org Admin: ${ORG_ADMIN_EMAIL}`);
+    console.log(`  Super Admin: ${SUPER_ADMIN_EMAIL}`);
+    console.log(`  Developer:   abel@globull.dev (env-based, NOT in DB)`);
     console.log();
 
     // Hash password helper (must match API's bcrypt usage)
@@ -26,48 +27,23 @@ async function seed() {
       bcrypt.hash(pw, 12);
 
     // ═══════════════════════════════════════════════════════
-    // 1. DEVELOPER USER (GOD — platform owner, hidden role)
+    // 1. SUPER ADMIN USER (highest role in the app)
     // ═══════════════════════════════════════════════════════
-    let developer = await db('users').where({ email: DEVELOPER_EMAIL }).first();
-    if (!developer) {
-      [developer] = await db('users')
+    let superAdmin = await db('users').where({ email: SUPER_ADMIN_EMAIL }).first();
+    if (!superAdmin) {
+      [superAdmin] = await db('users')
         .insert({
-          email: DEVELOPER_EMAIL,
-          password_hash: await hashPassword(DEVELOPER_PASSWORD),
-          first_name: 'Abel',
-          last_name: 'J',
-          global_role: 'developer',
-          email_verified: true,
-        })
-        .returning('*');
-      console.log('  ✓ Developer user created (abel@globull.dev)');
-    } else {
-      if (developer.global_role !== 'developer') {
-        await db('users').where({ id: developer.id }).update({ global_role: 'developer' });
-        console.log('  ✓ Developer role ensured');
-      } else {
-        console.log('  ✓ Developer already exists');
-      }
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // 1b. ORG ADMIN USER (visible admin for demo org)
-    // ═══════════════════════════════════════════════════════
-    let orgAdmin = await db('users').where({ email: ORG_ADMIN_EMAIL }).first();
-    if (!orgAdmin) {
-      [orgAdmin] = await db('users')
-        .insert({
-          email: ORG_ADMIN_EMAIL,
-          password_hash: await hashPassword(ORG_ADMIN_PASSWORD),
+          email: SUPER_ADMIN_EMAIL,
+          password_hash: await hashPassword(SUPER_ADMIN_PASSWORD),
           first_name: 'Platform',
           last_name: 'Admin',
           global_role: 'super_admin',
           email_verified: true,
         })
         .returning('*');
-      console.log('  ✓ Org admin created (admin@orgsledger.com, super_admin)');
+      console.log('  ✓ Super admin created (admin@orgsledger.com)');
     } else {
-      console.log('  ✓ Org admin already exists');
+      console.log('  ✓ Super admin already exists');
     }
 
     // ═══════════════════════════════════════════════════════
@@ -136,37 +112,20 @@ async function seed() {
     }
 
     // ═══════════════════════════════════════════════════════
-    // 4a. ORG ADMIN MEMBERSHIP (org_admin in demo org)
+    // 4. SUPER ADMIN MEMBERSHIP (org_admin in demo org)
     // ═══════════════════════════════════════════════════════
-    const existingOrgAdminMembership = await db('memberships')
-      .where({ user_id: orgAdmin.id, organization_id: demoOrg.id })
+    const existingMembership = await db('memberships')
+      .where({ user_id: superAdmin.id, organization_id: demoOrg.id })
       .first();
-    if (!existingOrgAdminMembership) {
+    if (!existingMembership) {
       await db('memberships').insert({
-        user_id: orgAdmin.id,
+        user_id: superAdmin.id,
         organization_id: demoOrg.id,
         role: 'org_admin',
       });
-      console.log('  ✓ Org admin membership created (admin@orgsledger.com → org_admin)');
+      console.log('  ✓ Super admin membership created (admin@orgsledger.com → org_admin)');
     } else {
-      console.log('  ✓ Org admin membership already exists');
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // 4b. DEVELOPER MEMBERSHIP (org_admin in demo org too)
-    // ═══════════════════════════════════════════════════════
-    const existingDevMembership = await db('memberships')
-      .where({ user_id: developer.id, organization_id: demoOrg.id })
-      .first();
-    if (!existingDevMembership) {
-      await db('memberships').insert({
-        user_id: developer.id,
-        organization_id: demoOrg.id,
-        role: 'org_admin',
-      });
-      console.log('  ✓ Developer membership created (abel@globull.dev → org_admin)');
-    } else {
-      console.log('  ✓ Developer membership already exists');
+      console.log('  ✓ Super admin membership already exists');
     }
 
     // ═══════════════════════════════════════════════════════
@@ -185,11 +144,11 @@ async function seed() {
         })
         .returning('*');
 
-      await db('channel_members').insert([
-        { channel_id: generalChannel.id, user_id: orgAdmin.id },
-        { channel_id: generalChannel.id, user_id: developer.id },
-      ]);
-      console.log('  ✓ Default channel created with both admins');
+      await db('channel_members').insert({
+        channel_id: generalChannel.id,
+        user_id: superAdmin.id,
+      });
+      console.log('  ✓ Default channel created with super admin');
     } else {
       console.log('  ✓ Default channel already exists');
     }
@@ -297,7 +256,7 @@ async function seed() {
         code,
         role: 'member',
         is_active: true,
-        created_by: orgAdmin.id,
+        created_by: superAdmin.id,
       });
       console.log(`  ✓ Invite link created (code: ${code})`);
     } else {
@@ -331,26 +290,24 @@ async function seed() {
     console.log('╔══════════════════════════════════════════════╗');
     console.log('║           Seeding Complete!                  ║');
     console.log('╠══════════════════════════════════════════════╣');
-    console.log('║  Users:                                      ║');
-    console.log('║    abel@globull.dev     → developer (hidden) ║');
-    console.log('║    admin@orgsledger.com → super_admin        ║');
+    console.log('║  Accounts:                                   ║');
     console.log('║                                              ║');
-    console.log('║  Tables seeded:                              ║');
-    console.log('║    users, licenses, organizations,           ║');
-    console.log('║    memberships, channels, channel_members,   ║');
-    console.log('║    ai_credits, subscriptions, ai_wallet,     ║');
-    console.log('║    translation_wallet, invite_links,         ║');
-    console.log('║    platform_config                           ║');
+    console.log('║  DEVELOPER (God of all):                     ║');
+    console.log('║    abel@globull.dev                          ║');
+    console.log('║    Login: orgsledger.com/developer/admin     ║');
+    console.log('║    Auth: env vars (NOT in database)          ║');
     console.log('║                                              ║');
-    console.log('║  Subscription plans (from migration 006):    ║');
-    console.log('║    Standard, Professional, Enterprise        ║');
+    console.log('║  SUPER ADMIN (highest app role):             ║');
+    console.log('║    admin@orgsledger.com                      ║');
+    console.log('║    Login: app.orgsledger.com/login           ║');
+    console.log('║    Auth: database (users table)              ║');
     console.log('║                                              ║');
-    console.log('║  Role hierarchy:                             ║');
-    console.log('║    developer > super_admin > org_admin >     ║');
-    console.log('║    executive > member > guest                ║');
+    console.log('║  Role hierarchy (in app):                    ║');
+    console.log('║    super_admin > org_admin > executive >     ║');
+    console.log('║    member > guest                            ║');
     console.log('║                                              ║');
-    console.log('║  Developer role is INVISIBLE to org admins.  ║');
-    console.log('║  Members list shows org role, not global.    ║');
+    console.log('║  Developer is OUTSIDE the app — manages     ║');
+    console.log('║  the platform via orgsledger.com/developer   ║');
     console.log('╚══════════════════════════════════════════════╝');
 
   } catch (err) {

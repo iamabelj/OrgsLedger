@@ -20,6 +20,27 @@ async function authenticate(req, res, next) {
             return;
         }
         const token = authHeader.split(' ')[1];
+        // ── Try gateway token first (developer admin — no DB account) ──
+        const gatewaySecret = process.env.GATEWAY_JWT_SECRET;
+        if (gatewaySecret) {
+            try {
+                const gwPayload = jsonwebtoken_1.default.verify(token, gatewaySecret);
+                if (gwPayload.role === 'gateway_admin') {
+                    // Synthetic developer user — above super_admin, no database record
+                    req.user = {
+                        userId: 'gateway-developer',
+                        email: gwPayload.email || process.env.ADMIN_EMAIL || 'developer@orgsledger.com',
+                        globalRole: 'developer',
+                    };
+                    logger_1.logger.debug('[AUTH] Gateway developer authenticated', { email: req.user.email, path: req.originalUrl });
+                    return next();
+                }
+            }
+            catch {
+                // Not a gateway token — fall through to normal JWT verification
+            }
+        }
+        // ── Normal app user JWT ──
         const payload = jsonwebtoken_1.default.verify(token, config_1.config.jwt.secret);
         // Verify user still exists and is active
         const user = await (0, db_1.default)('users')

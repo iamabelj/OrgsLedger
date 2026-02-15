@@ -490,7 +490,6 @@ const API_URL = (window.location.hostname === 'localhost')
   ? 'http://localhost:3000/api'
   : 'https://app.orgsledger.com/api';
 let gatewayToken = localStorage.getItem('gw_token') || '';
-let apiToken = localStorage.getItem('api_token') || '';
 
 // ── Init ──────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -510,7 +509,8 @@ async function doLogin(e) {
   const email = document.getElementById('login-email').value;
   const password = document.getElementById('login-password').value;
   try {
-    // Login to gateway (landing server)
+    // Login to gateway (landing server) — developer has no app DB account
+    // The gateway token is accepted by the main API's authenticate middleware
     const gwRes = await fetch('/api/admin/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
@@ -519,19 +519,6 @@ async function doLogin(e) {
     const gwData = await gwRes.json();
     gatewayToken = gwData.token;
     localStorage.setItem('gw_token', gatewayToken);
-
-    // Also login to main API for subscription/org management
-    try {
-      const apiRes = await fetch(API_URL + '/auth/login', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      if (apiRes.ok) {
-        const apiData = await apiRes.json();
-        apiToken = apiData.token;
-        localStorage.setItem('api_token', apiToken);
-      }
-    } catch (_) { /* API may not be reachable locally */ }
 
     document.getElementById('admin-email').textContent = email;
     showApp();
@@ -544,9 +531,8 @@ async function doLogin(e) {
 }
 
 function doLogout() {
-  gatewayToken = ''; apiToken = '';
+  gatewayToken = '';
   localStorage.removeItem('gw_token');
-  localStorage.removeItem('api_token');
   document.getElementById('login-overlay').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
 }
@@ -573,7 +559,7 @@ function navigateTo(page) {
 
 // ── API Helpers ───────────────────────────────────────────
 function gwHeaders() { return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + gatewayToken }; }
-function apiHeaders() { return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiToken }; }
+function apiHeaders() { return gwHeaders(); } // Gateway token is accepted by main API as developer
 
 async function gwFetch(path, opts = {}) {
   const res = await fetch(path, { ...opts, headers: { ...gwHeaders(), ...opts.headers } });
