@@ -1,4 +1,9 @@
 node_modules/
+# Allow web build assets with node_modules path
+!apps/api/web/assets/
+!apps/api/web/assets/node_modules/
+!apps/api/web/assets/node_modules/**
+
 dist/
 !apps/api/dist/
 !packages/*/dist/
