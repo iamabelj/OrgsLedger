@@ -70,11 +70,21 @@ export default function WalletsScreen() {
 
     const wallet = activeWallet === 'ai' ? aiWallet : translationWallet;
     const priceKey = activeWallet === 'ai' ? 'price_per_hour_usd' : 'price_per_hour_usd';
-    const price = parseFloat(wallet?.[priceKey] || (activeWallet === 'ai' ? 10 : 25));
+    const priceKeyNgn = activeWallet === 'ai' ? 'price_per_hour_ngn' : 'price_per_hour_ngn';
+    const orgCurrency = wallet?.currency || 'USD';
+    const keyToUse = orgCurrency === 'NGN' ? priceKeyNgn : priceKey;
+    const defaultPrice = orgCurrency === 'NGN' 
+      ? (activeWallet === 'ai' ? 18000 : 45000) 
+      : (activeWallet === 'ai' ? 10 : 25);
+    const price = parseFloat(wallet?.[keyToUse] || defaultPrice);
     const cost = hours * price;
     const label = activeWallet === 'ai' ? 'AI' : 'Translation';
+    const currencySymbol = orgCurrency === 'NGN' ? '₦' : '$';
+    const formattedCost = orgCurrency === 'NGN' 
+      ? cost.toLocaleString('en-NG', { maximumFractionDigits: 0 })
+      : cost.toFixed(2);
 
-    showAlert(`Top Up ${label} Wallet`, `Add ${hours} hour(s) for $${cost.toFixed(2)}?`, [
+    showAlert(`Top Up ${label} Wallet`, `Add ${hours} hour(s) for ${currencySymbol}${formattedCost}?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Confirm',
