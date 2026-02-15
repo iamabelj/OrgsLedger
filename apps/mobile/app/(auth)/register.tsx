@@ -50,8 +50,18 @@ export default function RegisterScreen() {
   }, [params.org]);
 
   const handleRegister = async () => {
-    if (!firstName || !lastName || !email || !password) {
-      showAlert('Error', 'Please fill in all fields');
+    const trimmedFirst = firstName.trim();
+    const trimmedLast = lastName.trim();
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedPhone = phone.trim();
+
+    if (!trimmedFirst || !trimmedLast || !trimmedEmail || !password) {
+      showAlert('Error', 'Please fill in all required fields');
+      return;
+    }
+    // Basic email format check
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      showAlert('Error', 'Please enter a valid email address');
       return;
     }
     if (password !== confirmPassword) {
@@ -66,11 +76,11 @@ export default function RegisterScreen() {
     setLoading(true);
     try {
       await register({
-        email: email.trim().toLowerCase(),
+        email: trimmedEmail,
         password,
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        phone: phone.trim() || undefined,
+        firstName: trimmedFirst,
+        lastName: trimmedLast,
+        phone: trimmedPhone || undefined,
         orgSlug: orgSlug || undefined,
       });
       // Use setTimeout to ensure state update completes before navigation
@@ -78,10 +88,16 @@ export default function RegisterScreen() {
         router.replace('/(tabs)/home');
       }, 100);
     } catch (err: any) {
-      showAlert(
-        'Registration Failed',
-        err.response?.data?.error || 'Something went wrong'
-      );
+      const data = err.response?.data;
+      let message = data?.error || 'Something went wrong';
+      // Show specific validation details if available
+      if (data?.details && Array.isArray(data.details)) {
+        const fieldErrors = data.details
+          .map((d: any) => d.message)
+          .join('\n');
+        if (fieldErrors) message = fieldErrors;
+      }
+      showAlert('Registration Failed', message);
     } finally {
       setLoading(false);
     }

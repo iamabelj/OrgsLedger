@@ -62,12 +62,12 @@ const avatarUpload = (0, multer_1.default)({
 });
 // ── Schemas ─────────────────────────────────────────────────
 const registerSchema = zod_1.z.object({
-    email: zod_1.z.string().email(),
-    password: zod_1.z.string().min(8).max(128),
-    firstName: zod_1.z.string().min(1).max(100),
-    lastName: zod_1.z.string().min(1).max(100),
-    phone: zod_1.z.string().optional(),
-    orgSlug: zod_1.z.string().optional(),
+    email: zod_1.z.string({ required_error: 'Email is required' }).email('Please enter a valid email address'),
+    password: zod_1.z.string({ required_error: 'Password is required' }).min(8, 'Password must be at least 8 characters').max(128, 'Password is too long'),
+    firstName: zod_1.z.string({ required_error: 'First name is required' }).min(1, 'First name is required').max(100, 'First name is too long'),
+    lastName: zod_1.z.string({ required_error: 'Last name is required' }).min(1, 'Last name is required').max(100, 'Last name is too long'),
+    phone: zod_1.z.string().nullable().optional(),
+    orgSlug: zod_1.z.string().nullable().optional(),
 });
 const loginSchema = zod_1.z.object({
     email: zod_1.z.string().email(),
