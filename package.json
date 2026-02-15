@@ -6,7 +6,8 @@
   "license": "UNLICENSED",
   "workspaces": [
     "apps/api",
-    "packages/*"
+    "packages/*",
+    "landing"
   ],
   "scripts": {
     "start": "node server.js",

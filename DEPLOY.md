@@ -64,6 +64,9 @@ Before deploying, build everything on your local machine:
 ```powershell
 cd c:\Users\Globull\Desktop\OrgsLedger
 
+# Install ALL dependencies (including landing gateway)
+npm install
+
 # Build shared packages
 cd packages/shared; npx tsc; cd ../..
 cd packages/database; npx tsc; cd ../..
@@ -73,6 +76,11 @@ cd apps/api; npx tsc; cd ../..
 
 # Build web frontend (Expo → apps/mobile/dist/)
 cd apps/mobile; npx expo export --platform web; cd ../..
+```
+
+**IMPORTANT**: Make sure `landing/` dependencies are installed:
+```powershell
+npm install --workspace=landing
 ```
 
 Then push to GitHub:
@@ -137,6 +145,9 @@ hPanel → **Node.js** → your app → **Environment Variables**:
 | `PORT` | `3000` |
 | `DATABASE_URL` | `postgresql://neondb_owner:YOUR_PASS@YOUR_HOST-pooler.REGION.aws.neon.tech/neondb?sslmode=require` |
 | `JWT_SECRET` | *(generate — see below)* |
+| `GATEWAY_JWT_SECRET` | *(generate — see below, DIFFERENT from JWT_SECRET)* |
+| `ADMIN_EMAIL` | `abel@globull.dev` |
+| `ADMIN_PASSWORD` | *(secure password for developer dashboard)* |
 | `JWT_EXPIRES_IN` | `7d` |
 | `JWT_REFRESH_EXPIRES_IN` | `30d` |
 | `CORS_ORIGINS` | `https://orgsledger.com,https://app.orgsledger.com` |
@@ -182,12 +193,39 @@ Open `https://app.orgsledger.com` → you should see the login page.
 
 ---
 
-## Step 4 — Landing Page (orgsledger.com)
+## Step 4 — Landing Page & Developer Dashboard
 
-1. hPanel → **Files** → **File Manager**
-2. Navigate to `public_html/` (the root domain's folder)
-3. Upload `landing/index.html` as `index.html`
-4. Open `https://orgsledger.com` → marketing/sales page
+Both `orgsledger.com` and `app.orgsledger.com` are served by the **same Node.js application**.
+
+The landing gateway is automatically mounted when the API starts. It handles:
+- **Marketing/Landing page** at `https://orgsledger.com/`
+- **Developer Dashboard** at `https://orgsledger.com/developer/admin` or `https://app.orgsledger.com/developer/admin`
+- **AI Proxy routes** at `/api/ai/*`
+- **Admin API** at `/api/admin/*`
+
+### Verify Landing Gateway
+
+Open `https://app.orgsledger.com/api/gateway-status` — you should see:
+```json
+{
+  "success": true,
+  "gatewayLoaded": true,
+  "adminDashboard": "/developer/admin",
+  "loginEndpoint": "/api/admin/login"
+}
+```
+
+If `gatewayLoaded: false`, check:
+1. Are landing dependencies installed? Run `npm install --workspace=landing`
+2. Is `GATEWAY_JWT_SECRET` set in environment variables?
+3. Check server logs for errors: hPanel → Node.js → View Logs
+
+### Access Developer Dashboard
+
+1. Open `https://orgsledger.com/developer/admin` or `https://app.orgsledger.com/developer/admin`
+2. Login with credentials from env vars:
+   - Email: value of `ADMIN_EMAIL`
+   - Password: value of `ADMIN_PASSWORD`
 
 ---
 

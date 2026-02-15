@@ -201,8 +201,30 @@ try {
     return gatewayApp(req, res, next);
   });
   logger.info('Landing gateway mounted (orgsledger.com: root, all: /developer)');
+  
+  // Add diagnostic endpoint to verify gateway is loaded
+  app.get('/api/gateway-status', (_req, res) => {
+    res.json({
+      success: true,
+      gatewayLoaded: true,
+      adminDashboard: '/developer/admin',
+      loginEndpoint: '/api/admin/login',
+    });
+  });
 } catch (err: any) {
-  logger.warn('Landing gateway not loaded: ' + (err.message || err));
+  logger.error('Landing gateway FAILED to load:', err);
+  logger.error('Stack trace:', err.stack);
+  
+  // Add diagnostic endpoint even when gateway fails
+  app.get('/api/gateway-status', (_req, res) => {
+    res.json({
+      success: false,
+      gatewayLoaded: false,
+      error: err.message,
+      stack: err.stack,
+      note: 'Landing dependencies may not be installed. Run: npm install --workspace=landing',
+    });
+  });
 }
 
 // ── Serve Web Frontend (production) ──────────────────────

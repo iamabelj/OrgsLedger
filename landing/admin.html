@@ -509,6 +509,19 @@ let gatewayToken = localStorage.getItem('gw_token') || '';
 
 // ── Init ──────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  // Diagnose gateway status on load
+  fetch(API_URL + '/gateway-status')
+    .then(res => res.json())
+    .then(data => {
+      if (!data.gatewayLoaded) {
+        console.error('[GATEWAY ERROR] Landing gateway not loaded:', data);
+        toast('⚠️ Gateway not loaded. Contact developer.', 'error');
+      } else {
+        console.log('[GATEWAY OK] Landing gateway loaded successfully');
+      }
+    })
+    .catch(err => console.error('[GATEWAY CHECK FAILED]', err));
+
   if (gatewayToken) {
     showApp();
     loadOverview();
@@ -604,7 +617,10 @@ async function apiFetch(path, opts = {}) {
   const res = await fetch(API_URL + path, { ...opts, headers: { ...apiHeaders(), ...opts.headers } });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'API request failed');
+    const msg = err.error || `API request failed: ${res.status} ${res.statusText}`;
+    console.error(`[API Error] ${path}:`, { status: res.status, error: err, url: API_URL + path });
+    toast(`API Error: ${msg}`, 'error');
+    throw new Error(msg);
   }
   return res.json();
 }
