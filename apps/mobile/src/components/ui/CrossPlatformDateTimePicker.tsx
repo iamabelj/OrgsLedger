@@ -1,8 +1,10 @@
 // ============================================================
 // OrgsLedger — Cross-Platform Date/Time Picker
+// Uses a VISIBLE native HTML <input> on web for maximum
+// browser compatibility. No invisible overlay tricks.
 // ============================================================
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -25,124 +27,100 @@ interface CrossPlatformDateTimePickerProps {
   style?: any;
 }
 
-export function CrossPlatformDateTimePicker({
-  label,
-  value,
-  mode,
-  hasValue,
-  onChange,
-  style,
-}: CrossPlatformDateTimePickerProps) {
-  const [showPicker, setShowPicker] = useState(false);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
-  const formatDisplay = useCallback((date: Date) => {
-    if (!hasValue) return mode === 'date' ? 'Select date' : 'Select time';
-    return mode === 'date' ? format(date, 'MMM d, yyyy') : format(date, 'h:mm a');
-  }, [hasValue, mode]);
-
-  const getWebValue = useCallback((date: Date) => {
+// ── Web-only component (rendered via dangerouslySetInnerHTML-free approach) ──
+function WebDatePicker({ label, value, mode, hasValue, onChange, style }: CrossPlatformDateTimePickerProps) {
+  const getInputValue = useCallback(() => {
     if (mode === 'date') {
-      const y = date.getFullYear();
-      const m = String(date.getMonth() + 1).padStart(2, '0');
-      const d = String(date.getDate()).padStart(2, '0');
+      const y = value.getFullYear();
+      const m = String(value.getMonth() + 1).padStart(2, '0');
+      const d = String(value.getDate()).padStart(2, '0');
       return `${y}-${m}-${d}`;
     }
-    const h = String(date.getHours()).padStart(2, '0');
-    const min = String(date.getMinutes()).padStart(2, '0');
+    const h = String(value.getHours()).padStart(2, '0');
+    const min = String(value.getMinutes()).padStart(2, '0');
     return `${h}:${min}`;
-  }, [mode]);
+  }, [value, mode]);
 
-  const parseWebInput = useCallback((raw: string): Date | null => {
-    if (!raw) return null;
+  const handleChange = useCallback((e: any) => {
+    // Handle both React synthetic events and native DOM events
+    const raw = e?.target?.value || e?.nativeEvent?.text || '';
+    if (!raw) return;
+
     try {
       if (mode === 'date') {
         const parts = raw.split('-').map(Number);
-        if (parts.length < 3 || parts.some(isNaN)) return null;
+        if (parts.length < 3 || parts.some(isNaN)) return;
         const [year, month, day] = parts;
-        const d = new Date(value);
-        d.setFullYear(year, month - 1, day);
-        return isNaN(d.getTime()) ? null : d;
+        const newDate = new Date(value);
+        newDate.setFullYear(year, month - 1, day);
+        if (!isNaN(newDate.getTime())) onChange(newDate);
+      } else {
+        const parts = raw.split(':').map(Number);
+        if (parts.length < 2 || parts.some(isNaN)) return;
+        const [hours, minutes] = parts;
+        if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return;
+        const newDate = new Date(value);
+        newDate.setHours(hours, minutes, 0, 0);
+        if (!isNaN(newDate.getTime())) onChange(newDate);
       }
-      const parts = raw.split(':').map(Number);
-      if (parts.length < 2 || parts.some(isNaN)) return null;
-      const [hours, minutes] = parts;
-      if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
-      const d = new Date(value);
-      d.setHours(hours, minutes, 0, 0);
-      return isNaN(d.getTime()) ? null : d;
     } catch {
-      return null;
+      // Silently ignore parse errors
     }
-  }, [mode, value]);
+  }, [mode, value, onChange]);
 
-  // All hooks are above — no conditional hook calls
-  const handleWebChange = useCallback((e: any) => {
-    const v = e?.target?.value ?? e?.nativeEvent?.text ?? '';
-    if (!v) return;
-    const parsed = parseWebInput(v);
-    if (parsed) onChange(parsed);
-  }, [parseWebInput, onChange]);
+  const displayText = hasValue
+    ? (mode === 'date' ? format(value, 'MMM d, yyyy') : format(value, 'h:mm a'))
+    : (mode === 'date' ? 'Select date' : 'Select time');
 
-  // Attach native DOM listener for reliable event handling on web
-  useEffect(() => {
-    if (Platform.OS !== 'web' || !inputRef.current) return;
-    const el = inputRef.current;
-    const handler = (e: Event) => {
-      const target = e.target as HTMLInputElement;
-      if (!target.value) return;
-      const parsed = parseWebInput(target.value);
-      if (parsed) onChange(parsed);
-    };
-    el.addEventListener('change', handler);
-    return () => el.removeEventListener('change', handler);
-  }, [parseWebInput, onChange]);
-
-  // ── Web: visible styled <input> for reliable date picking ──
-  if (Platform.OS === 'web') {
-    const inputVal = getWebValue(value);
-
-    return (
-      <View style={[styles.container, style]}>
-        <Text style={styles.label}>{label}</Text>
-        <View style={styles.webInputWrapper}>
-          <Ionicons
-            name={mode === 'date' ? 'calendar-outline' : 'time-outline'}
-            size={16}
-            color={Colors.highlight}
-            style={{ marginRight: 8 }}
-          />
-          <Text style={[styles.webDisplayText, !hasValue && { color: Colors.textLight }]}>
-            {formatDisplay(value)}
-          </Text>
-          {/* Native HTML input overlaid for browser date picker */}
-          <input
-            ref={(el: any) => { inputRef.current = el; }}
-            type={mode === 'date' ? 'date' : 'time'}
-            value={inputVal}
-            onChange={handleWebChange}
-            onInput={handleWebChange}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              opacity: 0,
-              cursor: 'pointer',
-              zIndex: 10,
-              border: 'none',
-              margin: 0,
-              padding: 0,
-              boxSizing: 'border-box',
-              WebkitAppearance: 'none',
-              MozAppearance: 'none',
-            } as any}
-            aria-label={label}
-          />
-        </View>
+  return (
+    <View style={[styles.container, style]}>
+      <Text style={styles.label}>{label}</Text>
+      <View style={styles.webContainer}>
+        <Ionicons
+          name={mode === 'date' ? 'calendar-outline' : 'time-outline'}
+          size={18}
+          color={Colors.highlight}
+          style={{ marginRight: 10 }}
+        />
+        <Text style={[styles.webDisplayLabel, !hasValue && { color: Colors.textLight }]}>
+          {displayText}
+        </Text>
+        {/*
+          Direct visible HTML input — the ONLY reliable approach for web.
+          Styled with colorScheme: 'dark' so the browser renders a dark date picker.
+          The input is fully visible and clickable — no opacity tricks.
+        */}
+        <input
+          type={mode === 'date' ? 'date' : 'time'}
+          value={getInputValue()}
+          onChange={handleChange}
+          style={{
+            background: 'transparent',
+            color: Colors.highlight,
+            border: `1px solid ${Colors.accent}`,
+            borderRadius: '8px',
+            padding: '8px 12px',
+            fontSize: '14px',
+            fontFamily: 'inherit',
+            cursor: 'pointer',
+            outline: 'none',
+            colorScheme: 'dark',
+            minWidth: mode === 'date' ? '160px' : '120px',
+            marginLeft: 'auto',
+          } as any}
+        />
       </View>
-    );
+    </View>
+  );
+}
+
+export function CrossPlatformDateTimePicker(props: CrossPlatformDateTimePickerProps) {
+  const { label, value, mode, hasValue, onChange, style } = props;
+  const [showPicker, setShowPicker] = useState(false);
+
+  // ── Web: use dedicated WebDatePicker ──
+  if (Platform.OS === 'web') {
+    return <WebDatePicker {...props} />;
   }
 
   // ── Native implementation ─────────────────────────────
@@ -150,6 +128,10 @@ export function CrossPlatformDateTimePicker({
     if (Platform.OS === 'android') setShowPicker(false);
     if (selectedDate) onChange(selectedDate);
   };
+
+  const displayText = hasValue
+    ? (mode === 'date' ? format(value, 'MMM d, yyyy') : format(value, 'h:mm a'))
+    : (mode === 'date' ? 'Select date' : 'Select time');
 
   return (
     <View style={[styles.container, style]}>
@@ -165,7 +147,7 @@ export function CrossPlatformDateTimePicker({
           color={Colors.highlight}
         />
         <Text style={{ color: hasValue ? Colors.textWhite : Colors.textLight, flex: 1 }}>
-          {formatDisplay(value)}
+          {displayText}
         </Text>
       </TouchableOpacity>
 
@@ -224,20 +206,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.accent,
   },
-  webInputWrapper: {
+  webContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.primaryLight,
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
+    paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
     borderColor: Colors.accent,
-    position: 'relative' as any,
-    overflow: 'hidden' as any,
     minHeight: 48,
   },
-  webDisplayText: {
+  webDisplayLabel: {
     color: Colors.textWhite,
     fontSize: FontSize.md,
     flex: 1,

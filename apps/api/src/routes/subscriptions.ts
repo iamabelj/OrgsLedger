@@ -1377,6 +1377,56 @@ router.put('/admin/users/:userId', authenticate, requireDeveloper(), validate(up
 // RISK MONITORING ENDPOINTS
 // ════════════════════════════════════════════════════════════
 
+// GET /admin/audit-logs — Platform-wide audit log for developer console
+router.get('/admin/audit-logs', authenticate, requireDeveloper(), async (req: Request, res: Response) => {
+  try {
+    const page = Math.max(parseInt(req.query.page as string) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 50, 1), 200);
+    const offset = (page - 1) * limit;
+    const { action, entityType, orgId } = req.query;
+
+    let query = db('audit_logs')
+      .leftJoin('users', 'audit_logs.user_id', 'users.id')
+      .leftJoin('organizations', 'audit_logs.organization_id', 'organizations.id')
+      .select(
+        'audit_logs.id',
+        'audit_logs.action',
+        'audit_logs.entity_type',
+        'audit_logs.entity_id',
+        'audit_logs.ip_address',
+        'audit_logs.created_at',
+        'audit_logs.user_id',
+        'audit_logs.organization_id',
+        db.raw("COALESCE(users.first_name || ' ' || users.last_name, users.email, 'System') as user_name"),
+        db.raw("COALESCE(organizations.name, '') as org_name"),
+      );
+
+    if (action) query = query.where({ 'audit_logs.action': action as string });
+    if (entityType) query = query.where({ 'audit_logs.entity_type': entityType as string });
+    if (orgId) query = query.where({ 'audit_logs.organization_id': orgId as string });
+
+    const total = await query.clone().clearSelect().clearOrder().count('audit_logs.id as count').first();
+    const logs = await query
+      .orderBy('audit_logs.created_at', 'desc')
+      .limit(limit)
+      .offset(offset);
+
+    res.json({
+      success: true,
+      data: logs,
+      pagination: {
+        page,
+        limit,
+        total: parseInt(total?.count as string) || 0,
+        pages: Math.ceil((parseInt(total?.count as string) || 0) / limit),
+      },
+    });
+  } catch (err: any) {
+    logger.error('Admin audit logs error', err);
+    res.status(500).json({ success: false, error: 'Failed to get audit logs' });
+  }
+});
+
 // GET /admin/risk/low-balances — orgs with wallets below threshold
 router.get('/admin/risk/low-balances', authenticate, requireDeveloper(), async (req: Request, res: Response) => {
   try {

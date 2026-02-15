@@ -353,7 +353,7 @@ class ApiClient {
       this.client.put(`/subscriptions/admin/users/${userId}`, data),
     // Audit logs
     adminAuditLogs: (params?: { page?: number; limit?: number; orgId?: string; action?: string; entityType?: string }) =>
-      this.client.get('/admin/audit-logs', { params }),
+      this.client.get('/subscriptions/admin/audit-logs', { params }),
   };
 
   // ── AI Credits (legacy — kept for backward compatibility) ─
