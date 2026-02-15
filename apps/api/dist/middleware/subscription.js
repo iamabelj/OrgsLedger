@@ -31,19 +31,49 @@ async function requireActiveSubscription(req, res, next) {
             });
             return;
         }
-        if (sub.status === 'expired' || sub.status === 'cancelled' || sub.status === 'suspended') {
-            logger_1.logger.warn('[SUB] Subscription not active', { orgId, status: sub.status, plan: sub.plan?.name, expiredAt: sub.current_period_end, userId: req.user?.userId });
+        // Allow active AND grace_period — only block on fully expired/cancelled/suspended
+        if (sub.status === 'cancelled' || sub.status === 'suspended') {
+            logger_1.logger.warn('[SUB] Subscription not active', { orgId, status: sub.status, plan: sub.plan?.name, userId: req.user?.userId });
             res.status(402).json({
                 success: false,
-                error: 'Your subscription has expired. Please renew to continue.',
-                code: 'SUBSCRIPTION_EXPIRED',
-                subscription: {
-                    status: sub.status,
-                    plan: sub.plan?.name,
-                    expiredAt: sub.current_period_end,
-                },
+                error: 'Your subscription has been ' + sub.status + '. Please contact support.',
+                code: 'SUBSCRIPTION_' + sub.status.toUpperCase(),
+                subscription: { status: sub.status, plan: sub.plan?.name, expiredAt: sub.current_period_end },
             });
             return;
+        }
+        if (sub.status === 'expired') {
+            // Auto-renew for free during early access (amount_paid === 0 or '0' or '0.00')
+            const paid = parseFloat(sub.amount_paid) || 0;
+            if (paid === 0) {
+                // Free/seed subscription — auto-extend by 1 year
+                const now = new Date();
+                const newEnd = new Date(now);
+                newEnd.setFullYear(newEnd.getFullYear() + 1);
+                const newGrace = new Date(newEnd);
+                newGrace.setDate(newGrace.getDate() + 7);
+                const subDb = require('../db').default;
+                await subDb('subscriptions').where({ id: sub.id }).update({
+                    status: 'active',
+                    current_period_start: now.toISOString(),
+                    current_period_end: newEnd.toISOString(),
+                    grace_period_end: newGrace.toISOString(),
+                    updated_at: subDb.fn.now(),
+                });
+                await subDb('organizations').where({ id: orgId }).update({ subscription_status: 'active' });
+                sub.status = 'active';
+                logger_1.logger.info('[SUB] Auto-renewed free subscription', { orgId, newEnd: newEnd.toISOString() });
+            }
+            else {
+                logger_1.logger.warn('[SUB] Subscription expired (paid)', { orgId, status: sub.status, plan: sub.plan?.name, expiredAt: sub.current_period_end, userId: req.user?.userId });
+                res.status(402).json({
+                    success: false,
+                    error: 'Your subscription has expired. Please renew to continue.',
+                    code: 'SUBSCRIPTION_EXPIRED',
+                    subscription: { status: sub.status, plan: sub.plan?.name, expiredAt: sub.current_period_end },
+                });
+                return;
+            }
         }
         logger_1.logger.debug('[SUB] Subscription valid', { orgId, status: sub.status, plan: sub.plan?.name });
         // Attach subscription to request

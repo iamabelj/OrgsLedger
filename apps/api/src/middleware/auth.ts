@@ -113,7 +113,7 @@ export async function loadMembership(
     // Super admins and developers get admin-level access everywhere
     if (req.user.globalRole === 'super_admin' || req.user.globalRole === 'developer') {
       req.membership = {
-        id: req.user.globalRole,
+        id: req.user.userId,  // Use actual user ID, not role string
         role: 'org_admin',
         organizationId: orgId,
         isActive: true,

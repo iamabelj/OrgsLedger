@@ -210,16 +210,48 @@ export default function EventsScreen() {
               <Input label="LOCATION" placeholder="Event location" value={location} onChangeText={setLocation} />
 
               <CrossPlatformDateTimePicker
-                label="START DATE & TIME"
+                label="START DATE"
                 value={startDate}
-                onChange={setStartDate}
-                mode="datetime"
+                mode="date"
+                hasValue={true}
+                onChange={(d) => {
+                  const updated = new Date(startDate);
+                  updated.setFullYear(d.getFullYear(), d.getMonth(), d.getDate());
+                  setStartDate(updated);
+                }}
               />
               <CrossPlatformDateTimePicker
-                label="END DATE & TIME"
+                label="START TIME"
+                value={startDate}
+                mode="time"
+                hasValue={true}
+                onChange={(d) => {
+                  const updated = new Date(startDate);
+                  updated.setHours(d.getHours(), d.getMinutes(), 0, 0);
+                  setStartDate(updated);
+                }}
+              />
+              <CrossPlatformDateTimePicker
+                label="END DATE"
                 value={endDate}
-                onChange={setEndDate}
-                mode="datetime"
+                mode="date"
+                hasValue={true}
+                onChange={(d) => {
+                  const updated = new Date(endDate);
+                  updated.setFullYear(d.getFullYear(), d.getMonth(), d.getDate());
+                  setEndDate(updated);
+                }}
+              />
+              <CrossPlatformDateTimePicker
+                label="END TIME"
+                value={endDate}
+                mode="time"
+                hasValue={true}
+                onChange={(d) => {
+                  const updated = new Date(endDate);
+                  updated.setHours(d.getHours(), d.getMinutes(), 0, 0);
+                  setEndDate(updated);
+                }}
               />
 
               <Text style={styles.fieldLabel}>CATEGORY</Text>

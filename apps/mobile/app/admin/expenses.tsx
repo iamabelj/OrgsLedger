@@ -94,6 +94,7 @@ export default function ExpensesScreen() {
     try {
       setCreating(true);
       await api.expenses.create(currentOrgId, {
+        title: description.trim(),
         description: description.trim(),
         amount: numAmount,
         category: category.trim(),
