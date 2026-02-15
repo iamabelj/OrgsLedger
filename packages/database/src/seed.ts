@@ -47,33 +47,7 @@ async function seed() {
     }
 
     // ═══════════════════════════════════════════════════════
-    // 2. LEGACY FREE LICENSE (backward compat)
-    // ═══════════════════════════════════════════════════════
-    let freeLicense = await db('licenses').where({ type: 'free' }).first();
-    if (!freeLicense) {
-      [freeLicense] = await db('licenses')
-        .insert({
-          type: 'free',
-          max_members: 50,
-          features: JSON.stringify({
-            chat: true,
-            meetings: true,
-            aiMinutes: false,
-            financials: true,
-            donations: true,
-            voting: true,
-          }),
-          ai_credits_included: 0,
-          price_monthly: 0,
-        })
-        .returning('*');
-      console.log('  ✓ Free license created');
-    } else {
-      console.log('  ✓ Free license already exists');
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // 3. DEMO ORGANIZATION
+    // 2. DEMO ORGANIZATION
     // ═══════════════════════════════════════════════════════
     let demoOrg = await db('organizations').where({ slug: 'demo-org' }).first();
     if (!demoOrg) {
@@ -82,7 +56,6 @@ async function seed() {
           name: 'Demo Organization',
           slug: 'demo-org',
           status: 'active',
-          license_id: freeLicense.id,
           subscription_status: 'active',
           billing_currency: 'USD',
           settings: JSON.stringify({
@@ -112,7 +85,7 @@ async function seed() {
     }
 
     // ═══════════════════════════════════════════════════════
-    // 4. SUPER ADMIN MEMBERSHIP (org_admin in demo org)
+    // 3. SUPER ADMIN MEMBERSHIP (org_admin in demo org)
     // ═══════════════════════════════════════════════════════
     const existingMembership = await db('memberships')
       .where({ user_id: superAdmin.id, organization_id: demoOrg.id })
@@ -129,7 +102,7 @@ async function seed() {
     }
 
     // ═══════════════════════════════════════════════════════
-    // 5. DEFAULT GENERAL CHANNEL
+    // 4. DEFAULT GENERAL CHANNEL
     // ═══════════════════════════════════════════════════════
     let generalChannel = await db('channels')
       .where({ organization_id: demoOrg.id, name: 'General' })
@@ -154,25 +127,7 @@ async function seed() {
     }
 
     // ═══════════════════════════════════════════════════════
-    // 6. LEGACY AI CREDITS (backward compat)
-    // ═══════════════════════════════════════════════════════
-    const existingCredits = await db('ai_credits')
-      .where({ organization_id: demoOrg.id })
-      .first();
-    if (!existingCredits) {
-      await db('ai_credits').insert({
-        organization_id: demoOrg.id,
-        total_credits: 0,
-        used_credits: 0,
-        price_per_credit_hour: 7.00,
-      });
-      console.log('  ✓ Legacy AI credits initialized');
-    } else {
-      console.log('  ✓ Legacy AI credits already exist');
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // 7. SUBSCRIPTION (Standard plan for demo org)
+    // 5. SUBSCRIPTION (Standard plan for demo org)
     // ═══════════════════════════════════════════════════════
     const standardPlan = await db('subscription_plans').where({ slug: 'standard' }).first();
     if (standardPlan) {
@@ -206,7 +161,7 @@ async function seed() {
     }
 
     // ═══════════════════════════════════════════════════════
-    // 8. AI WALLET (SaaS wallet)
+    // 6. AI WALLET (SaaS wallet)
     // ═══════════════════════════════════════════════════════
     const existingAiWallet = await db('ai_wallet')
       .where({ organization_id: demoOrg.id })
@@ -225,7 +180,7 @@ async function seed() {
     }
 
     // ═══════════════════════════════════════════════════════
-    // 9. TRANSLATION WALLET
+    // 7. TRANSLATION WALLET
     // ═══════════════════════════════════════════════════════
     const existingTransWallet = await db('translation_wallet')
       .where({ organization_id: demoOrg.id })
@@ -244,7 +199,7 @@ async function seed() {
     }
 
     // ═══════════════════════════════════════════════════════
-    // 10. INVITE LINK (default for demo org)
+    // 8. INVITE LINK (default for demo org)
     // ═══════════════════════════════════════════════════════
     const existingInvite = await db('invite_links')
       .where({ organization_id: demoOrg.id, is_active: true })
@@ -264,7 +219,7 @@ async function seed() {
     }
 
     // ═══════════════════════════════════════════════════════
-    // 11. PLATFORM CONFIG
+    // 9. PLATFORM CONFIG
     // ═══════════════════════════════════════════════════════
     const configs = [
       { key: 'ai_price_per_credit_hour', value: JSON.stringify(7.00), description: 'Default AI price per credit hour in USD' },

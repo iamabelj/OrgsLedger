@@ -1,6 +1,6 @@
 // ============================================================
-// OrgsLedger API — Licensing & Platform Admin Routes
-// License management, reselling, feature toggles, analytics
+// OrgsLedger API — Platform Admin Routes
+// Subscription plan management, feature toggles, analytics
 // ============================================================
 
 import { Router, Request, Response } from 'express';
@@ -12,25 +12,16 @@ import { logger } from '../logger';
 const router = Router();
 
 // ── Schemas ─────────────────────────────────────────────────
-const createLicenseSchema = z.object({
-  organizationId: z.string().uuid(),
-  type: z.enum(['free', 'basic', 'professional', 'enterprise']),
-  maxMembers: z.number().int().min(1),
-  features: z.object({
-    chat: z.boolean().default(true),
-    meetings: z.boolean().default(true),
-    aiMinutes: z.boolean().default(false),
-    financials: z.boolean().default(true),
-    donations: z.boolean().default(true),
-    voting: z.boolean().default(true),
-  }),
-  aiCreditsIncluded: z.number().int().default(0),
-  priceMonthly: z.number().min(0),
-  validFrom: z.string().datetime(),
-  validUntil: z.string().datetime().optional(),
-  resellerId: z.string().uuid().optional(),
+const updatePlanSchema = z.object({
+  maxMembers: z.number().int().min(1).optional(),
+  features: z.record(z.boolean()).optional(),
+  priceUsdAnnual: z.number().min(0).optional(),
+  priceUsdMonthly: z.number().min(0).optional(),
+  priceNgnAnnual: z.number().min(0).optional(),
+  priceNgnMonthly: z.number().min(0).optional(),
+  isActive: z.boolean().optional(),
+  description: z.string().optional(),
 });
-
 const updateConfigSchema = z.object({
   key: z.string().min(1),
   value: z.any(),
@@ -38,144 +29,74 @@ const updateConfigSchema = z.object({
 });
 
 // ══════════════════════════════════════════════════════════════
-// LICENSE MANAGEMENT (Super Admin only)
+// SUBSCRIPTION PLAN MANAGEMENT (Developer only)
 // ══════════════════════════════════════════════════════════════
 
-router.post(
-  '/licenses',
-  authenticate,
-  requireDeveloper(),
-  validate(createLicenseSchema),
-  async (req: Request, res: Response) => {
-    try {
-      const data = req.body;
-
-      const [license] = await db('licenses')
-        .insert({
-          type: data.type,
-          max_members: data.maxMembers,
-          features: JSON.stringify(data.features),
-          ai_credits_included: data.aiCreditsIncluded,
-          price_monthly: data.priceMonthly,
-          valid_from: data.validFrom,
-          valid_until: data.validUntil || null,
-          is_active: true,
-          reseller_id: data.resellerId || null,
-        })
-        .returning('*');
-
-      // Assign to organization
-      await db('organizations')
-        .where({ id: data.organizationId })
-        .update({
-          license_id: license.id,
-          settings: db.raw(
-            `jsonb_set(settings, '{features}', ?::jsonb)`,
-            [JSON.stringify(data.features)]
-          ),
-        });
-
-      // If includes AI credits, add them
-      if (data.aiCreditsIncluded > 0) {
-        await db('ai_credits')
-          .where({ organization_id: data.organizationId })
-          .update({
-            total_credits: db.raw('total_credits + ?', [data.aiCreditsIncluded]),
-          });
-
-        await db('ai_credit_transactions').insert({
-          organization_id: data.organizationId,
-          type: 'bonus',
-          amount: data.aiCreditsIncluded,
-          description: `License activation: ${data.aiCreditsIncluded} AI minutes included`,
-        });
-      }
-
-      await (req as any).audit?.({
-        action: 'create',
-        entityType: 'license',
-        entityId: license.id,
-        newValue: { type: data.type, organizationId: data.organizationId },
-      });
-
-      res.status(201).json({ success: true, data: license });
-    } catch (err) {
-      logger.error('Create license error', err);
-      res.status(500).json({ success: false, error: 'Failed to create license' });
-    }
-  }
-);
-
+// ── List subscription plans ─────────────────────────────────
 router.get(
-  '/licenses',
+  '/plans',
   authenticate,
   requireDeveloper(),
-  async (req: Request, res: Response) => {
+  async (_req: Request, res: Response) => {
     try {
-      const licenses = await db('licenses')
-        .leftJoin('organizations', 'licenses.id', 'organizations.license_id')
-        .select(
-          'licenses.*',
-          'organizations.name as organizationName',
-          'organizations.slug as organizationSlug'
-        )
-        .orderBy('licenses.created_at', 'desc');
-
-      res.json({ success: true, data: licenses });
+      const plans = await db('subscription_plans')
+        .select('*')
+        .orderBy('sort_order', 'asc');
+      res.json({ success: true, data: plans });
     } catch (err) {
-      res.status(500).json({ success: false, error: 'Failed to list licenses' });
+      res.status(500).json({ success: false, error: 'Failed to list plans' });
     }
   }
 );
 
+// ── Update a subscription plan ──────────────────────────────
 router.put(
-  '/licenses/:licenseId',
+  '/plans/:planId',
   authenticate,
   requireDeveloper(),
+  validate(updatePlanSchema),
   async (req: Request, res: Response) => {
     try {
-      const { type, maxMembers, features, isActive, priceMonthly } = req.body;
-      const previous = await db('licenses').where({ id: req.params.licenseId }).first();
+      const previous = await db('subscription_plans').where({ id: req.params.planId }).first();
+      if (!previous) {
+        res.status(404).json({ success: false, error: 'Plan not found' });
+        return;
+      }
 
       const updates: Record<string, any> = {};
-      if (type) updates.type = type;
-      if (maxMembers) updates.max_members = maxMembers;
-      if (features) updates.features = JSON.stringify(features);
-      if (isActive !== undefined) updates.is_active = isActive;
-      if (priceMonthly !== undefined) updates.price_monthly = priceMonthly;
+      if (req.body.maxMembers !== undefined) updates.max_members = req.body.maxMembers;
+      if (req.body.features !== undefined) updates.features = JSON.stringify(req.body.features);
+      if (req.body.priceUsdAnnual !== undefined) updates.price_usd_annual = req.body.priceUsdAnnual;
+      if (req.body.priceUsdMonthly !== undefined) updates.price_usd_monthly = req.body.priceUsdMonthly;
+      if (req.body.priceNgnAnnual !== undefined) updates.price_ngn_annual = req.body.priceNgnAnnual;
+      if (req.body.priceNgnMonthly !== undefined) updates.price_ngn_monthly = req.body.priceNgnMonthly;
+      if (req.body.isActive !== undefined) updates.is_active = req.body.isActive;
+      if (req.body.description !== undefined) updates.description = req.body.description;
 
-      await db('licenses').where({ id: req.params.licenseId }).update(updates);
-
-      // Sync features to org settings
-      if (features) {
-        const org = await db('organizations').where({ license_id: req.params.licenseId }).first();
-        if (org) {
-          const settings = typeof org.settings === 'string' ? JSON.parse(org.settings) : org.settings;
-          settings.features = features;
-          settings.maxMembers = maxMembers || settings.maxMembers;
-          await db('organizations')
-            .where({ id: org.id })
-            .update({ settings: JSON.stringify(settings) });
-        }
+      if (Object.keys(updates).length === 0) {
+        res.status(400).json({ success: false, error: 'No fields to update' });
+        return;
       }
+
+      await db('subscription_plans').where({ id: req.params.planId }).update(updates);
 
       await (req as any).audit?.({
         action: 'update',
-        entityType: 'license',
-        entityId: req.params.licenseId,
+        entityType: 'subscription_plan',
+        entityId: req.params.planId,
         previousValue: previous,
         newValue: updates,
       });
 
-      res.json({ success: true, message: 'License updated' });
+      res.json({ success: true, message: 'Plan updated' });
     } catch (err) {
-      res.status(500).json({ success: false, error: 'Failed to update license' });
+      res.status(500).json({ success: false, error: 'Failed to update plan' });
     }
   }
 );
 
 // ══════════════════════════════════════════════════════════════
-// PLATFORM CONFIG (Super Admin)
+// PLATFORM CONFIG (Developer)
 // ══════════════════════════════════════════════════════════════
 
 router.get(
@@ -193,7 +114,7 @@ router.get(
 );
 
 // ══════════════════════════════════════════════════════════════
-// GRANT AI CREDITS (Super Admin)
+// GRANT AI WALLET MINUTES (Developer)
 // ══════════════════════════════════════════════════════════════
 router.post(
   '/ai-credits/grant',
@@ -207,35 +128,35 @@ router.post(
         return;
       }
 
-      // Ensure ai_credits row exists
-      const existing = await db('ai_credits')
+      // Ensure ai_wallet exists
+      let wallet = await db('ai_wallet')
         .where({ organization_id: organizationId })
         .first();
 
-      if (existing) {
-        await db('ai_credits')
+      if (wallet) {
+        await db('ai_wallet')
           .where({ organization_id: organizationId })
           .update({
-            total_credits: db.raw('total_credits + ?', [credits]),
+            balance_minutes: db.raw('balance_minutes + ?', [credits]),
           });
       } else {
-        await db('ai_credits').insert({
+        await db('ai_wallet').insert({
           organization_id: organizationId,
-          total_credits: credits,
-          used_credits: 0,
+          balance_minutes: credits,
         });
       }
 
-      await db('ai_credit_transactions').insert({
+      await db('ai_wallet_transactions').insert({
         organization_id: organizationId,
         type: 'bonus',
-        amount: credits,
-        description: reason || `Admin granted ${credits} AI credit${credits > 1 ? 's' : ''}`,
+        amount_minutes: credits,
+        cost: 0,
+        description: reason || `Admin granted ${credits} AI minute${credits > 1 ? 's' : ''}`,
       });
 
       await (req as any).audit?.({
         action: 'grant',
-        entityType: 'ai_credits',
+        entityType: 'ai_wallet',
         entityId: organizationId,
         newValue: { credits, reason },
       });
@@ -301,8 +222,9 @@ router.get(
         .select(db.raw('coalesce(sum(amount), 0) as total'))
         .first();
       const totalMeetings = await db('meetings').count('id as count').first();
-      const aiMinutesUsed = await db('ai_credits')
-        .select(db.raw('coalesce(sum(used_credits), 0) as total'))
+      const aiMinutesUsed = await db('ai_wallet_transactions')
+        .where('amount_minutes', '<', 0)
+        .select(db.raw('coalesce(sum(abs(amount_minutes)), 0) as total'))
         .first();
 
       // Recent activity

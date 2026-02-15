@@ -88,30 +88,13 @@ router.post(
         return;
       }
 
-      // Create org (SaaS — assign default free license)
-      let freeLicense = await db('licenses').where({ type: 'free' }).first();
-      if (!freeLicense) {
-        [freeLicense] = await db('licenses')
-          .insert({
-            type: 'free',
-            max_members: 50,
-            features: JSON.stringify({
-              chat: true, meetings: true, aiMinutes: false,
-              financials: true, donations: true, voting: true,
-            }),
-            ai_credits_included: 0,
-            price_monthly: 0,
-          })
-          .returning('*');
-      }
-
+      // Create org
       const [org] = await db('organizations')
         .insert({
           name,
           slug,
           status: 'active',
           subscription_status: 'active',
-          license_id: freeLicense.id,
           billing_currency: currency === 'NGN' ? 'NGN' : 'USD',
           settings: JSON.stringify({
             currency,
@@ -171,15 +154,6 @@ router.post(
 
       // Generate initial invite link for org admin
       const invite = await createInviteLink(org.id, req.user!.userId, 'member');
-
-      // Keep legacy ai_credits for backward compatibility
-      try {
-        await db('ai_credits').insert({
-          organization_id: org.id,
-          total_credits: 0,
-          used_credits: 0,
-        });
-      } catch { /* ignore if exists */ }
 
       await (req as any).audit?.({
         organizationId: org.id,
@@ -691,11 +665,14 @@ router.get(
       const limit = parseInt(req.query.limit as string) || 50;
 
       const orgs = await db('organizations')
-        .leftJoin('licenses', 'organizations.license_id', 'licenses.id')
+        .leftJoin('subscriptions', 'organizations.id', 'subscriptions.organization_id')
+        .leftJoin('subscription_plans', 'subscriptions.plan_id', 'subscription_plans.id')
         .select(
           'organizations.*',
-          'licenses.type as licenseType',
-          'licenses.max_members as licenseMaxMembers'
+          'subscription_plans.slug as planSlug',
+          'subscription_plans.name as planName',
+          'subscription_plans.max_members as planMaxMembers',
+          'subscriptions.status as subStatus'
         )
         .orderBy('organizations.created_at', 'desc')
         .offset((page - 1) * limit)
@@ -814,21 +791,36 @@ router.get(
         return;
       }
 
-      const license = await db('licenses')
-        .where({ id: org.license_id })
+      const subscription = await db('subscriptions')
+        .where({ organization_id: req.params.orgId })
+        .orderBy('created_at', 'desc')
+        .first();
+
+      let plan = null;
+      if (subscription) {
+        plan = await db('subscription_plans')
+          .where({ id: subscription.plan_id })
+          .first();
+      }
+
+      const aiWallet = await db('ai_wallet')
+        .where({ organization_id: req.params.orgId })
         .first();
 
       res.json({
         success: true,
         data: {
-          id: license?.id || 'free',
-          planId: license?.type || 'free',
-          status: license?.is_active ? 'active' : 'expired',
-          maxMembers: license?.max_members || 50,
-          features: license?.features || {},
-          aiCreditsIncluded: license?.ai_credits_included || 0,
-          priceMonthly: parseFloat(license?.price_monthly) || 0,
-          currentPeriodEnd: license?.valid_until || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          id: subscription?.id || 'free',
+          planId: plan?.slug || 'standard',
+          planName: plan?.name || 'Standard',
+          status: subscription?.status || org.subscription_status || 'active',
+          maxMembers: plan?.max_members || 100,
+          features: plan?.features || {},
+          billingCycle: subscription?.billing_cycle || 'annual',
+          currency: subscription?.currency || org.billing_currency,
+          currentPeriodEnd: subscription?.current_period_end || null,
+          gracePeriodEnd: subscription?.grace_period_end || null,
+          aiWalletBalance: parseFloat(aiWallet?.balance_minutes) || 0,
         },
       });
     } catch (err) {
