@@ -1,18 +1,318 @@
-import knex from 'knex';
+// ============================================================
+// OrgsLedger — Database Seeding
+//
+// IDEMPOTENCY CONTRACT:
+//   Every seed function checks for existence before inserting.
+//   Running this script multiple times is safe — it will skip
+//   rows that already exist and only create missing ones.
+//
+// CREDENTIALS:
+//   Super admin credentials MUST be supplied via environment
+//   variables DEFAULT_ADMIN_EMAIL and DEFAULT_ADMIN_PASSWORD.
+//   No hardcoded fallbacks.  Set them in your .env or CI config.
+// ============================================================
+
+import knex, { Knex } from 'knex';
 import config from './knexfile';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import {
+  ROLES,
+  SUB_STATUS,
+  CURRENCIES,
+  WALLET_PRICES,
+  CONFIG_KEYS,
+  DEFAULTS,
+  PLAN_SLUGS,
+} from './constants';
+import type {
+  UserRow,
+  OrganizationRow,
+  ChannelRow,
+  SubscriptionPlanRow,
+  InviteLinkRow,
+  WalletRow,
+} from './types';
 
-// Super admin — highest role in the app (admin@orgsledger.com)
-// Logs in at app.orgsledger.com/login
-const SUPER_ADMIN_EMAIL = process.env.DEFAULT_ADMIN_EMAIL || 'admin@orgsledger.com';
-const SUPER_ADMIN_PASSWORD = process.env.DEFAULT_ADMIN_PASSWORD || 'SuperAdmin1234!';
+// ── Credential validation ───────────────────────────────────
+
+function requireEnv(key: string, description: string): string {
+  const value = process.env[key];
+  if (!value) {
+    console.error(`\n  ✖ Missing required environment variable: ${key}`);
+    console.error(`    ${description}\n`);
+    console.error('  Set it in your .env file or export it before running seed.\n');
+    process.exit(1);
+  }
+  return value;
+}
+
+const SUPER_ADMIN_EMAIL = requireEnv(
+  'DEFAULT_ADMIN_EMAIL',
+  'Email for the platform super admin account',
+);
+const SUPER_ADMIN_PASSWORD = requireEnv(
+  'DEFAULT_ADMIN_PASSWORD',
+  'Password for the platform super admin account',
+);
 
 // NOTE: Developer (abel@globull.dev) does NOT have a database account.
 // Developer logs in at orgsledger.com/developer/admin using env vars
 // (ADMIN_EMAIL + ADMIN_PASSWORD in env.js). That's a separate auth system.
 
-async function seed() {
+// ── Helpers ─────────────────────────────────────────────────
+
+async function hashPassword(pw: string): Promise<string> {
+  return bcrypt.hash(pw, DEFAULTS.BCRYPT_ROUNDS);
+}
+
+// ── Individual Seed Functions ───────────────────────────────
+
+/**
+ * 1. Create the super admin user (highest app role).
+ *    Idempotent — skips if email already exists.
+ */
+async function seedSuperAdmin(db: Knex): Promise<UserRow> {
+  let user = await db('users').where({ email: SUPER_ADMIN_EMAIL }).first() as UserRow | undefined;
+  if (!user) {
+    [user] = await db('users')
+      .insert({
+        email: SUPER_ADMIN_EMAIL,
+        password_hash: await hashPassword(SUPER_ADMIN_PASSWORD),
+        first_name: 'Platform',
+        last_name: 'Admin',
+        global_role: ROLES.SUPER_ADMIN,
+        email_verified: true,
+      })
+      .returning('*') as UserRow[];
+    console.log(`  ✓ Super admin created (${SUPER_ADMIN_EMAIL})`);
+  } else {
+    console.log('  ✓ Super admin already exists');
+  }
+  return user;
+}
+
+/**
+ * 2. Create the demo organization.
+ *    Idempotent — skips if slug already exists.
+ */
+async function seedDemoOrganization(db: Knex): Promise<OrganizationRow> {
+  let org = await db('organizations').where({ slug: 'demo-org' }).first() as OrganizationRow | undefined;
+  if (!org) {
+    [org] = await db('organizations')
+      .insert({
+        name: 'Demo Organization',
+        slug: 'demo-org',
+        status: SUB_STATUS.ACTIVE,
+        subscription_status: SUB_STATUS.ACTIVE,
+        billing_currency: CURRENCIES.USD,
+        settings: JSON.stringify({
+          currency: CURRENCIES.USD,
+          timezone: 'UTC',
+          locale: 'en',
+          aiEnabled: true,
+          features: {
+            chat: true,
+            meetings: true,
+            aiMinutes: true,
+            financials: true,
+            donations: true,
+            voting: true,
+            polls: true,
+            events: true,
+            announcements: true,
+            documents: true,
+            committees: true,
+          },
+        }),
+      })
+      .returning('*') as OrganizationRow[];
+    console.log('  ✓ Demo organization created');
+  } else {
+    console.log('  ✓ Demo organization already exists');
+  }
+  return org;
+}
+
+/**
+ * 3. Ensure super admin has org_admin membership in the demo org.
+ *    Idempotent — skips if membership already exists.
+ */
+async function seedMembership(db: Knex, userId: string, orgId: string): Promise<void> {
+  const existing = await db('memberships')
+    .where({ user_id: userId, organization_id: orgId })
+    .first();
+  if (!existing) {
+    await db('memberships').insert({
+      user_id: userId,
+      organization_id: orgId,
+      role: ROLES.ORG_ADMIN,
+    });
+    console.log(`  ✓ Super admin membership created (${SUPER_ADMIN_EMAIL} → ${ROLES.ORG_ADMIN})`);
+  } else {
+    console.log('  ✓ Super admin membership already exists');
+  }
+}
+
+/**
+ * 4. Create the default "General" channel and add the super admin.
+ *    Idempotent — skips if channel already exists.
+ */
+async function seedDefaultChannel(db: Knex, orgId: string, userId: string): Promise<void> {
+  let channel = await db('channels')
+    .where({ organization_id: orgId, name: 'General' })
+    .first() as ChannelRow | undefined;
+
+  if (!channel) {
+    [channel] = await db('channels')
+      .insert({
+        organization_id: orgId,
+        name: 'General',
+        type: 'general',
+        description: 'General discussion channel',
+      })
+      .returning('*') as ChannelRow[];
+
+    await db('channel_members').insert({
+      channel_id: channel.id,
+      user_id: userId,
+    });
+    console.log('  ✓ Default channel created with super admin');
+  } else {
+    console.log('  ✓ Default channel already exists');
+  }
+}
+
+/**
+ * 5. Create a standard subscription for the demo org.
+ *    Idempotent — skips if a subscription already exists.
+ */
+async function seedSubscription(db: Knex, orgId: string): Promise<void> {
+  const plan = await db('subscription_plans')
+    .where({ slug: PLAN_SLUGS.STANDARD })
+    .first() as SubscriptionPlanRow | undefined;
+
+  if (!plan) {
+    console.log('  ⚠ No subscription plans found (migration 006 may not have run)');
+    return;
+  }
+
+  const existing = await db('subscriptions').where({ organization_id: orgId }).first();
+  if (!existing) {
+    const now = new Date();
+    const oneYear = new Date(now);
+    oneYear.setFullYear(oneYear.getFullYear() + 1);
+    const grace = new Date(oneYear);
+    grace.setDate(grace.getDate() + DEFAULTS.GRACE_PERIOD_DAYS);
+
+    await db('subscriptions').insert({
+      organization_id: orgId,
+      plan_id: plan.id,
+      status: SUB_STATUS.ACTIVE,
+      billing_cycle: DEFAULTS.DEFAULT_BILLING_CYCLE,
+      currency: DEFAULTS.DEFAULT_CURRENCY,
+      amount_paid: 0,
+      current_period_start: now.toISOString(),
+      current_period_end: oneYear.toISOString(),
+      grace_period_end: grace.toISOString(),
+    });
+    console.log('  ✓ Standard subscription created for demo org');
+  } else {
+    console.log('  ✓ Subscription already exists for demo org');
+  }
+}
+
+/**
+ * 6. Create the AI wallet for the demo org.
+ *    Idempotent — skips if wallet already exists.
+ */
+async function seedAiWallet(db: Knex, orgId: string): Promise<void> {
+  const existing = await db('ai_wallet').where({ organization_id: orgId }).first() as WalletRow | undefined;
+  if (!existing) {
+    await db('ai_wallet').insert({
+      organization_id: orgId,
+      balance_minutes: 0,
+      currency: DEFAULTS.DEFAULT_CURRENCY,
+      price_per_hour_usd: WALLET_PRICES.AI_PER_HOUR_USD,
+      price_per_hour_ngn: WALLET_PRICES.AI_PER_HOUR_NGN,
+    });
+    console.log('  ✓ AI wallet created');
+  } else {
+    console.log('  ✓ AI wallet already exists');
+  }
+}
+
+/**
+ * 7. Create the translation wallet for the demo org.
+ *    Idempotent — skips if wallet already exists.
+ */
+async function seedTranslationWallet(db: Knex, orgId: string): Promise<void> {
+  const existing = await db('translation_wallet').where({ organization_id: orgId }).first() as WalletRow | undefined;
+  if (!existing) {
+    await db('translation_wallet').insert({
+      organization_id: orgId,
+      balance_minutes: 0,
+      currency: DEFAULTS.DEFAULT_CURRENCY,
+      price_per_hour_usd: WALLET_PRICES.TRANSLATION_PER_HOUR_USD,
+      price_per_hour_ngn: WALLET_PRICES.TRANSLATION_PER_HOUR_NGN,
+    });
+    console.log('  ✓ Translation wallet created');
+  } else {
+    console.log('  ✓ Translation wallet already exists');
+  }
+}
+
+/**
+ * 8. Create a default invite link for the demo org.
+ *    Idempotent — skips if an active invite already exists.
+ */
+async function seedInviteLink(db: Knex, orgId: string, userId: string): Promise<void> {
+  const existing = await db('invite_links')
+    .where({ organization_id: orgId, is_active: true })
+    .first() as InviteLinkRow | undefined;
+
+  if (!existing) {
+    const code = crypto.randomBytes(6).toString('hex').toUpperCase();
+    await db('invite_links').insert({
+      organization_id: orgId,
+      code,
+      role: ROLES.MEMBER,
+      is_active: true,
+      created_by: userId,
+    });
+    console.log(`  ✓ Invite link created (code: ${code})`);
+  } else {
+    console.log(`  ✓ Invite link already exists (code: ${existing.code})`);
+  }
+}
+
+/**
+ * 9. Seed platform config key/value pairs.
+ *    Idempotent — skips keys that already exist.
+ */
+async function seedPlatformConfig(db: Knex): Promise<void> {
+  const configs = [
+    { key: CONFIG_KEYS.AI_PRICE_PER_CREDIT_HOUR, value: JSON.stringify(WALLET_PRICES.AI_CREDIT_PER_HOUR_USD), description: 'Default AI price per credit hour in USD' },
+    { key: CONFIG_KEYS.PLATFORM_NAME, value: JSON.stringify('OrgsLedger'), description: 'Platform display name' },
+    { key: CONFIG_KEYS.STRIPE_ENABLED, value: JSON.stringify(true), description: 'Whether Stripe payments are enabled' },
+    { key: CONFIG_KEYS.PAYSTACK_ENABLED, value: JSON.stringify(true), description: 'Whether Paystack payments are enabled (NGN)' },
+    { key: CONFIG_KEYS.FLUTTERWAVE_ENABLED, value: JSON.stringify(true), description: 'Whether Flutterwave payments are enabled' },
+    { key: CONFIG_KEYS.MAX_FILE_UPLOAD_MB, value: JSON.stringify(DEFAULTS.MAX_FILE_UPLOAD_MB), description: 'Max file upload size in MB' },
+    { key: CONFIG_KEYS.DEFAULT_BILLING_CYCLE, value: JSON.stringify(DEFAULTS.DEFAULT_BILLING_CYCLE), description: 'Default billing cycle for new subscriptions' },
+  ];
+
+  for (const cfg of configs) {
+    const exists = await db('platform_config').where({ key: cfg.key }).first();
+    if (!exists) {
+      await db('platform_config').insert(cfg);
+    }
+  }
+  console.log(`  ✓ Platform config seeded (${configs.length} keys)`);
+}
+
+// ── Main Orchestrator ───────────────────────────────────────
+
+async function seed(): Promise<void> {
   const db = knex(config);
   try {
     console.log('╔══════════════════════════════════════════════╗');
@@ -22,225 +322,16 @@ async function seed() {
     console.log(`  Developer:   abel@globull.dev (env-based, NOT in DB)`);
     console.log();
 
-    // Hash password helper (must match API's bcrypt usage)
-    const hashPassword = async (pw: string) =>
-      bcrypt.hash(pw, 12);
+    const superAdmin = await seedSuperAdmin(db);
+    const demoOrg = await seedDemoOrganization(db);
+    await seedMembership(db, superAdmin.id, demoOrg.id);
+    await seedDefaultChannel(db, demoOrg.id, superAdmin.id);
+    await seedSubscription(db, demoOrg.id);
+    await seedAiWallet(db, demoOrg.id);
+    await seedTranslationWallet(db, demoOrg.id);
+    await seedInviteLink(db, demoOrg.id, superAdmin.id);
+    await seedPlatformConfig(db);
 
-    // ═══════════════════════════════════════════════════════
-    // 1. SUPER ADMIN USER (highest role in the app)
-    // ═══════════════════════════════════════════════════════
-    let superAdmin = await db('users').where({ email: SUPER_ADMIN_EMAIL }).first();
-    if (!superAdmin) {
-      [superAdmin] = await db('users')
-        .insert({
-          email: SUPER_ADMIN_EMAIL,
-          password_hash: await hashPassword(SUPER_ADMIN_PASSWORD),
-          first_name: 'Platform',
-          last_name: 'Admin',
-          global_role: 'super_admin',
-          email_verified: true,
-        })
-        .returning('*');
-      console.log('  ✓ Super admin created (admin@orgsledger.com)');
-    } else {
-      console.log('  ✓ Super admin already exists');
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // 2. DEMO ORGANIZATION
-    // ═══════════════════════════════════════════════════════
-    let demoOrg = await db('organizations').where({ slug: 'demo-org' }).first();
-    if (!demoOrg) {
-      [demoOrg] = await db('organizations')
-        .insert({
-          name: 'Demo Organization',
-          slug: 'demo-org',
-          status: 'active',
-          subscription_status: 'active',
-          billing_currency: 'USD',
-          settings: JSON.stringify({
-            currency: 'USD',
-            timezone: 'UTC',
-            locale: 'en',
-            aiEnabled: true,
-            features: {
-              chat: true,
-              meetings: true,
-              aiMinutes: true,
-              financials: true,
-              donations: true,
-              voting: true,
-              polls: true,
-              events: true,
-              announcements: true,
-              documents: true,
-              committees: true,
-            },
-          }),
-        })
-        .returning('*');
-      console.log('  ✓ Demo organization created');
-    } else {
-      console.log('  ✓ Demo organization already exists');
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // 3. SUPER ADMIN MEMBERSHIP (org_admin in demo org)
-    // ═══════════════════════════════════════════════════════
-    const existingMembership = await db('memberships')
-      .where({ user_id: superAdmin.id, organization_id: demoOrg.id })
-      .first();
-    if (!existingMembership) {
-      await db('memberships').insert({
-        user_id: superAdmin.id,
-        organization_id: demoOrg.id,
-        role: 'org_admin',
-      });
-      console.log('  ✓ Super admin membership created (admin@orgsledger.com → org_admin)');
-    } else {
-      console.log('  ✓ Super admin membership already exists');
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // 4. DEFAULT GENERAL CHANNEL
-    // ═══════════════════════════════════════════════════════
-    let generalChannel = await db('channels')
-      .where({ organization_id: demoOrg.id, name: 'General' })
-      .first();
-    if (!generalChannel) {
-      [generalChannel] = await db('channels')
-        .insert({
-          organization_id: demoOrg.id,
-          name: 'General',
-          type: 'general',
-          description: 'General discussion channel',
-        })
-        .returning('*');
-
-      await db('channel_members').insert({
-        channel_id: generalChannel.id,
-        user_id: superAdmin.id,
-      });
-      console.log('  ✓ Default channel created with super admin');
-    } else {
-      console.log('  ✓ Default channel already exists');
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // 5. SUBSCRIPTION (Standard plan for demo org)
-    // ═══════════════════════════════════════════════════════
-    const standardPlan = await db('subscription_plans').where({ slug: 'standard' }).first();
-    if (standardPlan) {
-      const existingSub = await db('subscriptions')
-        .where({ organization_id: demoOrg.id })
-        .first();
-      if (!existingSub) {
-        const now = new Date();
-        const oneYear = new Date(now);
-        oneYear.setFullYear(oneYear.getFullYear() + 1);
-        const grace = new Date(oneYear);
-        grace.setDate(grace.getDate() + 7);
-
-        await db('subscriptions').insert({
-          organization_id: demoOrg.id,
-          plan_id: standardPlan.id,
-          status: 'active',
-          billing_cycle: 'annual',
-          currency: 'USD',
-          amount_paid: 0,
-          current_period_start: now.toISOString(),
-          current_period_end: oneYear.toISOString(),
-          grace_period_end: grace.toISOString(),
-        });
-        console.log('  ✓ Standard subscription created for demo org');
-      } else {
-        console.log('  ✓ Subscription already exists for demo org');
-      }
-    } else {
-      console.log('  ⚠ No subscription plans found (migration 006 may not have run)');
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // 6. AI WALLET (SaaS wallet)
-    // ═══════════════════════════════════════════════════════
-    const existingAiWallet = await db('ai_wallet')
-      .where({ organization_id: demoOrg.id })
-      .first();
-    if (!existingAiWallet) {
-      await db('ai_wallet').insert({
-        organization_id: demoOrg.id,
-        balance_minutes: 0,
-        currency: 'USD',
-        price_per_hour_usd: 10.00,
-        price_per_hour_ngn: 18000.00,
-      });
-      console.log('  ✓ AI wallet created');
-    } else {
-      console.log('  ✓ AI wallet already exists');
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // 7. TRANSLATION WALLET
-    // ═══════════════════════════════════════════════════════
-    const existingTransWallet = await db('translation_wallet')
-      .where({ organization_id: demoOrg.id })
-      .first();
-    if (!existingTransWallet) {
-      await db('translation_wallet').insert({
-        organization_id: demoOrg.id,
-        balance_minutes: 0,
-        currency: 'USD',
-        price_per_hour_usd: 25.00,
-        price_per_hour_ngn: 45000.00,
-      });
-      console.log('  ✓ Translation wallet created');
-    } else {
-      console.log('  ✓ Translation wallet already exists');
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // 8. INVITE LINK (default for demo org)
-    // ═══════════════════════════════════════════════════════
-    const existingInvite = await db('invite_links')
-      .where({ organization_id: demoOrg.id, is_active: true })
-      .first();
-    if (!existingInvite) {
-      const code = crypto.randomBytes(6).toString('hex').toUpperCase();
-      await db('invite_links').insert({
-        organization_id: demoOrg.id,
-        code,
-        role: 'member',
-        is_active: true,
-        created_by: superAdmin.id,
-      });
-      console.log(`  ✓ Invite link created (code: ${code})`);
-    } else {
-      console.log(`  ✓ Invite link already exists (code: ${existingInvite.code})`);
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // 9. PLATFORM CONFIG
-    // ═══════════════════════════════════════════════════════
-    const configs = [
-      { key: 'ai_price_per_credit_hour', value: JSON.stringify(7.00), description: 'Default AI price per credit hour in USD' },
-      { key: 'platform_name', value: JSON.stringify('OrgsLedger'), description: 'Platform display name' },
-      { key: 'stripe_enabled', value: JSON.stringify(true), description: 'Whether Stripe payments are enabled' },
-      { key: 'paystack_enabled', value: JSON.stringify(true), description: 'Whether Paystack payments are enabled (NGN)' },
-      { key: 'flutterwave_enabled', value: JSON.stringify(true), description: 'Whether Flutterwave payments are enabled' },
-      { key: 'max_file_upload_mb', value: JSON.stringify(10), description: 'Max file upload size in MB' },
-      { key: 'default_billing_cycle', value: JSON.stringify('annual'), description: 'Default billing cycle for new subscriptions' },
-    ];
-    for (const cfg of configs) {
-      const exists = await db('platform_config').where({ key: cfg.key }).first();
-      if (!exists) {
-        await db('platform_config').insert(cfg);
-      }
-    }
-    console.log('  ✓ Platform config seeded (7 keys)');
-
-    // ═══════════════════════════════════════════════════════
-    // SUMMARY
-    // ═══════════════════════════════════════════════════════
     console.log();
     console.log('╔══════════════════════════════════════════════╗');
     console.log('║           Seeding Complete!                  ║');
@@ -253,7 +344,7 @@ async function seed() {
     console.log('║    Auth: env vars (NOT in database)          ║');
     console.log('║                                              ║');
     console.log('║  SUPER ADMIN (highest app role):             ║');
-    console.log('║    admin@orgsledger.com                      ║');
+    console.log(`║    ${SUPER_ADMIN_EMAIL.padEnd(40)}║`);
     console.log('║    Login: app.orgsledger.com/login           ║');
     console.log('║    Auth: database (users table)              ║');
     console.log('║                                              ║');

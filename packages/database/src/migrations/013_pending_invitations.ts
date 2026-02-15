@@ -9,6 +9,8 @@
 import { Knex } from 'knex';
 
 export async function up(knex: Knex): Promise<void> {
+  if (await knex.schema.hasTable('pending_invitations')) return;
+
   await knex.schema.createTable('pending_invitations', (t) => {
     t.uuid('id').primary().defaultTo(knex.fn.uuid());
     t.string('email').notNullable();
