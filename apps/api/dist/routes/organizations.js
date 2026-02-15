@@ -67,29 +67,13 @@ router.post('/', middleware_1.authenticate, (0, middleware_1.validate)(createOrg
             res.status(409).json({ success: false, error: 'Slug already taken' });
             return;
         }
-        // Create org (SaaS — assign default free license)
-        let freeLicense = await (0, db_1.default)('licenses').where({ type: 'free' }).first();
-        if (!freeLicense) {
-            [freeLicense] = await (0, db_1.default)('licenses')
-                .insert({
-                type: 'free',
-                max_members: 50,
-                features: JSON.stringify({
-                    chat: true, meetings: true, aiMinutes: false,
-                    financials: true, donations: true, voting: true,
-                }),
-                ai_credits_included: 0,
-                price_monthly: 0,
-            })
-                .returning('*');
-        }
+        // Create org
         const [org] = await (0, db_1.default)('organizations')
             .insert({
             name,
             slug,
             status: 'active',
             subscription_status: 'active',
-            license_id: freeLicense.id,
             billing_currency: currency === 'NGN' ? 'NGN' : 'USD',
             settings: JSON.stringify({
                 currency,
@@ -144,15 +128,6 @@ router.post('/', middleware_1.authenticate, (0, middleware_1.validate)(createOrg
         await (0, subscription_service_1.getTranslationWallet)(org.id); // auto-creates
         // Generate initial invite link for org admin
         const invite = await (0, subscription_service_1.createInviteLink)(org.id, req.user.userId, 'member');
-        // Keep legacy ai_credits for backward compatibility
-        try {
-            await (0, db_1.default)('ai_credits').insert({
-                organization_id: org.id,
-                total_credits: 0,
-                used_credits: 0,
-            });
-        }
-        catch { /* ignore if exists */ }
         await req.audit?.({
             organizationId: org.id,
             action: 'create',
@@ -551,8 +526,9 @@ router.get('/platform/all', middleware_1.authenticate, (0, middleware_1.requireD
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 50;
         const orgs = await (0, db_1.default)('organizations')
-            .leftJoin('licenses', 'organizations.license_id', 'licenses.id')
-            .select('organizations.*', 'licenses.type as licenseType', 'licenses.max_members as licenseMaxMembers')
+            .leftJoin('subscriptions', 'organizations.id', 'subscriptions.organization_id')
+            .leftJoin('subscription_plans', 'subscriptions.plan_id', 'subscription_plans.id')
+            .select('organizations.*', 'subscription_plans.slug as planSlug', 'subscription_plans.name as planName', 'subscription_plans.max_members as planMaxMembers', 'subscriptions.status as subStatus')
             .orderBy('organizations.created_at', 'desc')
             .offset((page - 1) * limit)
             .limit(limit);
@@ -635,20 +611,33 @@ router.get('/:orgId/subscription', middleware_1.authenticate, middleware_1.loadM
             res.status(404).json({ success: false, error: 'Organization not found' });
             return;
         }
-        const license = await (0, db_1.default)('licenses')
-            .where({ id: org.license_id })
+        const subscription = await (0, db_1.default)('subscriptions')
+            .where({ organization_id: req.params.orgId })
+            .orderBy('created_at', 'desc')
+            .first();
+        let plan = null;
+        if (subscription) {
+            plan = await (0, db_1.default)('subscription_plans')
+                .where({ id: subscription.plan_id })
+                .first();
+        }
+        const aiWallet = await (0, db_1.default)('ai_wallet')
+            .where({ organization_id: req.params.orgId })
             .first();
         res.json({
             success: true,
             data: {
-                id: license?.id || 'free',
-                planId: license?.type || 'free',
-                status: license?.is_active ? 'active' : 'expired',
-                maxMembers: license?.max_members || 50,
-                features: license?.features || {},
-                aiCreditsIncluded: license?.ai_credits_included || 0,
-                priceMonthly: parseFloat(license?.price_monthly) || 0,
-                currentPeriodEnd: license?.valid_until || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                id: subscription?.id || 'free',
+                planId: plan?.slug || 'standard',
+                planName: plan?.name || 'Standard',
+                status: subscription?.status || org.subscription_status || 'active',
+                maxMembers: plan?.max_members || 100,
+                features: plan?.features || {},
+                billingCycle: subscription?.billing_cycle || 'annual',
+                currency: subscription?.currency || org.billing_currency,
+                currentPeriodEnd: subscription?.current_period_end || null,
+                gracePeriodEnd: subscription?.grace_period_end || null,
+                aiWalletBalance: parseFloat(aiWallet?.balance_minutes) || 0,
             },
         });
     }

@@ -857,20 +857,20 @@ router.get('/:orgId/payments/verify/:transactionId', middleware_1.authenticate, 
 // ══════════════════════════════════════════════════════════════
 router.get('/:orgId/ai-credits', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
-        const credits = await (0, db_1.default)('ai_credits')
+        const wallet = await (0, db_1.default)('ai_wallet')
             .where({ organization_id: req.params.orgId })
             .first();
-        const history = await (0, db_1.default)('ai_credit_transactions')
+        const history = await (0, db_1.default)('ai_wallet_transactions')
             .where({ organization_id: req.params.orgId })
             .orderBy('created_at', 'desc')
             .limit(50);
         res.json({
             success: true,
             data: {
-                totalCredits: credits?.total_credits || 0,
-                usedCredits: credits?.used_credits || 0,
-                remainingCredits: (credits?.total_credits || 0) - (credits?.used_credits || 0),
-                pricePerCreditHour: credits?.price_per_credit_hour || 7.00,
+                balanceMinutes: parseFloat(wallet?.balance_minutes) || 0,
+                pricePerHourUsd: parseFloat(wallet?.price_per_hour_usd) || 10.00,
+                pricePerHourNgn: parseFloat(wallet?.price_per_hour_ngn) || 18000.00,
+                currency: wallet?.currency || 'USD',
                 history,
             },
         });

@@ -209,9 +209,9 @@ audit_logs · notifications · platform_config
 
 ### Shared Types Package
 
-**Enums**: `UserRole`, `OrgStatus`, `ChannelType`, `MeetingStatus`, `TransactionType`, `TransactionStatus`, `AuditAction`, `LicenseType`, `NotificationType`
+**Enums**: `UserRole`, `OrgStatus`, `ChannelType`, `MeetingStatus`, `TransactionType`, `TransactionStatus`, `AuditAction`, `PlanTier`, `NotificationType`
 
-**Interfaces**: `IOrganization`, `IOrgSettings`, `FeatureFlags`, `IUser`, `IMembership`, `IChannel`, `IMessage`, `IAttachment`, `IMeeting`, `IAgendaItem`, `IAttendance`, `IVote`, `IMeetingMinutes`, `ITranscriptSegment`, `IMotion`, `IActionItem`, `IContribution`, `ITransaction`, `IDue`, `IFine`, `IDonation`, `IAuditLog`, `IAICredits`, `IAICreditTransaction`, `ILicense`, `INotification`, `ApiResponse<T>`, `PaginatedRequest`
+**Interfaces**: `IOrganization`, `IOrgSettings`, `FeatureFlags`, `IUser`, `IMembership`, `IChannel`, `IMessage`, `IAttachment`, `IMeeting`, `IAgendaItem`, `IAttendance`, `IVote`, `IMeetingMinutes`, `ITranscriptSegment`, `IMotion`, `IActionItem`, `IContribution`, `ITransaction`, `IDue`, `IFine`, `IDonation`, `IAuditLog`, `IAIWallet`, `IAIWalletTransaction`, `ISubscriptionPlan`, `ISubscription`, `INotification`, `ApiResponse<T>`, `PaginatedRequest`
 
 ---
 

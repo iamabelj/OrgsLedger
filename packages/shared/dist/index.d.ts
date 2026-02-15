@@ -1,4 +1,5 @@
 export declare enum UserRole {
+    DEVELOPER = "developer",
     SUPER_ADMIN = "super_admin",
     ORG_ADMIN = "org_admin",
     EXECUTIVE = "executive",
@@ -17,7 +18,8 @@ export interface IOrganization {
     slug: string;
     logoUrl?: string;
     status: OrgStatus;
-    licenseId: string;
+    subscriptionStatus: string;
+    billingCurrency: string;
     settings: IOrgSettings;
     createdAt: Date;
     updatedAt: Date;
@@ -279,43 +281,57 @@ export interface IAuditLog {
     userAgent?: string;
     createdAt: Date;
 }
-export interface IAICredits {
+export interface IAIWallet {
     id: string;
     organizationId: string;
-    totalCredits: number;
-    usedCredits: number;
-    remainingCredits: number;
-    pricePerCredit: number;
+    balanceMinutes: number;
+    currency: string;
+    pricePerHourUsd: number;
+    pricePerHourNgn: number;
     updatedAt: Date;
 }
-export interface IAICreditTransaction {
+export interface IAIWalletTransaction {
     id: string;
     organizationId: string;
-    type: 'purchase' | 'usage' | 'refund' | 'bonus';
-    amount: number;
+    type: 'topup' | 'usage' | 'refund' | 'grant';
+    minutes: number;
+    amountUsd: number;
+    amountNgn: number;
     meetingId?: string;
-    transactionId?: string;
+    paymentReference?: string;
     description: string;
     createdAt: Date;
 }
-export declare enum LicenseType {
-    FREE = "free",
-    BASIC = "basic",
+export declare enum PlanTier {
+    STANDARD = "standard",
     PROFESSIONAL = "professional",
     ENTERPRISE = "enterprise"
 }
-export interface ILicense {
+export interface ISubscriptionPlan {
     id: string;
-    type: LicenseType;
-    organizationId: string;
+    name: string;
+    slug: string;
+    tier: PlanTier;
     maxMembers: number;
     features: FeatureFlags;
-    aiCreditsIncluded: number;
-    priceMonthly: number;
-    validFrom: Date;
-    validUntil: Date;
+    priceMonthlyUsd: number;
+    priceAnnualUsd: number;
+    priceMonthlyNgn: number;
+    priceAnnualNgn: number;
     isActive: boolean;
-    resellerId?: string;
+    createdAt: Date;
+}
+export interface ISubscription {
+    id: string;
+    organizationId: string;
+    planId: string;
+    status: string;
+    billingCycle: 'monthly' | 'annual';
+    currency: string;
+    amountPaid: number;
+    currentPeriodStart: Date;
+    currentPeriodEnd: Date;
+    gracePeriodEnd: Date;
     createdAt: Date;
 }
 export declare enum NotificationType {

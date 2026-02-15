@@ -27,7 +27,8 @@ export interface IOrganization {
   slug: string;
   logoUrl?: string;
   status: OrgStatus;
-  licenseId: string;
+  subscriptionStatus: string;
+  billingCurrency: string;
   settings: IOrgSettings;
   createdAt: Date;
   updatedAt: Date;
@@ -322,48 +323,63 @@ export interface IAuditLog {
   createdAt: Date;
 }
 
-// ── AI Credits ──────────────────────────────────────────────
-export interface IAICredits {
+// ── AI Wallet (SaaS) ────────────────────────────────────────
+export interface IAIWallet {
   id: string;
   organizationId: string;
-  totalCredits: number; // in credits (1 credit = 1 hour)
-  usedCredits: number;
-  remainingCredits: number;
-  pricePerCredit: number; // $5 per credit (1 hour) default
+  balanceMinutes: number;
+  currency: string;
+  pricePerHourUsd: number;
+  pricePerHourNgn: number;
   updatedAt: Date;
 }
 
-export interface IAICreditTransaction {
+export interface IAIWalletTransaction {
   id: string;
   organizationId: string;
-  type: 'purchase' | 'usage' | 'refund' | 'bonus';
-  amount: number; // in credits (1 credit = 1 hour)
+  type: 'topup' | 'usage' | 'refund' | 'grant';
+  minutes: number;
+  amountUsd: number;
+  amountNgn: number;
   meetingId?: string;
-  transactionId?: string; // payment reference
+  paymentReference?: string;
   description: string;
   createdAt: Date;
 }
 
-// ── Licensing ───────────────────────────────────────────────
-export enum LicenseType {
-  FREE = 'free',
-  BASIC = 'basic',
+// ── Subscription Plans ──────────────────────────────────────
+export enum PlanTier {
+  STANDARD = 'standard',
   PROFESSIONAL = 'professional',
   ENTERPRISE = 'enterprise',
 }
 
-export interface ILicense {
+export interface ISubscriptionPlan {
   id: string;
-  type: LicenseType;
-  organizationId: string;
+  name: string;
+  slug: string;
+  tier: PlanTier;
   maxMembers: number;
   features: FeatureFlags;
-  aiCreditsIncluded: number;
-  priceMonthly: number;
-  validFrom: Date;
-  validUntil: Date;
+  priceMonthlyUsd: number;
+  priceAnnualUsd: number;
+  priceMonthlyNgn: number;
+  priceAnnualNgn: number;
   isActive: boolean;
-  resellerId?: string;
+  createdAt: Date;
+}
+
+export interface ISubscription {
+  id: string;
+  organizationId: string;
+  planId: string;
+  status: string;
+  billingCycle: 'monthly' | 'annual';
+  currency: string;
+  amountPaid: number;
+  currentPeriodStart: Date;
+  currentPeriodEnd: Date;
+  gracePeriodEnd: Date;
   createdAt: Date;
 }
 

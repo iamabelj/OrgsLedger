@@ -4,10 +4,11 @@
 // Authoritative type definitions used by API and Mobile apps
 // ============================================================
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.NotificationType = exports.LicenseType = exports.AuditAction = exports.TransactionStatus = exports.TransactionType = exports.MeetingStatus = exports.ChannelType = exports.OrgStatus = exports.UserRole = void 0;
+exports.NotificationType = exports.PlanTier = exports.AuditAction = exports.TransactionStatus = exports.TransactionType = exports.MeetingStatus = exports.ChannelType = exports.OrgStatus = exports.UserRole = void 0;
 // ── User Roles ──────────────────────────────────────────────
 var UserRole;
 (function (UserRole) {
+    UserRole["DEVELOPER"] = "developer";
     UserRole["SUPER_ADMIN"] = "super_admin";
     UserRole["ORG_ADMIN"] = "org_admin";
     UserRole["EXECUTIVE"] = "executive";
@@ -72,14 +73,13 @@ var AuditAction;
     AuditAction["AI_USAGE"] = "ai_usage";
     AuditAction["EXPORT"] = "export";
 })(AuditAction || (exports.AuditAction = AuditAction = {}));
-// ── Licensing ───────────────────────────────────────────────
-var LicenseType;
-(function (LicenseType) {
-    LicenseType["FREE"] = "free";
-    LicenseType["BASIC"] = "basic";
-    LicenseType["PROFESSIONAL"] = "professional";
-    LicenseType["ENTERPRISE"] = "enterprise";
-})(LicenseType || (exports.LicenseType = LicenseType = {}));
+// ── Subscription Plans ──────────────────────────────────────
+var PlanTier;
+(function (PlanTier) {
+    PlanTier["STANDARD"] = "standard";
+    PlanTier["PROFESSIONAL"] = "professional";
+    PlanTier["ENTERPRISE"] = "enterprise";
+})(PlanTier || (exports.PlanTier = PlanTier = {}));
 // ── Notifications ───────────────────────────────────────────
 var NotificationType;
 (function (NotificationType) {

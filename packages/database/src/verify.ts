@@ -89,14 +89,7 @@ async function verify() {
       console.log(`  ${c.name} (${c.type}) → ${c.org_name}`);
     });
 
-    // 9. Check licenses (legacy)
-    console.log('\n═══ LICENSES (legacy) ═══');
-    const licenses = await db('licenses').select('type', 'max_members', 'price_monthly', 'is_active');
-    licenses.forEach((l: any) => {
-      console.log(`  ${l.type} | Max: ${l.max_members} | Price: $${l.price_monthly}/mo | Active: ${l.is_active}`);
-    });
-
-    // 10. Check invite links
+    // 9. Check invite links
     console.log('\n═══ INVITE LINKS ═══');
     const invites = await db('invite_links')
       .join('organizations', 'invite_links.organization_id', 'organizations.id')
@@ -105,14 +98,14 @@ async function verify() {
       console.log(`  Code: ${i.code} | Role: ${i.role} | Active: ${i.is_active} → ${i.org_name}`);
     });
 
-    // 11. Check platform config
+    // 10. Check platform config
     console.log('\n═══ PLATFORM CONFIG ═══');
     const configs = await db('platform_config').select('key', 'value', 'description');
     configs.forEach((c: any) => {
       console.log(`  ${c.key} = ${c.value}`);
     });
 
-    // 12. Row counts for all tables
+    // 11. Row counts for all tables
     console.log('\n═══ TABLE ROW COUNTS ═══');
     for (const row of tables.rows) {
       const count = await db(row.tablename).count('* as count').first();
@@ -121,7 +114,7 @@ async function verify() {
       console.log(`  ${marker} ${row.tablename}: ${c}`);
     }
 
-    // 13. Migrations applied
+    // 12. Migrations applied
     console.log('\n═══ MIGRATIONS APPLIED ═══');
     const migrations = await db('knex_migrations').select('name', 'batch').orderBy('id');
     migrations.forEach((m: any) => {

@@ -55,10 +55,9 @@ exports.config = {
         url: process.env.AI_PROXY_URL || '', // e.g. https://orgsledger.com
         apiKey: process.env.AI_PROXY_KEY || '', // client API key from the gateway
     },
-    // License key — required for deployment
-    license: {
-        key: process.env.LICENSE_KEY || '',
-        gatewayUrl: process.env.GATEWAY_URL || 'https://orgsledger.com',
+    // Gateway URL — used for AI proxy routing
+    gateway: {
+        url: process.env.GATEWAY_URL || 'https://orgsledger.com',
     },
     email: {
         host: process.env.SMTP_HOST || '',

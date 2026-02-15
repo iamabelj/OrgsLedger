@@ -39,9 +39,8 @@ export declare const config: {
         url: string;
         apiKey: string;
     };
-    license: {
-        key: string;
-        gatewayUrl: string;
+    gateway: {
+        url: string;
     };
     email: {
         host: string;

@@ -167,12 +167,12 @@ try {
             next();
         });
     }
-    // Gateway API routes (admin login, checkout, AI proxy, geo, license, health)
+    // Gateway API routes (admin login, checkout, AI proxy, geo, client verification, health)
     // on orgsledger.com — these take priority over main API admin routes
     app.use((req, res, next) => {
         const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
         if (host === 'orgsledger.com' || host === 'www.orgsledger.com' || host === 'localhost' || host === '127.0.0.1') {
-            // Let gateway handle its routes: /api/admin/*, /api/checkout/*, /api/ai/*, /api/geo, /api/license/*, /health
+            // Let gateway handle its routes: /api/admin/*, /api/checkout/*, /api/ai/*, /api/geo, /api/license/verify, /health
             const p = req.path;
             if (p.startsWith('/api/admin') || p.startsWith('/api/checkout') || p.startsWith('/api/ai') ||
                 p.startsWith('/api/geo') || p.startsWith('/api/license') || p.startsWith('/api/webhooks') ||
