@@ -623,15 +623,15 @@ async function loadSubscriptions() {
   tbody.innerHTML = '<tr><td colspan="6" class="loading"><div class="spinner"></div>Loading…</td></tr>';
   try {
     const data = await apiFetch('/subscriptions/admin/subscriptions');
-    const subs = data.subscriptions || [];
+    const subs = data.subscriptions || data.data || [];
     if (!subs.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty"><div class="emoji">📭</div><p>No subscriptions</p></td></tr>'; return; }
     tbody.innerHTML = subs.map(s => `<tr>
-      <td>${s.organization_name || s.org_name || '—'}</td>
-      <td><span class="badge badge-blue">${(s.plan || '').toUpperCase()}</span></td>
+      <td>${s.org_name || s.organization_name || '—'}</td>
+      <td><span class="badge badge-blue">${(s.plan || s.plan_name || '').toUpperCase()}</span></td>
       <td><span class="status-${s.status || s.subscription_status}">${s.status || s.subscription_status}</span></td>
-      <td>${fmtDate(s.expires_at || s.subscription_expires_at)}</td>
+      <td>${fmtDate(s.current_period_end || s.grace_period_end || s.expires_at)}</td>
       <td>${fmtNum(s.member_count)}</td>
-      <td><button class="btn btn-ghost btn-sm" onclick="openOverrideModal('${s.organization_id || s.org_id}')">Override</button></td>
+      <td><button class="btn btn-ghost btn-sm" onclick="openOverrideModal('${s.organization_id}')">Override</button></td>
     </tr>`).join('');
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="6" class="empty"><p>${err.message}</p></td></tr>`;
@@ -941,7 +941,7 @@ async function loadPlans() {
   grid.innerHTML = '<div class="loading"><div class="spinner"></div>Loading plans…</div>';
   try {
     const data = await apiFetch('/subscriptions/admin/plans');
-    const plans = data.plans || [];
+    const plans = data.plans || data.data || [];
     if (!plans.length) { grid.innerHTML = '<div class="empty"><div class="emoji">⚙️</div><p>No plans configured</p></div>'; return; }
     grid.innerHTML = plans.map(p => `<div class="info-card" id="plan-card-${p.id}">
       <h4>📋 ${(p.name || p.id || '').toUpperCase()}</h4>

@@ -353,7 +353,56 @@ router.delete('/:orgId/invite/:inviteId', authenticate, loadMembership, requireR
 router.get('/admin/revenue', authenticate, requireDeveloper(), async (_req: Request, res: Response) => {
   try {
     const revenue = await subSvc.getPlatformRevenue();
-    res.json({ success: true, data: revenue });
+
+    // Per-plan revenue breakdown
+    const byPlan = await db('subscriptions')
+      .join('subscription_plans', 'subscriptions.plan_id', 'subscription_plans.id')
+      .where('subscriptions.amount_paid', '>', 0)
+      .groupBy('subscription_plans.slug', 'subscriptions.currency')
+      .select(
+        'subscription_plans.slug as plan',
+        'subscriptions.currency',
+        db.raw('COUNT(*) as count'),
+        db.raw('COALESCE(SUM(subscriptions.amount_paid), 0) as revenue'),
+      );
+
+    // Separate USD / NGN sums
+    const subRevenueUsd = byPlan.filter((r: any) => r.currency === 'USD').reduce((s: number, r: any) => s + parseFloat(r.revenue || 0), 0);
+    const subRevenueNgn = byPlan.filter((r: any) => r.currency === 'NGN').reduce((s: number, r: any) => s + parseFloat(r.revenue || 0), 0);
+
+    const aiTxUsd = await db('ai_wallet_transactions').where({ type: 'topup', currency: 'USD' }).select(db.raw('COALESCE(SUM(cost),0) as total')).first();
+    const aiTxNgn = await db('ai_wallet_transactions').where({ type: 'topup', currency: 'NGN' }).select(db.raw('COALESCE(SUM(cost),0) as total')).first();
+    const transTxUsd = await db('translation_wallet_transactions').where({ type: 'topup', currency: 'USD' }).select(db.raw('COALESCE(SUM(cost),0) as total')).first();
+    const transTxNgn = await db('translation_wallet_transactions').where({ type: 'topup', currency: 'NGN' }).select(db.raw('COALESCE(SUM(cost),0) as total')).first();
+
+    const walletRevenueUsd = parseFloat(aiTxUsd?.total || 0) + parseFloat(transTxUsd?.total || 0);
+    const walletRevenueNgn = parseFloat(aiTxNgn?.total || 0) + parseFloat(transTxNgn?.total || 0);
+
+    // Total AI usage hours across all orgs
+    const aiUsage = await db('ai_wallet_transactions').where('amount_minutes', '<', 0).select(db.raw('COALESCE(SUM(ABS(amount_minutes)),0) as total')).first();
+    const transUsage = await db('translation_wallet_transactions').where('amount_minutes', '<', 0).select(db.raw('COALESCE(SUM(ABS(amount_minutes)),0) as total')).first();
+
+    // Flatten response to match dashboard expectations
+    res.json({
+      success: true,
+      subscription_revenue_usd: subRevenueUsd,
+      subscription_revenue_ngn: subRevenueNgn,
+      wallet_revenue_usd: walletRevenueUsd,
+      wallet_revenue_ngn: walletRevenueNgn,
+      total_revenue_usd: subRevenueUsd + walletRevenueUsd,
+      total_revenue_ngn: subRevenueNgn + walletRevenueNgn,
+      total_ai_hours_used: parseFloat(aiUsage?.total || 0) / 60,
+      total_translation_hours_used: parseFloat(transUsage?.total || 0) / 60,
+      by_plan: byPlan.map((r: any) => ({
+        plan: r.plan,
+        currency: r.currency,
+        count: parseInt(r.count),
+        revenue_usd: r.currency === 'USD' ? parseFloat(r.revenue) : 0,
+        revenue_ngn: r.currency === 'NGN' ? parseFloat(r.revenue) : 0,
+      })),
+      // Also include structured data for API consumers
+      data: revenue,
+    });
   } catch (err: any) {
     logger.error('Admin revenue error', err);
     res.status(500).json({ success: false, error: 'Failed to get revenue' });
@@ -368,16 +417,33 @@ router.get('/admin/subscriptions', authenticate, requireDeveloper(), async (req:
     const subs = await db('subscriptions')
       .join('subscription_plans', 'subscriptions.plan_id', 'subscription_plans.id')
       .join('organizations', 'subscriptions.organization_id', 'organizations.id')
+      .leftJoin(
+        db('memberships').groupBy('organization_id').select('organization_id').count('* as member_count').as('mc'),
+        'organizations.id', 'mc.organization_id'
+      )
       .select(
-        'subscriptions.*',
+        'subscriptions.id',
+        'subscriptions.organization_id',
+        'subscriptions.status',
+        'subscriptions.billing_cycle',
+        'subscriptions.currency',
+        'subscriptions.amount_paid',
+        'subscriptions.current_period_end',
+        'subscriptions.current_period_start',
+        'subscriptions.grace_period_end',
+        'subscriptions.created_at',
         'subscription_plans.name as plan_name',
-        'subscription_plans.slug as plan_slug',
+        'subscription_plans.slug as plan',
         'organizations.name as org_name',
+        'organizations.subscription_status',
+        db.raw('COALESCE(mc.member_count, 0) as member_count'),
       )
       .orderBy('subscriptions.created_at', 'desc')
       .limit(limit)
       .offset(offset);
-    res.json({ success: true, data: subs });
+
+    // Return as `subscriptions` to match frontend expectations
+    res.json({ success: true, subscriptions: subs });
   } catch (err: any) {
     logger.error('Admin subscriptions error', err);
     res.status(500).json({ success: false, error: 'Failed' });
@@ -704,18 +770,60 @@ router.get('/admin/wallet-analytics', authenticate, requireDeveloper(), async (_
       )
       .first();
 
+    // Per-org wallet data (dashboard shows per-org table)
+    const perOrg = await db('organizations')
+      .leftJoin('ai_wallet', 'organizations.id', 'ai_wallet.organization_id')
+      .leftJoin('translation_wallet', 'organizations.id', 'translation_wallet.organization_id')
+      .select(
+        'organizations.id',
+        'organizations.name',
+        db.raw('COALESCE(ai_wallet.balance_minutes, 0) / 60.0 as ai_balance_hours'),
+        db.raw('COALESCE(translation_wallet.balance_minutes, 0) / 60.0 as translation_balance_hours'),
+      )
+      .orderBy('organizations.name');
+
+    // Add usage stats per org
+    const orgIds = perOrg.map((o: any) => o.id);
+    let aiUsageByOrg: Record<string, number> = {};
+    let transUsageByOrg: Record<string, number> = {};
+    if (orgIds.length > 0) {
+      const aiUsageRows = await db('ai_wallet_transactions')
+        .whereIn('organization_id', orgIds)
+        .where('amount_minutes', '<', 0)
+        .groupBy('organization_id')
+        .select('organization_id', db.raw('SUM(ABS(amount_minutes)) / 60.0 as used_hours'));
+      aiUsageRows.forEach((r: any) => { aiUsageByOrg[r.organization_id] = parseFloat(r.used_hours || 0); });
+
+      const transUsageRows = await db('translation_wallet_transactions')
+        .whereIn('organization_id', orgIds)
+        .where('amount_minutes', '<', 0)
+        .groupBy('organization_id')
+        .select('organization_id', db.raw('SUM(ABS(amount_minutes)) / 60.0 as used_hours'));
+      transUsageRows.forEach((r: any) => { transUsageByOrg[r.organization_id] = parseFloat(r.used_hours || 0); });
+    }
+
+    const organizations = perOrg.map((o: any) => ({
+      id: o.id,
+      name: o.name,
+      ai_balance_hours: parseFloat(o.ai_balance_hours || 0),
+      ai_used_hours: aiUsageByOrg[o.id] || 0,
+      translation_balance_hours: parseFloat(o.translation_balance_hours || 0),
+      translation_used_hours: transUsageByOrg[o.id] || 0,
+    }));
+
     res.json({
       success: true,
-      data: {
-        aiHoursSold: parseFloat(aiTxStats?.total_added || '0') / 60,
-        aiHoursUsed: parseFloat(aiTxStats?.total_used || '0') / 60,
-        aiWalletCount: parseInt(aiStats?.wallet_count || '0'),
-        aiTotalBalanceHours: parseFloat(aiStats?.total_balance || '0') / 60,
-        translationHoursSold: parseFloat(transTxStats?.total_added || '0') / 60,
-        translationHoursUsed: parseFloat(transTxStats?.total_used || '0') / 60,
-        translationWalletCount: parseInt(transStats?.wallet_count || '0'),
-        translationTotalBalanceHours: parseFloat(transStats?.total_balance || '0') / 60,
+      summary: {
+        total_ai_balance_hours: parseFloat(aiStats?.total_balance || '0') / 60,
+        total_ai_used_hours: parseFloat(aiTxStats?.total_used || '0') / 60,
+        total_ai_sold_hours: parseFloat(aiTxStats?.total_added || '0') / 60,
+        ai_wallet_count: parseInt(aiStats?.wallet_count || '0'),
+        total_translation_balance_hours: parseFloat(transStats?.total_balance || '0') / 60,
+        total_translation_used_hours: parseFloat(transTxStats?.total_used || '0') / 60,
+        total_translation_sold_hours: parseFloat(transTxStats?.total_added || '0') / 60,
+        translation_wallet_count: parseInt(transStats?.wallet_count || '0'),
       },
+      organizations,
     });
   } catch (err: any) {
     logger.error('Wallet analytics error', err);
@@ -804,8 +912,19 @@ router.get('/admin/risk/low-balances', authenticate, requireDeveloper(), async (
         db.raw("'translation' as wallet_type"),
       );
 
+    // Merge into per-org view for dashboard
+    const orgMap: Record<string, any> = {};
+    for (const w of [...lowAi, ...lowTranslation, ...emptyAi, ...emptyTranslation]) {
+      if (!orgMap[w.org_id]) orgMap[w.org_id] = { id: w.org_id, name: w.org_name, ai_balance_hours: 0, translation_balance_hours: 0, type: 'low' };
+      const hours = parseFloat(w.balance_minutes) / 60;
+      if (w.wallet_type === 'ai') orgMap[w.org_id].ai_balance_hours = hours;
+      else orgMap[w.org_id].translation_balance_hours = hours;
+      if (hours <= 0) orgMap[w.org_id].type = 'critical';
+    }
+
     res.json({
       success: true,
+      low_balances: Object.values(orgMap),
       data: {
         thresholdMinutes,
         lowBalance: [...lowAi, ...lowTranslation],
@@ -918,8 +1037,20 @@ router.get('/admin/risk/spikes', authenticate, requireDeveloper(), async (req: R
     aiSpikes.forEach(s => { s.org_name = orgNames[s.organization_id] || 'Unknown'; });
     transSpikes.forEach(s => { s.org_name = orgNames[s.organization_id] || 'Unknown'; });
 
+    // Flatten spikes for dashboard
+    const allSpikes = [...aiSpikes, ...transSpikes].map(s => ({
+      name: s.org_name,
+      organization_name: s.org_name,
+      spike_type: s.wallet_type,
+      current_usage: s.recent_max_minutes,
+      average_usage: s.baseline_avg_minutes,
+      spike_ratio: s.spike_ratio,
+      description: `${s.wallet_type} usage ${s.recent_max_minutes.toFixed(0)}min vs avg ${s.baseline_avg_minutes.toFixed(0)}min (${s.spike_ratio}x)`,
+    }));
+
     res.json({
       success: true,
+      spikes: allSpikes,
       data: {
         period: { daysBack, spikeMultiplier },
         usageSpikes: [...aiSpikes, ...transSpikes],
