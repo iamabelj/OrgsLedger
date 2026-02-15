@@ -51,7 +51,7 @@ export async function up(knex: Knex): Promise<void> {
     t.string('slug').notNullable().unique();
     t.string('logo_url').nullable();
     t.string('status').notNullable().defaultTo('active'); // active, suspended, trial, expired
-    t.uuid('license_id').notNullable().references('id').inTable('licenses').onDelete('RESTRICT');
+    t.uuid('license_id').nullable().references('id').inTable('licenses').onDelete('SET NULL');
     t.jsonb('settings').notNullable().defaultTo(JSON.stringify({
       currency: 'USD',
       timezone: 'UTC',

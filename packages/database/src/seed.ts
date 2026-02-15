@@ -1,6 +1,7 @@
 import knex from 'knex';
 import config from './knexfile';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
 // Default admin credentials (can be overridden via environment variables)
 const DEFAULT_ADMIN_EMAIL = process.env.DEFAULT_ADMIN_EMAIL || 'admin@orgsledger.com';
@@ -9,15 +10,20 @@ const DEFAULT_ADMIN_PASSWORD = process.env.DEFAULT_ADMIN_PASSWORD || 'SuperAdmin
 async function seed() {
   const db = knex(config);
   try {
-    console.log('Seeding database...');
+    console.log('╔══════════════════════════════════════════════╗');
+    console.log('║       OrgsLedger — Database Seeding          ║');
+    console.log('╚══════════════════════════════════════════════╝');
     console.log(`  Admin Email: ${DEFAULT_ADMIN_EMAIL}`);
     console.log(`  Admin Password: ${DEFAULT_ADMIN_PASSWORD.replace(/./g, '*').slice(0, 6)}...`);
+    console.log();
 
     // Hash password helper (must match API's bcrypt usage)
     const hashPassword = async (pw: string) =>
       bcrypt.hash(pw, 12);
 
-    // ── Super Admin ─────────────────────────────────────
+    // ═══════════════════════════════════════════════════════
+    // 1. SUPER ADMIN USER
+    // ═══════════════════════════════════════════════════════
     let superAdmin = await db('users').where({ email: DEFAULT_ADMIN_EMAIL }).first();
     if (!superAdmin) {
       [superAdmin] = await db('users')
@@ -30,12 +36,20 @@ async function seed() {
           email_verified: true,
         })
         .returning('*');
-      console.log('  ✓ Super admin created');
+      console.log('  ✓ Super admin (developer) created');
     } else {
-      console.log('  ✓ Super admin already exists');
+      // Ensure global_role is developer
+      if (superAdmin.global_role !== 'developer') {
+        await db('users').where({ id: superAdmin.id }).update({ global_role: 'developer' });
+        console.log('  ✓ Super admin role upgraded to developer');
+      } else {
+        console.log('  ✓ Super admin already exists');
+      }
     }
 
-    // ── Free License ────────────────────────────────────
+    // ═══════════════════════════════════════════════════════
+    // 2. LEGACY FREE LICENSE (backward compat)
+    // ═══════════════════════════════════════════════════════
     let freeLicense = await db('licenses').where({ type: 'free' }).first();
     if (!freeLicense) {
       [freeLicense] = await db('licenses')
@@ -59,7 +73,9 @@ async function seed() {
       console.log('  ✓ Free license already exists');
     }
 
-    // ── Demo Organization ──────────────────────────────
+    // ═══════════════════════════════════════════════════════
+    // 3. DEMO ORGANIZATION
+    // ═══════════════════════════════════════════════════════
     let demoOrg = await db('organizations').where({ slug: 'demo-org' }).first();
     if (!demoOrg) {
       [demoOrg] = await db('organizations')
@@ -68,6 +84,27 @@ async function seed() {
           slug: 'demo-org',
           status: 'active',
           license_id: freeLicense.id,
+          subscription_status: 'active',
+          billing_currency: 'USD',
+          settings: JSON.stringify({
+            currency: 'USD',
+            timezone: 'UTC',
+            locale: 'en',
+            aiEnabled: true,
+            features: {
+              chat: true,
+              meetings: true,
+              aiMinutes: true,
+              financials: true,
+              donations: true,
+              voting: true,
+              polls: true,
+              events: true,
+              announcements: true,
+              documents: true,
+              committees: true,
+            },
+          }),
         })
         .returning('*');
       console.log('  ✓ Demo organization created');
@@ -75,7 +112,9 @@ async function seed() {
       console.log('  ✓ Demo organization already exists');
     }
 
-    // ── Admin membership ───────────────────────────────
+    // ═══════════════════════════════════════════════════════
+    // 4. ADMIN MEMBERSHIP (org_admin in demo org)
+    // ═══════════════════════════════════════════════════════
     const existingMembership = await db('memberships')
       .where({ user_id: superAdmin.id, organization_id: demoOrg.id })
       .first();
@@ -90,7 +129,9 @@ async function seed() {
       console.log('  ✓ Admin membership already exists');
     }
 
-    // ── Default channel ────────────────────────────────
+    // ═══════════════════════════════════════════════════════
+    // 5. DEFAULT GENERAL CHANNEL
+    // ═══════════════════════════════════════════════════════
     let generalChannel = await db('channels')
       .where({ organization_id: demoOrg.id, name: 'General' })
       .first();
@@ -108,12 +149,14 @@ async function seed() {
         channel_id: generalChannel.id,
         user_id: superAdmin.id,
       });
-      console.log('  ✓ Default channel created');
+      console.log('  ✓ Default channel created with admin member');
     } else {
       console.log('  ✓ Default channel already exists');
     }
 
-    // ── AI Credits record ──────────────────────────────
+    // ═══════════════════════════════════════════════════════
+    // 6. LEGACY AI CREDITS (backward compat)
+    // ═══════════════════════════════════════════════════════
     const existingCredits = await db('ai_credits')
       .where({ organization_id: demoOrg.id })
       .first();
@@ -124,16 +167,114 @@ async function seed() {
         used_credits: 0,
         price_per_credit_hour: 7.00,
       });
-      console.log('  ✓ AI credits initialized');
+      console.log('  ✓ Legacy AI credits initialized');
     } else {
-      console.log('  ✓ AI credits already exist');
+      console.log('  ✓ Legacy AI credits already exist');
     }
 
-    // ── Platform Config defaults ───────────────────────
+    // ═══════════════════════════════════════════════════════
+    // 7. SUBSCRIPTION (Standard plan for demo org)
+    // ═══════════════════════════════════════════════════════
+    const standardPlan = await db('subscription_plans').where({ slug: 'standard' }).first();
+    if (standardPlan) {
+      const existingSub = await db('subscriptions')
+        .where({ organization_id: demoOrg.id })
+        .first();
+      if (!existingSub) {
+        const now = new Date();
+        const oneYear = new Date(now);
+        oneYear.setFullYear(oneYear.getFullYear() + 1);
+        const grace = new Date(oneYear);
+        grace.setDate(grace.getDate() + 7);
+
+        await db('subscriptions').insert({
+          organization_id: demoOrg.id,
+          plan_id: standardPlan.id,
+          status: 'active',
+          billing_cycle: 'annual',
+          currency: 'USD',
+          amount_paid: 0,
+          current_period_start: now.toISOString(),
+          current_period_end: oneYear.toISOString(),
+          grace_period_end: grace.toISOString(),
+        });
+        console.log('  ✓ Standard subscription created for demo org');
+      } else {
+        console.log('  ✓ Subscription already exists for demo org');
+      }
+    } else {
+      console.log('  ⚠ No subscription plans found (migration 006 may not have run)');
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // 8. AI WALLET (SaaS wallet)
+    // ═══════════════════════════════════════════════════════
+    const existingAiWallet = await db('ai_wallet')
+      .where({ organization_id: demoOrg.id })
+      .first();
+    if (!existingAiWallet) {
+      await db('ai_wallet').insert({
+        organization_id: demoOrg.id,
+        balance_minutes: 0,
+        currency: 'USD',
+        price_per_hour_usd: 10.00,
+        price_per_hour_ngn: 18000.00,
+      });
+      console.log('  ✓ AI wallet created');
+    } else {
+      console.log('  ✓ AI wallet already exists');
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // 9. TRANSLATION WALLET
+    // ═══════════════════════════════════════════════════════
+    const existingTransWallet = await db('translation_wallet')
+      .where({ organization_id: demoOrg.id })
+      .first();
+    if (!existingTransWallet) {
+      await db('translation_wallet').insert({
+        organization_id: demoOrg.id,
+        balance_minutes: 0,
+        currency: 'USD',
+        price_per_hour_usd: 25.00,
+        price_per_hour_ngn: 45000.00,
+      });
+      console.log('  ✓ Translation wallet created');
+    } else {
+      console.log('  ✓ Translation wallet already exists');
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // 10. INVITE LINK (default for demo org)
+    // ═══════════════════════════════════════════════════════
+    const existingInvite = await db('invite_links')
+      .where({ organization_id: demoOrg.id, is_active: true })
+      .first();
+    if (!existingInvite) {
+      const code = crypto.randomBytes(6).toString('hex').toUpperCase();
+      await db('invite_links').insert({
+        organization_id: demoOrg.id,
+        code,
+        role: 'member',
+        is_active: true,
+        created_by: superAdmin.id,
+      });
+      console.log(`  ✓ Invite link created (code: ${code})`);
+    } else {
+      console.log(`  ✓ Invite link already exists (code: ${existingInvite.code})`);
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // 11. PLATFORM CONFIG
+    // ═══════════════════════════════════════════════════════
     const configs = [
       { key: 'ai_price_per_credit_hour', value: JSON.stringify(7.00), description: 'Default AI price per credit hour in USD' },
       { key: 'platform_name', value: JSON.stringify('OrgsLedger'), description: 'Platform display name' },
       { key: 'stripe_enabled', value: JSON.stringify(true), description: 'Whether Stripe payments are enabled' },
+      { key: 'paystack_enabled', value: JSON.stringify(true), description: 'Whether Paystack payments are enabled (NGN)' },
+      { key: 'flutterwave_enabled', value: JSON.stringify(true), description: 'Whether Flutterwave payments are enabled' },
+      { key: 'max_file_upload_mb', value: JSON.stringify(10), description: 'Max file upload size in MB' },
+      { key: 'default_billing_cycle', value: JSON.stringify('annual'), description: 'Default billing cycle for new subscriptions' },
     ];
     for (const cfg of configs) {
       const exists = await db('platform_config').where({ key: cfg.key }).first();
@@ -141,9 +282,30 @@ async function seed() {
         await db('platform_config').insert(cfg);
       }
     }
-    console.log('  ✓ Platform config seeded');
+    console.log('  ✓ Platform config seeded (7 keys)');
 
-    console.log('\nSeeding complete!');
+    // ═══════════════════════════════════════════════════════
+    // SUMMARY
+    // ═══════════════════════════════════════════════════════
+    console.log();
+    console.log('╔══════════════════════════════════════════════╗');
+    console.log('║           Seeding Complete!                  ║');
+    console.log('╠══════════════════════════════════════════════╣');
+    console.log('║  Tables seeded:                              ║');
+    console.log('║    users, licenses, organizations,           ║');
+    console.log('║    memberships, channels, channel_members,   ║');
+    console.log('║    ai_credits, subscriptions, ai_wallet,     ║');
+    console.log('║    translation_wallet, invite_links,         ║');
+    console.log('║    platform_config                           ║');
+    console.log('║                                              ║');
+    console.log('║  Subscription plans (from migration 006):    ║');
+    console.log('║    Standard, Professional, Enterprise        ║');
+    console.log('║                                              ║');
+    console.log('║  Role hierarchy:                             ║');
+    console.log('║    developer > super_admin > org_admin >     ║');
+    console.log('║    executive > member > guest                ║');
+    console.log('╚══════════════════════════════════════════════╝');
+
   } catch (err) {
     console.error('Seeding failed:', err);
     process.exit(1);
