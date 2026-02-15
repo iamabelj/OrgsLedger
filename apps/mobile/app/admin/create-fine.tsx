@@ -37,10 +37,32 @@ export default function CreateFineScreen() {
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [orgCurrency, setOrgCurrency] = useState<string>('USD');
 
   useEffect(() => {
     loadMembers();
+    loadOrgCurrency();
   }, []);
+
+  // Currency formatting helper
+  const getCurrencySymbol = () => orgCurrency === 'NGN' ? '₦' : '$';
+  const formatAmount = (amt: number) => {
+    if (orgCurrency === 'NGN') {
+      return amt.toLocaleString('en-NG', { maximumFractionDigits: 0 });
+    }
+    return amt.toFixed(2);
+  };
+
+  const loadOrgCurrency = async () => {
+    if (!currentOrgId) return;
+    try {
+      const res = await api.orgs.get(currentOrgId);
+      const currency = res.data?.data?.billing_currency || 'USD';
+      setOrgCurrency(currency);
+    } catch (err) {
+      console.error(`Failed to load org currency for org ${currentOrgId}`, err);
+    }
+  };
 
   const loadMembers = async () => {
     if (!currentOrgId) return;
@@ -106,7 +128,7 @@ export default function CreateFineScreen() {
           userId,
           type: 'other',
           amount: numAmount,
-          currency: 'USD',
+          currency: orgCurrency,
           reason: reason.trim(),
         })
       );
@@ -114,7 +136,7 @@ export default function CreateFineScreen() {
       const memberCount = selectedMembers.length;
       showAlert(
         'Success',
-        `Fine of $${numAmount.toFixed(2)} issued to ${memberCount} member${memberCount > 1 ? 's' : ''}`,
+        `Fine of ${getCurrencySymbol()}${formatAmount(numAmount)} issued to ${memberCount} member${memberCount > 1 ? 's' : ''}`,
         [{ text: 'OK', onPress: () => router.replace('/(tabs)/financials' as any) }]
       );
     } catch (err: any) {
@@ -167,7 +189,9 @@ export default function CreateFineScreen() {
             : 'Select members below'}
         </Text>
         {amount && (
-          <Text style={styles.previewAmount}>${parseFloat(amount || '0').toFixed(2)}</Text>
+          <Text style={styles.previewAmount}>
+            {getCurrencySymbol()}{formatAmount(parseFloat(amount || '0'))}
+          </Text>
         )}
       </Card>
 
@@ -181,7 +205,7 @@ export default function CreateFineScreen() {
         />
 
         <Input
-          label="AMOUNT ($)"
+          label={`AMOUNT (${getCurrencySymbol()})`}
           placeholder="0.00"
           value={amount}
           onChangeText={setAmount}
