@@ -28,7 +28,7 @@ import {
 } from '../../src/theme';
 import {
   Card, Badge, StatCard, EmptyState, LoadingScreen,
-  SectionHeader, Divider,
+  SectionHeader, Divider, ResponsiveScrollView,
 } from '../../src/components/ui';
 
 type TabKey = 'ledger' | 'dues' | 'fines' | 'donations';
@@ -297,16 +297,10 @@ export default function FinancialsScreen() {
       </View>
 
       {/* Content */}
-      <ScrollView
+      <ResponsiveScrollView
         style={{ flex: 1 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={Colors.highlight}
-            colors={[Colors.highlight]}
-          />
-        }
+        refreshing={refreshing}
+        onRefresh={onRefresh}
       >
         {/* LEDGER TAB */}
         {tab === 'ledger' && (
@@ -495,7 +489,7 @@ export default function FinancialsScreen() {
         )}
 
         <View style={{ height: Spacing.xxl * 2 }} />
-      </ScrollView>
+      </ResponsiveScrollView>
 
       {/* Pending payments FAB */}
       {pendingCount > 0 && (

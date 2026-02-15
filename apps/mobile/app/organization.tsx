@@ -17,7 +17,7 @@ import { Stack, router } from 'expo-router';
 import { useAuthStore } from '../src/stores/auth.store';
 import { api } from '../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../src/theme';
-import { Card, Button, Input, SectionHeader, PoweredByFooter } from '../src/components/ui';
+import { Card, Button, Input, SectionHeader, PoweredByFooter, ResponsiveScrollView } from '../src/components/ui';
 import { showAlert } from '../src/utils/alert';
 
 export default function OrganizationScreen() {
@@ -74,7 +74,7 @@ export default function OrganizationScreen() {
         }}
       />
 
-      <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <ResponsiveScrollView maxWidth={700} style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
         <View style={styles.heroSection}>
           <View style={styles.heroIcon}>
             <Ionicons name="key" size={48} color={Colors.highlight} />
@@ -103,7 +103,7 @@ export default function OrganizationScreen() {
         </Card>
 
         <PoweredByFooter />
-      </ScrollView>
+      </ResponsiveScrollView>
     </KeyboardAvoidingView>
   );
 }

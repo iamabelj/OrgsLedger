@@ -15,7 +15,7 @@ import {
   Colors, Spacing, FontSize, FontWeight, BorderRadius,
 } from '../../src/theme';
 import {
-  Card, Button, Badge, SectionHeader, Divider, StatCard,
+  Card, Button, Badge, SectionHeader, Divider, StatCard, ResponsiveScrollView,
 } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
 
@@ -86,10 +86,10 @@ export default function SubscriptionScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Subscription', headerStyle: { backgroundColor: Colors.primary }, headerTintColor: Colors.textWhite }} />
-      <ScrollView
+      <ResponsiveScrollView
         style={styles.container}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.highlight} />}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
       >
         {/* Current Plan Banner */}
         {sub ? (
@@ -166,7 +166,7 @@ export default function SubscriptionScreen() {
         </Card>
 
         <View style={{ height: Spacing.xxl * 2 }} />
-      </ScrollView>
+      </ResponsiveScrollView>
     </>
   );
 }

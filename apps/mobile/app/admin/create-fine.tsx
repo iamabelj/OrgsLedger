@@ -17,7 +17,7 @@ import { Stack, router } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
-import { Card, Button, Input, Avatar, Badge, SearchBar, SectionHeader } from '../../src/components/ui';
+import { Card, Button, Input, Avatar, Badge, SearchBar, SectionHeader, ResponsiveScrollView } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
 
 interface Member {
@@ -152,7 +152,7 @@ export default function CreateFineScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
+    <ResponsiveScrollView style={styles.container} maxWidth={700}>
       <Stack.Screen options={{ title: 'Issue Fine' }} />
 
       {/* Preview */}
@@ -248,7 +248,7 @@ export default function CreateFineScreen() {
           style={{ marginTop: Spacing.lg, marginBottom: Spacing.xxl }}
         />
       </View>
-    </ScrollView>
+    </ResponsiveScrollView>
   );
 }
 

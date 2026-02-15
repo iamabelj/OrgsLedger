@@ -192,7 +192,7 @@ export default function ReportsScreen() {
   if (loading) return <LoadingScreen />;
 
   return (
-    <ScrollView style={styles.container}>
+    <ResponsiveScrollView style={styles.container}>
       <Stack.Screen options={{ title: 'Reports' }} />
 
       {/* Period Selector */}
@@ -387,7 +387,7 @@ export default function ReportsScreen() {
       </View>
 
       <PoweredByFooter />
-    </ScrollView>
+    </ResponsiveScrollView>
   );
 }
 

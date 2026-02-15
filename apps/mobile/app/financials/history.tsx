@@ -15,7 +15,7 @@ import { format } from 'date-fns';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useFinancialStore } from '../../src/stores/financial.store';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
-import { Card, Badge, EmptyState, LoadingScreen } from '../../src/components/ui';
+import { Card, Badge, EmptyState, LoadingScreen, useContentStyle } from '../../src/components/ui';
 
 const TXN_ICON: Record<string, { icon: string; color: string; bg: string }> = {
   due_payment: { icon: 'card', color: Colors.highlight, bg: Colors.highlightSubtle },
@@ -30,6 +30,7 @@ export default function PaymentHistoryScreen() {
   const userHistory = useFinancialStore((s) => s.userHistory);
   const loadUserHistory = useFinancialStore((s) => s.loadUserHistory);
   const [loading, setLoading] = useState(true);
+  const contentStyle = useContentStyle();
 
   useEffect(() => {
     if (currentOrgId && userId) {
@@ -75,7 +76,7 @@ export default function PaymentHistoryScreen() {
       <FlatList
         data={transactions}
         keyExtractor={(item: any) => item.id}
-        contentContainerStyle={{ padding: Spacing.md }}
+        contentContainerStyle={[{ padding: Spacing.md }, contentStyle]}
         ListEmptyComponent={
           <EmptyState icon="wallet-outline" title="No Payment History" message="Your transaction history will appear here." />
         }

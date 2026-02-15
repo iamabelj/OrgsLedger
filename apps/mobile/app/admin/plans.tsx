@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius } from '../../src/theme';
-import { Card, SectionHeader } from '../../src/components/ui';
+import { Card, SectionHeader, ResponsiveScrollView } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
 
 export default function PlansScreen() {
@@ -146,10 +146,10 @@ export default function PlansScreen() {
   const transBalance = parseFloat(translationWallet?.balance_minutes || '0');
 
   return (
-    <ScrollView
+    <ResponsiveScrollView
       style={styles.container}
-      showsVerticalScrollIndicator={false}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.highlight} />}
+      refreshing={refreshing}
+      onRefresh={onRefresh}
     >
       {/* Subscription Status Banner */}
       {subscription && (
@@ -367,7 +367,7 @@ export default function PlansScreen() {
       <View style={styles.footer}>
         <Text style={styles.footerText}>Powered by Globull</Text>
       </View>
-    </ScrollView>
+    </ResponsiveScrollView>
   );
 }
 

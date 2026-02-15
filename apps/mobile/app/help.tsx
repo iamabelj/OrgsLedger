@@ -11,7 +11,7 @@ import { Stack, router } from 'expo-router';
 import {
   Colors, Spacing, FontSize, FontWeight, BorderRadius,
 } from '../src/theme';
-import { Card, SectionHeader, Divider } from '../src/components/ui';
+import { Card, SectionHeader, Divider, ResponsiveScrollView } from '../src/components/ui';
 import { PoweredByFooter } from '../src/components/ui';
 
 const FAQ_ITEMS = [
@@ -48,7 +48,7 @@ export default function HelpScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Help & Support', headerStyle: { backgroundColor: Colors.primary }, headerTintColor: Colors.textWhite }} />
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <ResponsiveScrollView style={styles.container}>
         {/* Header */}
         <View style={styles.hero}>
           <View style={styles.iconWrap}>
@@ -121,7 +121,7 @@ export default function HelpScreen() {
 
         <PoweredByFooter />
         <View style={{ height: Spacing.xxl * 2 }} />
-      </ScrollView>
+      </ResponsiveScrollView>
     </>
   );
 }

@@ -10,7 +10,6 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
-  Dimensions,
   Modal,
   FlatList,
 } from 'react-native';
@@ -30,10 +29,9 @@ import {
   SectionHeader,
   Divider,
   EmptyState,
+  ResponsiveScrollView,
 } from '../../src/components/ui';
 import { useResponsive } from '../../src/hooks/useResponsive';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function HomeScreen() {
   const user = useAuthStore((s) => s.user);
@@ -146,12 +144,10 @@ export default function HomeScreen() {
 
   return (
     <>
-    <ScrollView
+    <ResponsiveScrollView
       style={styles.container}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.highlight} />
-      }
-      showsVerticalScrollIndicator={false}
+      refreshing={refreshing}
+      onRefresh={onRefresh}
     >
       {/* Header Section */}
       <View style={styles.header}>
@@ -577,7 +573,7 @@ export default function HomeScreen() {
       </View>
 
       <View style={{ height: Spacing.xxl }} />
-    </ScrollView>
+    </ResponsiveScrollView>
 
     {/* Org Switcher Modal */}
     <Modal visible={showOrgSwitcher} animationType="fade" transparent>

@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius } from '../../src/theme';
-import { Card } from '../../src/components/ui';
+import { Card, useContentStyle } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
 
 interface Transfer {
@@ -34,6 +34,7 @@ interface Transfer {
 
 export default function BankTransfersScreen() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
+  const contentStyle = useContentStyle();
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -178,7 +179,7 @@ export default function BankTransfersScreen() {
           data={transfers}
           keyExtractor={(item) => item.id}
           renderItem={renderTransfer}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, contentStyle]}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadTransfers(); }} />
           }

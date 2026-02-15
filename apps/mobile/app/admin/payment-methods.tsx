@@ -14,7 +14,7 @@ import {
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius } from '../../src/theme';
-import { Card, Button, Input, SectionHeader } from '../../src/components/ui';
+import { Card, Button, Input, SectionHeader, ResponsiveScrollView } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
 
 interface PaymentMethodConfig {
@@ -105,7 +105,7 @@ export default function PaymentMethodsScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ResponsiveScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.subtitle}>
         Configure which payment methods are available for your members when paying dues, fines, and donations.
       </Text>
@@ -200,7 +200,7 @@ export default function PaymentMethodsScreen() {
         disabled={saving}
         style={styles.saveBtn}
       />
-    </ScrollView>
+    </ResponsiveScrollView>
   );
 }
 

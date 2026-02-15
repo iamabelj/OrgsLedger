@@ -17,7 +17,7 @@ import { Stack, router } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
-import { Card, Button, Input, SectionHeader, CrossPlatformDateTimePicker } from '../../src/components/ui';
+import { Card, Button, Input, SectionHeader, CrossPlatformDateTimePicker, ResponsiveScrollView } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
 
 export default function CreateMeetingScreen() {
@@ -128,7 +128,7 @@ export default function CreateMeetingScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+    <ResponsiveScrollView maxWidth={700} style={styles.container} keyboardShouldPersistTaps="handled">
       <Stack.Screen
         options={{
           headerShown: true,
@@ -268,7 +268,7 @@ export default function CreateMeetingScreen() {
         <Button title={loading ? 'Creating...' : 'Create Meeting'} onPress={handleCreate} disabled={loading} variant="primary" />
         <View style={{ height: Spacing.xxl }} />
       </Card>
-    </ScrollView>
+    </ResponsiveScrollView>
   );
 }
 

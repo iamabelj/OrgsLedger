@@ -28,6 +28,7 @@ import {
   StatCard,
   LoadingScreen,
   EmptyState,
+  ResponsiveScrollView,
 } from '../../../src/components/ui';
 
 interface MemberDetail {
@@ -204,7 +205,7 @@ export default function MemberDetailScreen() {
   ];
 
   return (
-    <ScrollView style={styles.container}>
+    <ResponsiveScrollView style={styles.container}>
       <Stack.Screen options={{ title: member.fullName }} />
 
       {/* Profile Header */}
@@ -465,7 +466,7 @@ export default function MemberDetailScreen() {
       </View>
 
       <View style={{ height: 60 }} />
-    </ScrollView>
+    </ResponsiveScrollView>
   );
 }
 

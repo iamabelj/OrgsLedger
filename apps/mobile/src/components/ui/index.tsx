@@ -12,15 +12,18 @@ import {
   Text,
   TouchableOpacity,
   TextInput,
+  ScrollView,
   StyleSheet,
   ViewStyle,
   TextStyle,
   ActivityIndicator,
   Platform,
   TextInputProps,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow, Typography } from '../../theme';
+import { useResponsive } from '../../hooks/useResponsive';
 
 // ────────────────────────────────────────────────────────────
 // CARD — Elevated container with optional gold border
@@ -418,6 +421,73 @@ export function ScreenWrapper({ children, style, centered }: ScreenWrapperProps)
       {children}
     </View>
   );
+}
+
+// ────────────────────────────────────────────────────────────
+// RESPONSIVE SCROLL VIEW — Auto-applies maxWidth centering for desktop
+// ────────────────────────────────────────────────────────────
+interface ResponsiveScrollViewProps {
+  children: React.ReactNode;
+  style?: ViewStyle;
+  contentContainerStyle?: ViewStyle;
+  refreshing?: boolean;
+  onRefresh?: () => void;
+  showsVerticalScrollIndicator?: boolean;
+  maxWidth?: number;
+}
+
+export function ResponsiveScrollView({
+  children,
+  style,
+  contentContainerStyle,
+  refreshing,
+  onRefresh,
+  showsVerticalScrollIndicator = false,
+  maxWidth,
+}: ResponsiveScrollViewProps) {
+  const responsive = useResponsive();
+  const effectiveMaxWidth = maxWidth ?? responsive.contentMaxWidth;
+
+  return (
+    <ScrollView
+      style={[{ flex: 1, backgroundColor: Colors.background }, style]}
+      contentContainerStyle={[
+        {
+          maxWidth: effectiveMaxWidth,
+          width: '100%',
+          alignSelf: 'center' as const,
+        },
+        contentContainerStyle,
+      ]}
+      refreshControl={
+        onRefresh ? (
+          <RefreshControl
+            refreshing={refreshing || false}
+            onRefresh={onRefresh}
+            tintColor={Colors.highlight}
+            colors={[Colors.highlight]}
+          />
+        ) : undefined
+      }
+      showsVerticalScrollIndicator={showsVerticalScrollIndicator}
+    >
+      {children}
+    </ScrollView>
+  );
+}
+
+// ────────────────────────────────────────────────────────────
+// useContentStyle — Hook returning responsive contentContainerStyle
+// Use with FlatList or custom ScrollViews that can't use ResponsiveScrollView
+// ────────────────────────────────────────────────────────────
+export function useContentStyle(extraStyle?: ViewStyle): ViewStyle {
+  const responsive = useResponsive();
+  return {
+    maxWidth: responsive.contentMaxWidth,
+    width: '100%',
+    alignSelf: 'center' as const,
+    ...extraStyle,
+  };
 }
 
 // ────────────────────────────────────────────────────────────

@@ -23,7 +23,7 @@ import {
 } from '../../src/theme';
 import {
   Card, Badge, SearchBar, EmptyState, LoadingScreen,
-  SectionHeader, StatCard,
+  SectionHeader, StatCard, useContentStyle,
 } from '../../src/components/ui';
 
 type MeetingStatus = 'scheduled' | 'live' | 'ended' | 'cancelled';
@@ -48,6 +48,7 @@ export default function MeetingsScreen() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const contentStyle = useContentStyle({ paddingBottom: 100 });
 
   const canCreate = globalRole === 'super_admin' || globalRole === 'developer' || (membership &&
     ['org_admin', 'executive'].includes(membership.role));
@@ -179,7 +180,7 @@ export default function MeetingsScreen() {
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={contentStyle}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

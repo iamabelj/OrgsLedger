@@ -18,7 +18,7 @@ import { router } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius } from '../../src/theme';
-import { Card, Badge, SectionHeader, Button, Input } from '../../src/components/ui';
+import { Card, Badge, SectionHeader, Button, Input, ResponsiveScrollView } from '../../src/components/ui';
 import { CrossPlatformDateTimePicker } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
 
@@ -197,10 +197,9 @@ export default function ExpensesScreen() {
 
   // Create View
   return (
-    <ScrollView
+    <ResponsiveScrollView
       style={styles.container}
       contentContainerStyle={styles.formContainer}
-      keyboardShouldPersistTaps="handled"
     >
       <Card style={styles.formCard}>
         <View style={styles.formHeader}>
@@ -261,7 +260,7 @@ export default function ExpensesScreen() {
           style={{ marginTop: Spacing.sm }}
         />
       </Card>
-    </ScrollView>
+    </ResponsiveScrollView>
   );
 }
 

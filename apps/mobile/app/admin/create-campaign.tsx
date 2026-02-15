@@ -16,7 +16,7 @@ import { format, addMonths } from 'date-fns';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
-import { Card, Button, Input, Badge, SectionHeader, CrossPlatformDateTimePicker } from '../../src/components/ui';
+import { Card, Button, Input, Badge, SectionHeader, CrossPlatformDateTimePicker, ResponsiveScrollView } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
 
 export default function CreateCampaignScreen() {
@@ -77,7 +77,7 @@ export default function CreateCampaignScreen() {
   const goalNum = parseFloat(goalAmount || '0');
 
   return (
-    <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
+    <ResponsiveScrollView style={styles.container} maxWidth={700}>
       <Stack.Screen options={{ title: 'Create Campaign' }} />
 
       {/* Campaign Preview */}
@@ -190,7 +190,7 @@ export default function CreateCampaignScreen() {
           style={{ marginTop: Spacing.lg, marginBottom: Spacing.xxl }}
         />
       </View>
-    </ScrollView>
+    </ResponsiveScrollView>
   );
 }
 

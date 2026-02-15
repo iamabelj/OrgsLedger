@@ -31,6 +31,7 @@ import {
   ScreenWrapper,
   LoadingScreen,
   Divider,
+  ResponsiveScrollView,
 } from '../../src/components/ui';
 
 interface Committee {
@@ -245,7 +246,7 @@ export default function CommitteesScreen() {
     <View style={styles.container}>
       <Stack.Screen options={{ title: 'Committees' }} />
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ResponsiveScrollView contentContainerStyle={styles.content}>
         {/* Stats Row */}
         <View style={styles.statsRow}>
           <Card variant="elevated" style={styles.statCard}>
@@ -279,7 +280,7 @@ export default function CommitteesScreen() {
         ) : (
           filteredCommittees.map(renderCommittee)
         )}
-      </ScrollView>
+      </ResponsiveScrollView>
 
       {/* FAB */}
       <TouchableOpacity style={styles.fab} onPress={() => setShowCreateModal(true)}>

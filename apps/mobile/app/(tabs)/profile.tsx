@@ -23,7 +23,7 @@ import {
 } from '../../src/theme';
 import {
   Card, Badge, Input, Button, Avatar,
-  Divider, SectionHeader,
+  Divider, SectionHeader, ResponsiveScrollView,
 } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
 
@@ -148,7 +148,7 @@ export default function ProfileScreen() {
   const initials = `${(user?.firstName?.[0] || '?').toUpperCase()}${(user?.lastName?.[0] || '').toUpperCase()}`;
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ResponsiveScrollView style={styles.container}>
       {/* Profile Header */}
       <View style={styles.profileHeader}>
         <View style={styles.headerAccent} />
@@ -273,7 +273,7 @@ export default function ProfileScreen() {
         <Text style={styles.version}>OrgsLedger v1.0.0</Text>
       </View>
       <View style={{ height: Spacing.xxl * 2 }} />
-    </ScrollView>
+    </ResponsiveScrollView>
   );
 }
 

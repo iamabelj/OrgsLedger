@@ -7,7 +7,7 @@ import { View, StyleSheet, ScrollView } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { api } from '../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight } from '../src/theme';
-import { Card, Button, Input, SectionHeader } from '../src/components/ui';
+import { Card, Button, Input, SectionHeader, ResponsiveScrollView } from '../src/components/ui';
 import { showAlert } from '../src/utils/alert';
 
 export default function ChangePasswordScreen() {
@@ -44,7 +44,7 @@ export default function ChangePasswordScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
+    <ResponsiveScrollView maxWidth={700} style={styles.container} keyboardShouldPersistTaps="handled">
       <Stack.Screen
         options={{
           headerShown: true,
@@ -89,7 +89,7 @@ export default function ChangePasswordScreen() {
           variant="primary"
         />
       </Card>
-    </ScrollView>
+    </ResponsiveScrollView>
   );
 }
 

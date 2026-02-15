@@ -16,7 +16,7 @@ import {
   Colors, Spacing, FontSize, FontWeight, BorderRadius,
 } from '../../src/theme';
 import {
-  Card, SectionHeader, Badge, Divider, Button, StatCard,
+  Card, SectionHeader, Badge, Divider, Button, StatCard, ResponsiveScrollView,
 } from '../../src/components/ui';
 
 const ACTION_FILTERS = ['all', 'payment', 'update', 'create', 'delete', 'login'];
@@ -128,10 +128,10 @@ export default function ComplianceScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Compliance', headerStyle: { backgroundColor: Colors.primary }, headerTintColor: Colors.textWhite }} />
-      <ScrollView
+      <ResponsiveScrollView
         style={styles.container}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.highlight} />}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
       >
         {/* Compliance Score */}
         <Card style={styles.scoreCard}>
@@ -291,7 +291,7 @@ export default function ComplianceScreen() {
         </Card>
 
         <View style={{ height: Spacing.xxl * 2 }} />
-      </ScrollView>
+      </ResponsiveScrollView>
     </>
   );
 }

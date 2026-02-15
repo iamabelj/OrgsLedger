@@ -24,7 +24,7 @@ import { useChatStore } from '../../src/stores/chat.store';
 import { socketClient } from '../../src/api/socket';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
-import { Avatar } from '../../src/components/ui';
+import { Avatar, useContentStyle } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
 
 export default function ChannelMessagesScreen() {
@@ -46,6 +46,7 @@ export default function ChannelMessagesScreen() {
   >([]);
   const [uploading, setUploading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+  const contentStyle = useContentStyle({ maxWidth: 900 });
 
   const channel = channels.find((c) => c.id === channelId);
 
@@ -299,7 +300,7 @@ export default function ChannelMessagesScreen() {
           data={messages}
           keyExtractor={(item) => item.id}
           renderItem={renderMessage}
-          contentContainerStyle={styles.messagesList}
+          contentContainerStyle={[styles.messagesList, contentStyle]}
           onContentSizeChange={() =>
             flatListRef.current?.scrollToEnd({ animated: false })
           }

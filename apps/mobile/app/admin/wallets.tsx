@@ -19,7 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius } from '../../src/theme';
-import { Card, SectionHeader } from '../../src/components/ui';
+import { Card, SectionHeader, ResponsiveScrollView } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
 
 type WalletType = 'ai' | 'translation';
@@ -113,10 +113,10 @@ export default function WalletsScreen() {
   const color = activeWallet === 'ai' ? Colors.highlight : Colors.info;
 
   return (
-    <ScrollView
+    <ResponsiveScrollView
       style={styles.container}
-      showsVerticalScrollIndicator={false}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.highlight} />}
+      refreshing={refreshing}
+      onRefresh={onRefresh}
     >
       {/* Wallet Tabs */}
       <View style={styles.tabs}>
@@ -263,7 +263,7 @@ export default function WalletsScreen() {
       <View style={styles.footer}>
         <Text style={styles.footerText}>Powered by Globull</Text>
       </View>
-    </ScrollView>
+    </ResponsiveScrollView>
   );
 }
 

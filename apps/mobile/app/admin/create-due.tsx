@@ -17,7 +17,7 @@ import { format } from 'date-fns';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius } from '../../src/theme';
-import { Card, Button, Input, SectionHeader, Badge, CrossPlatformDateTimePicker } from '../../src/components/ui';
+import { Card, Button, Input, SectionHeader, Badge, CrossPlatformDateTimePicker, ResponsiveScrollView } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
 
 const RECURRENCE_OPTIONS = [
@@ -76,7 +76,7 @@ export default function CreateDueScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
+    <ResponsiveScrollView style={styles.container} maxWidth={700}>
       <Stack.Screen options={{ title: 'Create Due' }} />
 
       {/* Preview Card */}
@@ -187,7 +187,7 @@ export default function CreateDueScreen() {
           style={{ marginTop: Spacing.lg, marginBottom: Spacing.xxl }}
         />
       </View>
-    </ScrollView>
+    </ResponsiveScrollView>
   );
 }
 

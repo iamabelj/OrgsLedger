@@ -26,6 +26,7 @@ import {
   SectionHeader,
   ScreenWrapper,
   LoadingScreen,
+  useContentStyle,
 } from '../src/components/ui';
 
 type NotificationType =
@@ -92,6 +93,7 @@ const MEMBER_TYPES: NotificationType[] = ['member_joined', 'member_removed', 'ro
 
 export default function NotificationsScreen() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
+  const contentStyle = useContentStyle();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -309,7 +311,7 @@ export default function NotificationsScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderNotificationItem}
         ListHeaderComponent={renderHeader}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, contentStyle]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl

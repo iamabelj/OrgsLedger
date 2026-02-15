@@ -16,7 +16,7 @@ import { useLocalSearchParams, Stack, router } from 'expo-router';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { api } from '../../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../../src/theme';
-import { Card, Button, LoadingScreen, SectionHeader } from '../../../src/components/ui';
+import { Card, Button, LoadingScreen, SectionHeader, ResponsiveScrollView } from '../../../src/components/ui';
 import { showAlert } from '../../../src/utils/alert';
 
 const PRESET_AMOUNTS = [10, 25, 50, 100, 250, 500];
@@ -79,7 +79,7 @@ export default function DonateScreen() {
   const progressPct = campaign?.goal_amount ? Math.min(100, ((campaign.total_raised || 0) / campaign.goal_amount) * 100) : 0;
 
   return (
-    <ScrollView style={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+    <ResponsiveScrollView maxWidth={700} style={styles.container} keyboardShouldPersistTaps="handled">
       <Stack.Screen
         options={{
           headerShown: true,
@@ -163,7 +163,7 @@ export default function DonateScreen() {
         />
       </View>
       <View style={{ height: Spacing.xxl }} />
-    </ScrollView>
+    </ResponsiveScrollView>
   );
 }
 

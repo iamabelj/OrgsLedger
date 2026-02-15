@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius } from '../../src/theme';
+import { ResponsiveScrollView } from '../../src/components/ui';
 
 type InviteLink = {
   id: string;
@@ -88,7 +89,7 @@ export default function InvitesScreen() {
   if (loading) return <View style={s.center}><ActivityIndicator size="large" color={Colors.highlight} /></View>;
 
   return (
-    <ScrollView style={s.root} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={Colors.highlight} />}>
+    <ResponsiveScrollView style={s.root} refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }}>
       <View style={s.header}>
         <Text style={s.title}>Invite Links</Text>
         <TouchableOpacity style={s.createBtn} onPress={createInvite} disabled={creating}>
@@ -143,7 +144,7 @@ export default function InvitesScreen() {
       )}
 
       <View style={{ height: 40 }} />
-    </ScrollView>
+    </ResponsiveScrollView>
   );
 }
 

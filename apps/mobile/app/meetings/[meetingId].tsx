@@ -22,7 +22,7 @@ import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { socketClient } from '../../src/api/socket';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
-import { Card, Badge, Button, Avatar, SectionHeader, LoadingScreen, CrossPlatformDateTimePicker } from '../../src/components/ui';
+import { Card, Badge, Button, Avatar, SectionHeader, LoadingScreen, CrossPlatformDateTimePicker, ResponsiveScrollView } from '../../src/components/ui';
 import LiveTranslation from '../../src/components/ui/LiveTranslation';
 import { showAlert } from '../../src/utils/alert';
 
@@ -308,7 +308,7 @@ export default function MeetingDetailScreen() {
   const canEdit = isAdmin && ['scheduled'].includes(meeting.status);
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ResponsiveScrollView style={styles.container}>
       <Stack.Screen
         options={{
           headerShown: true,
@@ -689,7 +689,7 @@ export default function MeetingDetailScreen() {
       )}
 
       <View style={{ height: Spacing.xxl * 2 }} />
-    </ScrollView>
+    </ResponsiveScrollView>
   );
 }
 

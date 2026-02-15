@@ -177,7 +177,7 @@ export default function SettingsScreen() {
   if (loading) return <LoadingScreen />;
 
   return (
-    <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
+    <ResponsiveScrollView style={styles.container}>
       <Stack.Screen options={{ title: 'Settings' }} />
 
       {/* Organization Identity */}
@@ -452,7 +452,7 @@ export default function SettingsScreen() {
       </Modal>
 
       <PoweredByFooter />
-    </ScrollView>
+    </ResponsiveScrollView>
   );
 }
 

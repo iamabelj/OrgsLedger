@@ -13,7 +13,7 @@ import { useAuthStore } from '../src/stores/auth.store';
 import {
   Colors, Spacing, FontSize, FontWeight, BorderRadius,
 } from '../src/theme';
-import { Card, Button, Input, SectionHeader, Divider } from '../src/components/ui';
+import { Card, Button, Input, SectionHeader, Divider, ResponsiveScrollView } from '../src/components/ui';
 import { showAlert } from '../src/utils/alert';
 
 const COUNTRY_OPTIONS = [
@@ -83,7 +83,7 @@ export default function CreateOrgScreen() {
     <>
       <Stack.Screen options={{ title: 'Create Organization', headerStyle: { backgroundColor: Colors.primary }, headerTintColor: Colors.textWhite }} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        <ResponsiveScrollView maxWidth={700} style={styles.container}>
           {/* Header illustration */}
           <View style={styles.hero}>
             <View style={styles.iconWrap}>
@@ -169,7 +169,7 @@ export default function CreateOrgScreen() {
           </Card>
 
           <View style={{ height: Spacing.xxl * 2 }} />
-        </ScrollView>
+        </ResponsiveScrollView>
       </KeyboardAvoidingView>
     </>
   );
