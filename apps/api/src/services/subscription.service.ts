@@ -115,10 +115,11 @@ export async function createSubscription(params: {
   const graceEnd = new Date(periodEnd);
   graceEnd.setDate(graceEnd.getDate() + 7);
 
-  // Deactivate old subscriptions
+  // Deactivate ALL old subscriptions (including expired) so the LEFT JOIN
+  // in GET /admin/organizations never produces duplicate rows per org
   await db('subscriptions')
     .where({ organization_id: params.organizationId })
-    .whereIn('status', ['active', 'grace_period'])
+    .whereIn('status', ['active', 'grace_period', 'expired'])
     .update({ status: 'cancelled', updated_at: db.fn.now() });
 
   const [sub] = await db('subscriptions').insert({

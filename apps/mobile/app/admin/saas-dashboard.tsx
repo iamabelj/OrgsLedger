@@ -65,10 +65,24 @@ export default function SaasDashboard() {
         api.subscriptions.adminSubscriptions({ limit: 100 }),
         api.subscriptions.adminOrganizations(),
       ]);
-      setRevenue(revRes.data?.data);
-      setWalletAnalytics(walletRes.data?.data);
-      setSubscriptions(subsRes.data?.data || []);
-      setOrgs(orgsRes.data?.data || []);
+      // Map revenue from getPlatformRevenue() nested structure to flat shape the template expects
+      const rev = revRes.data?.data;
+      setRevenue(rev ? {
+        totalRevenue: rev.totalRevenue || 0,
+        subscriptionRevenue: rev.subscriptions?.totalRevenue || 0,
+        aiWalletRevenue: rev.aiWallet?.totalRevenue || 0,
+        translationRevenue: rev.translationWallet?.totalRevenue || 0,
+      } : null);
+      // Map wallet analytics from snake_case API fields to camelCase the template expects
+      const summary = walletRes.data?.summary;
+      setWalletAnalytics(summary ? {
+        aiHoursSold: summary.total_ai_sold_hours || 0,
+        aiHoursUsed: summary.total_ai_used_hours || 0,
+        translationHoursSold: summary.total_translation_sold_hours || 0,
+        translationHoursUsed: summary.total_translation_used_hours || 0,
+      } : null);
+      setSubscriptions(subsRes.data?.subscriptions || []);
+      setOrgs(orgsRes.data?.organizations || []);
     } catch (err: any) {
       console.error('SaaS dashboard error', err);
     } finally {

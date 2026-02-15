@@ -453,12 +453,21 @@ router.get('/admin/subscriptions', authenticate, requireDeveloper(), async (req:
 // GET /admin/organizations — list all orgs with subscription + wallet info
 router.get('/admin/organizations', authenticate, requireDeveloper(), async (_req: Request, res: Response) => {
   try {
+    // Use a subquery for the LATEST subscription per org to prevent duplicate
+    // rows when an org has multiple non-cancelled subscriptions (e.g. an expired
+    // one that was never cleaned up plus a newly-assigned active one).
     const orgs = await db('organizations')
-      .leftJoin('subscriptions', function () {
-        this.on('organizations.id', '=', 'subscriptions.organization_id')
-          .andOn(db.raw("subscriptions.status IN ('active', 'grace_period', 'expired')"));
-      })
-      .leftJoin('subscription_plans', 'subscriptions.plan_id', 'subscription_plans.id')
+      .leftJoin(
+        db.raw(`(
+          SELECT DISTINCT ON (organization_id) *
+          FROM subscriptions
+          WHERE status IN ('active', 'grace_period', 'expired')
+          ORDER BY organization_id, created_at DESC
+        ) AS latest_sub`),
+        'organizations.id',
+        'latest_sub.organization_id',
+      )
+      .leftJoin('subscription_plans', 'latest_sub.plan_id', 'subscription_plans.id')
       .leftJoin('ai_wallet', 'organizations.id', 'ai_wallet.organization_id')
       .leftJoin('translation_wallet', 'organizations.id', 'translation_wallet.organization_id')
       .select(
@@ -472,8 +481,8 @@ router.get('/admin/organizations', authenticate, requireDeveloper(), async (_req
         'organizations.created_at',
         'subscription_plans.name as plan_name',
         'subscription_plans.slug as plan_slug',
-        'subscriptions.status as sub_status',
-        'subscriptions.current_period_end',
+        'latest_sub.status as sub_status',
+        'latest_sub.current_period_end',
         'ai_wallet.balance_minutes as ai_balance_minutes',
         'translation_wallet.balance_minutes as translation_balance_minutes',
       )
