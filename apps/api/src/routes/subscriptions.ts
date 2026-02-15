@@ -856,19 +856,105 @@ router.get('/admin/wallet-analytics', authenticate, requireDeveloper(), async (_
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// SUBSCRIPTION PLAN MANAGEMENT (Developer)
+// ════════════════════════════════════════════════════════════
+
 // GET /admin/plans
 router.get('/admin/plans', authenticate, requireDeveloper(), async (_req: Request, res: Response) => {
   try {
     const plans = await db('subscription_plans').orderBy('sort_order', 'asc');
-    res.json({ success: true, data: plans });
+    // Get subscriber counts per plan
+    const planIds = plans.map((p: any) => p.id);
+    const counts = planIds.length > 0
+      ? await db('subscriptions')
+          .whereIn('plan_id', planIds)
+          .whereIn('status', ['active', 'grace_period'])
+          .groupBy('plan_id')
+          .select('plan_id', db.raw('COUNT(*) as subscriber_count'))
+      : [];
+    const countMap: Record<string, number> = {};
+    counts.forEach((c: any) => { countMap[c.plan_id] = parseInt(c.subscriber_count); });
+    
+    const enriched = plans.map((p: any) => ({
+      ...p,
+      subscriber_count: countMap[p.id] || 0,
+    }));
+    res.json({ success: true, data: enriched });
   } catch (err: any) {
     res.status(500).json({ success: false, error: 'Failed' });
+  }
+});
+
+// POST /admin/plans — Create new subscription plan
+const createPlanSchema = z.object({
+  name: z.string().min(2).max(100),
+  slug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
+  description: z.string().optional(),
+  maxMembers: z.number().int().min(1).default(100),
+  priceUsdAnnual: z.number().min(0).default(0),
+  priceUsdMonthly: z.number().min(0).optional(),
+  priceNgnAnnual: z.number().min(0).default(0),
+  priceNgnMonthly: z.number().min(0).optional(),
+  features: z.record(z.boolean()).optional(),
+  sortOrder: z.number().int().default(0),
+  isActive: z.boolean().default(true),
+});
+
+router.post('/admin/plans', authenticate, requireDeveloper(), validate(createPlanSchema), async (req: Request, res: Response) => {
+  try {
+    const { name, slug, description, maxMembers, priceUsdAnnual, priceUsdMonthly, priceNgnAnnual, priceNgnMonthly, features, sortOrder, isActive } = req.body;
+    
+    // Check slug uniqueness
+    const existing = await db('subscription_plans').where({ slug }).first();
+    if (existing) {
+      res.status(409).json({ success: false, error: 'Plan slug already exists' });
+      return;
+    }
+
+    const [plan] = await db('subscription_plans')
+      .insert({
+        name,
+        slug,
+        description: description || null,
+        max_members: maxMembers,
+        price_usd_annual: priceUsdAnnual,
+        price_usd_monthly: priceUsdMonthly || null,
+        price_ngn_annual: priceNgnAnnual,
+        price_ngn_monthly: priceNgnMonthly || null,
+        features: features ? JSON.stringify(features) : '{}',
+        sort_order: sortOrder,
+        is_active: isActive,
+      })
+      .returning('*');
+
+    await writeAuditLog({
+      userId: req.user!.userId,
+      action: 'create',
+      entityType: 'subscription_plan',
+      entityId: plan.id,
+      newValue: { name, slug, priceUsdAnnual, maxMembers },
+      ipAddress: req.ip || '',
+      userAgent: req.headers['user-agent'] || '',
+    });
+
+    logger.info(`Created subscription plan: ${name} (${slug})`);
+    res.status(201).json({ success: true, data: plan });
+  } catch (err: any) {
+    logger.error('Create plan error', err);
+    res.status(500).json({ success: false, error: 'Failed to create plan' });
   }
 });
 
 // PUT /admin/plans/:planId
 router.put('/admin/plans/:planId', authenticate, requireDeveloper(), async (req: Request, res: Response) => {
   try {
+    const previous = await db('subscription_plans').where({ id: req.params.planId }).first();
+    if (!previous) {
+      res.status(404).json({ success: false, error: 'Plan not found' });
+      return;
+    }
+
     const allowed = ['name', 'description', 'price_usd_annual', 'price_usd_monthly', 'price_ngn_annual', 'price_ngn_monthly', 'max_members', 'features', 'is_active', 'sort_order'];
     const updates: any = {};
     for (const key of allowed) {
@@ -877,10 +963,411 @@ router.put('/admin/plans/:planId', authenticate, requireDeveloper(), async (req:
     updates.updated_at = new Date();
     await db('subscription_plans').where({ id: req.params.planId }).update(updates);
     const plan = await db('subscription_plans').where({ id: req.params.planId }).first();
+
+    await writeAuditLog({
+      userId: req.user!.userId,
+      action: 'update',
+      entityType: 'subscription_plan',
+      entityId: req.params.planId,
+      previousValue: previous,
+      newValue: updates,
+      ipAddress: req.ip || '',
+      userAgent: req.headers['user-agent'] || '',
+    });
+
     res.json({ success: true, data: plan });
   } catch (err: any) {
     logger.error('Update plan error', err);
     res.status(500).json({ success: false, error: 'Failed to update plan' });
+  }
+});
+
+// DELETE /admin/plans/:planId — Archive a plan (soft delete via is_active)
+router.delete('/admin/plans/:planId', authenticate, requireDeveloper(), async (req: Request, res: Response) => {
+  try {
+    const plan = await db('subscription_plans').where({ id: req.params.planId }).first();
+    if (!plan) {
+      res.status(404).json({ success: false, error: 'Plan not found' });
+      return;
+    }
+
+    // Check if any active subscriptions use this plan
+    const activeCount = await db('subscriptions')
+      .where({ plan_id: req.params.planId })
+      .whereIn('status', ['active', 'grace_period'])
+      .count('id as count')
+      .first();
+
+    if (parseInt(activeCount?.count as string) > 0) {
+      // Soft delete - just deactivate
+      await db('subscription_plans').where({ id: req.params.planId }).update({ is_active: false, updated_at: new Date() });
+      
+      await writeAuditLog({
+        userId: req.user!.userId,
+        action: 'archive',
+        entityType: 'subscription_plan',
+        entityId: req.params.planId,
+        previousValue: plan,
+        newValue: { is_active: false, reason: 'Has active subscribers' },
+        ipAddress: req.ip || '',
+        userAgent: req.headers['user-agent'] || '',
+      });
+
+      res.json({ success: true, message: 'Plan archived (has active subscribers)', archived: true });
+      return;
+    }
+
+    // Hard delete if no active subscriptions
+    await db('subscription_plans').where({ id: req.params.planId }).delete();
+
+    await writeAuditLog({
+      userId: req.user!.userId,
+      action: 'delete',
+      entityType: 'subscription_plan',
+      entityId: req.params.planId,
+      previousValue: plan,
+      ipAddress: req.ip || '',
+      userAgent: req.headers['user-agent'] || '',
+    });
+
+    logger.info(`Deleted subscription plan: ${plan.name} (${plan.slug})`);
+    res.json({ success: true, message: 'Plan deleted' });
+  } catch (err: any) {
+    logger.error('Delete plan error', err);
+    res.status(500).json({ success: false, error: 'Failed to delete plan' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// ORGANIZATION MANAGEMENT (Developer)
+// ════════════════════════════════════════════════════════════
+
+// GET /admin/organizations/:orgId — Get detailed org info
+router.get('/admin/organizations/:orgId', authenticate, requireDeveloper(), async (req: Request, res: Response) => {
+  try {
+    const org = await db('organizations').where({ id: req.params.orgId }).first();
+    if (!org) {
+      res.status(404).json({ success: false, error: 'Organization not found' });
+      return;
+    }
+
+    // Get subscription
+    const subscription = await db('subscriptions')
+      .where({ organization_id: req.params.orgId })
+      .whereIn('status', ['active', 'grace_period', 'expired', 'suspended'])
+      .orderBy('created_at', 'desc')
+      .first();
+
+    const plan = subscription 
+      ? await db('subscription_plans').where({ id: subscription.plan_id }).first()
+      : null;
+
+    // Get wallets
+    const aiWallet = await db('ai_wallet').where({ organization_id: req.params.orgId }).first();
+    const translationWallet = await db('translation_wallet').where({ organization_id: req.params.orgId }).first();
+
+    // Get member count and list of admins
+    const memberCount = await db('memberships')
+      .where({ organization_id: req.params.orgId, is_active: true })
+      .count('id as count')
+      .first();
+
+    const admins = await db('memberships')
+      .join('users', 'memberships.user_id', 'users.id')
+      .where({ 'memberships.organization_id': req.params.orgId, 'memberships.is_active': true })
+      .whereIn('memberships.role', ['org_admin', 'executive'])
+      .select('users.id', 'users.email', 'users.first_name', 'users.last_name', 'memberships.role');
+
+    // Get recent activity
+    const recentActivity = await db('audit_logs')
+      .where({ organization_id: req.params.orgId })
+      .orderBy('created_at', 'desc')
+      .limit(10)
+      .select('*');
+
+    res.json({
+      success: true,
+      data: {
+        ...org,
+        settings: typeof org.settings === 'string' ? JSON.parse(org.settings) : org.settings,
+        subscription: subscription ? { ...subscription, plan } : null,
+        aiWallet,
+        translationWallet,
+        memberCount: parseInt(memberCount?.count as string) || 0,
+        admins,
+        recentActivity,
+      },
+    });
+  } catch (err: any) {
+    logger.error('Get org detail error', err);
+    res.status(500).json({ success: false, error: 'Failed to get organization' });
+  }
+});
+
+// PUT /admin/organizations/:orgId — Update org info
+const updateOrgSchema = z.object({
+  name: z.string().min(2).max(200).optional(),
+  slug: z.string().min(2).max(100).regex(/^[a-z0-9-]+$/).optional(),
+  status: z.enum(['active', 'suspended', 'pending']).optional(),
+  subscriptionStatus: z.enum(['active', 'grace_period', 'expired', 'cancelled', 'suspended']).optional(),
+  billingCurrency: z.enum(['USD', 'NGN']).optional(),
+  billingCountry: z.string().max(5).optional(),
+  settings: z.record(z.any()).optional(),
+});
+
+router.put('/admin/organizations/:orgId', authenticate, requireDeveloper(), validate(updateOrgSchema), async (req: Request, res: Response) => {
+  try {
+    const previous = await db('organizations').where({ id: req.params.orgId }).first();
+    if (!previous) {
+      res.status(404).json({ success: false, error: 'Organization not found' });
+      return;
+    }
+
+    const { name, slug, status, subscriptionStatus, billingCurrency, billingCountry, settings } = req.body;
+
+    // Check slug uniqueness if changed
+    if (slug && slug !== previous.slug) {
+      const existing = await db('organizations').where({ slug }).whereNot({ id: req.params.orgId }).first();
+      if (existing) {
+        res.status(409).json({ success: false, error: 'Slug already taken by another organization' });
+        return;
+      }
+    }
+
+    const updates: Record<string, any> = { updated_at: new Date() };
+    if (name !== undefined) updates.name = name;
+    if (slug !== undefined) updates.slug = slug;
+    if (status !== undefined) updates.status = status;
+    if (subscriptionStatus !== undefined) updates.subscription_status = subscriptionStatus;
+    if (billingCurrency !== undefined) updates.billing_currency = billingCurrency;
+    if (billingCountry !== undefined) updates.billing_country = billingCountry;
+    if (settings !== undefined) {
+      // Merge with existing settings
+      const existingSettings = typeof previous.settings === 'string' 
+        ? JSON.parse(previous.settings || '{}') 
+        : (previous.settings || {});
+      updates.settings = JSON.stringify({ ...existingSettings, ...settings });
+    }
+
+    await db('organizations').where({ id: req.params.orgId }).update(updates);
+
+    await writeAuditLog({
+      organizationId: req.params.orgId,
+      userId: req.user!.userId,
+      action: 'admin_update_org',
+      entityType: 'organization',
+      entityId: req.params.orgId,
+      previousValue: { name: previous.name, slug: previous.slug, status: previous.status },
+      newValue: updates,
+      ipAddress: req.ip || '',
+      userAgent: req.headers['user-agent'] || '',
+    });
+
+    const updated = await db('organizations').where({ id: req.params.orgId }).first();
+    logger.info(`Admin updated organization: ${updated.name} (${updated.slug})`);
+    res.json({ success: true, data: updated });
+  } catch (err: any) {
+    logger.error('Update org error', err);
+    res.status(500).json({ success: false, error: 'Failed to update organization' });
+  }
+});
+
+// DELETE /admin/organizations/:orgId — Delete organization (with safety checks)
+router.delete('/admin/organizations/:orgId', authenticate, requireDeveloper(), async (req: Request, res: Response) => {
+  try {
+    const org = await db('organizations').where({ id: req.params.orgId }).first();
+    if (!org) {
+      res.status(404).json({ success: false, error: 'Organization not found' });
+      return;
+    }
+
+    // Require confirmation via query param
+    if (req.query.confirm !== 'yes') {
+      res.status(400).json({ 
+        success: false, 
+        error: 'Deletion requires confirmation. Add ?confirm=yes to proceed.',
+        warning: `This will permanently delete "${org.name}" and all associated data.`,
+      });
+      return;
+    }
+
+    // Log before deletion
+    await writeAuditLog({
+      organizationId: req.params.orgId,
+      userId: req.user!.userId,
+      action: 'admin_delete_org',
+      entityType: 'organization',
+      entityId: req.params.orgId,
+      previousValue: org,
+      ipAddress: req.ip || '',
+      userAgent: req.headers['user-agent'] || '',
+    });
+
+    // Delete organization (cascades to related tables)
+    await db('organizations').where({ id: req.params.orgId }).delete();
+
+    logger.warn(`Admin DELETED organization: ${org.name} (${org.slug}) by user ${req.user!.userId}`);
+    res.json({ success: true, message: `Organization "${org.name}" deleted` });
+  } catch (err: any) {
+    logger.error('Delete org error', err);
+    res.status(500).json({ success: false, error: 'Failed to delete organization' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// USER MANAGEMENT (Developer)
+// ════════════════════════════════════════════════════════════
+
+// GET /admin/users — List all platform users
+router.get('/admin/users', authenticate, requireDeveloper(), async (req: Request, res: Response) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const search = req.query.search as string;
+    const globalRole = req.query.globalRole as string;
+
+    let query = db('users')
+      .select(
+        'users.id',
+        'users.email',
+        'users.first_name',
+        'users.last_name',
+        'users.global_role',
+        'users.is_verified',
+        'users.created_at',
+        'users.last_login_at',
+        db.raw('(SELECT COUNT(*) FROM memberships WHERE memberships.user_id = users.id AND memberships.is_active = true) as org_count'),
+      );
+
+    if (search) {
+      const escapedSearch = search.replace(/[%_\\]/g, '\\$&');
+      query = query.where((qb) => {
+        qb.where('users.email', 'ilike', `%${escapedSearch}%`)
+          .orWhere('users.first_name', 'ilike', `%${escapedSearch}%`)
+          .orWhere('users.last_name', 'ilike', `%${escapedSearch}%`);
+      });
+    }
+
+    if (globalRole) {
+      query = query.where('users.global_role', globalRole);
+    }
+
+    const total = await query.clone().clear('select').count('users.id as count').first();
+    const users = await query
+      .orderBy('users.created_at', 'desc')
+      .offset((page - 1) * limit)
+      .limit(limit);
+
+    res.json({
+      success: true,
+      data: users,
+      meta: {
+        page,
+        limit,
+        total: parseInt(total?.count as string) || 0,
+      },
+    });
+  } catch (err: any) {
+    logger.error('List users error', err);
+    res.status(500).json({ success: false, error: 'Failed to list users' });
+  }
+});
+
+// GET /admin/users/:userId — Get user details
+router.get('/admin/users/:userId', authenticate, requireDeveloper(), async (req: Request, res: Response) => {
+  try {
+    const user = await db('users')
+      .where({ id: req.params.userId })
+      .select('id', 'email', 'first_name', 'last_name', 'phone', 'global_role', 'is_verified', 'avatar_url', 'created_at', 'last_login_at')
+      .first();
+
+    if (!user) {
+      res.status(404).json({ success: false, error: 'User not found' });
+      return;
+    }
+
+    // Get user's memberships
+    const memberships = await db('memberships')
+      .join('organizations', 'memberships.organization_id', 'organizations.id')
+      .where({ 'memberships.user_id': req.params.userId })
+      .select(
+        'memberships.id',
+        'memberships.role',
+        'memberships.is_active',
+        'memberships.joined_at',
+        'organizations.id as org_id',
+        'organizations.name as org_name',
+        'organizations.slug as org_slug',
+      );
+
+    // Get recent audit activity
+    const recentActivity = await db('audit_logs')
+      .where({ user_id: req.params.userId })
+      .orderBy('created_at', 'desc')
+      .limit(20)
+      .select('*');
+
+    res.json({
+      success: true,
+      data: {
+        ...user,
+        memberships,
+        recentActivity,
+      },
+    });
+  } catch (err: any) {
+    logger.error('Get user detail error', err);
+    res.status(500).json({ success: false, error: 'Failed to get user' });
+  }
+});
+
+// PUT /admin/users/:userId — Update user
+const updateUserSchema = z.object({
+  firstName: z.string().min(1).max(100).optional(),
+  lastName: z.string().min(1).max(100).optional(),
+  globalRole: z.enum(['user', 'developer', 'super_admin']).optional(),
+  isVerified: z.boolean().optional(),
+});
+
+router.put('/admin/users/:userId', authenticate, requireDeveloper(), validate(updateUserSchema), async (req: Request, res: Response) => {
+  try {
+    const previous = await db('users').where({ id: req.params.userId }).first();
+    if (!previous) {
+      res.status(404).json({ success: false, error: 'User not found' });
+      return;
+    }
+
+    const { firstName, lastName, globalRole, isVerified } = req.body;
+
+    const updates: Record<string, any> = { updated_at: new Date() };
+    if (firstName !== undefined) updates.first_name = firstName;
+    if (lastName !== undefined) updates.last_name = lastName;
+    if (globalRole !== undefined) updates.global_role = globalRole;
+    if (isVerified !== undefined) updates.is_verified = isVerified;
+
+    await db('users').where({ id: req.params.userId }).update(updates);
+
+    await writeAuditLog({
+      userId: req.user!.userId,
+      action: 'admin_update_user',
+      entityType: 'user',
+      entityId: req.params.userId,
+      previousValue: { globalRole: previous.global_role, isVerified: previous.is_verified },
+      newValue: updates,
+      ipAddress: req.ip || '',
+      userAgent: req.headers['user-agent'] || '',
+    });
+
+    const updated = await db('users')
+      .where({ id: req.params.userId })
+      .select('id', 'email', 'first_name', 'last_name', 'global_role', 'is_verified')
+      .first();
+
+    logger.info(`Admin updated user: ${updated.email} - role: ${updated.global_role}`);
+    res.json({ success: true, data: updated });
+  } catch (err: any) {
+    logger.error('Update user error', err);
+    res.status(500).json({ success: false, error: 'Failed to update user' });
   }
 });
 

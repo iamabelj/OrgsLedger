@@ -61,6 +61,7 @@ export default function AdminLayout() {
       <Stack.Screen name="payment-methods" options={{ title: 'Payment Methods' }} />
       <Stack.Screen name="subscription" options={{ title: 'Subscription' }} />
       <Stack.Screen name="compliance" options={{ title: 'Compliance' }} />
+      <Stack.Screen name="developer-console" options={{ title: 'Developer Console' }} />
     </Stack>
   );
 }

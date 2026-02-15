@@ -304,6 +304,14 @@ class ApiClient {
     adminSubscriptions: (params?: any) =>
       this.client.get('/subscriptions/admin/subscriptions', { params }),
     adminOrganizations: () => this.client.get('/subscriptions/admin/organizations'),
+    adminGetOrganization: (orgId: string) => 
+      this.client.get(`/subscriptions/admin/organizations/${orgId}`),
+    adminUpdateOrganization: (orgId: string, data: any) =>
+      this.client.put(`/subscriptions/admin/organizations/${orgId}`, data),
+    adminDeleteOrganization: (orgId: string, confirm: boolean = false) =>
+      this.client.delete(`/subscriptions/admin/organizations/${orgId}${confirm ? '?confirm=yes' : ''}`),
+    adminCreateOrganization: (data: { name: string; slug: string; ownerEmail: string; plan?: string; currency?: string }) =>
+      this.client.post('/subscriptions/admin/organizations', data),
     adminAdjustAiWallet: (data: { organizationId: string; hours: number; description: string }) =>
       this.client.post('/subscriptions/admin/wallet/ai/adjust', data),
     adminAdjustTranslationWallet: (data: { organizationId: string; hours: number; description: string }) =>
@@ -313,9 +321,39 @@ class ApiClient {
     adminOverrideSubscription: (data: any) =>
       this.client.post('/subscriptions/admin/subscription/override', data),
     adminWalletAnalytics: () => this.client.get('/subscriptions/admin/wallet-analytics'),
+    adminRiskLowBalances: (threshold?: number) =>
+      this.client.get('/subscriptions/admin/risk/low-balances', { params: { threshold } }),
+    adminRiskSpikes: (days?: number, multiplier?: number) =>
+      this.client.get('/subscriptions/admin/risk/spikes', { params: { days, multiplier } }),
+    // Plan management
     adminPlans: () => this.client.get('/subscriptions/admin/plans'),
+    adminCreatePlan: (data: {
+      name: string;
+      slug: string;
+      description?: string;
+      maxMembers?: number;
+      priceUsdAnnual?: number;
+      priceUsdMonthly?: number;
+      priceNgnAnnual?: number;
+      priceNgnMonthly?: number;
+      features?: Record<string, boolean>;
+      sortOrder?: number;
+      isActive?: boolean;
+    }) => this.client.post('/subscriptions/admin/plans', data),
     adminUpdatePlan: (planId: string, data: any) =>
       this.client.put(`/subscriptions/admin/plans/${planId}`, data),
+    adminDeletePlan: (planId: string) =>
+      this.client.delete(`/subscriptions/admin/plans/${planId}`),
+    // User management
+    adminUsers: (params?: { page?: number; limit?: number; search?: string; globalRole?: string }) =>
+      this.client.get('/subscriptions/admin/users', { params }),
+    adminGetUser: (userId: string) =>
+      this.client.get(`/subscriptions/admin/users/${userId}`),
+    adminUpdateUser: (userId: string, data: { firstName?: string; lastName?: string; globalRole?: string; isVerified?: boolean }) =>
+      this.client.put(`/subscriptions/admin/users/${userId}`, data),
+    // Audit logs
+    adminAuditLogs: (params?: { page?: number; limit?: number; orgId?: string; action?: string; entityType?: string }) =>
+      this.client.get('/admin/audit-logs', { params }),
   };
 
   // ── AI Credits (legacy — kept for backward compatibility) ─

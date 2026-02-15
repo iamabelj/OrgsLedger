@@ -59,6 +59,12 @@ const adminItems: NavItem[] = [
   { label: 'Compliance', icon: 'shield-checkmark-outline', path: '/admin/compliance', adminOnly: true },
 ];
 
+// Developer-only items
+const developerItems: NavItem[] = [
+  { label: 'Developer Console', icon: 'code-slash-outline', path: '/admin/developer-console' },
+  { label: 'SaaS Dashboard', icon: 'stats-chart-outline', path: '/admin/saas-dashboard' },
+];
+
 // Executive gets a subset — no Settings, AI Plans, Pay Config, Bank Transfers, Analytics
 const executiveItems: NavItem[] = [
   { label: 'Members', icon: 'people-circle-outline', path: '/admin/members', adminOnly: true },
@@ -172,6 +178,33 @@ export function NavigationDrawer() {
           <View style={styles.navGroup}>
             <Text style={styles.navGroupTitle}>{isOrgAdmin ? 'SUPER ADMIN' : 'EXECUTIVE'}</Text>
             {drawerAdminItems.map((item) => {
+              const isActive = pathname === item.path || pathname?.startsWith(item.path);
+              return (
+                <TouchableOpacity
+                  key={item.path}
+                  style={[styles.navItem, isActive && styles.navItemActive]}
+                  onPress={() => handleNavigation(item.path)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={item.icon as any}
+                    size={22}
+                    color={isActive ? Colors.highlight : Colors.textLight}
+                  />
+                  <Text style={[styles.navItemText, isActive && styles.navItemTextActive]}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
+        {/* Developer Section */}
+        {isSuperAdmin && (
+          <View style={styles.navGroup}>
+            <Text style={styles.navGroupTitle}>DEVELOPER</Text>
+            {developerItems.map((item) => {
               const isActive = pathname === item.path || pathname?.startsWith(item.path);
               return (
                 <TouchableOpacity
