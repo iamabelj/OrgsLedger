@@ -2,7 +2,7 @@
 // OrgsLedger — Cross-Platform Date/Time Picker
 // ============================================================
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -34,11 +34,12 @@ export function CrossPlatformDateTimePicker({
   style,
 }: CrossPlatformDateTimePickerProps) {
   const [showPicker, setShowPicker] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const formatDisplay = (date: Date) => {
+  const formatDisplay = useCallback((date: Date) => {
     if (!hasValue) return mode === 'date' ? 'Select date' : 'Select time';
     return mode === 'date' ? format(date, 'MMM d, yyyy') : format(date, 'h:mm a');
-  };
+  }, [hasValue, mode]);
 
   const getWebValue = useCallback((date: Date) => {
     if (mode === 'date') {
@@ -75,16 +76,31 @@ export function CrossPlatformDateTimePicker({
     }
   }, [mode, value]);
 
-  // ── Web: transparent native <input> overlaid on styled container ──
+  // All hooks are above — no conditional hook calls
+  const handleWebChange = useCallback((e: any) => {
+    const v = e?.target?.value ?? e?.nativeEvent?.text ?? '';
+    if (!v) return;
+    const parsed = parseWebInput(v);
+    if (parsed) onChange(parsed);
+  }, [parseWebInput, onChange]);
+
+  // Attach native DOM listener for reliable event handling on web
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !inputRef.current) return;
+    const el = inputRef.current;
+    const handler = (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      if (!target.value) return;
+      const parsed = parseWebInput(target.value);
+      if (parsed) onChange(parsed);
+    };
+    el.addEventListener('change', handler);
+    return () => el.removeEventListener('change', handler);
+  }, [parseWebInput, onChange]);
+
+  // ── Web: visible styled <input> for reliable date picking ──
   if (Platform.OS === 'web') {
     const inputVal = getWebValue(value);
-
-    const handleInputEvent = useCallback((e: any) => {
-      const v = e?.target?.value ?? e?.nativeEvent?.text ?? '';
-      if (!v) return;
-      const parsed = parseWebInput(v);
-      if (parsed) onChange(parsed);
-    }, [parseWebInput, onChange]);
 
     return (
       <View style={[styles.container, style]}>
@@ -99,28 +115,30 @@ export function CrossPlatformDateTimePicker({
           <Text style={[styles.webDisplayText, !hasValue && { color: Colors.textLight }]}>
             {formatDisplay(value)}
           </Text>
-          {/* Transparent overlay native HTML input – always captures clicks */}
+          {/* Native HTML input overlaid for browser date picker */}
           <input
+            ref={(el: any) => { inputRef.current = el; }}
             type={mode === 'date' ? 'date' : 'time'}
             value={inputVal}
-            onChange={handleInputEvent}
-            onInput={handleInputEvent}
+            onChange={handleWebChange}
+            onInput={handleWebChange}
             style={{
               position: 'absolute',
               top: 0,
               left: 0,
-              right: 0,
-              bottom: 0,
               width: '100%',
               height: '100%',
-              opacity: 0.01,
+              opacity: 0,
               cursor: 'pointer',
               zIndex: 10,
               border: 'none',
               margin: 0,
               padding: 0,
               boxSizing: 'border-box',
+              WebkitAppearance: 'none',
+              MozAppearance: 'none',
             } as any}
+            aria-label={label}
           />
         </View>
       </View>
