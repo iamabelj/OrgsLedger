@@ -1,79 +1,30 @@
 // ============================================================
 // OrgsLedger API — Notification Routes
+// Thin route layer — logic in NotificationController.
 // ============================================================
 
 import { Router, Request, Response } from 'express';
 import db from '../db';
 import { authenticate } from '../middleware';
+import { asyncHandler } from '../middleware/error-handler';
+import { notificationController } from '../controllers';
 
 const router = Router();
 
 // ── Get User Notifications ──────────────────────────────────
-router.get('/', authenticate, async (req: Request, res: Response) => {
-  try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 30;
-    const unreadOnly = req.query.unread === 'true';
-
-    let query = db('notifications')
-      .where({ user_id: req.user!.userId })
-      .select('*');
-
-    if (unreadOnly) {
-      query = query.where({ is_read: false });
-    }
-
-    const total = await query.clone().clear('select').count('id as count').first();
-    const notifications = await query
-      .orderBy('created_at', 'desc')
-      .offset((page - 1) * limit)
-      .limit(limit);
-
-    const unreadCount = await db('notifications')
-      .where({ user_id: req.user!.userId, is_read: false })
-      .count('id as count')
-      .first();
-
-    res.json({
-      success: true,
-      data: notifications,
-      meta: {
-        page,
-        limit,
-        total: parseInt(total?.count as string) || 0,
-        unreadCount: parseInt(unreadCount?.count as string) || 0,
-      },
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: 'Failed to get notifications' });
-  }
-});
+router.get('/', authenticate, asyncHandler(async (req, res) => {
+  await notificationController.list(req, res);
+}));
 
 // ── Mark as Read ────────────────────────────────────────────
-router.put('/:id/read', authenticate, async (req: Request, res: Response) => {
-  try {
-    await db('notifications')
-      .where({ id: req.params.id, user_id: req.user!.userId })
-      .update({ is_read: true });
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ success: false, error: 'Failed to mark notification as read' });
-  }
-});
+router.put('/:id/read', authenticate, asyncHandler(async (req, res) => {
+  await notificationController.markRead(req, res);
+}));
 
 // ── Mark All as Read ────────────────────────────────────────
-router.put('/read-all', authenticate, async (req: Request, res: Response) => {
-  try {
-    const orgId = req.query.orgId as string;
-    let query = db('notifications')
-      .where({ user_id: req.user!.userId, is_read: false });
-    if (orgId) query = query.where({ organization_id: orgId });
-    await query.update({ is_read: true });
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ success: false, error: 'Failed to mark all as read' });
-  }
-});
+router.put('/read-all', authenticate, asyncHandler(async (req, res) => {
+  await notificationController.markAllRead(req, res);
+}));
 
 // ── Get Notification Preferences ────────────────────────────
 router.get('/preferences', authenticate, async (req: Request, res: Response) => {

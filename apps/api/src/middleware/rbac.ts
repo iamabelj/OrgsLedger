@@ -3,15 +3,7 @@
 // ============================================================
 
 import { Request, Response, NextFunction } from 'express';
-
-const ROLE_HIERARCHY: Record<string, number> = {
-  guest: 0,
-  member: 1,
-  executive: 2,
-  org_admin: 3,
-  super_admin: 4,
-  developer: 5,
-};
+import { ROLE_HIERARCHY } from '../constants';
 
 /**
  * Require minimum role level to access a route.
