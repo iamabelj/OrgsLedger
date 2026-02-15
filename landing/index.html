@@ -447,15 +447,26 @@
       .section { padding: 80px 0; }
       .hero { padding: 120px 0 80px; }
       .footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; }
-      .pricing-grid { grid-template-columns: 1fr 1fr; }
+      .pricing-grid { grid-template-columns: 1fr; gap: 16px; }
+      .pricing-card { padding: 28px; }
+      .pricing-amount { font-size: 2.2rem; }
       .addons-grid { grid-template-columns: 1fr; }
       .hero-proof { gap: 20px; }
       .infra-grid { grid-template-columns: 1fr 1fr; }
       .footer-bottom { flex-direction: column; text-align: center; }
+      .hero-actions { flex-direction: column; gap: 12px; }
+      .hero-actions .btn { width: 100%; }
+      .pricing-region-toggle { max-width: 100%; }
     }
     @media (max-width: 480px) {
       .infra-grid { grid-template-columns: 1fr; }
       .hero-proof { flex-direction: column; gap: 12px; }
+      .footer-grid { grid-template-columns: 1fr; gap: 24px; }
+      .container { padding: 0 16px; }
+      .section { padding: 60px 0; }
+      .hero { padding: 100px 0 60px; }
+      .section-title { font-size: 1.6rem; }
+      .section-subtitle { font-size: .95rem; }
     }
   </style>
 </head>
@@ -913,21 +924,21 @@
       </div>
       <div class="footer-col">
         <h5>Company</h5>
-        <a href="#">About Us</a>
-        <a href="#">Blog</a>
-        <a href="#">Careers</a>
-        <a href="#">Contact Sales</a>
+        <a href="mailto:hello@orgsledger.com">About Us</a>
+        <a href="mailto:hello@orgsledger.com">Blog</a>
+        <a href="mailto:careers@orgsledger.com">Careers</a>
+        <a href="mailto:sales@orgsledger.com">Contact Sales</a>
       </div>
       <div class="footer-col">
         <h5>Legal</h5>
-        <a href="#">Terms of Service</a>
-        <a href="#">Privacy Policy</a>
-        <a href="#">Cookie Policy</a>
-        <a href="#">Acceptable Use</a>
+        <a href="https://app.orgsledger.com/legal/terms">Terms of Service</a>
+        <a href="https://app.orgsledger.com/legal/privacy">Privacy Policy</a>
+        <a href="https://app.orgsledger.com/legal/privacy">Cookie Policy</a>
+        <a href="https://app.orgsledger.com/legal/acceptable-use">Acceptable Use</a>
       </div>
     </div>
     <div class="footer-bottom">
-      <p>&copy; 2025 OrgsLedger. All rights reserved.</p>
+      <p>&copy; 2026 OrgsLedger. All rights reserved.</p>
       <div class="footer-bottom-links">
         <a href="https://app.orgsledger.com">app.orgsledger.com</a>
       </div>
