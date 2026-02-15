@@ -12,7 +12,10 @@ import {
   RefreshControl,
   Modal,
   FlatList,
+  Dimensions,
 } from 'react-native';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 import { showAlert } from '../../src/utils/alert';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
