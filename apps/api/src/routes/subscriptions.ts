@@ -464,6 +464,8 @@ router.get('/admin/organizations', authenticate, requireDeveloper(), async (_req
       .select(
         'organizations.id',
         'organizations.name',
+        'organizations.slug',
+        'organizations.status',
         'organizations.subscription_status',
         'organizations.billing_currency',
         'organizations.billing_country',
