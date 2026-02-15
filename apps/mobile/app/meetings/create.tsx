@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
   aiLabel: {
     fontSize: FontSize.md,
     fontWeight: FontWeight.semibold as any,
-    color: Colors.text,
+    color: Colors.textWhite,
   },
   aiHint: {
     fontSize: FontSize.xs,

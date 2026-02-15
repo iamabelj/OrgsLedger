@@ -502,7 +502,7 @@ const adminCreateOrgSchema = z.object({
   name: z.string().min(2).max(200),
   slug: z.string().min(2).max(100).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
   ownerEmail: z.string().email(),
-  plan: z.enum(['standard', 'professional', 'enterprise']).default('standard'),
+  plan: z.string().min(1).max(100).default('standard'),
   currency: z.enum(['USD', 'NGN']).default('USD'),
 });
 
@@ -598,6 +598,8 @@ router.post('/admin/organizations', authenticate, requireDeveloper(), validate(a
         amountPaid: 0,
         createdBy: owner?.id || req.user!.userId,
       });
+    } else {
+      logger.warn(`Plan slug "${plan}" not found — organization created without subscription. Available plans should be created first.`);
     }
 
     // Provision wallets

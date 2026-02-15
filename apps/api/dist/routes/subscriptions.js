@@ -468,7 +468,7 @@ const adminCreateOrgSchema = zod_1.z.object({
     name: zod_1.z.string().min(2).max(200),
     slug: zod_1.z.string().min(2).max(100).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
     ownerEmail: zod_1.z.string().email(),
-    plan: zod_1.z.enum(['standard', 'professional', 'enterprise']).default('standard'),
+    plan: zod_1.z.string().min(1).max(100).default('standard'),
     currency: zod_1.z.enum(['USD', 'NGN']).default('USD'),
 });
 router.post('/admin/organizations', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), (0, middleware_1.validate)(adminCreateOrgSchema), async (req, res) => {
@@ -555,6 +555,9 @@ router.post('/admin/organizations', middleware_1.authenticate, (0, middleware_1.
                 amountPaid: 0,
                 createdBy: owner?.id || req.user.userId,
             });
+        }
+        else {
+            logger_1.logger.warn(`Plan slug "${plan}" not found — organization created without subscription. Available plans should be created first.`);
         }
         // Provision wallets
         await subSvc.getAiWallet(org.id);

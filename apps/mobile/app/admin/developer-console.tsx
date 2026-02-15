@@ -860,14 +860,18 @@ export default function DeveloperConsole() {
                   
                   <Text style={styles.fieldLabel}>Plan</Text>
                   <View style={styles.selectRow}>
-                    {['standard', 'professional', 'enterprise'].map((p) => (
+                    {(plans.length > 0 ? plans.filter(p => p.is_active).map(p => ({ label: p.name, value: p.slug })) : [
+                      { label: 'Standard', value: 'standard' },
+                      { label: 'Professional', value: 'professional' },
+                      { label: 'Enterprise', value: 'enterprise' },
+                    ]).map((p) => (
                       <TouchableOpacity
-                        key={p}
-                        style={[styles.selectOption, orgForm.plan === p && styles.selectOptionActive]}
-                        onPress={() => setOrgForm({ ...orgForm, plan: p })}
+                        key={p.value}
+                        style={[styles.selectOption, orgForm.plan === p.value && styles.selectOptionActive]}
+                        onPress={() => setOrgForm({ ...orgForm, plan: p.value })}
                       >
-                        <Text style={[styles.selectOptionText, orgForm.plan === p && styles.selectOptionTextActive]}>
-                          {p.charAt(0).toUpperCase() + p.slice(1)}
+                        <Text style={[styles.selectOptionText, orgForm.plan === p.value && styles.selectOptionTextActive]}>
+                          {p.label}
                         </Text>
                       </TouchableOpacity>
                     ))}
