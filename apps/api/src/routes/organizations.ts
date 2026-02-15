@@ -88,13 +88,30 @@ router.post(
         return;
       }
 
-      // Create org (SaaS — no legacy license)
+      // Create org (SaaS — assign default free license)
+      let freeLicense = await db('licenses').where({ type: 'free' }).first();
+      if (!freeLicense) {
+        [freeLicense] = await db('licenses')
+          .insert({
+            type: 'free',
+            max_members: 50,
+            features: JSON.stringify({
+              chat: true, meetings: true, aiMinutes: false,
+              financials: true, donations: true, voting: true,
+            }),
+            ai_credits_included: 0,
+            price_monthly: 0,
+          })
+          .returning('*');
+      }
+
       const [org] = await db('organizations')
         .insert({
           name,
           slug,
           status: 'active',
           subscription_status: 'active',
+          license_id: freeLicense.id,
           billing_currency: currency === 'NGN' ? 'NGN' : 'USD',
           settings: JSON.stringify({
             currency,

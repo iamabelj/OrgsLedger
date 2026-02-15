@@ -67,13 +67,29 @@ router.post('/', middleware_1.authenticate, (0, middleware_1.validate)(createOrg
             res.status(409).json({ success: false, error: 'Slug already taken' });
             return;
         }
-        // Create org (SaaS — no legacy license)
+        // Create org (SaaS — assign default free license)
+        let freeLicense = await (0, db_1.default)('licenses').where({ type: 'free' }).first();
+        if (!freeLicense) {
+            [freeLicense] = await (0, db_1.default)('licenses')
+                .insert({
+                type: 'free',
+                max_members: 50,
+                features: JSON.stringify({
+                    chat: true, meetings: true, aiMinutes: false,
+                    financials: true, donations: true, voting: true,
+                }),
+                ai_credits_included: 0,
+                price_monthly: 0,
+            })
+                .returning('*');
+        }
         const [org] = await (0, db_1.default)('organizations')
             .insert({
             name,
             slug,
             status: 'active',
             subscription_status: 'active',
+            license_id: freeLicense.id,
             billing_currency: currency === 'NGN' ? 'NGN' : 'USD',
             settings: JSON.stringify({
                 currency,
