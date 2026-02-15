@@ -43,9 +43,13 @@ const pool = new Pool({
 });
 
 // ── Middleware ─────────────────────────────────────────────
-app.use(cors({ origin: '*' }));
-app.use(express.json({ limit: '100mb' }));
-app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+const CORS_ORIGINS = (process.env.CORS_ORIGINS || 'https://orgsledger.com,https://app.orgsledger.com').split(',');
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' ? CORS_ORIGINS : '*',
+  credentials: true,
+}));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // ── Database Initialization ───────────────────────────────
 async function initDB() {
@@ -199,17 +203,42 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
+// ── Admin Login Rate Limiter ──────────────────────────────
+const loginAttempts = new Map(); // IP -> { count, firstAttempt }
+function adminLoginRateLimit(req, res, next) {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const window = 15 * 60 * 1000; // 15 minutes
+  const maxAttempts = 10;
+  const entry = loginAttempts.get(ip);
+  if (entry && now - entry.firstAttempt < window) {
+    if (entry.count >= maxAttempts) {
+      return res.status(429).json({ error: 'Too many login attempts. Try again later.' });
+    }
+    entry.count++;
+  } else {
+    loginAttempts.set(ip, { count: 1, firstAttempt: now });
+  }
+  // Clean old entries every 100 requests
+  if (loginAttempts.size > 1000) {
+    for (const [k, v] of loginAttempts) {
+      if (now - v.firstAttempt > window) loginAttempts.delete(k);
+    }
+  }
+  next();
+}
+
 // ── Admin Auth Endpoint ───────────────────────────────────
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', adminLoginRateLimit, (req, res) => {
   const { email, password } = req.body;
-  if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
+  if (!email || !password || email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
 
   const token = jwt.sign(
     { email, role: 'gateway_admin' },
     JWT_SECRET,
-    { expiresIn: '24h' }
+    { expiresIn: '8h' }
   );
 
   res.json({ token, email });

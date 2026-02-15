@@ -839,7 +839,7 @@ router.get('/admin/risk/spikes', authenticate, requireDeveloper(), async (req: R
     // Get daily AI usage per org for the analysis period + prior 30 days for baseline
     const aiDaily = await db('ai_wallet_transactions')
       .where('amount_minutes', '<', 0)
-      .where('created_at', '>=', db.raw('NOW() - INTERVAL ? DAY', [lookbackDays]))
+      .where('created_at', '>=', db.raw("NOW() - make_interval(days := ?)", [lookbackDays]))
       .select(
         'organization_id',
         db.raw("DATE(created_at) as day"),
@@ -851,7 +851,7 @@ router.get('/admin/risk/spikes', authenticate, requireDeveloper(), async (req: R
     // Get daily translation usage per org
     const transDaily = await db('translation_wallet_transactions')
       .where('amount_minutes', '<', 0)
-      .where('created_at', '>=', db.raw('NOW() - INTERVAL ? DAY', [lookbackDays]))
+      .where('created_at', '>=', db.raw("NOW() - make_interval(days := ?)", [lookbackDays]))
       .select(
         'organization_id',
         db.raw("DATE(created_at) as day"),
@@ -902,7 +902,7 @@ router.get('/admin/risk/spikes', authenticate, requireDeveloper(), async (req: R
     // Get failed payments in recent period
     const failedPayments = await db('transactions')
       .where({ status: 'failed' })
-      .where('created_at', '>=', db.raw(`NOW() - INTERVAL '${daysBack} days'`))
+      .where('created_at', '>=', db.raw("NOW() - make_interval(days := ?)", [daysBack]))
       .join('organizations', 'transactions.organization_id', 'organizations.id')
       .select(
         'transactions.organization_id',

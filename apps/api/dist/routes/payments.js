@@ -899,8 +899,8 @@ router.post('/:orgId/ai-credits/purchase', middleware_1.authenticate, middleware
             description: `AI Credits: ${creditsToPurchase} credit${creditsToPurchase > 1 ? 's' : ''} (${creditsToPurchase} hour${creditsToPurchase > 1 ? 's' : ''})`,
         })
             .returning('*');
-        // In dev mode, auto-complete
-        if (!config_1.config.stripe.secretKey) {
+        // In dev mode only, auto-complete (NEVER in production)
+        if (!config_1.config.stripe.secretKey && config_1.config.env === 'development') {
             await (0, db_1.default)('transactions')
                 .where({ id: transaction.id })
                 .update({ status: 'completed' });

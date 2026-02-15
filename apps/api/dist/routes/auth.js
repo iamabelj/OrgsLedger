@@ -312,10 +312,31 @@ router.post('/refresh', async (req, res) => {
 // ── Get Current User ────────────────────────────────────────
 router.get('/me', middleware_1.authenticate, async (req, res) => {
     try {
+        // Gateway developer has no DB account — return synthetic profile
+        if (req.user.userId === 'gateway-developer') {
+            res.json({
+                success: true,
+                data: {
+                    id: 'gateway-developer',
+                    email: req.user.email,
+                    firstName: 'Platform',
+                    lastName: 'Developer',
+                    avatarUrl: null,
+                    phone: null,
+                    globalRole: 'developer',
+                    memberships: [],
+                },
+            });
+            return;
+        }
         const user = await (0, db_1.default)('users')
             .where({ id: req.user.userId })
             .select('id', 'email', 'first_name', 'last_name', 'avatar_url', 'phone', 'global_role', 'created_at')
             .first();
+        if (!user) {
+            res.status(404).json({ success: false, error: 'User not found' });
+            return;
+        }
         const memberships = await (0, db_1.default)('memberships')
             .join('organizations', 'memberships.organization_id', 'organizations.id')
             .where({ 'memberships.user_id': req.user.userId, 'memberships.is_active': true })

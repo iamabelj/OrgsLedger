@@ -1005,8 +1005,8 @@ router.post(
         })
         .returning('*');
 
-      // In dev mode, auto-complete
-      if (!config.stripe.secretKey) {
+      // In dev mode only, auto-complete (NEVER in production)
+      if (!config.stripe.secretKey && config.env === 'development') {
         await db('transactions')
           .where({ id: transaction.id })
           .update({ status: 'completed' });

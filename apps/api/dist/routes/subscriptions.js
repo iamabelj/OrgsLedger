@@ -781,14 +781,14 @@ router.get('/admin/risk/spikes', middleware_1.authenticate, (0, middleware_1.req
         // Get daily AI usage per org for the analysis period + prior 30 days for baseline
         const aiDaily = await (0, db_1.default)('ai_wallet_transactions')
             .where('amount_minutes', '<', 0)
-            .where('created_at', '>=', db_1.default.raw('NOW() - INTERVAL ? DAY', [lookbackDays]))
+            .where('created_at', '>=', db_1.default.raw("NOW() - make_interval(days := ?)", [lookbackDays]))
             .select('organization_id', db_1.default.raw("DATE(created_at) as day"), db_1.default.raw('SUM(ABS(amount_minutes)) as daily_usage'))
             .groupBy('organization_id', db_1.default.raw('DATE(created_at)'))
             .orderBy('organization_id');
         // Get daily translation usage per org
         const transDaily = await (0, db_1.default)('translation_wallet_transactions')
             .where('amount_minutes', '<', 0)
-            .where('created_at', '>=', db_1.default.raw('NOW() - INTERVAL ? DAY', [lookbackDays]))
+            .where('created_at', '>=', db_1.default.raw("NOW() - make_interval(days := ?)", [lookbackDays]))
             .select('organization_id', db_1.default.raw("DATE(created_at) as day"), db_1.default.raw('SUM(ABS(amount_minutes)) as daily_usage'))
             .groupBy('organization_id', db_1.default.raw('DATE(created_at)'))
             .orderBy('organization_id');
@@ -834,7 +834,7 @@ router.get('/admin/risk/spikes', middleware_1.authenticate, (0, middleware_1.req
         // Get failed payments in recent period
         const failedPayments = await (0, db_1.default)('transactions')
             .where({ status: 'failed' })
-            .where('created_at', '>=', db_1.default.raw(`NOW() - INTERVAL '${daysBack} days'`))
+            .where('created_at', '>=', db_1.default.raw("NOW() - make_interval(days := ?)", [daysBack]))
             .join('organizations', 'transactions.organization_id', 'organizations.id')
             .select('transactions.organization_id', 'organizations.name as org_name', db_1.default.raw('COUNT(*) as failed_count'), db_1.default.raw('SUM(transactions.amount) as failed_amount'))
             .groupBy('transactions.organization_id', 'organizations.name')
