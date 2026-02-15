@@ -456,7 +456,7 @@ router.get('/admin/organizations', authenticate, requireDeveloper(), async (_req
     const orgs = await db('organizations')
       .leftJoin('subscriptions', function () {
         this.on('organizations.id', '=', 'subscriptions.organization_id')
-          .andOnVal('subscriptions.status', 'in', db.raw('(?, ?, ?)', ['active', 'grace_period', 'expired']));
+          .andOn(db.raw("subscriptions.status IN ('active', 'grace_period', 'expired')"));
       })
       .leftJoin('subscription_plans', 'subscriptions.plan_id', 'subscription_plans.id')
       .leftJoin('ai_wallet', 'organizations.id', 'ai_wallet.organization_id')

@@ -437,7 +437,7 @@ router.get('/admin/organizations', middleware_1.authenticate, (0, middleware_1.r
         const orgs = await (0, db_1.default)('organizations')
             .leftJoin('subscriptions', function () {
             this.on('organizations.id', '=', 'subscriptions.organization_id')
-                .andOnVal('subscriptions.status', 'in', db_1.default.raw('(?, ?, ?)', ['active', 'grace_period', 'expired']));
+                .andOn(db_1.default.raw("subscriptions.status IN ('active', 'grace_period', 'expired')"));
         })
             .leftJoin('subscription_plans', 'subscriptions.plan_id', 'subscription_plans.id')
             .leftJoin('ai_wallet', 'organizations.id', 'ai_wallet.organization_id')

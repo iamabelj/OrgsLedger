@@ -156,15 +156,26 @@
     .toast-success { background: var(--success); }
     .toast-error { background: var(--danger); }
 
+    /* Mobile hamburger menu */
+    .hamburger { display: none; position: fixed; top: 16px; left: 16px; z-index: 60; background: var(--dark-card); border: 1px solid var(--dark-border); border-radius: var(--radius-sm); padding: 10px 12px; cursor: pointer; }
+    .hamburger span { display: block; width: 20px; height: 2px; background: var(--gray-300); margin: 4px 0; transition: all .2s; }
+    .hamburger.open span:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); }
+    .hamburger.open span:nth-child(2) { opacity: 0; }
+    .hamburger.open span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); }
+    .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; }
+    .sidebar-overlay.show { display: block; }
+
     /* Responsive */
     @media (max-width: 768px) {
-      .sidebar { width: 60px; }
-      .sidebar .logo span, .sidebar .subtitle, .sidebar .nav-group-label, .sidebar .nav-item span, .sidebar-footer .admin-email { display: none; }
-      .sidebar .nav-item { justify-content: center; padding: 12px; }
-      .sidebar .nav-item .icon { margin: 0; }
-      .main { margin-left: 60px; padding: 20px 16px; }
+      .hamburger { display: block; }
+      .sidebar { transform: translateX(-100%); transition: transform .3s; }
+      .sidebar.open { transform: translateX(0); }
+      .main { margin-left: 0; padding: 70px 16px 20px; }
       .stats-grid { grid-template-columns: 1fr 1fr; }
       .form-row { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 480px) {
+      .stats-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -192,8 +203,13 @@
 
 <!-- APP -->
 <div class="app" id="app" style="display:none;">
+  <!-- Mobile hamburger -->
+  <button class="hamburger" id="hamburger" onclick="toggleSidebar()">
+    <span></span><span></span><span></span>
+  </button>
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
   <!-- SIDEBAR -->
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
     <div class="logo"><img src="/logo.png" alt="OrgsLedger" class="logo-icon" /><span>OrgsLedger</span></div>
     <div class="subtitle">Platform Admin</div>
     <nav>
@@ -499,7 +515,15 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   // Nav clicks
   document.querySelectorAll('.nav-item[data-page]').forEach(item => {
-    item.addEventListener('click', () => navigateTo(item.dataset.page));
+    item.addEventListener('click', () => {
+      navigateTo(item.dataset.page);
+      // Close sidebar on mobile
+      if (window.innerWidth <= 768) {
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('hamburger').classList.remove('open');
+        document.getElementById('sidebar-overlay').classList.remove('show');
+      }
+    });
   });
 });
 
@@ -535,6 +559,15 @@ function doLogout() {
   localStorage.removeItem('gw_token');
   document.getElementById('login-overlay').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
+}
+
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const hamburger = document.getElementById('hamburger');
+  const overlay = document.getElementById('sidebar-overlay');
+  sidebar.classList.toggle('open');
+  hamburger.classList.toggle('open');
+  overlay.classList.toggle('show');
 }
 
 function showApp() {
