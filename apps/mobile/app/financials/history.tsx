@@ -47,12 +47,7 @@ export default function PaymentHistoryScreen() {
     <View style={styles.container}>
       <Stack.Screen
         options={{
-          headerShown: true,
           title: 'Payment History',
-          headerStyle: { backgroundColor: Colors.surface },
-          headerTintColor: Colors.highlight,
-          headerTitleStyle: { fontWeight: FontWeight.semibold as any, color: Colors.textWhite },
-          headerShadowVisible: false,
         }}
       />
 

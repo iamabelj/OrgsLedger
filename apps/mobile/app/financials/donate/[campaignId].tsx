@@ -82,12 +82,7 @@ export default function DonateScreen() {
     <ResponsiveScrollView maxWidth={700} style={styles.container} keyboardShouldPersistTaps="handled">
       <Stack.Screen
         options={{
-          headerShown: true,
           title: 'Make a Donation',
-          headerStyle: { backgroundColor: Colors.surface },
-          headerTintColor: Colors.highlight,
-          headerTitleStyle: { fontWeight: FontWeight.semibold as any, color: Colors.textWhite },
-          headerShadowVisible: false,
         }}
       />
 

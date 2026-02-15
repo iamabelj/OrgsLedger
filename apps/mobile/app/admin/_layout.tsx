@@ -8,7 +8,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { Colors, FontWeight, FontSize, Spacing } from '../../src/theme';
-import { HamburgerButton } from '../../src/components/HamburgerButton';
+import { SmartHeaderLeft } from '../../src/components/SmartHeaderLeft';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function AdminLayout() {
@@ -39,7 +39,7 @@ export default function AdminLayout() {
         headerTintColor: Colors.textPrimary,
         headerTitleStyle: { fontWeight: FontWeight.semibold },
         headerShadowVisible: false,
-        headerLeft: () => <HamburgerButton />,
+        headerLeft: () => <SmartHeaderLeft />,
         contentStyle: { backgroundColor: Colors.background },
       }}
     >

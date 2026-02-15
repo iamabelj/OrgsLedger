@@ -5,7 +5,7 @@
 import React from 'react';
 import { Stack } from 'expo-router';
 import { Colors } from '../../src/theme';
-import { HamburgerButton } from '../../src/components/HamburgerButton';
+import { SmartHeaderLeft } from '../../src/components/SmartHeaderLeft';
 
 export default function LegalLayout() {
   return (
@@ -15,7 +15,7 @@ export default function LegalLayout() {
         headerTintColor: Colors.textWhite,
         headerTitleStyle: { fontWeight: '600' },
         headerBackTitleVisible: false,
-        headerLeft: () => <HamburgerButton />,
+        headerLeft: () => <SmartHeaderLeft />,
         contentStyle: { backgroundColor: Colors.background },
       }}
     >

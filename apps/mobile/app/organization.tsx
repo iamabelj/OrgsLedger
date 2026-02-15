@@ -65,12 +65,7 @@ export default function OrganizationScreen() {
     >
       <Stack.Screen
         options={{
-          headerShown: true,
           title: 'Join Organization',
-          headerStyle: { backgroundColor: Colors.surface },
-          headerTintColor: Colors.highlight,
-          headerTitleStyle: { fontWeight: FontWeight.semibold as any, color: Colors.textWhite },
-          headerShadowVisible: false,
         }}
       />
 

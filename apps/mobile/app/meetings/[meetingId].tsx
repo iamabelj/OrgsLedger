@@ -311,12 +311,7 @@ export default function MeetingDetailScreen() {
     <ResponsiveScrollView style={styles.container}>
       <Stack.Screen
         options={{
-          headerShown: true,
           title: 'Meeting Details',
-          headerStyle: { backgroundColor: Colors.surface },
-          headerTintColor: Colors.highlight,
-          headerTitleStyle: { fontWeight: FontWeight.semibold as any, color: Colors.textWhite },
-          headerShadowVisible: false,
           headerRight: canEdit ? () => (
             <TouchableOpacity onPress={() => setEditMode(!editMode)} style={{ marginRight: Spacing.md }}>
               <Ionicons name={editMode ? 'close' : 'create-outline'} size={22} color={Colors.highlight} />

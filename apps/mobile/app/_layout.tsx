@@ -10,7 +10,7 @@ import { useAuthStore } from '../src/stores/auth.store';
 import { Colors } from '../src/theme';
 import { DrawerProvider } from '../src/contexts/DrawerContext';
 import { NavigationDrawer } from '../src/components/NavigationDrawer';
-import { HamburgerButton } from '../src/components/HamburgerButton';
+import { SmartHeaderLeft } from '../src/components/SmartHeaderLeft';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
 
 // Stripe is native-only — lazy-load to avoid web crash
@@ -45,7 +45,7 @@ export default function RootLayout() {
               headerTintColor: Colors.textWhite,
               headerTitleStyle: { fontWeight: '600' },
               headerBackTitleVisible: false,
-              headerLeft: () => <HamburgerButton />,
+              headerLeft: () => <SmartHeaderLeft />,
               contentStyle: { backgroundColor: Colors.background },
               ...(Platform.OS === 'web' && {
                 headerBackImageSource: undefined,
@@ -57,13 +57,13 @@ export default function RootLayout() {
             <Stack.Screen name="(auth)" options={{ headerShown: false, headerLeft: () => null, gestureEnabled: false }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="admin" options={{ headerShown: false }} />
-            <Stack.Screen name="notifications" options={{ headerShown: false }} />
-            <Stack.Screen name="organization" options={{ headerShown: false }} />
-            <Stack.Screen name="chat/[channelId]" options={{ headerShown: false }} />
-            <Stack.Screen name="meetings/[meetingId]" options={{ headerShown: false }} />
-            <Stack.Screen name="meetings/create" options={{ headerShown: false }} />
-            <Stack.Screen name="financials/history" options={{ headerShown: false }} />
-            <Stack.Screen name="financials/donate/[campaignId]" options={{ headerShown: false }} />
+            <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
+            <Stack.Screen name="organization" options={{ title: 'Join Organization' }} />
+            <Stack.Screen name="chat/[channelId]" options={{ title: 'Chat' }} />
+            <Stack.Screen name="meetings/[meetingId]" options={{ title: 'Meeting Details' }} />
+            <Stack.Screen name="meetings/create" options={{ title: 'New Meeting' }} />
+            <Stack.Screen name="financials/history" options={{ title: 'Payment History' }} />
+            <Stack.Screen name="financials/donate/[campaignId]" options={{ title: 'Make a Donation' }} />
             <Stack.Screen name="announcements" options={{ title: 'Announcements' }} />
             <Stack.Screen name="events" options={{ title: 'Events' }} />
             <Stack.Screen name="polls" options={{ title: 'Polls' }} />

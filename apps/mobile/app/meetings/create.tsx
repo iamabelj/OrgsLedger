@@ -131,12 +131,7 @@ export default function CreateMeetingScreen() {
     <ResponsiveScrollView maxWidth={700} style={styles.container} keyboardShouldPersistTaps="handled">
       <Stack.Screen
         options={{
-          headerShown: true,
           title: 'New Meeting',
-          headerStyle: { backgroundColor: Colors.surface },
-          headerTintColor: Colors.highlight,
-          headerTitleStyle: { fontWeight: FontWeight.semibold as any, color: Colors.textWhite },
-          headerShadowVisible: false,
         }}
       />
 
