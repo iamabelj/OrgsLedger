@@ -102,13 +102,49 @@ router.post('/register', (0, middleware_1.validate)(registerSchema), async (req,
         })
             .returning(['id', 'email', 'first_name', 'last_name', 'global_role', 'created_at']);
         const tokens = generateTokens(user.id, user.email, user.global_role);
+        // Check for pending invitations from developer org creation
+        const pendingInvites = await (0, db_1.default)('pending_invitations')
+            .where({ email: email.toLowerCase() })
+            .select('*');
+        // Process pending invitations — auto-join those orgs
+        for (const invite of pendingInvites) {
+            // Check not already a member
+            const existingMembership = await (0, db_1.default)('memberships')
+                .where({ user_id: user.id, organization_id: invite.organization_id })
+                .first();
+            if (!existingMembership) {
+                await (0, db_1.default)('memberships').insert({
+                    user_id: user.id,
+                    organization_id: invite.organization_id,
+                    role: invite.role || 'org_admin',
+                    is_active: true,
+                    joined_at: db_1.default.fn.now(),
+                });
+                // Add to general channel if it exists
+                const generalChannel = await (0, db_1.default)('channels')
+                    .where({ organization_id: invite.organization_id, name: 'General' })
+                    .first();
+                if (generalChannel) {
+                    await (0, db_1.default)('channel_members').insert({
+                        channel_id: generalChannel.id,
+                        user_id: user.id,
+                    }).onConflict(['channel_id', 'user_id']).ignore();
+                }
+                logger_1.logger.info(`User ${email} auto-joined org via pending invitation (role: ${invite.role})`);
+            }
+        }
+        // Delete processed pending invitations
+        if (pendingInvites.length > 0) {
+            await (0, db_1.default)('pending_invitations').where({ email: email.toLowerCase() }).delete();
+        }
         // Auto-join organization: use orgSlug if provided, else join the default org
         let memberships = [];
         let org = null;
         if (orgSlug) {
             org = await (0, db_1.default)('organizations').where({ slug: orgSlug }).first();
         }
-        if (!org) {
+        // Only auto-join default org if user wasn't invited to any org
+        if (!org && pendingInvites.length === 0) {
             // Auto-join the first (default) organization for this deployment
             org = await (0, db_1.default)('organizations').orderBy('created_at', 'asc').first();
         }
@@ -209,6 +245,40 @@ router.post('/login', (0, middleware_1.validate)(loginSchema), async (req, res) 
             ipAddress: req.ip || '',
             userAgent: req.headers['user-agent'] || '',
         });
+        // Check for pending invitations from developer org creation
+        const pendingInvites = await (0, db_1.default)('pending_invitations')
+            .where({ email: email.toLowerCase() })
+            .select('*');
+        // Process pending invitations — auto-join those orgs
+        for (const invite of pendingInvites) {
+            const existingMembership = await (0, db_1.default)('memberships')
+                .where({ user_id: user.id, organization_id: invite.organization_id })
+                .first();
+            if (!existingMembership) {
+                await (0, db_1.default)('memberships').insert({
+                    user_id: user.id,
+                    organization_id: invite.organization_id,
+                    role: invite.role || 'org_admin',
+                    is_active: true,
+                    joined_at: db_1.default.fn.now(),
+                });
+                // Add to general channel if it exists
+                const generalChannel = await (0, db_1.default)('channels')
+                    .where({ organization_id: invite.organization_id, name: 'General' })
+                    .first();
+                if (generalChannel) {
+                    await (0, db_1.default)('channel_members').insert({
+                        channel_id: generalChannel.id,
+                        user_id: user.id,
+                    }).onConflict(['channel_id', 'user_id']).ignore();
+                }
+                logger_1.logger.info(`User ${email} joined org via pending invitation on login (role: ${invite.role})`);
+            }
+        }
+        // Delete processed pending invitations
+        if (pendingInvites.length > 0) {
+            await (0, db_1.default)('pending_invitations').where({ email: email.toLowerCase() }).delete();
+        }
         // Load memberships
         let memberships = await (0, db_1.default)('memberships')
             .join('organizations', 'memberships.organization_id', 'organizations.id')

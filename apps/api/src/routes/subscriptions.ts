@@ -509,6 +509,7 @@ const adminCreateOrgSchema = z.object({
 router.post('/admin/organizations', authenticate, requireDeveloper(), validate(adminCreateOrgSchema), async (req: Request, res: Response) => {
   try {
     const { name, slug, ownerEmail, plan, currency } = req.body;
+    const normalizedEmail = ownerEmail.toLowerCase().trim();
 
     // Check slug uniqueness
     const existing = await db('organizations').where({ slug }).first();
@@ -517,12 +518,8 @@ router.post('/admin/organizations', authenticate, requireDeveloper(), validate(a
       return;
     }
 
-    // Find or validate owner user
-    const owner = await db('users').where({ email: ownerEmail.toLowerCase() }).first();
-    if (!owner) {
-      res.status(404).json({ success: false, error: `User with email ${ownerEmail} not found. They must register first.` });
-      return;
-    }
+    // Check if user exists
+    const owner = await db('users').where({ email: normalizedEmail }).first();
 
     // Create organization
     const [org] = await db('organizations')
@@ -545,27 +542,50 @@ router.post('/admin/organizations', authenticate, requireDeveloper(), validate(a
       })
       .returning('*');
 
-    // Make owner the org_admin
-    await db('memberships').insert({
-      user_id: owner.id,
-      organization_id: org.id,
-      role: 'org_admin',
-    });
+    let membershipCreated = false;
+    let pendingInviteCreated = false;
 
-    // Create default General channel
-    const [channel] = await db('channels')
-      .insert({
+    if (owner) {
+      // User exists — create membership immediately
+      await db('memberships').insert({
+        user_id: owner.id,
+        organization_id: org.id,
+        role: 'org_admin',
+      });
+      membershipCreated = true;
+
+      // Create default General channel and add user
+      const [channel] = await db('channels')
+        .insert({
+          organization_id: org.id,
+          name: 'General',
+          type: 'general',
+          description: 'General discussion',
+        })
+        .returning('*');
+
+      await db('channel_members').insert({
+        channel_id: channel.id,
+        user_id: owner.id,
+      });
+    } else {
+      // User doesn't exist — create pending invitation
+      await db('pending_invitations').insert({
+        email: normalizedEmail,
+        organization_id: org.id,
+        role: 'org_admin',
+        invited_by: req.user!.userId,
+      });
+      pendingInviteCreated = true;
+
+      // Still create the General channel (without members for now)
+      await db('channels').insert({
         organization_id: org.id,
         name: 'General',
         type: 'general',
         description: 'General discussion',
-      })
-      .returning('*');
-
-    await db('channel_members').insert({
-      channel_id: channel.id,
-      user_id: owner.id,
-    });
+      });
+    }
 
     // Provision subscription
     const selectedPlan = await subSvc.getPlanBySlug(plan);
@@ -576,7 +596,7 @@ router.post('/admin/organizations', authenticate, requireDeveloper(), validate(a
         billingCycle: 'annual',
         currency,
         amountPaid: 0,
-        createdBy: owner.id,
+        createdBy: owner?.id || req.user!.userId,
       });
     }
 
@@ -584,8 +604,8 @@ router.post('/admin/organizations', authenticate, requireDeveloper(), validate(a
     await subSvc.getAiWallet(org.id);
     await subSvc.getTranslationWallet(org.id);
 
-    // Generate invite link
-    const invite = await subSvc.createInviteLink(org.id, owner.id, 'member');
+    // Generate invite link for additional members
+    const invite = await subSvc.createInviteLink(org.id, owner?.id || req.user!.userId, 'member');
 
     await writeAuditLog({
       organizationId: org.id,
@@ -593,18 +613,23 @@ router.post('/admin/organizations', authenticate, requireDeveloper(), validate(a
       action: 'admin_create_org',
       entityType: 'organization',
       entityId: org.id,
-      newValue: { name, slug, ownerEmail, plan, currency },
+      newValue: { name, slug, ownerEmail, plan, currency, pendingInvite: pendingInviteCreated },
       ipAddress: req.ip || '',
       userAgent: req.headers['user-agent'] || '',
     });
 
-    logger.info(`Admin created organization: ${name} (${slug}) for ${ownerEmail}`);
+    logger.info(`Admin created organization: ${name} (${slug}) for ${ownerEmail}${pendingInviteCreated ? ' (pending invite)' : ''}`);
+
+    const statusMsg = pendingInviteCreated
+      ? `Pending invitation created for ${normalizedEmail}. They will auto-join when they register.`
+      : `${normalizedEmail} has been added as org_admin.`;
 
     res.status(201).json({
       success: true,
       organization: org,
       inviteCode: invite.code,
-      message: `Organization "${name}" created. Owner: ${ownerEmail}. Plan: ${plan}.`,
+      ownerStatus: pendingInviteCreated ? 'pending' : 'active',
+      message: `Organization "${name}" created. ${statusMsg} Plan: ${plan}.`,
     });
   } catch (err: any) {
     logger.error('Admin create org error', err);
@@ -1013,19 +1038,24 @@ router.get('/admin/risk/spikes', authenticate, requireDeveloper(), async (req: R
     const aiSpikes = detectSpikes(aiDaily, 'ai');
     const transSpikes = detectSpikes(transDaily, 'translation');
 
-    // Get failed payments in recent period
-    const failedPayments = await db('transactions')
-      .where({ status: 'failed' })
-      .where('created_at', '>=', db.raw("NOW() - make_interval(days := ?)", [daysBack]))
-      .join('organizations', 'transactions.organization_id', 'organizations.id')
-      .select(
-        'transactions.organization_id',
-        'organizations.name as org_name',
-        db.raw('COUNT(*) as failed_count'),
-        db.raw('SUM(transactions.amount) as failed_amount'),
-      )
-      .groupBy('transactions.organization_id', 'organizations.name')
-      .orderBy('failed_count', 'desc');
+    // Get failed payments in recent period (use LEFT JOIN to handle missing orgs)
+    let failedPayments: any[] = [];
+    try {
+      failedPayments = await db('transactions')
+        .where('transactions.status', 'failed')
+        .where('transactions.created_at', '>=', db.raw("NOW() - make_interval(days := ?)", [daysBack]))
+        .leftJoin('organizations', 'transactions.organization_id', 'organizations.id')
+        .select(
+          'transactions.organization_id',
+          db.raw("COALESCE(organizations.name, 'Unknown') as org_name"),
+          db.raw('COUNT(*) as failed_count'),
+          db.raw('SUM(transactions.amount) as failed_amount'),
+        )
+        .groupBy('transactions.organization_id', 'organizations.name')
+        .orderBy('failed_count', 'desc');
+    } catch (paymentErr: any) {
+      logger.warn('Failed payments query error (non-fatal)', paymentErr.message);
+    }
 
     // Enrich spikes with org names
     const orgIds = [...new Set([...aiSpikes, ...transSpikes].map(s => s.organization_id))];

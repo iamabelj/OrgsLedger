@@ -474,18 +474,15 @@ const adminCreateOrgSchema = zod_1.z.object({
 router.post('/admin/organizations', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), (0, middleware_1.validate)(adminCreateOrgSchema), async (req, res) => {
     try {
         const { name, slug, ownerEmail, plan, currency } = req.body;
+        const normalizedEmail = ownerEmail.toLowerCase().trim();
         // Check slug uniqueness
         const existing = await (0, db_1.default)('organizations').where({ slug }).first();
         if (existing) {
             res.status(409).json({ success: false, error: 'Slug already taken' });
             return;
         }
-        // Find or validate owner user
-        const owner = await (0, db_1.default)('users').where({ email: ownerEmail.toLowerCase() }).first();
-        if (!owner) {
-            res.status(404).json({ success: false, error: `User with email ${ownerEmail} not found. They must register first.` });
-            return;
-        }
+        // Check if user exists
+        const owner = await (0, db_1.default)('users').where({ email: normalizedEmail }).first();
         // Create organization
         const [org] = await (0, db_1.default)('organizations')
             .insert({
@@ -506,25 +503,47 @@ router.post('/admin/organizations', middleware_1.authenticate, (0, middleware_1.
             }),
         })
             .returning('*');
-        // Make owner the org_admin
-        await (0, db_1.default)('memberships').insert({
-            user_id: owner.id,
-            organization_id: org.id,
-            role: 'org_admin',
-        });
-        // Create default General channel
-        const [channel] = await (0, db_1.default)('channels')
-            .insert({
-            organization_id: org.id,
-            name: 'General',
-            type: 'general',
-            description: 'General discussion',
-        })
-            .returning('*');
-        await (0, db_1.default)('channel_members').insert({
-            channel_id: channel.id,
-            user_id: owner.id,
-        });
+        let membershipCreated = false;
+        let pendingInviteCreated = false;
+        if (owner) {
+            // User exists — create membership immediately
+            await (0, db_1.default)('memberships').insert({
+                user_id: owner.id,
+                organization_id: org.id,
+                role: 'org_admin',
+            });
+            membershipCreated = true;
+            // Create default General channel and add user
+            const [channel] = await (0, db_1.default)('channels')
+                .insert({
+                organization_id: org.id,
+                name: 'General',
+                type: 'general',
+                description: 'General discussion',
+            })
+                .returning('*');
+            await (0, db_1.default)('channel_members').insert({
+                channel_id: channel.id,
+                user_id: owner.id,
+            });
+        }
+        else {
+            // User doesn't exist — create pending invitation
+            await (0, db_1.default)('pending_invitations').insert({
+                email: normalizedEmail,
+                organization_id: org.id,
+                role: 'org_admin',
+                invited_by: req.user.userId,
+            });
+            pendingInviteCreated = true;
+            // Still create the General channel (without members for now)
+            await (0, db_1.default)('channels').insert({
+                organization_id: org.id,
+                name: 'General',
+                type: 'general',
+                description: 'General discussion',
+            });
+        }
         // Provision subscription
         const selectedPlan = await subSvc.getPlanBySlug(plan);
         if (selectedPlan) {
@@ -534,30 +553,34 @@ router.post('/admin/organizations', middleware_1.authenticate, (0, middleware_1.
                 billingCycle: 'annual',
                 currency,
                 amountPaid: 0,
-                createdBy: owner.id,
+                createdBy: owner?.id || req.user.userId,
             });
         }
         // Provision wallets
         await subSvc.getAiWallet(org.id);
         await subSvc.getTranslationWallet(org.id);
-        // Generate invite link
-        const invite = await subSvc.createInviteLink(org.id, owner.id, 'member');
+        // Generate invite link for additional members
+        const invite = await subSvc.createInviteLink(org.id, owner?.id || req.user.userId, 'member');
         await (0, audit_1.writeAuditLog)({
             organizationId: org.id,
             userId: req.user.userId,
             action: 'admin_create_org',
             entityType: 'organization',
             entityId: org.id,
-            newValue: { name, slug, ownerEmail, plan, currency },
+            newValue: { name, slug, ownerEmail, plan, currency, pendingInvite: pendingInviteCreated },
             ipAddress: req.ip || '',
             userAgent: req.headers['user-agent'] || '',
         });
-        logger_1.logger.info(`Admin created organization: ${name} (${slug}) for ${ownerEmail}`);
+        logger_1.logger.info(`Admin created organization: ${name} (${slug}) for ${ownerEmail}${pendingInviteCreated ? ' (pending invite)' : ''}`);
+        const statusMsg = pendingInviteCreated
+            ? `Pending invitation created for ${normalizedEmail}. They will auto-join when they register.`
+            : `${normalizedEmail} has been added as org_admin.`;
         res.status(201).json({
             success: true,
             organization: org,
             inviteCode: invite.code,
-            message: `Organization "${name}" created. Owner: ${ownerEmail}. Plan: ${plan}.`,
+            ownerStatus: pendingInviteCreated ? 'pending' : 'active',
+            message: `Organization "${name}" created. ${statusMsg} Plan: ${plan}.`,
         });
     }
     catch (err) {
@@ -913,14 +936,20 @@ router.get('/admin/risk/spikes', middleware_1.authenticate, (0, middleware_1.req
         }
         const aiSpikes = detectSpikes(aiDaily, 'ai');
         const transSpikes = detectSpikes(transDaily, 'translation');
-        // Get failed payments in recent period
-        const failedPayments = await (0, db_1.default)('transactions')
-            .where({ status: 'failed' })
-            .where('created_at', '>=', db_1.default.raw("NOW() - make_interval(days := ?)", [daysBack]))
-            .join('organizations', 'transactions.organization_id', 'organizations.id')
-            .select('transactions.organization_id', 'organizations.name as org_name', db_1.default.raw('COUNT(*) as failed_count'), db_1.default.raw('SUM(transactions.amount) as failed_amount'))
-            .groupBy('transactions.organization_id', 'organizations.name')
-            .orderBy('failed_count', 'desc');
+        // Get failed payments in recent period (use LEFT JOIN to handle missing orgs)
+        let failedPayments = [];
+        try {
+            failedPayments = await (0, db_1.default)('transactions')
+                .where('transactions.status', 'failed')
+                .where('transactions.created_at', '>=', db_1.default.raw("NOW() - make_interval(days := ?)", [daysBack]))
+                .leftJoin('organizations', 'transactions.organization_id', 'organizations.id')
+                .select('transactions.organization_id', db_1.default.raw("COALESCE(organizations.name, 'Unknown') as org_name"), db_1.default.raw('COUNT(*) as failed_count'), db_1.default.raw('SUM(transactions.amount) as failed_amount'))
+                .groupBy('transactions.organization_id', 'organizations.name')
+                .orderBy('failed_count', 'desc');
+        }
+        catch (paymentErr) {
+            logger_1.logger.warn('Failed payments query error (non-fatal)', paymentErr.message);
+        }
         // Enrich spikes with org names
         const orgIds = [...new Set([...aiSpikes, ...transSpikes].map(s => s.organization_id))];
         const orgNames = {};
