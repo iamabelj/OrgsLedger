@@ -446,6 +446,19 @@ router.post('/admin/organizations', middleware_1.authenticate, (0, middleware_1.
             res.status(404).json({ success: false, error: `User with email ${ownerEmail} not found. They must register first.` });
             return;
         }
+        // Ensure a free license exists (legacy compat)
+        let freeLicense = await (0, db_1.default)('licenses').where({ type: 'free' }).first();
+        if (!freeLicense) {
+            [freeLicense] = await (0, db_1.default)('licenses')
+                .insert({
+                type: 'free',
+                max_members: 50,
+                features: JSON.stringify({ chat: true, meetings: true, aiMinutes: false, financials: true, donations: true, voting: true }),
+                ai_credits_included: 0,
+                price_monthly: 0,
+            })
+                .returning('*');
+        }
         // Create organization
         const [org] = await (0, db_1.default)('organizations')
             .insert({
@@ -453,6 +466,7 @@ router.post('/admin/organizations', middleware_1.authenticate, (0, middleware_1.
             slug,
             status: 'active',
             subscription_status: 'active',
+            license_id: freeLicense.id,
             billing_currency: currency,
             settings: JSON.stringify({
                 currency,

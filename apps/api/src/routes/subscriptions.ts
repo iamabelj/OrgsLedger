@@ -458,6 +458,20 @@ router.post('/admin/organizations', authenticate, requireDeveloper(), validate(a
       return;
     }
 
+    // Ensure a free license exists (legacy compat)
+    let freeLicense = await db('licenses').where({ type: 'free' }).first();
+    if (!freeLicense) {
+      [freeLicense] = await db('licenses')
+        .insert({
+          type: 'free',
+          max_members: 50,
+          features: JSON.stringify({ chat: true, meetings: true, aiMinutes: false, financials: true, donations: true, voting: true }),
+          ai_credits_included: 0,
+          price_monthly: 0,
+        })
+        .returning('*');
+    }
+
     // Create organization
     const [org] = await db('organizations')
       .insert({
@@ -465,6 +479,7 @@ router.post('/admin/organizations', authenticate, requireDeveloper(), validate(a
         slug,
         status: 'active',
         subscription_status: 'active',
+        license_id: freeLicense.id,
         billing_currency: currency,
         settings: JSON.stringify({
           currency,
