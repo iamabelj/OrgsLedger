@@ -16,6 +16,7 @@ import { config } from '../config';
 import { authenticate, validate, writeAuditLog } from '../middleware';
 import { logger } from '../logger';
 import { checkMemberLimit } from '../services/subscription.service';
+import { sendEmail } from '../services/email.service';
 
 const router = Router();
 
@@ -474,17 +475,24 @@ router.post('/forgot-password', validate(forgotPasswordSchema), async (req: Requ
     // In production, send email with the code
     if (config.email.host) {
       try {
-        const nodemailer = require('nodemailer');
-        const transporter = nodemailer.createTransport({
-          host: config.email.host,
-          port: config.email.port,
-          auth: { user: config.email.user, pass: config.email.pass },
-        });
-        await transporter.sendMail({
-          from: config.email.from,
+        await sendEmail({
           to: email,
           subject: 'OrgsLedger - Password Reset Code',
-          html: `<h2>Password Reset</h2><p>Your reset code is: <strong>${resetCode}</strong></p><p>This code expires in 30 minutes.</p>`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="background: #0B1426; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
+                <h1 style="color: #C9A84C; margin: 0; font-size: 24px;">OrgsLedger</h1>
+              </div>
+              <div style="background: #f8f9fa; padding: 32px; border-radius: 0 0 8px 8px;">
+                <h2 style="color: #0B1426; margin-top: 0;">Password Reset</h2>
+                <p style="color: #555;">Your password reset code is:</p>
+                <div style="background: #0B1426; color: #C9A84C; font-size: 32px; font-weight: bold; text-align: center; padding: 16px; border-radius: 8px; letter-spacing: 6px; margin: 16px 0;">${resetCode}</div>
+                <p style="color: #888; font-size: 13px;">This code expires in 30 minutes. If you didn't request this, ignore this email.</p>
+              </div>
+              <p style="color: #aaa; font-size: 11px; text-align: center; margin-top: 16px;">&copy; ${new Date().getFullYear()} OrgsLedger. All rights reserved.</p>
+            </div>
+          `,
+          text: `Your OrgsLedger password reset code is: ${resetCode}. This code expires in 30 minutes.`,
         });
       } catch (emailErr) {
         logger.warn('Failed to send reset email', emailErr);
@@ -581,17 +589,24 @@ router.post('/send-verification', authenticate, async (req: Request, res: Respon
 
     if (config.email.host) {
       try {
-        const nodemailer = require('nodemailer');
-        const transporter = nodemailer.createTransport({
-          host: config.email.host,
-          port: config.email.port,
-          auth: { user: config.email.user, pass: config.email.pass },
-        });
-        await transporter.sendMail({
-          from: config.email.from,
+        await sendEmail({
           to: user.email,
           subject: 'OrgsLedger - Verify Your Email',
-          html: `<h2>Email Verification</h2><p>Your verification code is: <strong>${verifyCode}</strong></p><p>This code expires in 1 hour.</p>`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="background: #0B1426; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
+                <h1 style="color: #C9A84C; margin: 0; font-size: 24px;">OrgsLedger</h1>
+              </div>
+              <div style="background: #f8f9fa; padding: 32px; border-radius: 0 0 8px 8px;">
+                <h2 style="color: #0B1426; margin-top: 0;">Verify Your Email</h2>
+                <p style="color: #555;">Your verification code is:</p>
+                <div style="background: #0B1426; color: #C9A84C; font-size: 32px; font-weight: bold; text-align: center; padding: 16px; border-radius: 8px; letter-spacing: 6px; margin: 16px 0;">${verifyCode}</div>
+                <p style="color: #888; font-size: 13px;">This code expires in 1 hour. If you didn't request this, ignore this email.</p>
+              </div>
+              <p style="color: #aaa; font-size: 11px; text-align: center; margin-top: 16px;">&copy; ${new Date().getFullYear()} OrgsLedger. All rights reserved.</p>
+            </div>
+          `,
+          text: `Your OrgsLedger verification code is: ${verifyCode}. This code expires in 1 hour.`,
         });
       } catch (emailErr) {
         logger.warn('Failed to send verification email', emailErr);

@@ -43,6 +43,7 @@ const FAQ_ITEMS = [
 
 export default function HelpScreen() {
   const openEmail = () => Linking.openURL('mailto:support@orgsledger.com').catch(() => {});
+  const openSales = () => Linking.openURL('mailto:sales@orgsledger.com?subject=OrgsLedger%20Sales%20Inquiry').catch(() => {});
   const openDocs = () => Linking.openURL('https://orgsledger.com/docs').catch(() => {});
 
   return (
@@ -77,6 +78,11 @@ export default function HelpScreen() {
             icon="chatbubble-ellipses" color={Colors.success} bg={Colors.successSubtle}
             label="Community Chat" desc="Join the community"
             onPress={() => Linking.openURL('https://orgsledger.com/community').catch(() => {})}
+          />
+          <HelpAction
+            icon="cash" color={Colors.highlight} bg={Colors.highlightSubtle}
+            label="Contact Sales" desc="sales@orgsledger.com"
+            onPress={openSales}
             last
           />
         </Card>

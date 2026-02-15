@@ -20,6 +20,7 @@ const config_1 = require("../config");
 const middleware_1 = require("../middleware");
 const logger_1 = require("../logger");
 const subscription_service_1 = require("../services/subscription.service");
+const email_service_1 = require("../services/email.service");
 const router = (0, express_1.Router)();
 // ── Timing-safe string comparison helper ────────────────────
 function timingSafeCompare(a, b) {
@@ -418,17 +419,24 @@ router.post('/forgot-password', (0, middleware_1.validate)(forgotPasswordSchema)
         // In production, send email with the code
         if (config_1.config.email.host) {
             try {
-                const nodemailer = require('nodemailer');
-                const transporter = nodemailer.createTransport({
-                    host: config_1.config.email.host,
-                    port: config_1.config.email.port,
-                    auth: { user: config_1.config.email.user, pass: config_1.config.email.pass },
-                });
-                await transporter.sendMail({
-                    from: config_1.config.email.from,
+                await (0, email_service_1.sendEmail)({
                     to: email,
                     subject: 'OrgsLedger - Password Reset Code',
-                    html: `<h2>Password Reset</h2><p>Your reset code is: <strong>${resetCode}</strong></p><p>This code expires in 30 minutes.</p>`,
+                    html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="background: #0B1426; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
+                <h1 style="color: #C9A84C; margin: 0; font-size: 24px;">OrgsLedger</h1>
+              </div>
+              <div style="background: #f8f9fa; padding: 32px; border-radius: 0 0 8px 8px;">
+                <h2 style="color: #0B1426; margin-top: 0;">Password Reset</h2>
+                <p style="color: #555;">Your password reset code is:</p>
+                <div style="background: #0B1426; color: #C9A84C; font-size: 32px; font-weight: bold; text-align: center; padding: 16px; border-radius: 8px; letter-spacing: 6px; margin: 16px 0;">${resetCode}</div>
+                <p style="color: #888; font-size: 13px;">This code expires in 30 minutes. If you didn't request this, ignore this email.</p>
+              </div>
+              <p style="color: #aaa; font-size: 11px; text-align: center; margin-top: 16px;">&copy; ${new Date().getFullYear()} OrgsLedger. All rights reserved.</p>
+            </div>
+          `,
+                    text: `Your OrgsLedger password reset code is: ${resetCode}. This code expires in 30 minutes.`,
                 });
             }
             catch (emailErr) {
@@ -515,17 +523,24 @@ router.post('/send-verification', middleware_1.authenticate, async (req, res) =>
         });
         if (config_1.config.email.host) {
             try {
-                const nodemailer = require('nodemailer');
-                const transporter = nodemailer.createTransport({
-                    host: config_1.config.email.host,
-                    port: config_1.config.email.port,
-                    auth: { user: config_1.config.email.user, pass: config_1.config.email.pass },
-                });
-                await transporter.sendMail({
-                    from: config_1.config.email.from,
+                await (0, email_service_1.sendEmail)({
                     to: user.email,
                     subject: 'OrgsLedger - Verify Your Email',
-                    html: `<h2>Email Verification</h2><p>Your verification code is: <strong>${verifyCode}</strong></p><p>This code expires in 1 hour.</p>`,
+                    html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="background: #0B1426; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
+                <h1 style="color: #C9A84C; margin: 0; font-size: 24px;">OrgsLedger</h1>
+              </div>
+              <div style="background: #f8f9fa; padding: 32px; border-radius: 0 0 8px 8px;">
+                <h2 style="color: #0B1426; margin-top: 0;">Verify Your Email</h2>
+                <p style="color: #555;">Your verification code is:</p>
+                <div style="background: #0B1426; color: #C9A84C; font-size: 32px; font-weight: bold; text-align: center; padding: 16px; border-radius: 8px; letter-spacing: 6px; margin: 16px 0;">${verifyCode}</div>
+                <p style="color: #888; font-size: 13px;">This code expires in 1 hour. If you didn't request this, ignore this email.</p>
+              </div>
+              <p style="color: #aaa; font-size: 11px; text-align: center; margin-top: 16px;">&copy; ${new Date().getFullYear()} OrgsLedger. All rights reserved.</p>
+            </div>
+          `,
+                    text: `Your OrgsLedger verification code is: ${verifyCode}. This code expires in 1 hour.`,
                 });
             }
             catch (emailErr) {
