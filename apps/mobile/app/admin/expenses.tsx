@@ -62,7 +62,7 @@ export default function ExpensesScreen() {
     try {
       setLoading(true);
       const res = await api.expenses.list(currentOrgId);
-      setExpenses(res.data || []);
+      setExpenses(res.data.data || []);
     } catch (err: any) {
       console.error('Failed to load expenses', err);
       showAlert('Error', 'Failed to load expenses');

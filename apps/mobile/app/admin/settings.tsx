@@ -28,6 +28,7 @@ import {
   ScreenWrapper,
   LoadingScreen,
   PoweredByFooter,
+  ResponsiveScrollView,
 } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
 

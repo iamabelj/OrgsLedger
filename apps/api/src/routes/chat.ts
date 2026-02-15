@@ -178,6 +178,77 @@ router.post(
   }
 );
 
+// ── Get or Create Direct Message Channel ────────────────────
+router.post(
+  '/:orgId/dm/:targetUserId',
+  authenticate,
+  loadMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const { orgId, targetUserId } = req.params;
+      const currentUserId = req.user!.userId;
+
+      if (currentUserId === targetUserId) {
+        res.status(400).json({ success: false, error: 'Cannot create DM with yourself' });
+        return;
+      }
+
+      // Verify target user is in the same org
+      const targetMembership = await db('memberships')
+        .where({ organization_id: orgId, user_id: targetUserId, is_active: true })
+        .first();
+      if (!targetMembership) {
+        res.status(404).json({ success: false, error: 'User not found in this organization' });
+        return;
+      }
+
+      // Find existing DM channel between these two users
+      const existingChannel = await db('channels as c')
+        .join('channel_members as cm1', 'c.id', 'cm1.channel_id')
+        .join('channel_members as cm2', 'c.id', 'cm2.channel_id')
+        .where({
+          'c.organization_id': orgId,
+          'c.type': 'direct',
+          'cm1.user_id': currentUserId,
+          'cm2.user_id': targetUserId,
+        })
+        .select('c.*')
+        .first();
+
+      if (existingChannel) {
+        res.json({ success: true, data: existingChannel, created: false });
+        return;
+      }
+
+      // Get target user's name for channel name
+      const targetUser = await db('users').where({ id: targetUserId }).first();
+      const currentUser = await db('users').where({ id: currentUserId }).first();
+      const channelName = `${currentUser.first_name} & ${targetUser.first_name}`;
+
+      // Create new DM channel
+      const [channel] = await db('channels')
+        .insert({
+          organization_id: orgId,
+          name: channelName,
+          type: 'direct',
+          description: 'Direct message',
+        })
+        .returning('*');
+
+      // Add both users
+      await db('channel_members').insert([
+        { channel_id: channel.id, user_id: currentUserId },
+        { channel_id: channel.id, user_id: targetUserId },
+      ]);
+
+      res.status(201).json({ success: true, data: channel, created: true });
+    } catch (err) {
+      logger.error('Get/Create DM channel error', err);
+      res.status(500).json({ success: false, error: 'Failed to get or create DM channel' });
+    }
+  }
+);
+
 // ── Get Messages (with threads) ─────────────────────────────
 router.get(
   '/:orgId/channels/:channelId/messages',

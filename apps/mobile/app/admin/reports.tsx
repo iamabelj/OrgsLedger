@@ -31,6 +31,7 @@ import {
   ScreenWrapper,
   LoadingScreen,
   PoweredByFooter,
+  ResponsiveScrollView,
 } from '../../src/components/ui';
 import { useResponsive } from '../../src/hooks/useResponsive';
 

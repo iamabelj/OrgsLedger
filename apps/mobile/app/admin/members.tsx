@@ -17,7 +17,7 @@ import {
   TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
@@ -176,6 +176,22 @@ export default function MembersScreen() {
     );
   };
 
+  const handleMessage = async (member: Member) => {
+    if (!currentOrgId) return;
+    setActionLoading(member.user_id);
+    try {
+      const res = await api.chat.getOrCreateDM(currentOrgId, member.user_id);
+      const channelId = res.data.data?.id;
+      if (channelId) {
+        router.push(`/chat/${channelId}`);
+      }
+    } catch (err: any) {
+      showAlert('Error', err.response?.data?.error || 'Failed to start conversation');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const renderMember = ({ item }: { item: Member }) => {
     const isCurrentUser = item.user_id === userId;
     const isLoading = actionLoading === item.user_id;
@@ -206,6 +222,10 @@ export default function MembersScreen() {
               <ActivityIndicator size="small" color={Colors.highlight} />
             ) : (
               <>
+                <TouchableOpacity style={styles.actionBtn} onPress={() => handleMessage(item)}>
+                  <Ionicons name="chatbubble-outline" size={16} color={Colors.success} />
+                  <Text style={[styles.actionText, { color: Colors.success }]}>Message</Text>
+                </TouchableOpacity>
                 <TouchableOpacity style={styles.actionBtn} onPress={() => handleChangeRole(item)}>
                   <Ionicons name="shield-outline" size={16} color={Colors.highlight} />
                   <Text style={styles.actionText}>Role</Text>

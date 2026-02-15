@@ -174,6 +174,18 @@ export default function MeetingsScreen() {
             </TouchableOpacity>
           );
         })}
+
+        {/* Create Meeting Button */}
+        {canCreate && (
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={() => router.push('/meetings/create')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="add" size={18} color={Colors.textWhite} />
+            <Text style={styles.createButtonText}>New</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Meeting List */}
@@ -331,6 +343,21 @@ const styles = StyleSheet.create({
   },
   filterTextActive: {
     color: Colors.textWhite,
+    fontWeight: FontWeight.semibold as any,
+  },
+  createButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs + 2,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.success,
+    gap: 4,
+    marginLeft: 'auto',
+  },
+  createButtonText: {
+    color: Colors.textWhite,
+    fontSize: FontSize.sm,
     fontWeight: FontWeight.semibold as any,
   },
   liveDot: {

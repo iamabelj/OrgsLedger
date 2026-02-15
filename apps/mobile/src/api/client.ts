@@ -124,6 +124,8 @@ class ApiClient {
     listChannels: (orgId: string) => this.client.get(`/chat/${orgId}/channels`),
     createChannel: (orgId: string, data: any) =>
       this.client.post(`/chat/${orgId}/channels`, data),
+    getOrCreateDM: (orgId: string, targetUserId: string) =>
+      this.client.post(`/chat/${orgId}/dm/${targetUserId}`),
     getMessages: (orgId: string, channelId: string, params?: any) =>
       this.client.get(`/chat/${orgId}/channels/${channelId}/messages`, { params }),
     sendMessage: (orgId: string, channelId: string, data: any) =>

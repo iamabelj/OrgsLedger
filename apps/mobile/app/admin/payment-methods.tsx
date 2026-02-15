@@ -20,6 +20,8 @@ import { showAlert } from '../../src/utils/alert';
 interface PaymentMethodConfig {
   enabled: boolean;
   label: string;
+  public_key?: string;
+  secret_key?: string;
   bank_name?: string;
   account_number?: string;
   account_name?: string;
@@ -34,9 +36,9 @@ interface PaymentMethods {
 }
 
 const DEFAULT_METHODS: PaymentMethods = {
-  paystack: { enabled: true, label: 'Pay with Paystack' },
-  flutterwave: { enabled: true, label: 'Pay with Flutterwave' },
-  stripe: { enabled: false, label: 'Pay with Card (Stripe)' },
+  paystack: { enabled: true, label: 'Pay with Paystack', public_key: '', secret_key: '' },
+  flutterwave: { enabled: true, label: 'Pay with Flutterwave', public_key: '', secret_key: '' },
+  stripe: { enabled: false, label: 'Pay with Card (Stripe)', public_key: '', secret_key: '' },
   bank_transfer: {
     enabled: false,
     label: 'Bank Transfer',
@@ -121,6 +123,25 @@ export default function PaymentMethodsScreen() {
           />
         </View>
         <Text style={styles.gatewayDesc}>Nigerian card & bank payments (auto-verified)</Text>
+        {methods.paystack.enabled && (
+          <View style={styles.apiKeyFields}>
+            <Input
+              label="Public Key"
+              value={methods.paystack.public_key || ''}
+              onChangeText={(v) => updateField('paystack', 'public_key', v)}
+              placeholder="pk_live_..."
+              autoCapitalize="none"
+            />
+            <Input
+              label="Secret Key"
+              value={methods.paystack.secret_key || ''}
+              onChangeText={(v) => updateField('paystack', 'secret_key', v)}
+              placeholder="sk_live_..."
+              autoCapitalize="none"
+              secureTextEntry
+            />
+          </View>
+        )}
       </Card>
 
       {/* Flutterwave */}
@@ -134,6 +155,25 @@ export default function PaymentMethodsScreen() {
           />
         </View>
         <Text style={styles.gatewayDesc}>African card & mobile money payments (auto-verified)</Text>
+        {methods.flutterwave.enabled && (
+          <View style={styles.apiKeyFields}>
+            <Input
+              label="Public Key"
+              value={methods.flutterwave.public_key || ''}
+              onChangeText={(v) => updateField('flutterwave', 'public_key', v)}
+              placeholder="FLWPUBK-..."
+              autoCapitalize="none"
+            />
+            <Input
+              label="Secret Key"
+              value={methods.flutterwave.secret_key || ''}
+              onChangeText={(v) => updateField('flutterwave', 'secret_key', v)}
+              placeholder="FLWSECK-..."
+              autoCapitalize="none"
+              secureTextEntry
+            />
+          </View>
+        )}
       </Card>
 
       {/* Stripe */}
@@ -147,6 +187,25 @@ export default function PaymentMethodsScreen() {
           />
         </View>
         <Text style={styles.gatewayDesc}>International card payments in USD (auto-verified)</Text>
+        {methods.stripe.enabled && (
+          <View style={styles.apiKeyFields}>
+            <Input
+              label="Publishable Key"
+              value={methods.stripe.public_key || ''}
+              onChangeText={(v) => updateField('stripe', 'public_key', v)}
+              placeholder="pk_live_..."
+              autoCapitalize="none"
+            />
+            <Input
+              label="Secret Key"
+              value={methods.stripe.secret_key || ''}
+              onChangeText={(v) => updateField('stripe', 'secret_key', v)}
+              placeholder="sk_live_..."
+              autoCapitalize="none"
+              secureTextEntry
+            />
+          </View>
+        )}
       </Card>
 
       {/* Bank Transfer */}
@@ -223,6 +282,7 @@ const styles = StyleSheet.create({
   },
   gatewayName: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.textPrimary },
   gatewayDesc: { fontSize: FontSize.xs, color: Colors.textSecondary },
+  apiKeyFields: { marginTop: Spacing.md },
   bankFields: { marginTop: Spacing.md },
   saveBtn: { marginTop: Spacing.lg },
 });

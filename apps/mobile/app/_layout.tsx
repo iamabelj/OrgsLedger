@@ -2,16 +2,22 @@
 // OrgsLedger Mobile — Root Layout (Expo Router)
 // ============================================================
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { Stack } from 'expo-router';
-import { Platform, View } from 'react-native';
+import { Platform, View, ActivityIndicator } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { useFonts } from 'expo-font';
+import { Ionicons } from '@expo/vector-icons';
+import * as SplashScreen from 'expo-splash-screen';
 import { useAuthStore } from '../src/stores/auth.store';
 import { Colors } from '../src/theme';
 import { DrawerProvider } from '../src/contexts/DrawerContext';
 import { NavigationDrawer } from '../src/components/NavigationDrawer';
 import { SmartHeaderLeft } from '../src/components/SmartHeaderLeft';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
+
+// Keep splash screen visible while we load fonts
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // Stripe is native-only — lazy-load to avoid web crash
 let StripeProvider: React.ComponentType<any> | null = null;
@@ -29,9 +35,28 @@ const STRIPE_PUBLISHABLE_KEY =
 export default function RootLayout() {
   const loadUser = useAuthStore((s) => s.loadUser);
 
+  // Load Ionicons font for web
+  const [fontsLoaded] = useFonts({
+    ...Ionicons.font,
+  });
+
   useEffect(() => {
     loadUser().catch(() => {});
   }, []);
+
+  const onLayoutRootView = useCallback(async () => {
+    if (fontsLoaded) {
+      await SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={Colors.highlight} />
+      </View>
+    );
+  }
 
   const content = (
     <DrawerProvider>
