@@ -10,22 +10,51 @@ import {
   FlatList,
   TouchableOpacity,
   RefreshControl,
+  Modal,
+  TextInput,
+  Alert,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useChatStore } from '../../src/stores/chat.store';
+import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
 import { SearchBar, EmptyState, Avatar, Badge, useContentStyle } from '../../src/components/ui';
 
+const CHANNEL_TYPES = [
+  { value: 'general', label: 'General', icon: 'chatbubble-ellipses' as const },
+  { value: 'announcement', label: 'Announcement', icon: 'megaphone' as const },
+  { value: 'committee', label: 'Committee', icon: 'people-circle' as const },
+];
+
 export default function ChatScreen() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
+  const userRole = useAuthStore((s) => s.user?.globalRole);
+  const memberRole = useAuthStore((s) => {
+    const m = s.memberships.find((m) => m.organization_id === s.currentOrgId);
+    return m?.role;
+  });
   const channels = useChatStore((s) => s.channels);
   const loadChannels = useChatStore((s) => s.loadChannels);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
   const contentStyle = useContentStyle({ paddingBottom: Spacing.xxl });
+
+  // Create channel state
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [channelForm, setChannelForm] = useState({
+    name: '',
+    type: 'general' as string,
+    description: '',
+  });
+
+  // Can this user create channels? (super_admin, developer, org_admin, executive)
+  const canCreate = userRole === 'super_admin' || userRole === 'developer' || memberRole === 'org_admin' || memberRole === 'executive';
 
   useEffect(() => {
     if (currentOrgId) loadChannels(currentOrgId);
@@ -36,6 +65,30 @@ export default function ChatScreen() {
     setRefreshing(true);
     await loadChannels(currentOrgId);
     setRefreshing(false);
+  };
+
+  const handleCreateChannel = async () => {
+    if (!currentOrgId || !channelForm.name.trim()) return;
+    setCreating(true);
+    try {
+      await api.chat.createChannel(currentOrgId, {
+        name: channelForm.name.trim(),
+        type: channelForm.type,
+        description: channelForm.description.trim() || undefined,
+      });
+      setShowCreateModal(false);
+      setChannelForm({ name: '', type: 'general', description: '' });
+      await loadChannels(currentOrgId);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || 'Failed to create channel';
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Error', msg);
+      }
+    } finally {
+      setCreating(false);
+    }
   };
 
   const filtered = channels.filter((c) => {
@@ -144,6 +197,98 @@ export default function ChatScreen() {
           );
         }}
       />
+
+      {/* Floating Action Button — Create Channel */}
+      {canCreate && (
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() => setShowCreateModal(true)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="add" size={28} color="#FFF" />
+        </TouchableOpacity>
+      )}
+
+      {/* Create Channel Modal */}
+      <Modal
+        visible={showCreateModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCreateModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Create Channel</Text>
+              <TouchableOpacity onPress={() => setShowCreateModal(false)}>
+                <Ionicons name="close" size={24} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Channel Name */}
+            <Text style={styles.inputLabel}>Channel Name *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. Announcements"
+              placeholderTextColor={Colors.textLight}
+              value={channelForm.name}
+              onChangeText={(t) => setChannelForm((f) => ({ ...f, name: t }))}
+              maxLength={100}
+            />
+
+            {/* Channel Type */}
+            <Text style={styles.inputLabel}>Type</Text>
+            <View style={styles.typeRow}>
+              {CHANNEL_TYPES.map((ct) => {
+                const isActive = channelForm.type === ct.value;
+                return (
+                  <TouchableOpacity
+                    key={ct.value}
+                    style={[styles.typeChip, isActive && styles.typeChipActive]}
+                    onPress={() => setChannelForm((f) => ({ ...f, type: ct.value }))}
+                  >
+                    <Ionicons name={ct.icon} size={16} color={isActive ? '#FFF' : Colors.textSecondary} />
+                    <Text style={[styles.typeChipText, isActive && styles.typeChipTextActive]}>{ct.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Description */}
+            <Text style={styles.inputLabel}>Description (optional)</Text>
+            <TextInput
+              style={[styles.input, { height: 72, textAlignVertical: 'top' }]}
+              placeholder="What's this channel about?"
+              placeholderTextColor={Colors.textLight}
+              value={channelForm.description}
+              onChangeText={(t) => setChannelForm((f) => ({ ...f, description: t }))}
+              multiline
+              maxLength={500}
+            />
+
+            {/* Actions */}
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => setShowCreateModal(false)}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.createBtn, (!channelForm.name.trim() || creating) && { opacity: 0.5 }]}
+                onPress={handleCreateChannel}
+                disabled={!channelForm.name.trim() || creating}
+              >
+                {creating ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={styles.createBtnText}>Create Channel</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -227,5 +372,117 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: FontSize.xs,
     fontWeight: FontWeight.bold as any,
+  },
+  // ── FAB ──────────────────────────────────────────────────
+  fab: {
+    position: 'absolute',
+    right: Spacing.md,
+    bottom: Spacing.lg + 60,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Shadow.md,
+    zIndex: 10,
+  },
+  // ── Modal ────────────────────────────────────────────────
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 440,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    ...Shadow.lg,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  modalTitle: {
+    fontSize: FontSize.lg,
+    fontWeight: FontWeight.bold,
+    color: Colors.textPrimary,
+  },
+  inputLabel: {
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    marginBottom: 4,
+    marginTop: Spacing.sm,
+  },
+  input: {
+    backgroundColor: Colors.background,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 10,
+    fontSize: FontSize.md,
+    color: Colors.textPrimary,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  typeRow: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+    marginTop: 4,
+  },
+  typeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  typeChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  typeChipText: {
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+  },
+  typeChipTextActive: {
+    color: '#FFF',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: Spacing.sm,
+    marginTop: Spacing.lg,
+  },
+  cancelBtn: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  cancelBtnText: {
+    color: Colors.textSecondary,
+    fontWeight: FontWeight.medium,
+  },
+  createBtn: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
+  },
+  createBtnText: {
+    color: '#FFF',
+    fontWeight: FontWeight.semibold,
   },
 });

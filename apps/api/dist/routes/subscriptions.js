@@ -1061,6 +1061,40 @@ router.put('/admin/organizations/:orgId', middleware_1.authenticate, (0, middlew
             updates.settings = JSON.stringify({ ...existingSettings, ...settings });
         }
         await (0, db_1.default)('organizations').where({ id: req.params.orgId }).update(updates);
+        // If subscription status is being set to 'active', also renew the actual subscription record
+        // so that getOrgSubscription() doesn't auto-expire it back
+        if (subscriptionStatus === 'active') {
+            const existingSub = await (0, db_1.default)('subscriptions')
+                .where({ organization_id: req.params.orgId })
+                .orderBy('created_at', 'desc')
+                .first();
+            if (existingSub) {
+                const now = new Date();
+                const periodEnd = new Date(existingSub.current_period_end);
+                // If subscription period has expired, extend it for another year from now
+                if (now > periodEnd) {
+                    const newEnd = new Date(now);
+                    newEnd.setFullYear(newEnd.getFullYear() + 1);
+                    const newGrace = new Date(newEnd);
+                    newGrace.setDate(newGrace.getDate() + 7);
+                    await (0, db_1.default)('subscriptions').where({ id: existingSub.id }).update({
+                        status: 'active',
+                        current_period_start: now.toISOString(),
+                        current_period_end: newEnd.toISOString(),
+                        grace_period_end: newGrace.toISOString(),
+                        updated_at: db_1.default.fn.now(),
+                    });
+                    logger_1.logger.info(`Auto-renewed subscription for org ${req.params.orgId} (was expired)`);
+                }
+                else {
+                    // Period hasn't expired yet, just set status back to active
+                    await (0, db_1.default)('subscriptions').where({ id: existingSub.id }).update({
+                        status: 'active',
+                        updated_at: db_1.default.fn.now(),
+                    });
+                }
+            }
+        }
         await (0, audit_1.writeAuditLog)({
             organizationId: req.params.orgId,
             userId: req.user.userId,
@@ -1079,6 +1113,61 @@ router.put('/admin/organizations/:orgId', middleware_1.authenticate, (0, middlew
     catch (err) {
         logger_1.logger.error('Update org error', err);
         res.status(500).json({ success: false, error: 'Failed to update organization' });
+    }
+});
+// POST /admin/organizations/:orgId/assign-plan — Assign/renew a subscription plan for an existing org
+const assignPlanSchema = zod_1.z.object({
+    planSlug: zod_1.z.string().min(1).max(100),
+    billingCycle: zod_1.z.enum(['annual', 'monthly']).default('annual'),
+    currency: zod_1.z.enum(['USD', 'NGN']).default('USD'),
+});
+router.post('/admin/organizations/:orgId/assign-plan', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), (0, middleware_1.validate)(assignPlanSchema), async (req, res) => {
+    try {
+        const org = await (0, db_1.default)('organizations').where({ id: req.params.orgId }).first();
+        if (!org) {
+            res.status(404).json({ success: false, error: 'Organization not found' });
+            return;
+        }
+        const { planSlug, billingCycle, currency } = req.body;
+        const plan = await subSvc.getPlanBySlug(planSlug);
+        if (!plan) {
+            res.status(404).json({ success: false, error: `Plan "${planSlug}" not found. Create the plan first.` });
+            return;
+        }
+        // Create a fresh subscription (this deactivates any previous ones)
+        const sub = await subSvc.createSubscription({
+            organizationId: org.id,
+            planId: plan.id,
+            billingCycle,
+            currency,
+            amountPaid: 0, // Developer/admin override — no payment required
+            createdBy: req.user.userId,
+        });
+        // Ensure wallets exist
+        await subSvc.getAiWallet(org.id);
+        await subSvc.getTranslationWallet(org.id);
+        await (0, audit_1.writeAuditLog)({
+            organizationId: org.id,
+            userId: req.user.userId,
+            action: 'admin_assign_plan',
+            entityType: 'subscription',
+            entityId: sub?.id || org.id,
+            newValue: { planSlug, billingCycle, currency, planName: plan.name },
+            ipAddress: req.ip || '',
+            userAgent: req.headers['user-agent'] || '',
+        });
+        logger_1.logger.info(`Admin assigned plan "${plan.name}" to org "${org.name}" (${org.slug})`);
+        // Return fresh subscription details
+        const freshSub = await subSvc.getOrgSubscription(org.id);
+        res.json({
+            success: true,
+            message: `Plan "${plan.name}" (${billingCycle}) assigned to "${org.name}". Subscription is now active.`,
+            subscription: freshSub,
+        });
+    }
+    catch (err) {
+        logger_1.logger.error('Assign plan error', err);
+        res.status(500).json({ success: false, error: err.message || 'Failed to assign plan' });
     }
 });
 // DELETE /admin/organizations/:orgId — Delete organization (with safety checks)

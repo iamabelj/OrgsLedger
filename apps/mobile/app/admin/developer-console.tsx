@@ -908,6 +908,48 @@ export default function DeveloperConsole() {
                       </TouchableOpacity>
                     ))}
                   </View>
+
+                  <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Assign / Renew Plan</Text>
+                  <Text style={{ color: Colors.textLight, fontSize: 11, marginBottom: 6 }}>
+                    Select a plan and tap "Assign Plan" to create a fresh active subscription with a new 1-year period.
+                  </Text>
+                  <View style={styles.selectRow}>
+                    {(plans.length > 0 ? plans.filter(p => p.is_active).map(p => ({ label: p.name, value: p.slug })) : [
+                      { label: 'Standard', value: 'standard' },
+                      { label: 'Professional', value: 'professional' },
+                      { label: 'Enterprise', value: 'enterprise' },
+                    ]).map((p) => (
+                      <TouchableOpacity
+                        key={p.value}
+                        style={[styles.selectOption, orgForm.plan === p.value && styles.selectOptionActive]}
+                        onPress={() => setOrgForm({ ...orgForm, plan: p.value })}
+                      >
+                        <Text style={[styles.selectOptionText, orgForm.plan === p.value && styles.selectOptionTextActive]}>
+                          {p.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.saveBtn, { marginTop: 8 }]}
+                    onPress={async () => {
+                      try {
+                        if (!orgModal.org) return;
+                        await api.subscriptions.adminAssignPlan(orgModal.org.id, {
+                          planSlug: orgForm.plan,
+                          billingCycle: 'annual',
+                          currency: orgForm.currency as any,
+                        });
+                        showAlert('Success', `Plan "${orgForm.plan}" assigned. Subscription is now active.`);
+                        loadData();
+                      } catch (err: any) {
+                        showAlert('Error', err?.response?.data?.error || 'Failed to assign plan');
+                      }
+                    }}
+                  >
+                    <Ionicons name="rocket" size={16} color="#FFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.saveBtnText}>Assign Plan</Text>
+                  </TouchableOpacity>
                 </>
               )}
             </ScrollView>

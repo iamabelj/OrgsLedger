@@ -312,6 +312,8 @@ class ApiClient {
       this.client.delete(`/subscriptions/admin/organizations/${orgId}${confirm ? '?confirm=yes' : ''}`),
     adminCreateOrganization: (data: { name: string; slug: string; ownerEmail: string; plan?: string; currency?: string }) =>
       this.client.post('/subscriptions/admin/organizations', data),
+    adminAssignPlan: (orgId: string, data: { planSlug: string; billingCycle?: string; currency?: string }) =>
+      this.client.post(`/subscriptions/admin/organizations/${orgId}/assign-plan`, data),
     adminAdjustAiWallet: (data: { organizationId: string; hours: number; description: string }) =>
       this.client.post('/subscriptions/admin/wallet/ai/adjust', data),
     adminAdjustTranslationWallet: (data: { organizationId: string; hours: number; description: string }) =>
