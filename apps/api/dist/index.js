@@ -195,6 +195,14 @@ catch (err) {
 // Expo web build at apps/api/web — only served on app.orgsledger.com (not orgsledger.com)
 const webDir = path_1.default.resolve(__dirname, '../web');
 if (fs_1.default.existsSync(webDir)) {
+    // Redirect root "/" to "/login" on app subdomain so unauthenticated visitors land on login
+    app.get('/', (req, res, next) => {
+        const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
+        if (host === 'orgsledger.com' || host === 'www.orgsledger.com') {
+            return next(); // Landing domain handled elsewhere
+        }
+        return res.redirect(302, '/login');
+    });
     app.use((req, res, next) => {
         const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
         if (host === 'orgsledger.com' || host === 'www.orgsledger.com') {
