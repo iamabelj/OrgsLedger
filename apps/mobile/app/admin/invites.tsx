@@ -11,13 +11,13 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
-  Alert,
   Platform,
   Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
+import { showAlert } from '../../src/utils/alert';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius } from '../../src/theme';
 import { ResponsiveScrollView } from '../../src/components/ui';
 
@@ -51,7 +51,7 @@ export default function InvitesScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  const doAlert = (t: string, m: string) => Platform.OS === 'web' ? window.alert(`${t}: ${m}`) : Alert.alert(t, m);
+  const doAlert = (t: string, m: string) => showAlert(t, m);
 
   const createInvite = async () => {
     if (!currentOrgId) return;

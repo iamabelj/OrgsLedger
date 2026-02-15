@@ -251,7 +251,7 @@ export default function ChannelMessagesScreen() {
                   <TouchableOpacity
                     key={att.id}
                     style={styles.attachmentFile}
-                    onPress={() => Linking.openURL(att.file_url)}
+                    onPress={() => Linking.openURL(att.file_url).catch(() => {})}
                   >
                     <Ionicons name="document-attach" size={16} color={Colors.highlight} />
                     <Text style={styles.attachmentFileName} numberOfLines={1}>

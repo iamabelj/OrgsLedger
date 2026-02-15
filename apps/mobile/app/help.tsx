@@ -42,8 +42,8 @@ const FAQ_ITEMS = [
 ];
 
 export default function HelpScreen() {
-  const openEmail = () => Linking.openURL('mailto:support@orgsledger.com');
-  const openDocs = () => Linking.openURL('https://orgsledger.com/docs');
+  const openEmail = () => Linking.openURL('mailto:support@orgsledger.com').catch(() => {});
+  const openDocs = () => Linking.openURL('https://orgsledger.com/docs').catch(() => {});
 
   return (
     <>
@@ -76,7 +76,7 @@ export default function HelpScreen() {
           <HelpAction
             icon="chatbubble-ellipses" color={Colors.success} bg={Colors.successSubtle}
             label="Community Chat" desc="Join the community"
-            onPress={() => Linking.openURL('https://orgsledger.com/community')}
+            onPress={() => Linking.openURL('https://orgsledger.com/community').catch(() => {})}
             last
           />
         </Card>
@@ -113,7 +113,7 @@ export default function HelpScreen() {
           <Divider />
           <View style={styles.aboutRow}>
             <Text style={styles.aboutLabel}>Website</Text>
-            <TouchableOpacity onPress={() => Linking.openURL('https://orgsledger.com')}>
+            <TouchableOpacity onPress={() => Linking.openURL('https://orgsledger.com').catch(() => {})}>
               <Text style={[styles.aboutValue, { color: Colors.highlight }]}>orgsledger.com</Text>
             </TouchableOpacity>
           </View>

@@ -67,7 +67,7 @@ export default function ForgotPasswordScreen() {
       });
       showAlert('Success', 'Your password has been reset. You can now log in.');
       setStep('done');
-      setTimeout(() => router.back(), 1500);
+      setTimeout(() => router.replace('/(auth)/login'), 1500);
     } catch (err: any) {
       showAlert('Error', err.response?.data?.error || 'Failed to reset password');
     } finally {
@@ -168,7 +168,7 @@ export default function ForgotPasswordScreen() {
 
           <Button
             title="Back to Login"
-            onPress={() => router.back()}
+            onPress={() => router.push('/(auth)/login')}
             variant="ghost"
             fullWidth
             style={{ marginTop: Spacing.md }}

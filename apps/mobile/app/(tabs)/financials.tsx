@@ -168,7 +168,7 @@ export default function FinancialsScreen() {
             await loadAll();
           }
         } else if (data.authorizationUrl) {
-          await Linking.openURL(data.authorizationUrl);
+          await Linking.openURL(data.authorizationUrl).catch(() => {});
           setTimeout(async () => {
             try {
               const verify = await api.payments.verify(currentOrgId, transactionId);
@@ -179,7 +179,7 @@ export default function FinancialsScreen() {
             } catch {}
           }, 5000);
         } else if (data.paymentLink) {
-          await Linking.openURL(data.paymentLink);
+          await Linking.openURL(data.paymentLink).catch(() => {});
           setTimeout(async () => {
             try {
               const verify = await api.payments.verify(currentOrgId, transactionId);

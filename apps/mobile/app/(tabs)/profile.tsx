@@ -100,7 +100,7 @@ export default function ProfileScreen() {
       if (enabled) {
         const { status } = await Notifications.requestPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert('Permission Denied', 'Enable notifications from your device settings.');
+          showAlert('Permission Denied', 'Enable notifications from your device settings.');
           setNotificationsEnabled(false);
           return;
         }
@@ -122,17 +122,17 @@ export default function ProfileScreen() {
         lastName: lastName.trim(),
         phone: phone.trim() || undefined,
       });
-      Alert.alert('Success', 'Profile updated');
+      showAlert('Success', 'Profile updated');
       setEditing(false);
     } catch (err: any) {
-      Alert.alert('Error', err.response?.data?.error || 'Failed to update profile');
+      showAlert('Error', err.response?.data?.error || 'Failed to update profile');
     } finally {
       setSaving(false);
     }
   };
 
   const handleLogout = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+    showAlert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign Out',
