@@ -135,16 +135,12 @@ export default function LoginScreen() {
           </View>
         </View>
 
-        {/* Footer */}
-        <TouchableOpacity
-          onPress={() => router.push('/(auth)/register')}
-          style={styles.footerLink}
-        >
+        {/* Footer — signup is invite-only, show info text */}
+        <View style={styles.footerLink}>
           <Text style={styles.footerText}>
-            Don't have an account?{' '}
-            <Text style={styles.footerBold}>Create one</Text>
+            Need an account? Contact your organization admin for an invite link.
           </Text>
-        </TouchableOpacity>
+        </View>
 
         <PoweredByFooter />
       </ScrollView>

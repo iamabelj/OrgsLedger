@@ -223,22 +223,28 @@ describe('Malicious Money Attack Simulations', () => {
 
     it('subscription with NaN price creates corrupted record', async () => {
       const writtenAmount: any[] = [];
-      (db as any).mockImplementation((_table: string) => {
-        const chain: any = {};
-        const methods = [
-          'where', 'whereIn', 'orderBy', 'first', 'insert', 'update',
-          'returning', 'select', 'count', 'forUpdate', 'raw',
-        ];
-        for (const m of methods) {
-          chain[m] = jest.fn().mockReturnValue(chain);
-        }
-        chain.fn = { now: jest.fn().mockReturnValue('NOW()') };
-        chain.insert.mockImplementation((data: any) => {
-          if (data?.amount_paid !== undefined) writtenAmount.push(data.amount_paid);
+      db.transaction.mockImplementation(async (callback: Function) => {
+        const trx: any = jest.fn((_table: string) => {
+          const chain: any = {};
+          const methods = [
+            'where', 'whereIn', 'orderBy', 'first', 'insert', 'update',
+            'returning', 'select', 'count', 'forUpdate', 'raw',
+          ];
+          for (const m of methods) {
+            chain[m] = jest.fn().mockReturnValue(chain);
+          }
+          chain.fn = { now: jest.fn().mockReturnValue('NOW()') };
+          chain.raw = jest.fn((...args: any[]) => args);
+          chain.insert.mockImplementation((data: any) => {
+            if (data?.amount_paid !== undefined) writtenAmount.push(data.amount_paid);
+            return chain;
+          });
+          chain.returning.mockResolvedValue([{ id: 'sub-1', organization_id: 'org-1', status: 'active' }]);
           return chain;
         });
-        chain.returning.mockResolvedValue([{ id: 'sub-1', organization_id: 'org-1', status: 'active' }]);
-        return chain;
+        trx.fn = { now: jest.fn().mockReturnValue('NOW()') };
+        trx.raw = jest.fn((...args: any[]) => args);
+        return callback(trx);
       });
       db.fn = { now: jest.fn().mockReturnValue('NOW()'), uuid: jest.fn() };
       db.raw = jest.fn((...args: any[]) => args);
@@ -442,22 +448,28 @@ describe('Malicious Money Attack Simulations', () => {
   describe('ATTACK: Subscription manipulation', () => {
     it('createSubscription accepts any planId without verifying payment', async () => {
       const insertedData: any[] = [];
-      (db as any).mockImplementation((_table: string) => {
-        const chain: any = {};
-        const methods = [
-          'where', 'whereIn', 'orderBy', 'first', 'insert', 'update',
-          'returning', 'select', 'count', 'forUpdate', 'raw',
-        ];
-        for (const m of methods) {
-          chain[m] = jest.fn().mockReturnValue(chain);
-        }
-        chain.fn = { now: jest.fn().mockReturnValue('NOW()') };
-        chain.insert.mockImplementation((data: any) => {
-          insertedData.push({ table: _table, data });
+      db.transaction.mockImplementation(async (callback: Function) => {
+        const trx: any = jest.fn((_table: string) => {
+          const chain: any = {};
+          const methods = [
+            'where', 'whereIn', 'orderBy', 'first', 'insert', 'update',
+            'returning', 'select', 'count', 'forUpdate', 'raw',
+          ];
+          for (const m of methods) {
+            chain[m] = jest.fn().mockReturnValue(chain);
+          }
+          chain.fn = { now: jest.fn().mockReturnValue('NOW()') };
+          chain.raw = jest.fn((...args: any[]) => args);
+          chain.insert.mockImplementation((data: any) => {
+            insertedData.push({ table: _table, data });
+            return chain;
+          });
+          chain.returning.mockResolvedValue([{ id: 'sub-1', status: 'active' }]);
           return chain;
         });
-        chain.returning.mockResolvedValue([{ id: 'sub-1', status: 'active' }]);
-        return chain;
+        trx.fn = { now: jest.fn().mockReturnValue('NOW()') };
+        trx.raw = jest.fn((...args: any[]) => args);
+        return callback(trx);
       });
       db.fn = { now: jest.fn().mockReturnValue('NOW()'), uuid: jest.fn() };
       db.raw = jest.fn((...args: any[]) => args);

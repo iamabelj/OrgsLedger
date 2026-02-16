@@ -591,30 +591,35 @@ describe('Money Flow — Wallet Operations', () => {
 
   // ── createSubscription atomicity ────────────────────────
 
-  describe('createSubscription — atomicity concerns', () => {
-    it('BUG DOCUMENTED: uses 4+ separate DB writes without db.transaction', async () => {
+  describe('createSubscription — atomicity', () => {
+    it('FIX VERIFIED: wraps all writes in db.transaction', async () => {
       const writtenTables: string[] = [];
-      (db as any).mockImplementation((_table: string) => {
-        writtenTables.push(_table);
-        const chain: any = {};
-        const methods = [
-          'where', 'whereIn', 'orderBy', 'first', 'insert', 'update',
-          'returning', 'select', 'count', 'forUpdate', 'raw',
-        ];
-        for (const m of methods) {
-          chain[m] = jest.fn().mockReturnValue(chain);
-        }
-        chain.fn = { now: jest.fn().mockReturnValue('NOW()') };
-        chain.returning.mockResolvedValue([{
-          id: 'sub-1',
-          organization_id: 'org-1',
-          status: 'active',
-        }]);
-        return chain;
+      db.transaction.mockImplementation(async (callback: Function) => {
+        const trx: any = jest.fn((_table: string) => {
+          writtenTables.push(_table);
+          const chain: any = {};
+          const methods = [
+            'where', 'whereIn', 'orderBy', 'first', 'insert', 'update',
+            'returning', 'select', 'count', 'forUpdate', 'raw',
+          ];
+          for (const m of methods) {
+            chain[m] = jest.fn().mockReturnValue(chain);
+          }
+          chain.fn = { now: jest.fn().mockReturnValue('NOW()') };
+          chain.raw = jest.fn((...args: any[]) => args);
+          chain.returning.mockResolvedValue([{
+            id: 'sub-1',
+            organization_id: 'org-1',
+            status: 'active',
+          }]);
+          return chain;
+        });
+        trx.fn = { now: jest.fn().mockReturnValue('NOW()') };
+        trx.raw = jest.fn((...args: any[]) => args);
+        return callback(trx);
       });
       db.fn = { now: jest.fn().mockReturnValue('NOW()'), uuid: jest.fn() };
       db.raw = jest.fn((...args: any[]) => args);
-      db.transaction = jest.fn(); // NOT called by createSubscription
 
       await createSubscription({
         organizationId: 'org-1',
@@ -624,20 +629,19 @@ describe('Money Flow — Wallet Operations', () => {
         amountPaid: 300,
       });
 
-      // BUG: Multiple tables written WITHOUT db.transaction()
-      // Should be: subscriptions UPDATE, subscriptions INSERT, organizations UPDATE, subscription_history INSERT
+      // FIX: All tables now written inside db.transaction()
+      expect(db.transaction).toHaveBeenCalledTimes(1);
       expect(writtenTables).toContain('subscriptions');
       expect(writtenTables).toContain('organizations');
       expect(writtenTables).toContain('subscription_history');
-      // db.transaction is NOT called — non-atomic
-      expect(db.transaction).not.toHaveBeenCalled();
     });
   });
 
   // ── renewSubscription atomicity ─────────────────────────
 
-  describe('renewSubscription — atomicity concerns', () => {
-    it('BUG DOCUMENTED: uses 3 separate DB writes without db.transaction', async () => {
+  describe('renewSubscription — atomicity', () => {
+    it('FIX VERIFIED: wraps all writes in db.transaction', async () => {
+      // Setup db() for the initial read (outside transaction)
       (db as any).mockImplementation((_table: string) => {
         const chain: any = {};
         const methods = [
@@ -659,11 +663,31 @@ describe('Money Flow — Wallet Operations', () => {
       });
       db.fn = { now: jest.fn().mockReturnValue('NOW()'), uuid: jest.fn() };
       db.raw = jest.fn((...args: any[]) => args);
-      db.transaction = jest.fn(); // NOT called by renewSubscription
+
+      // Setup transaction mock for the writes
+      db.transaction.mockImplementation(async (callback: Function) => {
+        const trx: any = jest.fn((_table: string) => {
+          const chain: any = {};
+          const methods = [
+            'where', 'whereIn', 'orderBy', 'first', 'insert', 'update',
+            'returning', 'select', 'count', 'forUpdate', 'raw',
+          ];
+          for (const m of methods) {
+            chain[m] = jest.fn().mockReturnValue(chain);
+          }
+          chain.fn = { now: jest.fn().mockReturnValue('NOW()') };
+          chain.raw = jest.fn((...args: any[]) => args);
+          return chain;
+        });
+        trx.fn = { now: jest.fn().mockReturnValue('NOW()') };
+        trx.raw = jest.fn((...args: any[]) => args);
+        return callback(trx);
+      });
 
       await renewSubscription('org-1', 300, 'pay_ref_123');
 
-      expect(db.transaction).not.toHaveBeenCalled();
+      // FIX: All writes now wrapped inside db.transaction()
+      expect(db.transaction).toHaveBeenCalledTimes(1);
     });
 
     it('should throw when no subscription exists', async () => {

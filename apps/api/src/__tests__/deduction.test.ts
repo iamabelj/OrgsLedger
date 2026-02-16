@@ -357,7 +357,7 @@ describe('Wallet Deduction Algorithm', () => {
       db.transaction.mockImplementation(async (callback: Function) => {
         const trx: any = jest.fn((_table: string) => {
           const chain: any = {};
-          const methods = ['where', 'update', 'insert', 'raw', 'first'];
+          const methods = ['where', 'update', 'insert', 'raw', 'first', 'forUpdate'];
           for (const m of methods) {
             chain[m] = jest.fn().mockReturnValue(chain);
           }
@@ -391,7 +391,7 @@ describe('Wallet Deduction Algorithm', () => {
       db.transaction.mockImplementation(async (callback: Function) => {
         const trx: any = jest.fn((_table: string) => {
           const chain: any = {};
-          const methods = ['where', 'update', 'insert', 'raw', 'first'];
+          const methods = ['where', 'update', 'insert', 'raw', 'first', 'forUpdate'];
           for (const m of methods) {
             chain[m] = jest.fn().mockReturnValue(chain);
           }

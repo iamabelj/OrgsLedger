@@ -79,6 +79,7 @@ describe('Input Validation — Zod Schemas', () => {
       lastName: z.string().min(1).max(100),
       phone: z.string().optional(),
       orgSlug: z.string().optional(),
+      inviteCode: z.string().min(1).max(32),
     });
 
     it('should accept valid registration', () => {
@@ -87,8 +88,20 @@ describe('Input Validation — Zod Schemas', () => {
         password: 'StrongP@ss1',
         firstName: 'John',
         lastName: 'Doe',
+        inviteCode: 'VALID_CODE_123',
       };
       expect(() => registerSchema.parse(valid)).not.toThrow();
+    });
+
+    it('should reject missing inviteCode', () => {
+      expect(() =>
+        registerSchema.parse({
+          email: 'test@test.com',
+          password: 'password123',
+          firstName: 'John',
+          lastName: 'Doe',
+        }),
+      ).toThrow();
     });
 
     it('should reject invalid email', () => {
@@ -130,6 +143,7 @@ describe('Input Validation — Zod Schemas', () => {
         password: 'password123',
         firstName: 'John',
         lastName: 'Doe',
+        inviteCode: 'VALID_CODE_123',
         globalRole: 'super_admin',
         isAdmin: true,
         is_active: false,

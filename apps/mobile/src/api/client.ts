@@ -71,7 +71,7 @@ class ApiClient {
 
   // ── Auth ──────────────────────────────────────────────
   auth = {
-    register: (data: { email: string; password: string; firstName: string; lastName: string; phone?: string; orgSlug?: string }) =>
+    register: (data: { email: string; password: string; firstName: string; lastName: string; phone?: string; orgSlug?: string; inviteCode: string }) =>
       this.client.post('/auth/register', data),
     login: (data: { email: string; password: string }) =>
       this.client.post('/auth/login', data),
@@ -356,6 +356,15 @@ class ApiClient {
     // Audit logs
     adminAuditLogs: (params?: { page?: number; limit?: number; orgId?: string; action?: string; entityType?: string }) =>
       this.client.get('/subscriptions/admin/audit-logs', { params }),
+    // Signup invite management (super admin)
+    adminSignupInvites: (params?: { page?: number; limit?: number; status?: string }) =>
+      this.client.get('/subscriptions/admin/signup-invites', { params }),
+    adminCreateSignupInvite: (data: { email?: string; role?: string; organizationId?: string; maxUses?: number; expiresInDays?: number; note?: string }) =>
+      this.client.post('/subscriptions/admin/signup-invites', data),
+    adminDeleteSignupInvite: (inviteId: string) =>
+      this.client.delete(`/subscriptions/admin/signup-invites/${inviteId}`),
+    validateSignupInvite: (code: string) =>
+      this.client.get(`/subscriptions/invite/validate/${code}`),
   };
 
   // ── AI Credits (legacy — kept for backward compatibility) ─

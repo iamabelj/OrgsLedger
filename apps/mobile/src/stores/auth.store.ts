@@ -34,7 +34,7 @@ interface AuthState {
   currentOrgId: string | null;
 
   login: (email: string, password: string) => Promise<void>;
-  register: (data: { email: string; password: string; firstName: string; lastName: string; phone?: string; orgSlug?: string }) => Promise<void>;
+  register: (data: { email: string; password: string; firstName: string; lastName: string; phone?: string; orgSlug?: string; inviteCode: string }) => Promise<void>;
   logout: () => Promise<void>;
   loadUser: () => Promise<void>;
   setCurrentOrg: (orgId: string) => void;

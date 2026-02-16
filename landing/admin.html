@@ -611,7 +611,7 @@ async function loadDashboard(){
   const byPlan = r.byPlan || [];
   $('dash-revenue-table').innerHTML = byPlan.length ? byPlan.map(p=>'<tr><td>'+p.plan+'</td><td>'+p.currency+'</td><td>'+fmtCurrency(p.revenue,p.currency)+'</td><td>'+fmt(p.count)+'</td></tr>').join('') : '<tr><td colspan="4" style="text-align:center;color:var(--text-3)">No revenue data</td></tr>';
 
-  const lowB = riskData.data || riskData.lowBalances || [];
+  const lowB = riskData.lowBalances || riskData.low_balances || [];
   $('dash-risk-content').innerHTML = lowB.length ? '<div style="font-size:.85rem">'+lowB.map(l=>'<div style="padding:8px 0;border-bottom:1px solid var(--border)"><strong>'+l.org_name+'</strong> — AI: '+fmtMins(l.ai_balance)+', Trans: '+fmtMins(l.translation_balance)+'</div>').join('')+'</div>' : '<div class="empty-state"><div class="empty-icon">&#10004;</div><p>No low balance alerts</p></div>';
 }
 

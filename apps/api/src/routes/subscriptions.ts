@@ -828,8 +828,9 @@ router.get('/admin/wallet-analytics', authenticate, requireDeveloper(), async (_
       .select(
         'organizations.id',
         'organizations.name',
-        db.raw('COALESCE(ai_wallet.balance_minutes, 0) / 60.0 as ai_balance_hours'),
-        db.raw('COALESCE(translation_wallet.balance_minutes, 0) / 60.0 as translation_balance_hours'),
+        'organizations.billing_currency',
+        db.raw('COALESCE(ai_wallet.balance_minutes, 0) as ai_balance_minutes'),
+        db.raw('COALESCE(translation_wallet.balance_minutes, 0) as translation_balance_minutes'),
       )
       .orderBy('organizations.name');
 
@@ -842,35 +843,54 @@ router.get('/admin/wallet-analytics', authenticate, requireDeveloper(), async (_
         .whereIn('organization_id', orgIds)
         .where('amount_minutes', '<', 0)
         .groupBy('organization_id')
-        .select('organization_id', db.raw('SUM(ABS(amount_minutes)) / 60.0 as used_hours'));
-      aiUsageRows.forEach((r: any) => { aiUsageByOrg[r.organization_id] = parseFloat(r.used_hours || 0); });
+        .select('organization_id', db.raw('SUM(ABS(amount_minutes)) as used_minutes'));
+      aiUsageRows.forEach((r: any) => { aiUsageByOrg[r.organization_id] = parseFloat(r.used_minutes || 0); });
 
       const transUsageRows = await db('translation_wallet_transactions')
         .whereIn('organization_id', orgIds)
         .where('amount_minutes', '<', 0)
         .groupBy('organization_id')
-        .select('organization_id', db.raw('SUM(ABS(amount_minutes)) / 60.0 as used_hours'));
-      transUsageRows.forEach((r: any) => { transUsageByOrg[r.organization_id] = parseFloat(r.used_hours || 0); });
+        .select('organization_id', db.raw('SUM(ABS(amount_minutes)) as used_minutes'));
+      transUsageRows.forEach((r: any) => { transUsageByOrg[r.organization_id] = parseFloat(r.used_minutes || 0); });
     }
 
     const organizations = perOrg.map((o: any) => ({
       id: o.id,
+      org_id: o.id,
       name: o.name,
-      ai_balance_hours: parseFloat(o.ai_balance_hours || 0),
-      ai_used_hours: aiUsageByOrg[o.id] || 0,
-      translation_balance_hours: parseFloat(o.translation_balance_hours || 0),
-      translation_used_hours: transUsageByOrg[o.id] || 0,
+      org_name: o.name,
+      currency: o.billing_currency || 'USD',
+      ai_balance: parseFloat(o.ai_balance_minutes || 0),
+      ai_used: aiUsageByOrg[o.id] || 0,
+      translation_balance: parseFloat(o.translation_balance_minutes || 0),
+      translation_used: transUsageByOrg[o.id] || 0,
+      // Keep hours variants for backward compat
+      ai_balance_hours: parseFloat(o.ai_balance_minutes || 0) / 60,
+      ai_used_hours: (aiUsageByOrg[o.id] || 0) / 60,
+      translation_balance_hours: parseFloat(o.translation_balance_minutes || 0) / 60,
+      translation_used_hours: (transUsageByOrg[o.id] || 0) / 60,
     }));
+
+    const totalAiBalance = parseFloat(aiStats?.total_balance || '0');
+    const totalAiUsed = parseFloat(aiTxStats?.total_used || '0');
+    const totalTranslationBalance = parseFloat(transStats?.total_balance || '0');
+    const totalTranslationUsed = parseFloat(transTxStats?.total_used || '0');
 
     res.json({
       success: true,
+      platformTotals: {
+        totalAiBalance: totalAiBalance,
+        totalAiUsed: totalAiUsed,
+        totalTranslationBalance: totalTranslationBalance,
+        totalTranslationUsed: totalTranslationUsed,
+      },
       summary: {
-        total_ai_balance_hours: parseFloat(aiStats?.total_balance || '0') / 60,
-        total_ai_used_hours: parseFloat(aiTxStats?.total_used || '0') / 60,
+        total_ai_balance_hours: totalAiBalance / 60,
+        total_ai_used_hours: totalAiUsed / 60,
         total_ai_sold_hours: parseFloat(aiTxStats?.total_added || '0') / 60,
         ai_wallet_count: parseInt(aiStats?.wallet_count || '0'),
-        total_translation_balance_hours: parseFloat(transStats?.total_balance || '0') / 60,
-        total_translation_used_hours: parseFloat(transTxStats?.total_used || '0') / 60,
+        total_translation_balance_hours: totalTranslationBalance / 60,
+        total_translation_used_hours: totalTranslationUsed / 60,
         total_translation_sold_hours: parseFloat(transTxStats?.total_added || '0') / 60,
         translation_wallet_count: parseInt(transStats?.wallet_count || '0'),
       },
@@ -1612,16 +1632,19 @@ router.get('/admin/risk/low-balances', authenticate, requireDeveloper(), async (
     // Merge into per-org view for dashboard
     const orgMap: Record<string, any> = {};
     for (const w of [...lowAi, ...lowTranslation, ...emptyAi, ...emptyTranslation]) {
-      if (!orgMap[w.org_id]) orgMap[w.org_id] = { id: w.org_id, name: w.org_name, ai_balance_hours: 0, translation_balance_hours: 0, type: 'low' };
-      const hours = parseFloat(w.balance_minutes) / 60;
-      if (w.wallet_type === 'ai') orgMap[w.org_id].ai_balance_hours = hours;
-      else orgMap[w.org_id].translation_balance_hours = hours;
+      if (!orgMap[w.org_id]) orgMap[w.org_id] = { id: w.org_id, org_id: w.org_id, name: w.org_name, org_name: w.org_name, ai_balance: 0, translation_balance: 0, ai_balance_hours: 0, translation_balance_hours: 0, type: 'low' };
+      const mins = parseFloat(w.balance_minutes);
+      const hours = mins / 60;
+      if (w.wallet_type === 'ai') { orgMap[w.org_id].ai_balance = mins; orgMap[w.org_id].ai_balance_hours = hours; }
+      else { orgMap[w.org_id].translation_balance = mins; orgMap[w.org_id].translation_balance_hours = hours; }
       if (hours <= 0) orgMap[w.org_id].type = 'critical';
     }
 
+    const lowBalancesArr = Object.values(orgMap);
     res.json({
       success: true,
-      low_balances: Object.values(orgMap),
+      low_balances: lowBalancesArr,
+      lowBalances: lowBalancesArr,
       data: {
         thresholdMinutes,
         lowBalance: [...lowAi, ...lowTranslation],
@@ -1767,6 +1790,203 @@ router.get('/admin/risk/spikes', authenticate, requireDeveloper(), async (req: R
   } catch (err: any) {
     logger.error('Spike detection error', err);
     res.status(500).json({ success: false, error: 'Failed' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// SIGNUP INVITE MANAGEMENT (Super Admin)
+// ════════════════════════════════════════════════════════════
+
+const createSignupInviteSchema = z.object({
+  email: z.string().email().optional().nullable(),
+  role: z.enum(['member', 'executive', 'org_admin']).default('member'),
+  organizationId: z.string().uuid().optional().nullable(),
+  maxUses: z.number().int().min(1).default(1),
+  expiresInDays: z.number().int().min(1).optional().nullable(),
+  note: z.string().max(500).optional().nullable(),
+});
+
+// POST /admin/signup-invites — Create a signup invite link
+router.post('/admin/signup-invites', authenticate, requireDeveloper(), validate(createSignupInviteSchema), async (req: Request, res: Response) => {
+  try {
+    const { email, role, organizationId, maxUses, expiresInDays, note } = req.body;
+    const code = require('crypto').randomBytes(8).toString('hex').toUpperCase();
+    const expiresAt = expiresInDays
+      ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
+      : null;
+
+    const [invite] = await db('signup_invites').insert({
+      code,
+      email: email ? email.toLowerCase() : null,
+      role: role || 'member',
+      organization_id: organizationId || null,
+      max_uses: maxUses ?? 1,
+      expires_at: expiresAt,
+      is_active: true,
+      created_by: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(req.user!.userId)
+        ? req.user!.userId
+        : null,
+      note: note || null,
+    }).returning('*');
+
+    // Build the invite URL
+    const baseUrl = process.env.APP_URL || 'https://app.orgsledger.com';
+    const inviteUrl = `${baseUrl}/register?invite=${code}`;
+
+    // If email is provided, send the invite email
+    if (email) {
+      try {
+        const { sendEmail } = require('../services/email.service');
+        await sendEmail({
+          to: email.toLowerCase(),
+          subject: 'You\'re Invited to Join OrgsLedger',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="background: #0B1426; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
+                <h1 style="color: #C9A84C; margin: 0; font-size: 24px;">OrgsLedger</h1>
+              </div>
+              <div style="background: #f8f9fa; padding: 32px; border-radius: 0 0 8px 8px;">
+                <h2 style="color: #0B1426; margin-top: 0;">You've Been Invited!</h2>
+                <p style="color: #555;">You have been invited to create an account on OrgsLedger — Your organization's operational hub.</p>
+                <p style="color: #555;">Use the invite code below to register:</p>
+                <div style="background: #0B1426; color: #C9A84C; font-size: 24px; font-weight: bold; text-align: center; padding: 16px; border-radius: 8px; letter-spacing: 4px; margin: 16px 0;">${code}</div>
+                <p style="text-align: center; margin: 20px 0;">
+                  <a href="${inviteUrl}" style="background: #C9A84C; color: #0B1426; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Create Your Account</a>
+                </p>
+                ${expiresAt ? `<p style="color: #888; font-size: 13px;">This invite expires on ${expiresAt.toLocaleDateString()}.</p>` : ''}
+                <p style="color: #888; font-size: 13px;">If you didn't expect this invitation, you can safely ignore this email.</p>
+              </div>
+              <p style="color: #aaa; font-size: 11px; text-align: center; margin-top: 16px;">&copy; ${new Date().getFullYear()} OrgsLedger. All rights reserved.</p>
+            </div>
+          `,
+          text: `You've been invited to join OrgsLedger! Use invite code: ${code} or visit: ${inviteUrl}`,
+        });
+        logger.info(`Signup invite email sent to ${email} with code ${code}`);
+      } catch (emailErr) {
+        logger.warn('Failed to send signup invite email:', emailErr);
+      }
+    }
+
+    await writeAuditLog({
+      userId: req.user!.userId,
+      action: 'create_signup_invite',
+      entityType: 'signup_invite',
+      entityId: invite.id,
+      newValue: { code, email, role, organizationId, maxUses, expiresInDays },
+      ipAddress: req.ip || '',
+      userAgent: req.headers['user-agent'] || '',
+    });
+
+    logger.info(`Signup invite created: ${code} by ${req.user!.userId}`);
+    res.status(201).json({ success: true, data: { ...invite, inviteUrl } });
+  } catch (err: any) {
+    logger.error('Create signup invite error', err);
+    res.status(500).json({ success: false, error: 'Failed to create signup invite' });
+  }
+});
+
+// GET /admin/signup-invites — List all signup invites
+router.get('/admin/signup-invites', authenticate, requireDeveloper(), async (req: Request, res: Response) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = (page - 1) * limit;
+    const status = req.query.status as string; // 'active', 'expired', 'used', 'all'
+
+    let query = db('signup_invites')
+      .leftJoin('organizations', 'signup_invites.organization_id', 'organizations.id')
+      .leftJoin('users as creator', 'signup_invites.created_by', 'creator.id')
+      .select(
+        'signup_invites.*',
+        'organizations.name as organization_name',
+        'organizations.slug as organization_slug',
+        'creator.first_name as creator_first_name',
+        'creator.last_name as creator_last_name',
+      );
+
+    if (status === 'active') {
+      query = query.where('signup_invites.is_active', true);
+    } else if (status === 'expired') {
+      query = query.where('signup_invites.expires_at', '<', new Date());
+    } else if (status === 'used') {
+      query = query.whereRaw('signup_invites.use_count >= signup_invites.max_uses')
+        .whereNotNull('signup_invites.max_uses');
+    }
+
+    const invites = await query
+      .orderBy('signup_invites.created_at', 'desc')
+      .limit(limit)
+      .offset(offset);
+
+    const [{ count }] = await db('signup_invites').count('* as count');
+
+    res.json({ success: true, data: invites, total: parseInt(count as string), page, limit });
+  } catch (err: any) {
+    logger.error('List signup invites error', err);
+    res.status(500).json({ success: false, error: 'Failed to list signup invites' });
+  }
+});
+
+// DELETE /admin/signup-invites/:inviteId — Deactivate a signup invite
+router.delete('/admin/signup-invites/:inviteId', authenticate, requireDeveloper(), async (req: Request, res: Response) => {
+  try {
+    await db('signup_invites').where({ id: req.params.inviteId }).update({ is_active: false });
+    res.json({ success: true, message: 'Signup invite deactivated' });
+  } catch (err: any) {
+    logger.error('Delete signup invite error', err);
+    res.status(500).json({ success: false, error: 'Failed to deactivate signup invite' });
+  }
+});
+
+// GET /admin/signup-invites/validate/:code — Public: validate signup invite code
+router.get('/invite/validate/:code', async (req: Request, res: Response) => {
+  try {
+    const { code } = req.params;
+    const invite = await db('signup_invites').where({ code, is_active: true }).first();
+
+    if (!invite) {
+      res.status(404).json({ success: false, valid: false, error: 'Invalid invite code' });
+      return;
+    }
+    if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+      res.status(410).json({ success: false, valid: false, error: 'Invite code has expired' });
+      return;
+    }
+    if (invite.max_uses && invite.use_count >= invite.max_uses) {
+      res.status(410).json({ success: false, valid: false, error: 'Invite code has reached its maximum uses' });
+      return;
+    }
+
+    // Optionally fetch organization name
+    let organizationName = null;
+    if (invite.organization_id) {
+      const org = await db('organizations').where({ id: invite.organization_id }).first();
+      organizationName = org?.name || null;
+    }
+
+    // Mask email to prevent PII leakage on public endpoint
+    let maskedEmail: string | null = null;
+    if (invite.email) {
+      const [local, domain] = invite.email.split('@');
+      maskedEmail = local.length > 2
+        ? `${local[0]}${'*'.repeat(local.length - 2)}${local[local.length - 1]}@${domain}`
+        : `${local[0]}***@${domain}`;
+    }
+
+    res.json({
+      success: true,
+      valid: true,
+      data: {
+        code: invite.code,
+        role: invite.role,
+        email: maskedEmail,
+        targetedEmail: !!invite.email,
+        organizationName,
+        expiresAt: invite.expires_at,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: 'Failed to validate invite code' });
   }
 });
 

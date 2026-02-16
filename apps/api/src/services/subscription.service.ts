@@ -117,42 +117,47 @@ export async function createSubscription(params: {
   const graceEnd = new Date(periodEnd);
   graceEnd.setDate(graceEnd.getDate() + 7);
 
-  // Deactivate ALL old subscriptions (including expired) so the LEFT JOIN
-  // in GET /admin/organizations never produces duplicate rows per org
-  await db('subscriptions')
-    .where({ organization_id: params.organizationId })
-    .whereIn('status', ['active', 'grace_period', 'expired'])
-    .update({ status: 'cancelled', updated_at: db.fn.now() });
+  // Wrap all subscription writes in a single transaction for atomicity
+  const sub = await db.transaction(async (trx) => {
+    // Deactivate ALL old subscriptions (including expired) so the LEFT JOIN
+    // in GET /admin/organizations never produces duplicate rows per org
+    await trx('subscriptions')
+      .where({ organization_id: params.organizationId })
+      .whereIn('status', ['active', 'grace_period', 'expired'])
+      .update({ status: 'cancelled', updated_at: trx.fn.now() });
 
-  const [sub] = await db('subscriptions').insert({
-    organization_id: params.organizationId,
-    plan_id: params.planId,
-    status: initialStatus,
-    billing_cycle: params.billingCycle,
-    currency: params.currency,
-    billing_country: params.billingCountry,
-    amount_paid: params.amountPaid,
-    current_period_start: now.toISOString(),
-    current_period_end: periodEnd.toISOString(),
-    grace_period_end: graceEnd.toISOString(),
-    payment_gateway: params.paymentGateway,
-    gateway_subscription_id: params.gatewaySubscriptionId,
-    created_by: safeCreatedBy,
-  }).returning('*');
+    const [newSub] = await trx('subscriptions').insert({
+      organization_id: params.organizationId,
+      plan_id: params.planId,
+      status: initialStatus,
+      billing_cycle: params.billingCycle,
+      currency: params.currency,
+      billing_country: params.billingCountry,
+      amount_paid: params.amountPaid,
+      current_period_start: now.toISOString(),
+      current_period_end: periodEnd.toISOString(),
+      grace_period_end: graceEnd.toISOString(),
+      payment_gateway: params.paymentGateway,
+      gateway_subscription_id: params.gatewaySubscriptionId,
+      created_by: safeCreatedBy,
+    }).returning('*');
 
-  // Update org
-  await db('organizations').where({ id: params.organizationId }).update({
-    subscription_status: initialStatus === 'active' ? 'active' : 'pending',
-    billing_currency: params.currency,
-    billing_country: params.billingCountry,
-  });
+    // Update org
+    await trx('organizations').where({ id: params.organizationId }).update({
+      subscription_status: initialStatus === 'active' ? 'active' : 'pending',
+      billing_currency: params.currency,
+      billing_country: params.billingCountry,
+    });
 
-  // Log history
-  await db('subscription_history').insert({
-    subscription_id: sub.id,
-    organization_id: params.organizationId,
-    action: 'created',
-    metadata: JSON.stringify({ planId: params.planId, amountPaid: params.amountPaid, cycle: params.billingCycle }),
+    // Log history
+    await trx('subscription_history').insert({
+      subscription_id: newSub.id,
+      organization_id: params.organizationId,
+      action: 'created',
+      metadata: JSON.stringify({ planId: params.planId, amountPaid: params.amountPaid, cycle: params.billingCycle }),
+    });
+
+    return newSub;
   });
 
   logger.info('[SUB] Subscription created', {
@@ -197,23 +202,26 @@ export async function renewSubscription(orgId: string, amountPaid: number, payme
   const graceEnd = new Date(newEnd);
   graceEnd.setDate(graceEnd.getDate() + 7);
 
-  await db('subscriptions').where({ id: sub.id }).update({
-    status: 'active',
-    amount_paid: amountPaid,
-    current_period_start: now.toISOString(),
-    current_period_end: newEnd.toISOString(),
-    grace_period_end: graceEnd.toISOString(),
-    gateway_subscription_id: paymentRef || sub.gateway_subscription_id,
-    updated_at: db.fn.now(),
-  });
+  // Wrap renewal in a transaction for atomicity
+  await db.transaction(async (trx) => {
+    await trx('subscriptions').where({ id: sub.id }).update({
+      status: 'active',
+      amount_paid: amountPaid,
+      current_period_start: now.toISOString(),
+      current_period_end: newEnd.toISOString(),
+      grace_period_end: graceEnd.toISOString(),
+      gateway_subscription_id: paymentRef || sub.gateway_subscription_id,
+      updated_at: trx.fn.now(),
+    });
 
-  await db('organizations').where({ id: orgId }).update({ subscription_status: 'active' });
+    await trx('organizations').where({ id: orgId }).update({ subscription_status: 'active' });
 
-  await db('subscription_history').insert({
-    subscription_id: sub.id,
-    organization_id: orgId,
-    action: 'renewed',
-    metadata: JSON.stringify({ amountPaid, paymentRef }),
+    await trx('subscription_history').insert({
+      subscription_id: sub.id,
+      organization_id: orgId,
+      action: 'renewed',
+      metadata: JSON.stringify({ amountPaid, paymentRef }),
+    });
   });
 
   await writeAuditLog({
@@ -261,13 +269,18 @@ export async function topUpAiWallet(params: {
   paymentGateway?: string;
 }) {
   await db.transaction(async (trx) => {
-    const wallet = await trx('ai_wallet').where({ organization_id: params.orgId }).first();
+    // Lock wallet row to prevent concurrent top-up race conditions
+    const wallet = await trx('ai_wallet').where({ organization_id: params.orgId }).forUpdate().first();
+    if (!wallet) {
+      throw new Error('AI wallet not found for top-up');
+    }
     const balanceBefore = parseFloat(wallet.balance_minutes);
     const balanceAfter = balanceBefore + params.minutes;
     await trx('ai_wallet')
       .where({ organization_id: params.orgId })
       .update({
         balance_minutes: trx.raw('balance_minutes + ?', [params.minutes]),
+        total_topped_up: trx.raw('COALESCE(total_topped_up, 0) + ?', [params.minutes]),
         updated_at: trx.fn.now(),
       });
 
@@ -315,13 +328,18 @@ export async function topUpTranslationWallet(params: {
   paymentGateway?: string;
 }) {
   await db.transaction(async (trx) => {
-    const wallet = await trx('translation_wallet').where({ organization_id: params.orgId }).first();
+    // Lock wallet row to prevent concurrent top-up race conditions
+    const wallet = await trx('translation_wallet').where({ organization_id: params.orgId }).forUpdate().first();
+    if (!wallet) {
+      throw new Error('Translation wallet not found for top-up');
+    }
     const balanceBefore = parseFloat(wallet.balance_minutes);
     const balanceAfter = balanceBefore + params.minutes;
     await trx('translation_wallet')
       .where({ organization_id: params.orgId })
       .update({
         balance_minutes: trx.raw('balance_minutes + ?', [params.minutes]),
+        total_topped_up: trx.raw('COALESCE(total_topped_up, 0) + ?', [params.minutes]),
         updated_at: trx.fn.now(),
       });
 

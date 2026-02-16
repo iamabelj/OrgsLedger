@@ -15,7 +15,6 @@ import {
   Dimensions,
 } from 'react-native';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 import { showAlert } from '../../src/utils/alert';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -54,6 +53,17 @@ export default function HomeScreen() {
   const [aiHours, setAiHours] = useState<{ balance: number; used: number; remaining: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Enhanced dashboard data
+  const [memberCount, setMemberCount] = useState(0);
+  const [pendingTransfers, setPendingTransfers] = useState(0);
+  const [recentAnnouncements, setRecentAnnouncements] = useState<any[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
+  const [activeCampaigns, setActiveCampaigns] = useState<any[]>([]);
+  const [pendingDues, setPendingDues] = useState(0);
+  const [pendingFines, setPendingFines] = useState(0);
+  const [activePolls, setActivePolls] = useState<any[]>([]);
+  const [platformStats, setPlatformStats] = useState<any>(null);
+
   const currentMembership = memberships.find((m) => m.organization_id === currentOrgId);
   const userRole = currentMembership?.role || 'member';
   const globalRole = user?.globalRole;
@@ -72,9 +82,15 @@ export default function HomeScreen() {
     if (!currentOrgId) return;
     try {
       setError(null);
-      const [orgRes, meetRes] = await Promise.allSettled([
+      const [orgRes, meetRes, annRes, eventRes, campaignRes, duesRes, finesRes, pollsRes] = await Promise.allSettled([
         api.orgs.get(currentOrgId),
         api.meetings.list(currentOrgId, { status: 'scheduled', limit: 3 }),
+        api.announcements.list(currentOrgId, { limit: 3 }),
+        api.events.list(currentOrgId, { limit: 3 }),
+        api.financials.getCampaigns(currentOrgId),
+        api.financials.getDues(currentOrgId),
+        api.financials.getFines(currentOrgId),
+        api.polls.list(currentOrgId, { limit: 5 }),
       ]);
       
       if (orgRes.status === 'fulfilled') {
@@ -85,6 +101,36 @@ export default function HomeScreen() {
         setUpcomingMeetings((meetRes.value.data.data || []).slice(0, 3));
       }
       
+      if (annRes.status === 'fulfilled') {
+        setRecentAnnouncements((annRes.value.data.data || []).slice(0, 3));
+      }
+
+      if (eventRes.status === 'fulfilled') {
+        setUpcomingEvents((eventRes.value.data.data || []).slice(0, 3));
+      }
+
+      if (campaignRes.status === 'fulfilled') {
+        const campaigns = campaignRes.value.data.data || [];
+        setActiveCampaigns(campaigns.filter((c: any) => c.status === 'active').slice(0, 3));
+      }
+
+      if (duesRes.status === 'fulfilled') {
+        const dues = duesRes.value.data.data || [];
+        const pending = dues.filter((d: any) => d.status === 'pending' || d.status === 'partial');
+        setPendingDues(pending.length);
+      }
+
+      if (finesRes.status === 'fulfilled') {
+        const fines = finesRes.value.data.data || [];
+        const pending = fines.filter((f: any) => f.status === 'pending' || f.status === 'unpaid');
+        setPendingFines(pending.length);
+      }
+
+      if (pollsRes.status === 'fulfilled') {
+        const polls = pollsRes.value.data.data || [];
+        setActivePolls(polls.filter((p: any) => p.status === 'active' || !p.closed_at).slice(0, 3));
+      }
+
       await loadLedger(currentOrgId).catch(() => {});
 
       // Try to load notification count
@@ -93,6 +139,21 @@ export default function HomeScreen() {
         const unread = (notifRes.data || []).filter((n: any) => !n.read).length;
         setUnreadNotifications(unread);
       } catch (_) {}
+
+      // Load members count
+      try {
+        const memberRes = await api.orgs.listMembers(currentOrgId, { limit: 1 });
+        setMemberCount(memberRes.data?.data?.total || memberRes.data?.data?.length || 0);
+      } catch (_) {}
+
+      // Load pending bank transfers (admins only)
+      if (isAdmin) {
+        try {
+          const transferRes = await api.payments.getPendingTransfers(currentOrgId);
+          const transfers = transferRes.data?.data || [];
+          setPendingTransfers(transfers.length);
+        } catch (_) {}
+      }
 
       // Load AI hours from wallet
       try {
@@ -105,11 +166,28 @@ export default function HomeScreen() {
           setAiHours({ balance, used, remaining });
         }
       } catch (_) {}
+
+      // Load platform stats (super admin only)
+      if (isSuperAdmin) {
+        try {
+          const [revRes, subsRes] = await Promise.allSettled([
+            api.subscriptions.adminRevenue(),
+            api.subscriptions.adminOrganizations(),
+          ]);
+          const stats: any = {};
+          if (revRes.status === 'fulfilled') {
+            stats.revenue = revRes.value.data?.data?.totalRevenue || 0;
+          }
+          if (subsRes.status === 'fulfilled') {
+            stats.totalOrgs = (subsRes.value.data?.data || []).length;
+          }
+          setPlatformStats(stats);
+        } catch (_) {}
+      }
     } catch (err) {
       setError('Failed to load dashboard');
-      // Silently ignore
     }
-  }, [currentOrgId]);
+  }, [currentOrgId, isAdmin, isSuperAdmin]);
 
   useEffect(() => {
     loadDashboard();
@@ -352,6 +430,18 @@ export default function HomeScreen() {
               onPress={() => router.push('/admin/members')}
             />
             <AdminActionCard
+              icon="mail"
+              label="Signup Invites"
+              color="#7C3AED"
+              onPress={() => router.push('/admin/signup-invites')}
+            />
+            <AdminActionCard
+              icon="link"
+              label="Org Invites"
+              color="#0EA5E9"
+              onPress={() => router.push('/admin/invites')}
+            />
+            <AdminActionCard
               icon="receipt"
               label="Create Due"
               color={Colors.highlight}
@@ -445,7 +535,7 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Executive Section — limited admin features */}
+      {/* Executive Section — enhanced admin features */}
       {isExecutive && !isOrgAdmin && (
         <View style={styles.section}>
           <SectionHeader title="Executive Dashboard" />
@@ -457,10 +547,22 @@ export default function HomeScreen() {
               onPress={() => router.push('/admin/members')}
             />
             <AdminActionCard
+              icon="link"
+              label="Org Invites"
+              color="#0EA5E9"
+              onPress={() => router.push('/admin/invites')}
+            />
+            <AdminActionCard
               icon="receipt"
               label="Create Due"
               color={Colors.highlight}
               onPress={() => router.push('/admin/create-due')}
+            />
+            <AdminActionCard
+              icon="warning"
+              label="Issue Fine"
+              color={Colors.error}
+              onPress={() => router.push('/admin/create-fine')}
             />
             <AdminActionCard
               icon="megaphone"
@@ -487,6 +589,12 @@ export default function HomeScreen() {
               onPress={() => router.push('/admin/reports')}
             />
             <AdminActionCard
+              icon="analytics"
+              label="Analytics"
+              color="#EC4899"
+              onPress={() => router.push('/admin/analytics')}
+            />
+            <AdminActionCard
               icon="megaphone-outline"
               label="Announce"
               color="#F59E0B"
@@ -510,7 +618,84 @@ export default function HomeScreen() {
               color="#10B981"
               onPress={() => router.push('/documents')}
             />
+            <AdminActionCard
+              icon="swap-horizontal"
+              label="Transfers"
+              color="#0EA5E9"
+              onPress={() => router.push('/admin/bank-transfers')}
+            />
           </View>
+        </View>
+      )}
+
+      {/* Org Pulse — Live status counters for admins */}
+      {isAdmin && (
+        <View style={styles.section}>
+          <SectionHeader title="Organization Pulse" />
+          <View style={styles.pulseGrid}>
+            <TouchableOpacity style={styles.pulseCard} onPress={() => router.push('/admin/members')}>
+              <View style={[styles.pulseIcon, { backgroundColor: Colors.info + '18' }]}>
+                <Ionicons name="people" size={18} color={Colors.info} />
+              </View>
+              <Text style={styles.pulseValue}>{memberCount}</Text>
+              <Text style={styles.pulseLabel}>Members</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.pulseCard} onPress={() => router.push('/(tabs)/financials')}>
+              <View style={[styles.pulseIcon, { backgroundColor: Colors.warning + '18' }]}>
+                <Ionicons name="receipt" size={18} color={Colors.warning} />
+              </View>
+              <Text style={styles.pulseValue}>{pendingDues}</Text>
+              <Text style={styles.pulseLabel}>Pending Dues</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.pulseCard} onPress={() => router.push('/(tabs)/financials')}>
+              <View style={[styles.pulseIcon, { backgroundColor: Colors.error + '18' }]}>
+                <Ionicons name="warning" size={18} color={Colors.error} />
+              </View>
+              <Text style={styles.pulseValue}>{pendingFines}</Text>
+              <Text style={styles.pulseLabel}>Open Fines</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.pulseCard} onPress={() => router.push('/admin/bank-transfers')}>
+              <View style={[styles.pulseIcon, { backgroundColor: '#6366F1' + '18' }]}>
+                <Ionicons name="swap-horizontal" size={18} color="#6366F1" />
+              </View>
+              <Text style={styles.pulseValue}>{pendingTransfers}</Text>
+              <Text style={styles.pulseLabel}>Transfers</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Super Admin Platform Overview */}
+      {isSuperAdmin && platformStats && (
+        <View style={styles.section}>
+          <Card variant="elevated" style={styles.platformCard}>
+            <View style={styles.finCardHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="globe" size={18} color="#7C3AED" />
+                <Text style={styles.finCardTitle}>Platform Overview</Text>
+              </View>
+              <TouchableOpacity onPress={() => router.push('/admin/saas-dashboard')}>
+                <Text style={styles.viewAllText}>Full Dashboard</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.finCardGrid}>
+              <View style={styles.finCardItem}>
+                <Ionicons name="business" size={20} color="#7C3AED" />
+                <Text style={styles.finCardValue}>
+                  {platformStats.totalOrgs || 0}
+                </Text>
+                <Text style={styles.finCardLabel}>Organizations</Text>
+              </View>
+              <View style={styles.finCardDivider} />
+              <View style={styles.finCardItem}>
+                <Ionicons name="cash" size={20} color={Colors.success} />
+                <Text style={styles.finCardValue}>
+                  ${(platformStats.revenue || 0).toFixed(0)}
+                </Text>
+                <Text style={styles.finCardLabel}>Revenue</Text>
+              </View>
+            </View>
+          </Card>
         </View>
       )}
 
@@ -523,8 +708,141 @@ export default function HomeScreen() {
           <QuickActionCard icon="bar-chart-outline" label="Polls" color="#8B5CF6" onPress={() => router.push('/polls')} />
           <QuickActionCard icon="folder-open-outline" label="Documents" color="#10B981" onPress={() => router.push('/documents')} />
           <QuickActionCard icon="people-outline" label="Members" color={Colors.info} onPress={() => router.push('/members')} />
+          <QuickActionCard icon="help-circle-outline" label="Help" color={Colors.textSecondary} onPress={() => router.push('/help')} />
+          <QuickActionCard icon="shield-checkmark-outline" label="Legal" color="#64748B" onPress={() => router.push('/legal')} />
         </ScrollView>
       </View>
+
+      {/* Active Polls — vote now */}
+      {activePolls.length > 0 && (
+        <View style={styles.section}>
+          <SectionHeader
+            title="Active Polls"
+            actionLabel="All Polls"
+            onAction={() => router.push('/polls')}
+          />
+          {activePolls.map((poll: any) => (
+            <TouchableOpacity
+              key={poll.id}
+              style={styles.activityItem}
+              onPress={() => router.push(`/polls/${poll.id}`)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.activityDot, { backgroundColor: '#8B5CF6' }]} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.activityTitle}>{poll.question || poll.title}</Text>
+                <Text style={styles.activitySub}>
+                  {poll.totalVotes || 0} votes {String.fromCodePoint(0x00B7)} {poll.options?.length || 0} options
+                </Text>
+              </View>
+              <View style={styles.voteBadge}>
+                <Text style={styles.voteBadgeText}>Vote</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* Recent Announcements */}
+      {recentAnnouncements.length > 0 && (
+        <View style={styles.section}>
+          <SectionHeader
+            title="Recent Announcements"
+            actionLabel="See All"
+            onAction={() => router.push('/announcements')}
+          />
+          {recentAnnouncements.map((ann: any) => (
+            <TouchableOpacity
+              key={ann.id}
+              style={styles.activityItem}
+              onPress={() => router.push(`/announcements`)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.activityDot, { backgroundColor: '#F59E0B' }]} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.activityTitle} numberOfLines={1}>{ann.title}</Text>
+                <Text style={styles.activitySub} numberOfLines={1}>
+                  {ann.content?.substring(0, 80) || 'No content'}
+                </Text>
+              </View>
+              {ann.pinned && (
+                <Ionicons name="pin" size={14} color={Colors.highlight} />
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* Upcoming Events */}
+      {upcomingEvents.length > 0 && (
+        <View style={styles.section}>
+          <SectionHeader
+            title="Upcoming Events"
+            actionLabel="See All"
+            onAction={() => router.push('/events')}
+          />
+          {upcomingEvents.map((evt: any) => (
+            <TouchableOpacity
+              key={evt.id}
+              style={styles.meetingItem}
+              onPress={() => router.push(`/events/${evt.id}`)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.meetingDateCol, { backgroundColor: '#3B82F6' + '18' }]}>
+                <Text style={[styles.meetingDay, { color: '#3B82F6' }]}>
+                  {evt.event_date ? format(new Date(evt.event_date), 'dd') : '--'}
+                </Text>
+                <Text style={[styles.meetingMonth, { color: '#3B82F6' }]}>
+                  {evt.event_date ? format(new Date(evt.event_date), 'MMM') : ''}
+                </Text>
+              </View>
+              <View style={styles.meetingInfo}>
+                <Text style={styles.meetingTitle} numberOfLines={1}>{evt.title}</Text>
+                <View style={styles.meetingTimeRow}>
+                  <Ionicons name="location-outline" size={13} color={Colors.textLight} />
+                  <Text style={styles.meetingTime} numberOfLines={1}>
+                    {evt.location || 'No location set'}
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={Colors.textLight} />
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* Active Campaigns */}
+      {activeCampaigns.length > 0 && (
+        <View style={styles.section}>
+          <SectionHeader title="Active Campaigns" />
+          {activeCampaigns.map((c: any) => {
+            const goal = parseFloat(c.goal_amount || '0');
+            const raised = parseFloat(c.raised_amount || c.total_donated || '0');
+            const pct = goal > 0 ? Math.min((raised / goal) * 100, 100) : 0;
+            return (
+              <Card key={c.id} variant="elevated" style={styles.campaignCard}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={styles.campaignTitle} numberOfLines={1}>{c.title || c.name}</Text>
+                  <Text style={[styles.campaignPct, pct >= 100 ? { color: Colors.success } : {}]}>
+                    {pct.toFixed(0)}%
+                  </Text>
+                </View>
+                <View style={styles.aiBarContainer}>
+                  <View style={styles.aiBarTrack}>
+                    <View
+                      style={[styles.aiBarFill, { width: `${pct}%`, backgroundColor: pct >= 100 ? Colors.success : Colors.highlight }]}
+                    />
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                  <Text style={styles.finCardLabel}>${raised.toFixed(0)} raised</Text>
+                  <Text style={styles.finCardLabel}>Goal: ${goal.toFixed(0)}</Text>
+                </View>
+              </Card>
+            );
+          })}
+        </View>
+      )}
 
       {/* Upcoming Meetings */}
       <View style={styles.section}>
@@ -645,7 +963,7 @@ function QuickActionCard({
   );
 }
 
-/** Admin Action Card (grid) */
+/** Admin Action Card (grid) — responsive width */
 function AdminActionCard({
   icon,
   label,
@@ -657,8 +975,12 @@ function AdminActionCard({
   color: string;
   onPress: () => void;
 }) {
+  const screenW = Dimensions.get('window').width;
+  // 4 cols on phone, 5 on tablet, 6 on desktop
+  const cols = screenW >= 1024 ? 6 : screenW >= 768 ? 5 : 4;
+  const cardW = (screenW - Spacing.md * 2 - Spacing.sm * (cols - 1)) / cols;
   return (
-    <TouchableOpacity style={styles.adminCard} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity style={[styles.adminCard, { width: cardW }]} onPress={onPress} activeOpacity={0.7}>
       <View style={[styles.adminIcon, { backgroundColor: color + '18' }]}>
         <Ionicons name={icon} size={20} color={color} />
       </View>
@@ -839,7 +1161,6 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   adminCard: {
-    width: (SCREEN_WIDTH - Spacing.md * 2 - Spacing.sm * 3) / 4,
     alignItems: 'center',
     gap: 6,
     paddingVertical: Spacing.sm,
@@ -979,5 +1300,108 @@ const styles = StyleSheet.create({
     color: Colors.textLight,
     textTransform: 'capitalize',
     marginTop: 1,
+  },
+
+  // Org Pulse Grid
+  pulseGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  pulseCard: {
+    flexBasis: '48%',
+    flexGrow: 1,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    alignItems: 'center',
+    gap: 6,
+  },
+  pulseIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pulseValue: {
+    fontSize: FontSize.xxl,
+    fontWeight: FontWeight.extrabold,
+    color: Colors.textPrimary,
+    letterSpacing: -0.5,
+  },
+  pulseLabel: {
+    fontSize: FontSize.xs,
+    color: Colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+
+  // Platform Card
+  platformCard: {
+    paddingVertical: Spacing.lg,
+    borderWidth: 1,
+    borderColor: '#7C3AED' + '25',
+  },
+
+  // Activity Items
+  activityItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    gap: Spacing.sm,
+  },
+  activityDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  activityTitle: {
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.semibold,
+    color: Colors.textPrimary,
+  },
+  activitySub: {
+    fontSize: FontSize.xs,
+    color: Colors.textLight,
+    marginTop: 2,
+  },
+
+  // Vote Badge
+  voteBadge: {
+    backgroundColor: '#8B5CF6' + '18',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.sm,
+  },
+  voteBadgeText: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.semibold,
+    color: '#8B5CF6',
+  },
+
+  // Campaign Card
+  campaignCard: {
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  campaignTitle: {
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.semibold,
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+  campaignPct: {
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.bold,
+    color: Colors.highlight,
+    marginLeft: Spacing.sm,
   },
 });
