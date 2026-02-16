@@ -1,18 +1,60 @@
 // ============================================================
-// OrgsLedger Mobile — Main Content Layout (formerly Tabs)
+// OrgsLedger Mobile — Main Content Layout (Tabs → Sidebar)
 // ============================================================
-// Now using drawer navigation instead of bottom tabs
+// Premium header with hamburger toggle. Desktop sidebar is
+// collapsible; mobile uses overlay drawer.
 
 import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Stack } from 'expo-router';
-import { Colors, FontWeight, FontSize } from '../../src/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { Colors, FontWeight, FontSize, Spacing, BorderRadius } from '../../src/theme';
 import { HamburgerButton } from '../../src/components/HamburgerButton';
+import { useDrawer } from '../../src/contexts/DrawerContext';
+import { useAuthStore } from '../../src/stores/auth.store';
+import { router } from 'expo-router';
+
+function HeaderRight() {
+  const user = useAuthStore((s) => s.user);
+  if (!user) return null;
+
+  return (
+    <View style={headerStyles.right}>
+      <TouchableOpacity
+        style={headerStyles.iconBtn}
+        onPress={() => router.push('/notifications')}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="notifications-outline" size={20} color={Colors.textSecondary} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const headerStyles = StyleSheet.create({
+  right: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginRight: Spacing.sm,
+  },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
 
 export default function TabLayout() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: Colors.primary },
+        headerStyle: {
+          backgroundColor: Colors.primary,
+        },
         headerTintColor: Colors.textPrimary,
         headerTitleStyle: {
           fontWeight: FontWeight.bold,
@@ -21,15 +63,16 @@ export default function TabLayout() {
           letterSpacing: 0.3,
         },
         headerLeft: () => <HamburgerButton />,
+        headerRight: () => <HeaderRight />,
         headerShadowVisible: false,
         contentStyle: { backgroundColor: Colors.background },
       }}
     >
-      <Stack.Screen name="home" options={{ title: 'Home' }} />
+      <Stack.Screen name="home" options={{ title: 'Dashboard' }} />
       <Stack.Screen name="chat" options={{ title: 'Chat' }} />
       <Stack.Screen name="meetings" options={{ title: 'Meetings' }} />
       <Stack.Screen name="financials" options={{ title: 'Financials' }} />
-      <Stack.Screen name="profile" options={{ title: 'Profile' }} />
+      <Stack.Screen name="profile" options={{ title: 'My Profile' }} />
     </Stack>
   );
 }

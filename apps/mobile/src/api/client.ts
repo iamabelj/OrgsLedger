@@ -88,6 +88,17 @@ class ApiClient {
       this.client.post('/auth/verify-email', data),
     changePassword: (data: { currentPassword: string; newPassword: string }) =>
       this.client.put('/auth/change-password', data),
+    uploadAvatar: (file: { uri: string; name: string; mimeType: string }) => {
+      const formData = new FormData();
+      formData.append('avatar', {
+        uri: file.uri,
+        name: file.name,
+        type: file.mimeType,
+      } as any);
+      return this.client.post('/auth/upload-avatar', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    },
   };
 
   // ── Organizations ─────────────────────────────────────

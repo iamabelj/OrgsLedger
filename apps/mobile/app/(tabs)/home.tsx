@@ -232,27 +232,18 @@ export default function HomeScreen() {
       refreshing={refreshing}
       onRefresh={onRefresh}
     >
-      {/* Header Section */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.greeting}>{getGreeting()},</Text>
-          <Text style={styles.userName}>{user?.firstName || 'User'}</Text>
-          {orgDetails && (
-            <TouchableOpacity onPress={handleOrgSwitch} style={styles.orgRow}>
-              <Ionicons name="business" size={14} color={Colors.highlight} />
-              <Text style={styles.orgName}>
-                {orgDetails.name}
-                {memberships.length > 1 && ' ▾'}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        <View style={styles.headerRight}>
+      {/* Hero Header */}
+      <View style={styles.heroSection}>
+        <View style={styles.heroTop}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.greeting}>{getGreeting()},</Text>
+            <Text style={styles.userName}>{user?.firstName || 'User'}</Text>
+          </View>
           <TouchableOpacity
             style={styles.notifBtn}
             onPress={() => router.push('/notifications')}
           >
-            <Ionicons name="notifications-outline" size={24} color={Colors.textPrimary} />
+            <Ionicons name="notifications-outline" size={22} color={Colors.textPrimary} />
             {unreadNotifications > 0 && (
               <View style={styles.notifBadge}>
                 <Text style={styles.notifBadgeText}>
@@ -261,24 +252,28 @@ export default function HomeScreen() {
               </View>
             )}
           </TouchableOpacity>
-          <Avatar name={user?.firstName + ' ' + (user?.lastName || '')} size={44} />
         </View>
+        {orgDetails && (
+          <TouchableOpacity onPress={handleOrgSwitch} style={styles.orgPill} activeOpacity={0.7}>
+            <View style={styles.orgPillIcon}>
+              <Ionicons name="shield-checkmark" size={14} color={Colors.highlight} />
+            </View>
+            <Text style={styles.orgName} numberOfLines={1}>
+              {orgDetails.name}
+            </Text>
+            {currentMembership && (
+              <View style={styles.rolePill}>
+                <Text style={styles.rolePillText}>
+                  {isOrgAdmin ? 'Admin' : isExecutive ? 'Executive' : userRole.replace('_', ' ')}
+                </Text>
+              </View>
+            )}
+            {memberships.length > 1 && (
+              <Ionicons name="chevron-down" size={14} color={Colors.textLight} style={{ marginLeft: 2 }} />
+            )}
+          </TouchableOpacity>
+        )}
       </View>
-
-      {/* Role Badge */}
-      {currentMembership && (
-        <View style={styles.roleBadgeRow}>
-          <Badge
-            label={
-              isOrgAdmin ? 'Super Admin' :
-              isExecutive ? 'Executive' :
-              userRole.replace('_', ' ')
-            }
-            variant={isOrgAdmin ? 'danger' : isExecutive ? 'info' : 'neutral'}
-            size="md"
-          />
-        </View>
-      )}
 
       {/* Financial Summary Card */}
       <View style={styles.section}>
@@ -380,42 +375,14 @@ export default function HomeScreen() {
       {/* Quick Actions */}
       <View style={styles.section}>
         <SectionHeader title="Quick Actions" />
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.quickActionsRow}
-        >
-          <QuickActionCard
-            icon="chatbubbles"
-            label="Chat"
-            color={Colors.info}
-            onPress={() => router.push('/(tabs)/chat')}
-          />
-          <QuickActionCard
-            icon="calendar"
-            label="Meetings"
-            color={Colors.success}
-            onPress={() => router.push('/(tabs)/meetings')}
-          />
-          <QuickActionCard
-            icon="receipt"
-            label="My Dues"
-            color={Colors.warning}
-            onPress={() => router.push('/(tabs)/financials')}
-          />
-          <QuickActionCard
-            icon="heart"
-            label="Donate"
-            color={Colors.error}
-            onPress={() => router.push('/(tabs)/financials')}
-          />
-          <QuickActionCard
-            icon="time"
-            label="History"
-            color={Colors.textSecondary}
-            onPress={() => router.push('/financials/history')}
-          />
-        </ScrollView>
+        <View style={styles.quickActionsGrid}>
+          <QuickActionCard icon="chatbubbles" label="Chat" color={Colors.info} onPress={() => router.push('/(tabs)/chat')} />
+          <QuickActionCard icon="calendar" label="Meetings" color={Colors.success} onPress={() => router.push('/(tabs)/meetings')} />
+          <QuickActionCard icon="receipt" label="My Dues" color={Colors.warning} onPress={() => router.push('/(tabs)/financials')} />
+          <QuickActionCard icon="heart" label="Donate" color={Colors.error} onPress={() => router.push('/(tabs)/financials')} />
+          <QuickActionCard icon="time" label="History" color={Colors.textSecondary} onPress={() => router.push('/financials/history')} />
+          <QuickActionCard icon="people-outline" label="Members" color={Colors.info} onPress={() => router.push('/members')} />
+        </View>
       </View>
 
       {/* Admin Section — Super Admin (org_admin) gets full control */}
@@ -702,15 +669,14 @@ export default function HomeScreen() {
       {/* Quick Access for all members */}
       <View style={styles.section}>
         <SectionHeader title="Quick Access" />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickRow}>
-          <QuickActionCard icon="megaphone-outline" label="Announcements" color="#F59E0B" onPress={() => router.push('/announcements')} />
+        <View style={styles.quickActionsGrid}>
+          <QuickActionCard icon="megaphone-outline" label="Announce" color="#F59E0B" onPress={() => router.push('/announcements')} />
           <QuickActionCard icon="calendar-outline" label="Events" color="#3B82F6" onPress={() => router.push('/events')} />
           <QuickActionCard icon="bar-chart-outline" label="Polls" color="#8B5CF6" onPress={() => router.push('/polls')} />
           <QuickActionCard icon="folder-open-outline" label="Documents" color="#10B981" onPress={() => router.push('/documents')} />
-          <QuickActionCard icon="people-outline" label="Members" color={Colors.info} onPress={() => router.push('/members')} />
           <QuickActionCard icon="help-circle-outline" label="Help" color={Colors.textSecondary} onPress={() => router.push('/help')} />
           <QuickActionCard icon="shield-checkmark-outline" label="Legal" color="#64748B" onPress={() => router.push('/legal')} />
-        </ScrollView>
+        </View>
       </View>
 
       {/* Active Polls — vote now */}
@@ -941,7 +907,7 @@ export default function HomeScreen() {
   );
 }
 
-/** Quick Action Card (horizontal scroll) */
+/** Quick Action Card (grid) */
 function QuickActionCard({
   icon,
   label,
@@ -955,10 +921,10 @@ function QuickActionCard({
 }) {
   return (
     <TouchableOpacity style={styles.quickCard} onPress={onPress} activeOpacity={0.7}>
-      <View style={[styles.quickIcon, { backgroundColor: color + '20' }]}>
+      <View style={[styles.quickIcon, { backgroundColor: color + '18' }]}>
         <Ionicons name={icon} size={22} color={color} />
       </View>
-      <Text style={styles.quickLabel}>{label}</Text>
+      <Text style={styles.quickLabel} numberOfLines={1}>{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -976,15 +942,14 @@ function AdminActionCard({
   onPress: () => void;
 }) {
   const screenW = Dimensions.get('window').width;
-  // 4 cols on phone, 5 on tablet, 6 on desktop
   const cols = screenW >= 1024 ? 6 : screenW >= 768 ? 5 : 4;
   const cardW = (screenW - Spacing.md * 2 - Spacing.sm * (cols - 1)) / cols;
   return (
     <TouchableOpacity style={[styles.adminCard, { width: cardW }]} onPress={onPress} activeOpacity={0.7}>
-      <View style={[styles.adminIcon, { backgroundColor: color + '18' }]}>
+      <View style={[styles.adminIcon, { backgroundColor: color + '15' }]}>
         <Ionicons name={icon} size={20} color={color} />
       </View>
-      <Text style={styles.adminLabel}>{label}</Text>
+      <Text style={styles.adminLabel} numberOfLines={1}>{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -993,69 +958,100 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   section: { paddingHorizontal: Spacing.md, marginBottom: Spacing.lg },
 
-  // Header
-  header: {
+  // Hero Header
+  heroSection: {
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.md,
+    backgroundColor: Colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+    marginBottom: Spacing.sm,
+  },
+  heroTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.sm,
   },
   headerLeft: { flex: 1 },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
   greeting: {
-    fontSize: FontSize.md,
+    fontSize: FontSize.sm,
     color: Colors.textSecondary,
-    fontWeight: FontWeight.medium,
+    fontWeight: FontWeight.medium as any,
+    letterSpacing: 0.3,
   },
   userName: {
     fontSize: FontSize.header,
-    fontWeight: FontWeight.extrabold,
+    fontWeight: FontWeight.extrabold as any,
     color: Colors.textPrimary,
     letterSpacing: -0.5,
   },
-  orgRow: {
+  orgPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
-    marginTop: Spacing.xs,
+    gap: 6,
+    marginTop: Spacing.sm,
+    backgroundColor: Colors.highlightSubtle,
+    alignSelf: 'flex-start',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.highlight + '25',
+  },
+  orgPillIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: Colors.highlight + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   orgName: {
-    fontSize: FontSize.sm,
+    fontSize: FontSize.xs,
     color: Colors.highlight,
-    fontWeight: FontWeight.semibold,
+    fontWeight: FontWeight.semibold as any,
+    maxWidth: 180,
+  },
+  rolePill: {
+    backgroundColor: Colors.highlight + '15',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.xs,
+  },
+  rolePillText: {
+    fontSize: 10,
+    fontWeight: FontWeight.bold as any,
+    color: Colors.highlight,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
   },
   notifBtn: {
-    position: 'relative',
-    padding: 4,
+    position: 'relative' as const,
+    padding: 8,
+    backgroundColor: Colors.background,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
   },
   notifBadge: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
+    position: 'absolute' as const,
+    top: 2,
+    right: 2,
     backgroundColor: Colors.error,
     borderRadius: 10,
     minWidth: 18,
     height: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
     paddingHorizontal: 4,
     borderWidth: 2,
-    borderColor: Colors.background,
+    borderColor: Colors.surface,
   },
   notifBadgeText: {
     fontSize: 10,
-    fontWeight: FontWeight.bold,
+    fontWeight: FontWeight.bold as any,
     color: Colors.textWhite,
-  },
-  roleBadgeRow: {
-    paddingHorizontal: Spacing.md,
-    marginBottom: Spacing.md,
   },
 
   // Financial Card
@@ -1126,32 +1122,30 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
 
-  // Quick Actions
-  quickActionsRow: {
-    paddingRight: Spacing.md,
-    gap: Spacing.sm,
-  },
-  quickRow: {
-    paddingRight: Spacing.md,
+  // Quick Actions (Grid)
+  quickActionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: Spacing.sm,
   },
   quickCard: {
     alignItems: 'center',
     width: 76,
     gap: 6,
+    paddingVertical: Spacing.xs,
   },
   quickIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   quickLabel: {
     fontSize: 11,
-    fontWeight: FontWeight.medium,
+    fontWeight: FontWeight.medium as any,
     color: Colors.textSecondary,
-    textAlign: 'center',
+    textAlign: 'center' as const,
   },
 
   // Admin Grid

@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as SplashScreen from 'expo-splash-screen';
 import { useAuthStore } from '../src/stores/auth.store';
 import { Colors } from '../src/theme';
-import { DrawerProvider } from '../src/contexts/DrawerContext';
+import { DrawerProvider, useDrawer } from '../src/contexts/DrawerContext';
 import { NavigationDrawer } from '../src/components/NavigationDrawer';
 import { SmartHeaderLeft } from '../src/components/SmartHeaderLeft';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
@@ -27,15 +27,70 @@ if (Platform.OS !== 'web') {
   } catch {}
 }
 
-// In production, set EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY in your environment
 const STRIPE_PUBLISHABLE_KEY =
   process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ||
   ((__DEV__ as boolean) ? 'pk_test_placeholder' : '');
 
+/** Inner layout that consumes drawer context for responsive sidebar spacing */
+function AppShell() {
+  const { drawerWidth, isDesktop } = useDrawer();
+
+  return (
+    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: Colors.background }}>
+      {/* Sidebar takes fixed width on desktop, or is overlay on mobile */}
+      <NavigationDrawer />
+
+      {/* Main content area — flex: 1, shifts right on desktop when drawer is open */}
+      <View style={{
+        flex: 1,
+        marginLeft: isDesktop ? 0 : 0, // drawer is inline on desktop, overlay on mobile
+      }}>
+        <StatusBar style="light" />
+        <Stack
+          screenOptions={{
+            headerStyle: { backgroundColor: Colors.primary },
+            headerTintColor: Colors.textWhite,
+            headerTitleStyle: { fontWeight: '600' },
+            headerBackTitleVisible: false,
+            headerLeft: () => <SmartHeaderLeft />,
+            contentStyle: { backgroundColor: Colors.background },
+            ...(Platform.OS === 'web' && {
+              headerBackImageSource: undefined,
+            }),
+          }}
+        >
+          <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen name="activate" options={{ headerShown: false }} />
+          <Stack.Screen name="(auth)" options={{ headerShown: false, headerLeft: () => null, gestureEnabled: false }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="admin" options={{ headerShown: false }} />
+          <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
+          <Stack.Screen name="organization" options={{ title: 'Join Organization' }} />
+          <Stack.Screen name="chat/[channelId]" options={{ title: 'Chat' }} />
+          <Stack.Screen name="meetings/[meetingId]" options={{ title: 'Meeting Details' }} />
+          <Stack.Screen name="meetings/create" options={{ title: 'New Meeting' }} />
+          <Stack.Screen name="financials/history" options={{ title: 'Payment History' }} />
+          <Stack.Screen name="financials/donate/[campaignId]" options={{ title: 'Make a Donation' }} />
+          <Stack.Screen name="announcements" options={{ title: 'Announcements' }} />
+          <Stack.Screen name="events" options={{ title: 'Events' }} />
+          <Stack.Screen name="polls" options={{ title: 'Polls' }} />
+          <Stack.Screen name="documents" options={{ title: 'Documents' }} />
+          <Stack.Screen name="members" options={{ title: 'Members' }} />
+          <Stack.Screen name="change-password" options={{ title: 'Change Password' }} />
+          <Stack.Screen name="legal" options={{ headerShown: false }} />
+          <Stack.Screen name="verify-email" options={{ title: 'Verify Email' }} />
+          <Stack.Screen name="create-org" options={{ title: 'Create Organization' }} />
+          <Stack.Screen name="invite/[code]" options={{ title: 'Join Organization' }} />
+          <Stack.Screen name="help" options={{ title: 'Help & Support' }} />
+        </Stack>
+      </View>
+    </View>
+  );
+}
+
 export default function RootLayout() {
   const loadUser = useAuthStore((s) => s.loadUser);
 
-  // Load Ionicons font for web
   const [fontsLoaded] = useFonts({
     ...Ionicons.font,
   });
@@ -60,53 +115,10 @@ export default function RootLayout() {
 
   const content = (
     <DrawerProvider>
-      <View style={{ flex: 1, flexDirection: 'row' }}>
-        <NavigationDrawer />
-        <View style={{ flex: 1 }}>
-          <StatusBar style="light" />
-          <Stack
-            screenOptions={{
-              headerStyle: { backgroundColor: Colors.primary },
-              headerTintColor: Colors.textWhite,
-              headerTitleStyle: { fontWeight: '600' },
-              headerBackTitleVisible: false,
-              headerLeft: () => <SmartHeaderLeft />,
-              contentStyle: { backgroundColor: Colors.background },
-              ...(Platform.OS === 'web' && {
-                headerBackImageSource: undefined,
-              }),
-            }}
-          >
-            <Stack.Screen name="index" options={{ headerShown: false }} />
-            <Stack.Screen name="activate" options={{ headerShown: false }} />
-            <Stack.Screen name="(auth)" options={{ headerShown: false, headerLeft: () => null, gestureEnabled: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="admin" options={{ headerShown: false }} />
-            <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
-            <Stack.Screen name="organization" options={{ title: 'Join Organization' }} />
-            <Stack.Screen name="chat/[channelId]" options={{ title: 'Chat' }} />
-            <Stack.Screen name="meetings/[meetingId]" options={{ title: 'Meeting Details' }} />
-            <Stack.Screen name="meetings/create" options={{ title: 'New Meeting' }} />
-            <Stack.Screen name="financials/history" options={{ title: 'Payment History' }} />
-            <Stack.Screen name="financials/donate/[campaignId]" options={{ title: 'Make a Donation' }} />
-            <Stack.Screen name="announcements" options={{ title: 'Announcements' }} />
-            <Stack.Screen name="events" options={{ title: 'Events' }} />
-            <Stack.Screen name="polls" options={{ title: 'Polls' }} />
-            <Stack.Screen name="documents" options={{ title: 'Documents' }} />
-            <Stack.Screen name="members" options={{ title: 'Members' }} />
-            <Stack.Screen name="change-password" options={{ title: 'Change Password' }} />
-            <Stack.Screen name="legal" options={{ headerShown: false }} />
-            <Stack.Screen name="verify-email" options={{ title: 'Verify Email' }} />
-            <Stack.Screen name="create-org" options={{ title: 'Create Organization' }} />
-            <Stack.Screen name="invite/[code]" options={{ title: 'Join Organization' }} />
-            <Stack.Screen name="help" options={{ title: 'Help & Support' }} />
-          </Stack>
-        </View>
-      </View>
+      <AppShell />
     </DrawerProvider>
   );
 
-  // StripeProvider is native-only; skip on web
   if (StripeProvider) {
     return (
       <ErrorBoundary>
