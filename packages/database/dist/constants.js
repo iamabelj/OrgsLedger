@@ -57,14 +57,13 @@ exports.WALLET_PRICES = {
 };
 // ── Subscription Plan Defaults ──────────────────────────────
 exports.PLAN_SLUGS = {
-    FREE: 'free',
     STANDARD: 'standard',
     PROFESSIONAL: 'professional',
     ENTERPRISE: 'enterprise',
+    ENTERPRISE_PRO: 'enterprise_pro',
 };
 // ── Defaults ────────────────────────────────────────────────
 exports.DEFAULTS = {
-    MAX_MEMBERS_FREE: 50,
     MAX_FILE_UPLOAD_MB: 10,
     DEFAULT_BILLING_CYCLE: exports.BILLING_CYCLES.ANNUAL,
     DEFAULT_CURRENCY: exports.CURRENCIES.USD,

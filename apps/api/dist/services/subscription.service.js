@@ -36,6 +36,7 @@ exports.getPlatformRevenue = getPlatformRevenue;
 const db_1 = __importDefault(require("../db"));
 const logger_1 = require("../logger");
 const audit_1 = require("../middleware/audit");
+const validators_1 = require("../utils/validators");
 const crypto_1 = __importDefault(require("crypto"));
 // ── Currency Helpers ──────────────────────────────────────
 function isNigeria(country) {
@@ -70,11 +71,6 @@ function getPlanPrice(plan, currency, cycle = 'annual') {
             : (parse(plan.price_usd_annual) ?? 0);
     }
     return Math.round(price * 100) / 100;
-}
-function isUuid(value) {
-    if (!value)
-        return false;
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 // ── Member Limit Check ────────────────────────────────────
 async function checkMemberLimit(orgId) {
@@ -121,7 +117,7 @@ async function getOrgSubscription(orgId) {
 }
 async function createSubscription(params) {
     const initialStatus = params.status || 'active';
-    const safeCreatedBy = isUuid(params.createdBy) ? params.createdBy : null;
+    const safeCreatedBy = (0, validators_1.isUUID)(params.createdBy) ? params.createdBy : null;
     const now = new Date();
     const periodEnd = new Date(now);
     if (params.billingCycle === 'monthly') {
@@ -366,7 +362,7 @@ async function deductAiWallet(orgId, minutes, description) {
             entityType: 'ai_wallet',
             entityId: orgId,
             newValue: { minutes, description: description || `AI usage: ${minutes.toFixed(1)} minutes` },
-        }).catch(() => { });
+        }).catch(err => logger_1.logger.warn('Audit log failed (AI wallet deduction)', err));
     }
     return result;
 }
@@ -410,7 +406,7 @@ async function deductTranslationWallet(orgId, minutes, description) {
             entityType: 'translation_wallet',
             entityId: orgId,
             newValue: { minutes, description: description || `Translation usage: ${minutes.toFixed(1)} minutes` },
-        }).catch(() => { });
+        }).catch(err => logger_1.logger.warn('Audit log failed (translation wallet deduction)', err));
     }
     return result;
 }
@@ -433,7 +429,7 @@ function generateInviteCode() {
     return crypto_1.default.randomBytes(4).toString('hex').toUpperCase();
 }
 async function createInviteLink(orgId, createdBy, role = 'member', maxUses, expiresAt) {
-    const safeCreatedBy = isUuid(createdBy) ? createdBy : null;
+    const safeCreatedBy = (0, validators_1.isUUID)(createdBy) ? createdBy : null;
     const code = generateInviteCode();
     const [link] = await (0, db_1.default)('invite_links').insert({
         organization_id: orgId,

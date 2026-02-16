@@ -106,7 +106,7 @@ router.post('/:orgId/dues', middleware_1.authenticate, middleware_1.loadMembersh
             title: 'New Due Created',
             body: `${data.title} — ${data.currency} ${data.amount} due by ${new Date(data.dueDate).toLocaleDateString()}`,
             data: { dueId: due.id, type: 'due_reminder' },
-        }, req.user.userId).catch(() => { });
+        }, req.user.userId).catch(err => logger_1.logger.warn('Push notification failed (new due)', err));
         await req.audit?.({
             organizationId: req.params.orgId,
             action: 'create',
@@ -203,7 +203,7 @@ router.post('/:orgId/fines', middleware_1.authenticate, middleware_1.loadMembers
             title: 'Fine Issued',
             body: `You have been fined ${data.currency} ${data.amount}: ${data.reason}`,
             data: { fineId: fine.id, type: 'fine' },
-        }).catch(() => { });
+        }).catch(err => logger_1.logger.warn('Push notification failed (fine issued)', err));
         await req.audit?.({
             organizationId: req.params.orgId,
             action: 'create',

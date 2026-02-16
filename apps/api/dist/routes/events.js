@@ -49,7 +49,7 @@ router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAnd
             title: 'New Event',
             body: `${title} — ${new Date(startDate).toLocaleDateString()}`,
             data: { eventId: event.id, type: 'event' },
-        }, req.user.userId).catch(() => { });
+        }, req.user.userId).catch(err => logger_1.logger.warn('Push notification failed (new event)', err));
         res.status(201).json({ success: true, data: event });
     }
     catch (err) {

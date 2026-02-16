@@ -50,7 +50,7 @@ router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAnd
             title: '📊 New Poll',
             body: title,
             data: { pollId: poll.id, type: 'poll' },
-        }, req.user.userId).catch(() => { });
+        }, req.user.userId).catch(err => logger_1.logger.warn('Push notification failed (new poll)', err));
         const createdOptions = await (0, db_1.default)('poll_options').where({ poll_id: poll.id }).orderBy('order');
         res.status(201).json({ success: true, data: { ...poll, options: createdOptions } });
     }

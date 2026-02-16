@@ -13,79 +13,15 @@ const db_1 = __importDefault(require("../db"));
 const middleware_1 = require("../middleware");
 const router = (0, express_1.Router)();
 // ── Schemas ─────────────────────────────────────────────────
-const updatePlanSchema = zod_1.z.object({
-    maxMembers: zod_1.z.number().int().min(1).optional(),
-    features: zod_1.z.record(zod_1.z.boolean()).optional(),
-    priceUsdAnnual: zod_1.z.number().min(0).optional(),
-    priceUsdMonthly: zod_1.z.number().min(0).optional(),
-    priceNgnAnnual: zod_1.z.number().min(0).optional(),
-    priceNgnMonthly: zod_1.z.number().min(0).optional(),
-    isActive: zod_1.z.boolean().optional(),
-    description: zod_1.z.string().optional(),
-});
 const updateConfigSchema = zod_1.z.object({
     key: zod_1.z.string().min(1),
     value: zod_1.z.any(),
     description: zod_1.z.string().optional(),
 });
 // ══════════════════════════════════════════════════════════════
-// SUBSCRIPTION PLAN MANAGEMENT (Developer only)
+// NOTE: Plan CRUD routes live in subscriptions.ts (/admin/plans)
+// to avoid duplication. Only non-plan admin routes remain here.
 // ══════════════════════════════════════════════════════════════
-// ── List subscription plans ─────────────────────────────────
-router.get('/plans', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (_req, res) => {
-    try {
-        const plans = await (0, db_1.default)('subscription_plans')
-            .select('*')
-            .orderBy('sort_order', 'asc');
-        res.json({ success: true, data: plans });
-    }
-    catch (err) {
-        res.status(500).json({ success: false, error: 'Failed to list plans' });
-    }
-});
-// ── Update a subscription plan ──────────────────────────────
-router.put('/plans/:planId', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), (0, middleware_1.validate)(updatePlanSchema), async (req, res) => {
-    try {
-        const previous = await (0, db_1.default)('subscription_plans').where({ id: req.params.planId }).first();
-        if (!previous) {
-            res.status(404).json({ success: false, error: 'Plan not found' });
-            return;
-        }
-        const updates = {};
-        if (req.body.maxMembers !== undefined)
-            updates.max_members = req.body.maxMembers;
-        if (req.body.features !== undefined)
-            updates.features = JSON.stringify(req.body.features);
-        if (req.body.priceUsdAnnual !== undefined)
-            updates.price_usd_annual = req.body.priceUsdAnnual;
-        if (req.body.priceUsdMonthly !== undefined)
-            updates.price_usd_monthly = req.body.priceUsdMonthly;
-        if (req.body.priceNgnAnnual !== undefined)
-            updates.price_ngn_annual = req.body.priceNgnAnnual;
-        if (req.body.priceNgnMonthly !== undefined)
-            updates.price_ngn_monthly = req.body.priceNgnMonthly;
-        if (req.body.isActive !== undefined)
-            updates.is_active = req.body.isActive;
-        if (req.body.description !== undefined)
-            updates.description = req.body.description;
-        if (Object.keys(updates).length === 0) {
-            res.status(400).json({ success: false, error: 'No fields to update' });
-            return;
-        }
-        await (0, db_1.default)('subscription_plans').where({ id: req.params.planId }).update(updates);
-        await req.audit?.({
-            action: 'update',
-            entityType: 'subscription_plan',
-            entityId: req.params.planId,
-            previousValue: previous,
-            newValue: updates,
-        });
-        res.json({ success: true, message: 'Plan updated' });
-    }
-    catch (err) {
-        res.status(500).json({ success: false, error: 'Failed to update plan' });
-    }
-});
 // ══════════════════════════════════════════════════════════════
 // PLATFORM CONFIG (Developer)
 // ══════════════════════════════════════════════════════════════
@@ -101,13 +37,14 @@ router.get('/config', middleware_1.authenticate, (0, middleware_1.requireDevelop
 // ══════════════════════════════════════════════════════════════
 // GRANT AI WALLET MINUTES (Developer)
 // ══════════════════════════════════════════════════════════════
-router.post('/ai-credits/grant', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (req, res) => {
+const grantCreditsSchema = zod_1.z.object({
+    organizationId: zod_1.z.string().uuid(),
+    credits: zod_1.z.number().int().min(1),
+    reason: zod_1.z.string().max(500).optional(),
+});
+router.post('/ai-credits/grant', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), (0, middleware_1.validate)(grantCreditsSchema), async (req, res) => {
     try {
         const { organizationId, credits, reason } = req.body;
-        if (!organizationId || !credits || credits < 1) {
-            res.status(400).json({ success: false, error: 'organizationId and credits (>=1) required' });
-            return;
-        }
         // Ensure ai_wallet exists
         let wallet = await (0, db_1.default)('ai_wallet')
             .where({ organization_id: organizationId })

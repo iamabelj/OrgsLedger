@@ -857,7 +857,7 @@ router.get('/flutterwave/callback', async (req: Request, res: Response) => {
 
       if (tx && tx.status === 'pending') {
         // Verify amount matches
-        const paidAmount = parseFloat(result.amount) || 0;
+        const paidAmount = parseFloat(String(result.amount)) || 0;
         const expectedAmount = parseFloat(tx.amount) || 0;
         if (paidAmount < expectedAmount) {
           logger.error('[FLUTTERWAVE-CB] Amount mismatch', { txId: tx.id, paid: paidAmount, expected: expectedAmount, txRef });

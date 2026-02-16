@@ -101,7 +101,7 @@ class WebhookProcessor {
                 title: 'Payment Successful',
                 body: `Your ${this.gatewayName} payment has been confirmed.`,
                 data: { transactionId: tx.id, type: constants_1.NOTIFICATION_TYPES.PAYMENT },
-            }).catch(() => { });
+            }).catch(err => logger_1.logger.warn('Push notification failed (webhook)', err));
         }
         // Real-time socket event
         const io = registry_1.services.getOptional('io');

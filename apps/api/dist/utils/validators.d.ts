@@ -1,5 +1,5 @@
-/** UUID v4 format check (does NOT hit the DB) */
-export declare function isUUID(value: string): boolean;
+/** UUID v1–v5 format check (does NOT hit the DB) */
+export declare function isUUID(value?: string | null): boolean;
 /** Timing-safe string comparison (prevents timing-based attacks) */
 export declare function timingSafeCompare(a: string, b: string): boolean;
 /** Check if a string is a safe slug (lowercase alphanumeric + hyphens) */

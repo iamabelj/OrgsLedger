@@ -648,8 +648,10 @@ router.get('/:orgId/subscription', middleware_1.authenticate, middleware_1.loadM
 // ── Upload Organization Logo ──────────────────────────────
 router.post('/:orgId/logo', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), (req, res, next) => {
     logoUpload.single('logo')(req, res, (err) => {
-        if (err)
-            return res.status(400).json({ success: false, error: err.message });
+        if (err) {
+            logger_1.logger.warn('Logo upload error', err);
+            return res.status(400).json({ success: false, error: 'Invalid file upload' });
+        }
         next();
     });
 }, async (req, res) => {

@@ -208,7 +208,7 @@ function setupSocketIO(httpServer) {
                     entityType: 'meeting',
                     entityId: meetingId,
                     newValue: { language, participantCount: participants.length },
-                }).catch(() => { });
+                }).catch(err => logger_1.logger.warn('Audit log failed (translation session)', err));
             }
         });
         // User sends spoken text for translation

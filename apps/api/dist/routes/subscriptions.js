@@ -127,10 +127,17 @@ router.post('/invite/:code/join', middleware_1.authenticate, async (req, res) =>
     }
     catch (err) {
         logger_1.logger.error('Join via invite error', err);
-        const status = err.message?.includes('already') ? 409 :
-            err.message?.includes('limit') ? 403 :
-                err.message?.includes('Invalid') || err.message?.includes('expired') ? 404 : 500;
-        res.status(status).json({ success: false, error: err.message || 'Failed to join' });
+        const msg = err.message || '';
+        const status = msg.includes('already') ? 409 :
+            msg.includes('limit') ? 403 :
+                msg.includes('Invalid') || msg.includes('expired') ? 404 : 500;
+        const safeMessages = {
+            409: 'You have already joined this organization',
+            403: 'This organization has reached its member limit',
+            404: 'Invite link is invalid or expired',
+            500: 'Failed to join organization',
+        };
+        res.status(status).json({ success: false, error: safeMessages[status] });
     }
 });
 // ════════════════════════════════════════════════════════════
@@ -179,11 +186,11 @@ router.post('/:orgId/subscribe', middleware_1.authenticate, middleware_1.loadMem
     }
     catch (err) {
         logger_1.logger.error('Subscribe error', err);
-        res.status(500).json({ success: false, error: err.message || 'Subscription failed' });
+        res.status(500).json({ success: false, error: 'Subscription failed' });
     }
 });
 // POST /:orgId/renew
-router.post('/:orgId/renew', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
+router.post('/:orgId/renew', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), (0, middleware_1.validate)(renewSchema), async (req, res) => {
     try {
         const sub = await subSvc.getOrgSubscription(req.params.orgId);
         if (!sub) {
@@ -203,7 +210,7 @@ router.post('/:orgId/renew', middleware_1.authenticate, middleware_1.loadMembers
     }
     catch (err) {
         logger_1.logger.error('Renew error', err);
-        res.status(500).json({ success: false, error: err.message || 'Renewal failed' });
+        res.status(500).json({ success: false, error: 'Renewal failed' });
     }
 });
 // ── Wallets ─────────────────────────────────────────────────
@@ -267,7 +274,7 @@ router.post('/:orgId/wallet/ai/topup', middleware_1.authenticate, middleware_1.l
     }
     catch (err) {
         logger_1.logger.error('AI topup error', err);
-        res.status(500).json({ success: false, error: err.message || 'Top-up failed' });
+        res.status(500).json({ success: false, error: 'Top-up failed' });
     }
 });
 // POST /:orgId/wallet/translation/topup
@@ -296,7 +303,7 @@ router.post('/:orgId/wallet/translation/topup', middleware_1.authenticate, middl
     }
     catch (err) {
         logger_1.logger.error('Translation topup error', err);
-        res.status(500).json({ success: false, error: err.message || 'Top-up failed' });
+        res.status(500).json({ success: false, error: 'Top-up failed' });
     }
 });
 // GET /:orgId/wallet/ai/history
@@ -333,7 +340,7 @@ router.post('/:orgId/invite', middleware_1.authenticate, middleware_1.loadMember
     }
     catch (err) {
         logger_1.logger.error('Create invite error', err);
-        res.status(500).json({ success: false, error: err.message || 'Failed to create invite' });
+        res.status(500).json({ success: false, error: 'Failed to create invite' });
     }
 });
 // GET /:orgId/invites
@@ -595,7 +602,7 @@ router.post('/admin/organizations', middleware_1.authenticate, (0, middleware_1.
     }
     catch (err) {
         logger_1.logger.error('Admin create org error', err);
-        res.status(500).json({ success: false, error: err.message || 'Failed to create organization' });
+        res.status(500).json({ success: false, error: 'Failed to create organization' });
     }
 });
 // POST /admin/wallet/ai/adjust
@@ -620,7 +627,7 @@ router.post('/admin/wallet/ai/adjust', middleware_1.authenticate, (0, middleware
     }
     catch (err) {
         logger_1.logger.error('Admin adjust AI error', err);
-        res.status(500).json({ success: false, error: err.message || 'Adjustment failed' });
+        res.status(500).json({ success: false, error: 'Adjustment failed' });
     }
 });
 // POST /admin/wallet/translation/adjust
@@ -645,11 +652,11 @@ router.post('/admin/wallet/translation/adjust', middleware_1.authenticate, (0, m
     }
     catch (err) {
         logger_1.logger.error('Admin adjust translation error', err);
-        res.status(500).json({ success: false, error: err.message || 'Adjustment failed' });
+        res.status(500).json({ success: false, error: 'Adjustment failed' });
     }
 });
 // POST /admin/org/status — suspend or activate
-router.post('/admin/org/status', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (req, res) => {
+router.post('/admin/org/status', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), (0, middleware_1.validate)(orgStatusSchema), async (req, res) => {
     try {
         // Accept both camelCase (organizationId, action) and snake_case (organization_id, status) from frontend
         const organizationId = req.body.organizationId || req.body.organization_id;
@@ -881,7 +888,19 @@ router.post('/admin/plans', middleware_1.authenticate, (0, middleware_1.requireD
     }
 });
 // PUT /admin/plans/:planId
-router.put('/admin/plans/:planId', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (req, res) => {
+const updatePlanFieldsSchema = zod_1.z.object({
+    name: zod_1.z.string().min(2).max(100).optional(),
+    description: zod_1.z.string().max(1000).optional(),
+    price_usd_annual: zod_1.z.number().min(0).optional(),
+    price_usd_monthly: zod_1.z.number().min(0).optional(),
+    price_ngn_annual: zod_1.z.number().min(0).optional(),
+    price_ngn_monthly: zod_1.z.number().min(0).optional(),
+    max_members: zod_1.z.number().int().min(1).optional(),
+    features: zod_1.z.any().optional(),
+    is_active: zod_1.z.boolean().optional(),
+    sort_order: zod_1.z.number().int().optional(),
+}).strict();
+router.put('/admin/plans/:planId', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), (0, middleware_1.validate)(updatePlanFieldsSchema), async (req, res) => {
     try {
         const previous = await (0, db_1.default)('subscription_plans').where({ id: req.params.planId }).first();
         if (!previous) {
@@ -1174,7 +1193,7 @@ router.post('/admin/organizations/:orgId/assign-plan', middleware_1.authenticate
     }
     catch (err) {
         logger_1.logger.error('Assign plan error', err);
-        res.status(500).json({ success: false, error: err.message || 'Failed to assign plan' });
+        res.status(500).json({ success: false, error: 'Failed to assign plan' });
     }
 });
 // DELETE /admin/organizations/:orgId — Delete organization (with safety checks)

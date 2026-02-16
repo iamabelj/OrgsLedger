@@ -44,13 +44,12 @@ export declare const WALLET_PRICES: {
     readonly AI_CREDIT_PER_HOUR_USD: 7;
 };
 export declare const PLAN_SLUGS: {
-    readonly FREE: "free";
     readonly STANDARD: "standard";
     readonly PROFESSIONAL: "professional";
     readonly ENTERPRISE: "enterprise";
+    readonly ENTERPRISE_PRO: "enterprise_pro";
 };
 export declare const DEFAULTS: {
-    readonly MAX_MEMBERS_FREE: 50;
     readonly MAX_FILE_UPLOAD_MB: 10;
     readonly DEFAULT_BILLING_CYCLE: "annual";
     readonly DEFAULT_CURRENCY: "USD";

@@ -21,22 +21,8 @@ const middleware_1 = require("../middleware");
 const logger_1 = require("../logger");
 const subscription_service_1 = require("../services/subscription.service");
 const email_service_1 = require("../services/email.service");
+const validators_1 = require("../utils/validators");
 const router = (0, express_1.Router)();
-// ── Timing-safe string comparison helper ────────────────────
-function timingSafeCompare(a, b) {
-    if (!a || !b)
-        return false;
-    try {
-        const bufA = Buffer.from(a, 'utf-8');
-        const bufB = Buffer.from(b, 'utf-8');
-        if (bufA.length !== bufB.length)
-            return false;
-        return crypto_1.default.timingSafeEqual(bufA, bufB);
-    }
-    catch {
-        return false;
-    }
-}
 // ── Multer for avatar uploads ───────────────────────────────
 const avatarStorage = multer_1.default.diskStorage({
     destination: (_req, _file, cb) => {
@@ -471,7 +457,11 @@ router.put('/me', middleware_1.authenticate, async (req, res) => {
     }
 });
 // ── Update Push Token ───────────────────────────────────────
-router.put('/push-token', middleware_1.authenticate, async (req, res) => {
+const pushTokenSchema = zod_1.z.object({
+    fcmToken: zod_1.z.string().max(500).optional(),
+    apnsToken: zod_1.z.string().max(500).optional(),
+}).refine(d => d.fcmToken || d.apnsToken, { message: 'fcmToken or apnsToken required' });
+router.put('/push-token', middleware_1.authenticate, (0, middleware_1.validate)(pushTokenSchema), async (req, res) => {
     try {
         const { fcmToken, apnsToken } = req.body;
         const updates = {};
@@ -563,7 +553,7 @@ router.post('/reset-password', (0, middleware_1.validate)(resetPasswordSchema), 
     try {
         const { email, code, newPassword } = req.body;
         const user = await (0, db_1.default)('users').where({ email, is_active: true }).first();
-        if (!user || !user.reset_code || !timingSafeCompare(user.reset_code, code)) {
+        if (!user || !user.reset_code || !(0, validators_1.timingSafeCompare)(user.reset_code, code)) {
             res.status(400).json({ success: false, error: 'Invalid or expired reset code' });
             return;
         }
@@ -663,7 +653,7 @@ router.post('/verify-email', middleware_1.authenticate, (0, middleware_1.validat
             res.json({ success: true, message: 'Email is already verified' });
             return;
         }
-        if (!timingSafeCompare(user.verification_code || '', code)) {
+        if (!(0, validators_1.timingSafeCompare)(user.verification_code || '', code)) {
             res.status(400).json({ success: false, error: 'Invalid verification code' });
             return;
         }
@@ -717,7 +707,8 @@ router.put('/change-password', middleware_1.authenticate, (0, middleware_1.valid
 router.post('/upload-avatar', middleware_1.authenticate, (req, res, next) => {
     avatarUpload.single('avatar')(req, res, (err) => {
         if (err) {
-            return res.status(400).json({ success: false, error: err.message });
+            logger_1.logger.warn('Avatar upload error', err);
+            return res.status(400).json({ success: false, error: 'Invalid file upload' });
         }
         next();
     });

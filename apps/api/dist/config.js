@@ -74,8 +74,8 @@ exports.config = {
         projectId: process.env.FIREBASE_PROJECT_ID || '',
     },
 };
-// Warn about critical config in non-development environments
-if (exports.config.env !== 'development') {
+// Warn about critical config in production/staging environments
+if (exports.config.env !== 'development' && exports.config.env !== 'test') {
     if (exports.config.jwt.secret === 'CHANGE_ME_IN_PRODUCTION') {
         console.error(`[CONFIG] FATAL: JWT_SECRET is using the default value in ${exports.config.env} — set JWT_SECRET in env.js or environment variables`);
         process.exit(1);
@@ -85,7 +85,8 @@ if (exports.config.env !== 'development') {
         process.exit(1);
     }
     if (!process.env.DATABASE_URL && exports.config.db.password === 'orgsledger_dev') {
-        console.warn(`[CONFIG] WARNING: DATABASE_URL not set and DB_PASSWORD is default in ${exports.config.env} — set it in env.js or environment variables`);
+        console.error(`[CONFIG] FATAL: DB_PASSWORD is using the default value in ${exports.config.env} — set DB_PASSWORD in env.js or environment variables`);
+        process.exit(1);
     }
 }
 //# sourceMappingURL=config.js.map

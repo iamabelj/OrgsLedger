@@ -135,7 +135,7 @@ router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAnd
             title: 'New Meeting Scheduled',
             body: `${title} — ${new Date(scheduledStart).toLocaleString()}`,
             data: { meetingId: meeting.id, type: 'meeting' },
-        }, req.user.userId).catch(() => { });
+        }, req.user.userId).catch(err => logger_1.logger.warn('Push notification failed (new meeting)', err));
         res.status(201).json({ success: true, data: meeting });
     }
     catch (err) {

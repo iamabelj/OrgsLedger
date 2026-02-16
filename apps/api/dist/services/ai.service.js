@@ -161,7 +161,7 @@ class AIService {
                 title: 'Meeting Minutes Ready',
                 body: `AI-generated minutes for "${meeting.title}" are now available.`,
                 data: { meetingId, type: 'minutes_ready' },
-            }).catch(() => { });
+            }).catch(err => logger_1.logger.warn('Push notification failed (minutes ready)', err));
             await (0, audit_1.writeAuditLog)({
                 organizationId,
                 userId: meeting.created_by,
