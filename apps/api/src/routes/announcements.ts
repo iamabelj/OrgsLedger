@@ -61,7 +61,7 @@ router.post(
           title: `📢 ${title}`,
           body: body.substring(0, 200),
           data: { announcementId: announcement.id, type: 'announcement' },
-        }, req.user!.userId).catch(() => {});
+        }, req.user!.userId).catch(err => logger.warn('Push notification failed (announcement)', err));
       }
 
       res.status(201).json({ success: true, data: announcement });

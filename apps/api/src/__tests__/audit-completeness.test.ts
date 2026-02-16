@@ -105,8 +105,8 @@ describe('Audit Log Completeness', () => {
 
     it('should use fire-and-forget pattern for deduction audit logs (no await)', () => {
       const deductSection = subscriptionService.split('async function deductAiWallet')[1]?.split('async function')[0] || '';
-      // Audit log should use .catch(() => {}) pattern — not block the deduction
-      expect(deductSection).toContain('.catch(() => {})');
+      // Audit log should use .catch pattern — not block the deduction
+      expect(deductSection).toContain('.catch(err => logger.warn(');
     });
   });
 
@@ -175,7 +175,7 @@ describe('Audit Log Completeness', () => {
 
     it('should have GET /admin/risk/low-balances endpoint', () => {
       expect(subscriptionsRoute).toContain("'/admin/risk/low-balances'");
-      expect(subscriptionsRoute).toContain('requireSuperAdmin()');
+      expect(subscriptionsRoute).toContain('requireDeveloper()');
     });
 
     it('should support configurable threshold for low-balance check', () => {
@@ -197,7 +197,7 @@ describe('Audit Log Completeness', () => {
 
     it('should have GET /admin/risk/spikes endpoint', () => {
       expect(subscriptionsRoute).toContain("'/admin/risk/spikes'");
-      expect(subscriptionsRoute).toContain('requireSuperAdmin()');
+      expect(subscriptionsRoute).toContain('requireDeveloper()');
     });
 
     it('should support configurable spike detection parameters', () => {
@@ -212,7 +212,7 @@ describe('Audit Log Completeness', () => {
 
     it('should include failed payments in risk analysis', () => {
       expect(subscriptionsRoute).toContain('failedPayments');
-      expect(subscriptionsRoute).toContain("status: 'failed'");
+      expect(subscriptionsRoute).toContain("'failed'");
     });
   });
 

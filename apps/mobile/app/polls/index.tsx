@@ -30,6 +30,7 @@ export default function PollsScreen() {
   const [description, setDescription] = useState('');
   const [options, setOptions] = useState(['', '']);
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const memberships = useAuthStore((s) => s.memberships);
@@ -40,11 +41,12 @@ export default function PollsScreen() {
 
   const loadPolls = useCallback(async () => {
     if (!currentOrgId) return;
+    setError(null);
     try {
       const res = await api.polls.list(currentOrgId);
       setPolls(res.data.data || []);
     } catch (err) {
-      console.error('Failed to load polls', err);
+      setError('Failed to load polls');
     } finally {
       setLoading(false);
       setRefreshing(false);

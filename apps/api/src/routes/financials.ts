@@ -120,7 +120,7 @@ router.post(
         title: 'New Due Created',
         body: `${data.title} — ${data.currency} ${data.amount} due by ${new Date(data.dueDate).toLocaleDateString()}`,
         data: { dueId: due.id, type: 'due_reminder' },
-      }, req.user!.userId).catch(() => {});
+      }, req.user!.userId).catch(err => logger.warn('Push notification failed (new due)', err));
 
       await (req as any).audit?.({
         organizationId: req.params.orgId,
@@ -246,7 +246,7 @@ router.post(
         title: 'Fine Issued',
         body: `You have been fined ${data.currency} ${data.amount}: ${data.reason}`,
         data: { fineId: fine.id, type: 'fine' },
-      }).catch(() => {});
+      }).catch(err => logger.warn('Push notification failed (fine issued)', err));
 
       await (req as any).audit?.({
         organizationId: req.params.orgId,

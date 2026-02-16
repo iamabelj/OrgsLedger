@@ -37,10 +37,12 @@ export default function PlansScreen() {
   const [aiTopUpHours, setAiTopUpHours] = useState('1');
   const [transTopUpHours, setTransTopUpHours] = useState('1');
   const [tab, setTab] = useState<'plans' | 'ai' | 'translation'>('plans');
+  const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     if (!currentOrgId) return;
     try {
+      setError(null);
       const [plansRes, subRes, walletsRes] = await Promise.all([
         api.subscriptions.getPlans(),
         api.subscriptions.getSubscription(currentOrgId),
@@ -51,7 +53,7 @@ export default function PlansScreen() {
       setAiWallet(walletsRes.data?.data?.ai);
       setTranslationWallet(walletsRes.data?.data?.translation);
     } catch (err: any) {
-      console.error('Load plans error', err);
+      setError('Failed to load subscription plans');
     } finally {
       setLoading(false);
       setRefreshing(false);

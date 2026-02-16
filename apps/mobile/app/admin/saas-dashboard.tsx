@@ -56,9 +56,11 @@ export default function SaasDashboard() {
   const [adjustType, setAdjustType] = useState<'ai' | 'translation'>('ai');
   const [adjustHours, setAdjustHours] = useState('');
   const [adjustDesc, setAdjustDesc] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     try {
+      setError(null);
       const [revRes, walletRes, subsRes, orgsRes] = await Promise.all([
         api.subscriptions.adminRevenue(),
         api.subscriptions.adminWalletAnalytics(),
@@ -84,7 +86,7 @@ export default function SaasDashboard() {
       setSubscriptions(subsRes.data?.subscriptions || []);
       setOrgs(orgsRes.data?.organizations || []);
     } catch (err: any) {
-      console.error('SaaS dashboard error', err);
+      setError('Failed to load SaaS dashboard data');
     } finally {
       setLoading(false);
       setRefreshing(false);

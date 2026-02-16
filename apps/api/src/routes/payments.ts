@@ -13,16 +13,9 @@ import { paystackService } from '../services/paystack.service';
 import { flutterwaveService } from '../services/flutterwave.service';
 import { emitFinancialUpdate } from '../socket';
 import { sendPushToUser } from '../services/push.service';
+import { toSubunits } from '../utils/formatters';
 
 const router = Router();
-
-// ── Safe cents conversion to avoid float precision issues ────
-function toSubunits(amount: number): number {
-  // Multiply by 100 using string arithmetic to avoid float issues
-  const [whole = '0', frac = ''] = String(amount).split('.');
-  const paddedFrac = (frac + '00').slice(0, 2);
-  return parseInt(whole, 10) * 100 + parseInt(paddedFrac, 10);
-}
 
 // ── Initialize Stripe ───────────────────────────────────────
 let stripe: any = null;
@@ -252,7 +245,7 @@ router.post(
             title: 'Bank Transfer Pending',
             body: `${user?.first_name || 'A member'} submitted a bank transfer for ${transaction.currency} ${transaction.amount}. Awaiting your approval.`,
             data: { transactionId, type: 'bank_transfer_approval' },
-          }).catch(() => {});
+          }).catch(err => logger.warn('Push notification failed (bank transfer pending)', err));
         }
 
         res.json({
@@ -270,7 +263,7 @@ router.post(
       res.status(400).json({ success: false, error: 'Unsupported gateway' });
     } catch (err: any) {
       logger.error('Payment error', err);
-      res.status(500).json({ success: false, error: err.message || 'Payment failed' });
+      res.status(500).json({ success: false, error: 'Payment failed' });
     }
   }
 );
@@ -325,7 +318,7 @@ async function sendPaymentNotification(req: Request, transaction: any, gatewayId
     title: 'Payment Successful',
     body: `Payment of ${transaction.currency} ${transaction.amount} confirmed.`,
     data: { transactionId: transaction.id, type: 'payment' },
-  }).catch(() => {});
+  }).catch(err => logger.warn('Push notification failed (payment success)', err));
 
   // Real-time ledger update
   const io = req.app.get('io');
@@ -520,7 +513,7 @@ router.post(
         title: 'Refund Processed',
         body: `A refund of ${transaction.currency} ${refundAmount} has been processed.`,
         data: { refundId: refund.id, type: 'refund' },
-      }).catch(() => {});
+      }).catch(err => logger.warn('Push notification failed (refund)', err));
 
       // Real-time ledger update for refund
       const io = req.app.get('io');
@@ -563,7 +556,7 @@ router.post('/webhooks/stripe', async (req: Request, res: Response) => {
       );
     } catch (err: any) {
       logger.error('Webhook signature verification failed', err.message);
-      res.status(400).send(`Webhook Error: ${err.message}`);
+      res.status(400).send('Webhook signature verification failed');
       return;
     }
 
@@ -590,7 +583,7 @@ router.post('/webhooks/stripe', async (req: Request, res: Response) => {
               title: 'Payment Successful',
               body: `Payment of ${tx.currency} ${tx.amount} confirmed.`,
               data: { transactionId: tx.id, type: 'payment' },
-            }).catch(() => {});
+            }).catch(err => logger.warn('Push notification failed (stripe webhook)', err));
 
             const io = req.app.get('io');
             if (io) {
@@ -644,6 +637,22 @@ router.post('/webhooks/paystack', async (req: Request, res: Response) => {
       const meta = paymentData.metadata;
 
       if (meta?.transactionId) {
+        // Verify payment amount matches expected transaction amount
+        const pendingTx = await db('transactions').where({ id: meta.transactionId, status: 'pending' }).first();
+        if (!pendingTx) {
+          logger.warn('[PAYSTACK] Transaction not found or already completed', { transactionId: meta.transactionId, reference });
+          res.json({ received: true });
+          return;
+        }
+        const paidAmount = paymentData.amount; // Paystack sends amount in subunits (kobo/cents)
+        const expectedAmount = Math.round(pendingTx.amount * 100); // Convert stored amount to subunits
+        if (paidAmount < expectedAmount) {
+          logger.error('[PAYSTACK] Amount mismatch — possible underpayment attack', { transactionId: meta.transactionId, paid: paidAmount, expected: expectedAmount, reference });
+          await db('transactions').where({ id: meta.transactionId }).update({ status: 'failed', notes: `Amount mismatch: paid ${paidAmount}, expected ${expectedAmount}` });
+          res.json({ received: true });
+          return;
+        }
+
         await db('transactions')
           .where({ id: meta.transactionId, status: 'pending' })
           .update({
@@ -675,7 +684,7 @@ router.post('/webhooks/paystack', async (req: Request, res: Response) => {
           title: 'Payment Successful',
           body: 'Your Paystack payment has been confirmed.',
           data: { transactionId: meta.transactionId, type: 'payment' },
-        }).catch(() => {});
+        }).catch(err => logger.warn('Push notification failed (paystack webhook)', err));
 
         // Real-time ledger update
         const io = req.app.get('io');
@@ -714,6 +723,15 @@ router.get('/paystack/callback', async (req: Request, res: Response) => {
         .first();
 
       if (tx && tx.status === 'pending') {
+        // Verify amount matches (Paystack returns amount in subunits)
+        const paidAmount = result.amount || 0;
+        const expectedAmount = Math.round(tx.amount * 100);
+        if (paidAmount < expectedAmount) {
+          logger.error('[PAYSTACK-CB] Amount mismatch', { txId: tx.id, paid: paidAmount, expected: expectedAmount, reference });
+          res.redirect(`orgsledger://payment-complete?reference=${reference}&status=amount_mismatch`);
+          return;
+        }
+
         await db('transactions')
           .where({ id: tx.id })
           .update({
@@ -758,6 +776,16 @@ router.post('/webhooks/flutterwave', async (req: Request, res: Response) => {
         .first();
 
       if (tx && tx.status === 'pending') {
+        // Verify amount matches (Flutterwave returns amount in major units)
+        const paidAmount = parseFloat(payload.data.amount) || 0;
+        const expectedAmount = parseFloat(tx.amount) || 0;
+        if (paidAmount < expectedAmount) {
+          logger.error('[FLUTTERWAVE] Amount mismatch — possible underpayment attack', { txId: tx.id, paid: paidAmount, expected: expectedAmount, txRef });
+          await db('transactions').where({ id: tx.id }).update({ status: 'failed', notes: `Amount mismatch: paid ${paidAmount}, expected ${expectedAmount}` });
+          res.status(200).send('ok');
+          return;
+        }
+
         await db('transactions')
           .where({ id: tx.id })
           .update({
@@ -786,7 +814,7 @@ router.post('/webhooks/flutterwave', async (req: Request, res: Response) => {
           title: 'Payment Successful',
           body: 'Your Flutterwave payment has been confirmed.',
           data: { transactionId: tx.id, type: 'payment' },
-        }).catch(() => {});
+        }).catch(err => logger.warn('Push notification failed (flutterwave webhook)', err));
 
         // Real-time ledger update
         const io = req.app.get('io');
@@ -828,6 +856,15 @@ router.get('/flutterwave/callback', async (req: Request, res: Response) => {
         .first();
 
       if (tx && tx.status === 'pending') {
+        // Verify amount matches
+        const paidAmount = parseFloat(result.amount) || 0;
+        const expectedAmount = parseFloat(tx.amount) || 0;
+        if (paidAmount < expectedAmount) {
+          logger.error('[FLUTTERWAVE-CB] Amount mismatch', { txId: tx.id, paid: paidAmount, expected: expectedAmount, txRef });
+          res.redirect(`orgsledger://payment-complete?tx_ref=${txRef}&status=amount_mismatch`);
+          return;
+        }
+
         await db('transactions')
           .where({ id: tx.id })
           .update({
@@ -1129,7 +1166,7 @@ router.post(
           title: 'Payment Approved',
           body: `Your bank transfer of ${transaction.currency} ${transaction.amount} has been approved.`,
           data: { transactionId, type: 'payment' },
-        }).catch(() => {});
+        }).catch(err => logger.warn('Push notification failed (transfer approved)', err));
 
         const io = req.app.get('io');
         if (io) {
@@ -1159,7 +1196,7 @@ router.post(
           title: 'Payment Rejected',
           body: `Your bank transfer of ${transaction.currency} ${transaction.amount} was not approved.`,
           data: { transactionId, type: 'payment' },
-        }).catch(() => {});
+        }).catch(err => logger.warn('Push notification failed (transfer rejected)', err));
       }
 
       await (req as any).audit?.({

@@ -155,7 +155,7 @@ router.post(
         title: 'New Meeting Scheduled',
         body: `${title} — ${new Date(scheduledStart).toLocaleString()}`,
         data: { meetingId: meeting.id, type: 'meeting' },
-      }, req.user!.userId).catch(() => {});
+      }, req.user!.userId).catch(err => logger.warn('Push notification failed (new meeting)', err));
 
       res.status(201).json({ success: true, data: meeting });
     } catch (err) {

@@ -4,7 +4,7 @@
 // Stores rolling windows in-memory with periodic DB snapshots.
 // ============================================================
 
-import { logger, createServiceLogger } from '../logger';
+import { createServiceLogger } from '../logger';
 import db from '../db';
 
 const analyticsLogger = createServiceLogger('analytics');

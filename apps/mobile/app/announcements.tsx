@@ -37,6 +37,7 @@ export default function AnnouncementsScreen() {
   const [body, setBody] = useState('');
   const [priority, setPriority] = useState<string>('normal');
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const memberships = useAuthStore((s) => s.memberships);
@@ -47,11 +48,12 @@ export default function AnnouncementsScreen() {
 
   const loadAnnouncements = useCallback(async () => {
     if (!currentOrgId) return;
+    setError(null);
     try {
       const res = await api.announcements.list(currentOrgId);
       setAnnouncements(res.data.data || []);
     } catch (err) {
-      console.error('Failed to load announcements', err);
+      setError('Failed to load announcements');
     } finally {
       setLoading(false);
       setRefreshing(false);

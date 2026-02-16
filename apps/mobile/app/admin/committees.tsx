@@ -70,6 +70,7 @@ export default function CommitteesScreen() {
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Members & role assignment for create modal
   const [selectedMembers, setSelectedMembers] = useState<SelectedMember[]>([]);
@@ -83,6 +84,7 @@ export default function CommitteesScreen() {
     if (!currentOrgId) return;
     setLoading(true);
     try {
+      setError(null);
       const [comRes, memRes] = await Promise.all([
         api.committees.list(currentOrgId),
         api.orgs.listMembers(currentOrgId),
@@ -99,7 +101,7 @@ export default function CommitteesScreen() {
       }));
       setMembers(normalized);
     } catch (err) {
-      console.error('Failed to load committees', err);
+      setError('Failed to load committees');
     } finally {
       setLoading(false);
     }

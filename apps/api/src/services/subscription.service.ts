@@ -6,6 +6,7 @@
 import db from '../db';
 import { logger } from '../logger';
 import { writeAuditLog } from '../middleware/audit';
+import { isUUID } from '../utils/validators';
 import crypto from 'crypto';
 
 // ── Currency Helpers ──────────────────────────────────────
@@ -105,6 +106,7 @@ export async function createSubscription(params: {
   status?: 'active' | 'pending';
 }) {
   const initialStatus = params.status || 'active';
+  const safeCreatedBy = isUUID(params.createdBy) ? params.createdBy : null;
   const now = new Date();
   const periodEnd = new Date(now);
   if (params.billingCycle === 'monthly') {
@@ -135,7 +137,7 @@ export async function createSubscription(params: {
     grace_period_end: graceEnd.toISOString(),
     payment_gateway: params.paymentGateway,
     gateway_subscription_id: params.gatewaySubscriptionId,
-    created_by: params.createdBy,
+    created_by: safeCreatedBy,
   }).returning('*');
 
   // Update org
@@ -161,6 +163,7 @@ export async function createSubscription(params: {
     amountPaid: params.amountPaid,
     periodEnd: periodEnd.toISOString(),
     gateway: params.paymentGateway || 'none',
+    createdBy: safeCreatedBy || 'system',
   });
 
   await writeAuditLog({
@@ -394,7 +397,7 @@ export async function deductAiWallet(orgId: string, minutes: number, description
       entityType: 'ai_wallet',
       entityId: orgId,
       newValue: { minutes, description: description || `AI usage: ${minutes.toFixed(1)} minutes` },
-    }).catch(() => {});
+    }).catch(err => logger.warn('Audit log failed (AI wallet deduction)', err));
   }
 
   return result;
@@ -447,7 +450,7 @@ export async function deductTranslationWallet(orgId: string, minutes: number, de
       entityType: 'translation_wallet',
       entityId: orgId,
       newValue: { minutes, description: description || `Translation usage: ${minutes.toFixed(1)} minutes` },
-    }).catch(() => {});
+    }).catch(err => logger.warn('Audit log failed (translation wallet deduction)', err));
   }
 
   return result;
@@ -476,11 +479,12 @@ function generateInviteCode(): string {
 
 export async function createInviteLink(
   orgId: string,
-  createdBy: string,
+  createdBy?: string | null,
   role: string = 'member',
   maxUses?: number,
   expiresAt?: string
 ) {
+  const safeCreatedBy = isUUID(createdBy) ? createdBy : null;
   const code = generateInviteCode();
   const [link] = await db('invite_links').insert({
     organization_id: orgId,
@@ -488,7 +492,7 @@ export async function createInviteLink(
     role,
     max_uses: maxUses || null,
     expires_at: expiresAt || null,
-    created_by: createdBy,
+    created_by: safeCreatedBy,
   }).returning('*');
   return link;
 }

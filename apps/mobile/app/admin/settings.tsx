@@ -61,6 +61,7 @@ export default function SettingsScreen() {
   const [enabledGateways, setEnabledGateways] = useState<string[]>(['stripe']);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Notification settings
   const [emailNotifications, setEmailNotifications] = useState(true);
@@ -78,6 +79,7 @@ export default function SettingsScreen() {
     if (!currentOrgId) return;
     setLoading(true);
     try {
+      setError(null);
       const res = await api.orgs.get(currentOrgId);
       const org = res.data?.data || res.data;
       setOrgName(org?.name || '');
@@ -100,7 +102,7 @@ export default function SettingsScreen() {
         setMeetingReminders(settings.notifications.meetingReminders !== false);
       }
     } catch (err) {
-      console.error('Failed to load settings', err);
+      setError('Failed to load settings');
     } finally {
       setLoading(false);
     }

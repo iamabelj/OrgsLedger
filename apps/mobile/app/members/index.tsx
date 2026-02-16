@@ -19,6 +19,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
+import { showAlert } from '../../src/utils/alert';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
 import { Card, Input } from '../../src/components/ui';
 import { useResponsive } from '../../src/hooks/useResponsive';
@@ -42,6 +43,7 @@ export default function MemberDirectoryScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   // Invite state
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -63,11 +65,12 @@ export default function MemberDirectoryScreen() {
 
   const loadMembers = useCallback(async () => {
     if (!currentOrgId) return;
+    setError(null);
     try {
       const res = await api.orgs.listMembers(currentOrgId);
       setMembers(res.data.data || []);
     } catch (err) {
-      console.error('Failed to load members', err);
+      setError('Failed to load members');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -83,7 +86,7 @@ export default function MemberDirectoryScreen() {
       const res = await api.subscriptions.getInvites(currentOrgId);
       setInvites(res.data.data || []);
     } catch (err) {
-      console.error('Failed to load invites', err);
+      showAlert('Error', 'Failed to load invites');
     } finally {
       setLoadingInvites(false);
     }

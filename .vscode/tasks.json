@@ -1,0 +1,19 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run API Tests",
+			"type": "shell",
+			"command": "cd apps/api && npx jest --no-coverage --forceExit",
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "Run API Tests 2",
+			"type": "shell",
+			"command": "cd apps/api && npx jest --no-coverage --forceExit",
+			"problemMatcher": [],
+			"group": "test"
+		}
+	]
+}

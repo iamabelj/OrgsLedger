@@ -11,7 +11,7 @@ import { paystackService } from '../services/paystack.service';
 import { flutterwaveService } from '../services/flutterwave.service';
 import { logger } from '../logger';
 import db from '../db';
-import { TX_STATUS, DEEP_LINK_SCHEME } from '../constants';
+import { TX_STATUS } from '../constants';
 
 // Cache Stripe instance
 let stripe: any = null;

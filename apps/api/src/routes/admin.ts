@@ -12,16 +12,6 @@ import { logger } from '../logger';
 const router = Router();
 
 // ── Schemas ─────────────────────────────────────────────────
-const updatePlanSchema = z.object({
-  maxMembers: z.number().int().min(1).optional(),
-  features: z.record(z.boolean()).optional(),
-  priceUsdAnnual: z.number().min(0).optional(),
-  priceUsdMonthly: z.number().min(0).optional(),
-  priceNgnAnnual: z.number().min(0).optional(),
-  priceNgnMonthly: z.number().min(0).optional(),
-  isActive: z.boolean().optional(),
-  description: z.string().optional(),
-});
 const updateConfigSchema = z.object({
   key: z.string().min(1),
   value: z.any(),
@@ -29,71 +19,9 @@ const updateConfigSchema = z.object({
 });
 
 // ══════════════════════════════════════════════════════════════
-// SUBSCRIPTION PLAN MANAGEMENT (Developer only)
+// NOTE: Plan CRUD routes live in subscriptions.ts (/admin/plans)
+// to avoid duplication. Only non-plan admin routes remain here.
 // ══════════════════════════════════════════════════════════════
-
-// ── List subscription plans ─────────────────────────────────
-router.get(
-  '/plans',
-  authenticate,
-  requireDeveloper(),
-  async (_req: Request, res: Response) => {
-    try {
-      const plans = await db('subscription_plans')
-        .select('*')
-        .orderBy('sort_order', 'asc');
-      res.json({ success: true, data: plans });
-    } catch (err) {
-      res.status(500).json({ success: false, error: 'Failed to list plans' });
-    }
-  }
-);
-
-// ── Update a subscription plan ──────────────────────────────
-router.put(
-  '/plans/:planId',
-  authenticate,
-  requireDeveloper(),
-  validate(updatePlanSchema),
-  async (req: Request, res: Response) => {
-    try {
-      const previous = await db('subscription_plans').where({ id: req.params.planId }).first();
-      if (!previous) {
-        res.status(404).json({ success: false, error: 'Plan not found' });
-        return;
-      }
-
-      const updates: Record<string, any> = {};
-      if (req.body.maxMembers !== undefined) updates.max_members = req.body.maxMembers;
-      if (req.body.features !== undefined) updates.features = JSON.stringify(req.body.features);
-      if (req.body.priceUsdAnnual !== undefined) updates.price_usd_annual = req.body.priceUsdAnnual;
-      if (req.body.priceUsdMonthly !== undefined) updates.price_usd_monthly = req.body.priceUsdMonthly;
-      if (req.body.priceNgnAnnual !== undefined) updates.price_ngn_annual = req.body.priceNgnAnnual;
-      if (req.body.priceNgnMonthly !== undefined) updates.price_ngn_monthly = req.body.priceNgnMonthly;
-      if (req.body.isActive !== undefined) updates.is_active = req.body.isActive;
-      if (req.body.description !== undefined) updates.description = req.body.description;
-
-      if (Object.keys(updates).length === 0) {
-        res.status(400).json({ success: false, error: 'No fields to update' });
-        return;
-      }
-
-      await db('subscription_plans').where({ id: req.params.planId }).update(updates);
-
-      await (req as any).audit?.({
-        action: 'update',
-        entityType: 'subscription_plan',
-        entityId: req.params.planId,
-        previousValue: previous,
-        newValue: updates,
-      });
-
-      res.json({ success: true, message: 'Plan updated' });
-    } catch (err) {
-      res.status(500).json({ success: false, error: 'Failed to update plan' });
-    }
-  }
-);
 
 // ══════════════════════════════════════════════════════════════
 // PLATFORM CONFIG (Developer)
@@ -116,17 +44,20 @@ router.get(
 // ══════════════════════════════════════════════════════════════
 // GRANT AI WALLET MINUTES (Developer)
 // ══════════════════════════════════════════════════════════════
+const grantCreditsSchema = z.object({
+  organizationId: z.string().uuid(),
+  credits: z.number().int().min(1),
+  reason: z.string().max(500).optional(),
+});
+
 router.post(
   '/ai-credits/grant',
   authenticate,
   requireDeveloper(),
+  validate(grantCreditsSchema),
   async (req: Request, res: Response) => {
     try {
       const { organizationId, credits, reason } = req.body;
-      if (!organizationId || !credits || credits < 1) {
-        res.status(400).json({ success: false, error: 'organizationId and credits (>=1) required' });
-        return;
-      }
 
       // Ensure ai_wallet exists
       let wallet = await db('ai_wallet')

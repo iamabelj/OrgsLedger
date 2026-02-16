@@ -338,6 +338,7 @@ describe('Tenant ID Manipulation', () => {
         status: 'expired',
         plan: { name: 'Standard' },
         current_period_end: '2025-01-01',
+        amount_paid: '49.99',
       });
 
       const req = createReq({

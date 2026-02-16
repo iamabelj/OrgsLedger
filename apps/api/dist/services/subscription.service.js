@@ -71,6 +71,11 @@ function getPlanPrice(plan, currency, cycle = 'annual') {
     }
     return Math.round(price * 100) / 100;
 }
+function isUuid(value) {
+    if (!value)
+        return false;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
 // ── Member Limit Check ────────────────────────────────────
 async function checkMemberLimit(orgId) {
     const sub = await getOrgSubscription(orgId);
@@ -116,6 +121,7 @@ async function getOrgSubscription(orgId) {
 }
 async function createSubscription(params) {
     const initialStatus = params.status || 'active';
+    const safeCreatedBy = isUuid(params.createdBy) ? params.createdBy : null;
     const now = new Date();
     const periodEnd = new Date(now);
     if (params.billingCycle === 'monthly') {
@@ -126,10 +132,11 @@ async function createSubscription(params) {
     }
     const graceEnd = new Date(periodEnd);
     graceEnd.setDate(graceEnd.getDate() + 7);
-    // Deactivate old subscriptions
+    // Deactivate ALL old subscriptions (including expired) so the LEFT JOIN
+    // in GET /admin/organizations never produces duplicate rows per org
     await (0, db_1.default)('subscriptions')
         .where({ organization_id: params.organizationId })
-        .whereIn('status', ['active', 'grace_period'])
+        .whereIn('status', ['active', 'grace_period', 'expired'])
         .update({ status: 'cancelled', updated_at: db_1.default.fn.now() });
     const [sub] = await (0, db_1.default)('subscriptions').insert({
         organization_id: params.organizationId,
@@ -144,7 +151,7 @@ async function createSubscription(params) {
         grace_period_end: graceEnd.toISOString(),
         payment_gateway: params.paymentGateway,
         gateway_subscription_id: params.gatewaySubscriptionId,
-        created_by: params.createdBy,
+        created_by: safeCreatedBy,
     }).returning('*');
     // Update org
     await (0, db_1.default)('organizations').where({ id: params.organizationId }).update({
@@ -167,6 +174,7 @@ async function createSubscription(params) {
         amountPaid: params.amountPaid,
         periodEnd: periodEnd.toISOString(),
         gateway: params.paymentGateway || 'none',
+        createdBy: safeCreatedBy || 'system',
     });
     await (0, audit_1.writeAuditLog)({
         organizationId: params.organizationId,
@@ -425,6 +433,7 @@ function generateInviteCode() {
     return crypto_1.default.randomBytes(4).toString('hex').toUpperCase();
 }
 async function createInviteLink(orgId, createdBy, role = 'member', maxUses, expiresAt) {
+    const safeCreatedBy = isUuid(createdBy) ? createdBy : null;
     const code = generateInviteCode();
     const [link] = await (0, db_1.default)('invite_links').insert({
         organization_id: orgId,
@@ -432,7 +441,7 @@ async function createInviteLink(orgId, createdBy, role = 'member', maxUses, expi
         role,
         max_uses: maxUses || null,
         expires_at: expiresAt || null,
-        created_by: createdBy,
+        created_by: safeCreatedBy,
     }).returning('*');
     return link;
 }

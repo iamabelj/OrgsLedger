@@ -73,6 +73,7 @@ export default function ReportsScreen() {
     outstandingFines: 0,
     memberPaymentRate: 0,
   });
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadReportData();
@@ -82,6 +83,7 @@ export default function ReportsScreen() {
     if (!currentOrgId) return;
     setLoading(true);
     try {
+      setError(null);
       // Load financial summary from API
       const res = await api.analytics.dashboard(currentOrgId);
       const data = res.data;
@@ -96,7 +98,7 @@ export default function ReportsScreen() {
         memberPaymentRate: data?.memberPaymentRate || 0,
       });
     } catch (err) {
-      console.error('Failed to load report data', err);
+      setError('Failed to load report data');
     } finally {
       setLoading(false);
     }

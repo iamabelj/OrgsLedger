@@ -58,7 +58,7 @@ router.post(
         title: '📊 New Poll',
         body: title,
         data: { pollId: poll.id, type: 'poll' },
-      }, req.user!.userId).catch(() => {});
+      }, req.user!.userId).catch(err => logger.warn('Push notification failed (new poll)', err));
 
       const createdOptions = await db('poll_options').where({ poll_id: poll.id }).orderBy('order');
 

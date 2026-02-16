@@ -130,7 +130,7 @@ export abstract class WebhookProcessor {
         title: 'Payment Successful',
         body: `Your ${this.gatewayName} payment has been confirmed.`,
         data: { transactionId: tx.id, type: NOTIFICATION_TYPES.PAYMENT },
-      }).catch(() => {});
+      }).catch(err => logger.warn('Push notification failed (webhook)', err));
     }
 
     // Real-time socket event

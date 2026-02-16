@@ -57,10 +57,12 @@ export default function ComplianceScreen() {
   const [entityFilter, setEntityFilter] = useState('all');
   const [memberCount, setMemberCount] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchLogs = useCallback(async (pg = 1, append = false) => {
     if (!currentOrgId) return;
     try {
+      setError(null);
       const params: any = { page: pg, limit: 30 };
       if (actionFilter !== 'all') params.action = actionFilter;
       if (entityFilter !== 'all') params.entityType = entityFilter;
@@ -75,7 +77,7 @@ export default function ComplianceScreen() {
       }
       setTotal(meta.total || 0);
     } catch (err) {
-      console.error('Failed to load audit logs', err);
+      setError('Failed to load audit logs');
     } finally {
       setLoading(false);
       setRefreshing(false);

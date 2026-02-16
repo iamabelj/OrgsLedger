@@ -47,6 +47,7 @@ export default function DocumentsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const memberships = useAuthStore((s) => s.memberships);
@@ -57,13 +58,14 @@ export default function DocumentsScreen() {
 
   const loadDocuments = useCallback(async () => {
     if (!currentOrgId) return;
+    setError(null);
     try {
       const params: any = {};
       if (searchQuery) params.search = searchQuery;
       const res = await api.documents.list(currentOrgId, params);
       setDocuments(res.data.data || []);
     } catch (err) {
-      console.error('Failed to load documents', err);
+      setError('Failed to load documents');
     } finally {
       setLoading(false);
       setRefreshing(false);

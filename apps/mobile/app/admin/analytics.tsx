@@ -22,6 +22,7 @@ export default function AnalyticsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [aiHours, setAiHours] = useState<{ balance: number; used: number; remaining: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const memberships = useAuthStore((s) => s.memberships);
@@ -31,10 +32,11 @@ export default function AnalyticsScreen() {
   const loadAnalytics = useCallback(async () => {
     if (!currentOrgId) return;
     try {
+      setError(null);
       const res = await api.analytics.dashboard(currentOrgId);
       setAnalytics(res.data.data);
     } catch (err) {
-      console.error('Failed to load analytics', err);
+      setError('Failed to load analytics');
     }
 
     // Load AI hours from wallet

@@ -57,7 +57,7 @@ export declare function deductTranslationWallet(orgId: string, minutes: number, 
 }>;
 export declare function getAiWalletHistory(orgId: string, limit?: number, offset?: number): Promise<any[]>;
 export declare function getTranslationWalletHistory(orgId: string, limit?: number, offset?: number): Promise<any[]>;
-export declare function createInviteLink(orgId: string, createdBy: string, role?: string, maxUses?: number, expiresAt?: string): Promise<any>;
+export declare function createInviteLink(orgId: string, createdBy?: string | null, role?: string, maxUses?: number, expiresAt?: string): Promise<any>;
 export declare function validateInviteLink(code: string): Promise<{
     valid: boolean;
     error: string;

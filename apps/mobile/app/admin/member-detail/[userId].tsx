@@ -69,6 +69,7 @@ export default function MemberDetailScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadMemberDetail();
@@ -84,10 +85,11 @@ export default function MemberDetailScreen() {
     if (!currentOrgId || !userId) return;
     setActivitiesLoading(true);
     try {
+      setError(null);
       const res = await api.orgs.getMemberActivity(currentOrgId, userId);
       setActivities(res.data?.data || []);
     } catch (err) {
-      console.error('Failed to load activity', err);
+      setError('Failed to load member activity');
     } finally {
       setActivitiesLoading(false);
     }
@@ -122,10 +124,11 @@ export default function MemberDetailScreen() {
     if (!currentOrgId || !userId) return;
     setLoading(true);
     try {
+      setError(null);
       const res = await api.orgs.getMember(currentOrgId, userId);
       setMember(res.data);
     } catch (err) {
-      console.error('Failed to load member detail', err);
+      setError('Failed to load member details');
     } finally {
       setLoading(false);
     }

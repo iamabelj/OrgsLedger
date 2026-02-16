@@ -84,8 +84,8 @@ export const config = {
   },
 };
 
-// Warn about critical config in non-development environments
-if (config.env !== 'development') {
+// Warn about critical config in production/staging environments
+if (config.env !== 'development' && config.env !== 'test') {
   if (config.jwt.secret === 'CHANGE_ME_IN_PRODUCTION') {
     console.error(`[CONFIG] FATAL: JWT_SECRET is using the default value in ${config.env} — set JWT_SECRET in env.js or environment variables`);
     process.exit(1);
@@ -95,6 +95,7 @@ if (config.env !== 'development') {
     process.exit(1);
   }
   if (!process.env.DATABASE_URL && config.db.password === 'orgsledger_dev') {
-    console.warn(`[CONFIG] WARNING: DATABASE_URL not set and DB_PASSWORD is default in ${config.env} — set it in env.js or environment variables`);
+    console.error(`[CONFIG] FATAL: DB_PASSWORD is using the default value in ${config.env} — set DB_PASSWORD in env.js or environment variables`);
+    process.exit(1);
   }
 }

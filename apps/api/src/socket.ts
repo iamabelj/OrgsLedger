@@ -9,7 +9,7 @@ import jwt from 'jsonwebtoken';
 import { config } from './config';
 import db from './db';
 import { logger } from './logger';
-import { translateToMultiple, SUPPORTED_LANGUAGES } from './services/translation.service';
+import { translateToMultiple } from './services/translation.service';
 import { getOrgSubscription, getTranslationWallet, deductTranslationWallet } from './services/subscription.service';
 import { writeAuditLog } from './middleware/audit';
 
@@ -241,7 +241,7 @@ export function setupSocketIO(httpServer: HttpServer): Server {
           entityType: 'meeting',
           entityId: meetingId,
           newValue: { language, participantCount: participants.length },
-        }).catch(() => {});
+        }).catch(err => logger.warn('Audit log failed (translation session)', err));
       }
     });
 

@@ -38,18 +38,23 @@ export default function InvitesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!currentOrgId) return;
     try {
       const res = await api.subscriptions.getInvites(currentOrgId);
       setInvites(res.data.data || []);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      setError('Failed to load invites');
+    }
     setLoading(false);
     setRefreshing(false);
   }, [currentOrgId]);
 
   useEffect(() => { load(); }, [load]);
+
+  const clearErrorAndRetry = () => { setError(null); setLoading(true); load(); };
 
   const doAlert = (t: string, m: string) => showAlert(t, m);
 
@@ -87,6 +92,16 @@ export default function InvitesScreen() {
   };
 
   if (loading) return <View style={s.center}><ActivityIndicator size="large" color={Colors.highlight} /></View>;
+
+  if (error) return (
+    <View style={s.center}>
+      <Ionicons name="alert-circle-outline" size={48} color={Colors.danger} />
+      <Text style={{ color: Colors.danger, marginTop: 12 }}>{error}</Text>
+      <TouchableOpacity onPress={clearErrorAndRetry} style={{ marginTop: 12, padding: 10 }}>
+        <Text style={{ color: Colors.highlight }}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
     <ResponsiveScrollView style={s.root} refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }}>

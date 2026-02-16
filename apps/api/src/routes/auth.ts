@@ -17,21 +17,9 @@ import { authenticate, validate, writeAuditLog } from '../middleware';
 import { logger } from '../logger';
 import { checkMemberLimit } from '../services/subscription.service';
 import { sendEmail } from '../services/email.service';
+import { timingSafeCompare } from '../utils/validators';
 
 const router = Router();
-
-// ── Timing-safe string comparison helper ────────────────────
-function timingSafeCompare(a: string, b: string): boolean {
-  if (!a || !b) return false;
-  try {
-    const bufA = Buffer.from(a, 'utf-8');
-    const bufB = Buffer.from(b, 'utf-8');
-    if (bufA.length !== bufB.length) return false;
-    return crypto.timingSafeEqual(bufA, bufB);
-  } catch {
-    return false;
-  }
-}
 
 // ── Multer for avatar uploads ───────────────────────────────
 const avatarStorage = multer.diskStorage({
@@ -537,7 +525,12 @@ router.put('/me', authenticate, async (req: Request, res: Response) => {
 });
 
 // ── Update Push Token ───────────────────────────────────────
-router.put('/push-token', authenticate, async (req: Request, res: Response) => {
+const pushTokenSchema = z.object({
+  fcmToken: z.string().max(500).optional(),
+  apnsToken: z.string().max(500).optional(),
+}).refine(d => d.fcmToken || d.apnsToken, { message: 'fcmToken or apnsToken required' });
+
+router.put('/push-token', authenticate, validate(pushTokenSchema), async (req: Request, res: Response) => {
   try {
     const { fcmToken, apnsToken } = req.body;
     const updates: Record<string, any> = {};
@@ -809,7 +802,8 @@ router.put('/change-password', authenticate, validate(changePasswordSchema), asy
 router.post('/upload-avatar', authenticate, (req: Request, res: Response, next) => {
   avatarUpload.single('avatar')(req, res, (err) => {
     if (err) {
-      return res.status(400).json({ success: false, error: err.message });
+      logger.warn('Avatar upload error', err);
+      return res.status(400).json({ success: false, error: 'Invalid file upload' });
     }
     next();
   });

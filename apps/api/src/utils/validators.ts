@@ -5,9 +5,10 @@
 
 import crypto from 'crypto';
 
-/** UUID v4 format check (does NOT hit the DB) */
-export function isUUID(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+/** UUID v1–v5 format check (does NOT hit the DB) */
+export function isUUID(value?: string | null): boolean {
+  if (!value) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 /** Timing-safe string comparison (prevents timing-based attacks) */

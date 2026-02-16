@@ -17,6 +17,7 @@ import { Stack, router } from 'expo-router';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuthStore } from '../src/stores/auth.store';
 import { api } from '../src/api/client';
+import { showAlert } from '../src/utils/alert';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../src/theme';
 import {
   Card,
@@ -98,6 +99,7 @@ export default function NotificationsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadNotifications();
@@ -106,11 +108,12 @@ export default function NotificationsScreen() {
   const loadNotifications = async () => {
     if (!currentOrgId) return;
     setLoading(true);
+    setError(null);
     try {
       const res = await api.notifications.list();
       setNotifications(res.data || []);
     } catch (err) {
-      console.error('Failed to load notifications', err);
+      setError('Failed to load notifications');
     } finally {
       setLoading(false);
     }
@@ -118,11 +121,12 @@ export default function NotificationsScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    setError(null);
     try {
       const res = await api.notifications.list();
       setNotifications(res.data || []);
     } catch (err) {
-      console.error('Failed to refresh', err);
+      setError('Failed to refresh notifications');
     } finally {
       setRefreshing(false);
     }
@@ -135,7 +139,7 @@ export default function NotificationsScreen() {
         prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
       );
     } catch (err) {
-      console.error('Failed to mark as read', err);
+      showAlert('Error', 'Failed to mark notification as read');
     }
   };
 
@@ -144,7 +148,7 @@ export default function NotificationsScreen() {
       await api.notifications.markAllRead();
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     } catch (err) {
-      console.error('Failed to mark all as read', err);
+      showAlert('Error', 'Failed to mark all as read');
     }
   };
 
@@ -291,6 +295,19 @@ export default function NotificationsScreen() {
   );
 
   if (loading) return <LoadingScreen />;
+
+  if (error) return (
+    <View style={styles.container}>
+      <Stack.Screen options={{ title: 'Notifications' }} />
+      <EmptyState
+        icon="alert-circle-outline"
+        title="Something went wrong"
+        subtitle={error}
+        actionLabel="Retry"
+        onAction={loadNotifications}
+      />
+    </View>
+  );
 
   return (
     <View style={styles.container}>

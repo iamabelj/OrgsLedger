@@ -37,6 +37,7 @@ export default function CreateFineScreen() {
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadMembers();
@@ -46,6 +47,7 @@ export default function CreateFineScreen() {
     if (!currentOrgId) return;
     setLoadingMembers(true);
     try {
+      setError(null);
       const res = await api.orgs.listMembers(currentOrgId);
       const rawMembers = res.data?.data || [];
       // Normalize: API returns first_name/last_name/userId, we need fullName/id
@@ -57,7 +59,7 @@ export default function CreateFineScreen() {
       }));
       setMembers(normalized);
     } catch (err) {
-      console.error('Failed to load members', err);
+      setError('Failed to load members');
     } finally {
       setLoadingMembers(false);
     }

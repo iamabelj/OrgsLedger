@@ -220,7 +220,7 @@ describe('Tenant Isolation Middleware', () => {
       await loadMembership(req, res, next);
 
       expect(req.membership).toEqual({
-        id: 'super_admin',
+        id: 'admin-1',
         role: 'org_admin',
         organizationId: 'org-1',
         isActive: true,
@@ -492,6 +492,7 @@ describe('Tenant Isolation Middleware', () => {
         status: 'expired',
         plan: { name: 'Standard' },
         current_period_end: '2025-01-01',
+        amount_paid: '49.99',
       });
 
       const req = createMockReq({
@@ -521,7 +522,7 @@ describe('Tenant Isolation Middleware', () => {
       await requireActiveSubscription(req, res, next);
 
       expect(res._status).toBe(402);
-      expect(res._json.code).toBe('SUBSCRIPTION_EXPIRED');
+      expect(res._json.code).toBe('SUBSCRIPTION_CANCELLED');
     });
 
     it('should return 402 for suspended subscription', async () => {
@@ -537,7 +538,7 @@ describe('Tenant Isolation Middleware', () => {
       await requireActiveSubscription(req, res, next);
 
       expect(res._status).toBe(402);
-      expect(res._json.code).toBe('SUBSCRIPTION_EXPIRED');
+      expect(res._json.code).toBe('SUBSCRIPTION_SUSPENDED');
     });
 
     it('should allow active subscription through', async () => {
@@ -726,6 +727,7 @@ describe('Tenant Isolation Middleware', () => {
         status: 'expired',
         plan: { name: 'Standard' },
         current_period_end: '2025-01-01',
+        amount_paid: '49.99',
       });
 
       const req = createMockReq({

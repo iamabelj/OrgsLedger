@@ -6,14 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.requireRole = requireRole;
 exports.requireDeveloper = requireDeveloper;
 exports.requireSuperAdmin = requireSuperAdmin;
-const ROLE_HIERARCHY = {
-    guest: 0,
-    member: 1,
-    executive: 2,
-    org_admin: 3,
-    super_admin: 4,
-    developer: 5,
-};
+const constants_1 = require("../constants");
 /**
  * Require minimum role level to access a route.
  * Must be used AFTER authenticate and loadMembership.
@@ -37,8 +30,8 @@ function requireRole(...allowedRoles) {
             return next();
         }
         // Check hierarchy: if user's role level >= any allowed role level
-        const userLevel = ROLE_HIERARCHY[userRole] ?? 0;
-        const minAllowedLevel = Math.min(...allowedRoles.map((r) => ROLE_HIERARCHY[r] ?? 999));
+        const userLevel = constants_1.ROLE_HIERARCHY[userRole] ?? 0;
+        const minAllowedLevel = Math.min(...allowedRoles.map((r) => constants_1.ROLE_HIERARCHY[r] ?? 999));
         if (userLevel >= minAllowedLevel) {
             return next();
         }

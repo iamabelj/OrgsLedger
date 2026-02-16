@@ -1,6 +1,8 @@
 "use strict";
 // ============================================================
 // OrgsLedger API — Main Server Entry Point
+// Kept lean — heavy lifting extracted to middleware, controllers,
+// and the service registry.
 // ============================================================
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
@@ -18,8 +20,12 @@ const config_1 = require("./config");
 const logger_1 = require("./logger");
 const middleware_1 = require("./middleware");
 const request_logger_1 = require("./middleware/request-logger");
+const error_handler_1 = require("./middleware/error-handler");
+const landing_gateway_1 = require("./middleware/landing-gateway");
 const socket_1 = require("./socket");
 const ai_service_1 = require("./services/ai.service");
+const registry_1 = require("./services/registry");
+const constants_1 = require("./constants");
 // Observability
 const metrics_service_1 = require("./services/metrics.service");
 const error_monitor_service_1 = require("./services/error-monitor.service");
@@ -56,10 +62,12 @@ if (!fs_1.default.existsSync(uploadDir)) {
 // ── Socket.io ─────────────────────────────────────────────
 const io = (0, socket_1.setupSocketIO)(server);
 exports.io = io;
-app.set('io', io);
+app.set('io', io); // kept for backwards compat in routes not yet migrated
+registry_1.services.register('io', io); // preferred — use services.get('io') in new code
 // ── AI Service ────────────────────────────────────────────
 const aiService = new ai_service_1.AIService(io);
-app.set('aiService', aiService);
+app.set('aiService', aiService); // backwards compat
+registry_1.services.register('aiService', aiService);
 // ── Global Middleware ─────────────────────────────────────
 app.use((0, helmet_1.default)());
 app.use((0, cors_1.default)({
@@ -77,8 +85,8 @@ app.use(express_1.default.json({ limit: '10mb' }));
 app.use(express_1.default.urlencoded({ extended: true }));
 // Rate limiting
 const limiter = (0, express_rate_limit_1.default)({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 1000, // limit per IP
+    windowMs: constants_1.RATE_LIMITS.GLOBAL.windowMs,
+    max: constants_1.RATE_LIMITS.GLOBAL.max,
     standardHeaders: true,
     legacyHeaders: false,
 });
@@ -88,9 +96,9 @@ app.use((req, _res, next) => {
     if (req.query.limit) {
         const parsed = parseInt(req.query.limit);
         if (isNaN(parsed) || parsed < 1)
-            req.query.limit = '50';
-        else if (parsed > 200)
-            req.query.limit = '200';
+            req.query.limit = String(constants_1.PAGINATION.DEFAULT_LIMIT);
+        else if (parsed > constants_1.PAGINATION.MAX_LIMIT)
+            req.query.limit = String(constants_1.PAGINATION.MAX_LIMIT);
     }
     next();
 });
@@ -120,7 +128,7 @@ app.use('/uploads', (req, res, next) => {
 app.get('/health', (_req, res) => {
     res.json({
         status: 'ok',
-        version: '1.0.0',
+        version: constants_1.APP_VERSION,
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
         memory: {
@@ -130,115 +138,13 @@ app.get('/health', (_req, res) => {
     });
 });
 // ── Landing / Gateway (orgsledger.com) ────────────────────
-// Mount the full landing app (marketing + admin + checkout + AI proxy)
-// at root level for orgsledger.com. On app.orgsledger.com these routes are skipped.
-try {
-    process.env.NO_LISTEN = 'true'; // Prevent gateway from auto-listening
-    const gatewayApp = require('../../../landing/server');
-    const landingDir = path_1.default.resolve(__dirname, '../../../landing');
-    // Serve landing static files (logo.png, CSS, etc.) on orgsledger.com
-    app.use((req, res, next) => {
-        const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
-        if (host === 'orgsledger.com' || host === 'www.orgsledger.com' || host === 'localhost' || host === '127.0.0.1') {
-            return express_1.default.static(landingDir, { index: false })(req, res, next);
-        }
-        next();
-    });
-    // Landing page at /
-    const landingPage = path_1.default.resolve(landingDir, 'index.html');
-    if (fs_1.default.existsSync(landingPage)) {
-        app.get('/', (req, res, next) => {
-            const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
-            if (host === 'orgsledger.com' || host === 'www.orgsledger.com' || host === 'localhost' || host === '127.0.0.1') {
-                return res.sendFile(landingPage);
-            }
-            next();
-        });
-        logger_1.logger.info('Landing page served at / (orgsledger.com only)');
-    }
-    // Admin dashboard at /developer/admin
-    const adminPage = path_1.default.resolve(landingDir, 'admin.html');
-    if (fs_1.default.existsSync(adminPage)) {
-        app.get('/developer/admin', (req, res, next) => {
-            const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
-            if (host === 'orgsledger.com' || host === 'www.orgsledger.com' || host === 'localhost' || host === '127.0.0.1') {
-                return res.sendFile(adminPage);
-            }
-            next();
-        });
-    }
-    // Gateway API routes (admin login, checkout, AI proxy, geo, client verification, health)
-    // on orgsledger.com — these take priority over main API admin routes
-    app.use((req, res, next) => {
-        const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
-        if (host === 'orgsledger.com' || host === 'www.orgsledger.com' || host === 'localhost' || host === '127.0.0.1') {
-            // Let gateway handle its routes: /api/admin/*, /api/checkout/*, /api/ai/*, /api/geo, /api/license/verify, /health
-            const p = req.path;
-            if (p.startsWith('/api/admin') || p.startsWith('/api/checkout') || p.startsWith('/api/ai') ||
-                p.startsWith('/api/geo') || p.startsWith('/api/license') || p.startsWith('/api/webhooks') ||
-                p === '/health') {
-                return gatewayApp(req, res, next);
-            }
-        }
-        next();
-    });
-    // Also keep /developer as a fallback access point
-    app.use('/developer', (req, res, next) => {
-        return gatewayApp(req, res, next);
-    });
-    logger_1.logger.info('Landing gateway mounted (orgsledger.com: root, all: /developer)');
-    // Add diagnostic endpoint to verify gateway is loaded
-    app.get('/api/gateway-status', (_req, res) => {
-        res.json({
-            success: true,
-            gatewayLoaded: true,
-            adminDashboard: '/developer/admin',
-            loginEndpoint: '/api/admin/login',
-        });
-    });
-}
-catch (err) {
-    logger_1.logger.error('Landing gateway FAILED to load:', err);
-    logger_1.logger.error('Stack trace:', err.stack);
-    // Add diagnostic endpoint even when gateway fails
-    app.get('/api/gateway-status', (_req, res) => {
-        res.json({
-            success: false,
-            gatewayLoaded: false,
-            error: err.message,
-            stack: err.stack,
-            note: 'Landing dependencies may not be installed. Run: npm install --workspace=landing',
-        });
-    });
-}
+(0, landing_gateway_1.mountLandingGateway)(app);
 // ── Serve Web Frontend (production) ──────────────────────
-// Expo web build at apps/api/web — only served on app.orgsledger.com (not orgsledger.com)
-const webDir = path_1.default.resolve(__dirname, '../web');
-if (fs_1.default.existsSync(webDir)) {
-    // Redirect root "/" to "/login" on app subdomain so unauthenticated visitors land on login
-    app.get('/', (req, res, next) => {
-        const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
-        if (host === 'orgsledger.com' || host === 'www.orgsledger.com') {
-            return next(); // Landing domain handled elsewhere
-        }
-        return res.redirect(302, '/login');
-    });
-    app.use((req, res, next) => {
-        const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
-        if (host === 'orgsledger.com' || host === 'www.orgsledger.com') {
-            return next(); // Landing domain — no SPA
-        }
-        express_1.default.static(webDir)(req, res, next);
-    });
-    logger_1.logger.info(`Serving web frontend from ${webDir}`);
-}
-else {
-    logger_1.logger.warn(`Web frontend directory not found: ${webDir}`);
-}
+(0, landing_gateway_1.mountWebFrontend)(app);
 // ── Auth Rate Limiting (login/register brute force protection) ──
 const authLimiter = (0, express_rate_limit_1.default)({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 15, // max 15 attempts per IP
+    windowMs: constants_1.RATE_LIMITS.AUTH.windowMs,
+    max: constants_1.RATE_LIMITS.AUTH.max,
     standardHeaders: true,
     legacyHeaders: false,
     message: { success: false, error: 'Too many attempts, please try again later' },
@@ -249,16 +155,16 @@ app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/forgot-password', authLimiter);
 app.use('/api/auth/reset-password', authLimiter);
 app.use('/api/auth/refresh', (0, express_rate_limit_1.default)({
-    windowMs: 15 * 60 * 1000,
-    max: 30, // allow more refresh calls than login but still capped
+    windowMs: constants_1.RATE_LIMITS.REFRESH.windowMs,
+    max: constants_1.RATE_LIMITS.REFRESH.max,
     standardHeaders: true,
     legacyHeaders: false,
     message: { success: false, error: 'Too many requests, please try again later' },
 }));
 // ── Webhook Rate Limiting ──
 const webhookLimiter = (0, express_rate_limit_1.default)({
-    windowMs: 60 * 1000, // 1 minute
-    max: 60, // max 60 webhook calls per IP per minute
+    windowMs: constants_1.RATE_LIMITS.WEBHOOK.windowMs,
+    max: constants_1.RATE_LIMITS.WEBHOOK.max,
     standardHeaders: true,
     legacyHeaders: false,
     message: { success: false, error: 'Too many webhook requests' },
@@ -287,36 +193,11 @@ app.use('/api/admin/observability', observability_1.default);
 app.all('/api/*', (_req, res) => {
     res.status(404).json({ success: false, error: 'Route not found' });
 });
-// SPA fallback — serve web frontend for all other routes (except /)
-// orgsledger.com = sales/landing site only (no SPA login/register)
-// app.orgsledger.com + client domains = full SPA app
-if (fs_1.default.existsSync(webDir)) {
-    app.get('*', (req, res) => {
-        const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
-        // On orgsledger.com, redirect all non-API routes to the landing/sales page
-        if (host === 'orgsledger.com' || host === 'www.orgsledger.com') {
-            res.redirect(301, '/');
-            return;
-        }
-        // All other domains (app.orgsledger.com, client deployments, localhost): serve SPA
-        res.sendFile(path_1.default.join(webDir, 'index.html'));
-    });
-}
-else {
-    // Fallback: return a basic JSON status page
-    app.get('/', (_req, res) => {
-        res.json({ name: 'OrgsLedger API', status: 'ok', version: '1.0.0', docs: '/api' });
-    });
-}
+// SPA fallback — must come after all API routes
+(0, landing_gateway_1.mountSpaFallback)(app);
 // ── Global Error Handler ──────────────────────────────────
 app.use(error_monitor_service_1.errorMonitorMiddleware); // Capture errors before responding
-app.use((err, _req, res, _next) => {
-    logger_1.logger.error('Unhandled error', { error: err.message, stack: err.stack });
-    res.status(err.status || 500).json({
-        success: false,
-        error: config_1.config.env === 'production' ? 'Internal server error' : err.message,
-    });
-});
+app.use(error_handler_1.globalErrorHandler); // Structured JSON error responses
 // ── Start Server ──────────────────────────────────────────
 (async () => {
     server.listen(config_1.config.port, '0.0.0.0', () => {

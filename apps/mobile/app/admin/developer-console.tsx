@@ -85,6 +85,7 @@ export default function DeveloperConsole() {
   const [users, setUsers] = useState<User[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [riskData, setRiskData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Search/filter
   const [userSearch, setUserSearch] = useState('');
@@ -129,6 +130,7 @@ export default function DeveloperConsole() {
   // ── Data Loading ──────────────────────────────────────────
   const loadData = useCallback(async () => {
     try {
+      setError(null);
       const [revRes, walletRes, subsRes, orgsRes, plansRes, usersRes, auditRes, riskRes] = await Promise.all([
         api.subscriptions.adminRevenue().catch(() => ({ data: {} })),
         api.subscriptions.adminWalletAnalytics().catch(() => ({ data: {} })),
@@ -149,7 +151,7 @@ export default function DeveloperConsole() {
       setAuditLogs(auditRes.data?.data || []);
       setRiskData(riskRes.data);
     } catch (err: any) {
-      console.error('Developer console error', err);
+      setError('Failed to load developer console data');
     } finally {
       setLoading(false);
       setRefreshing(false);

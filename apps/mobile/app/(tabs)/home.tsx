@@ -52,6 +52,7 @@ export default function HomeScreen() {
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [showOrgSwitcher, setShowOrgSwitcher] = useState(false);
   const [aiHours, setAiHours] = useState<{ balance: number; used: number; remaining: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const currentMembership = memberships.find((m) => m.organization_id === currentOrgId);
   const userRole = currentMembership?.role || 'member';
@@ -70,6 +71,7 @@ export default function HomeScreen() {
   const loadDashboard = useCallback(async () => {
     if (!currentOrgId) return;
     try {
+      setError(null);
       const [orgRes, meetRes] = await Promise.allSettled([
         api.orgs.get(currentOrgId),
         api.meetings.list(currentOrgId, { status: 'scheduled', limit: 3 }),
@@ -104,7 +106,7 @@ export default function HomeScreen() {
         }
       } catch (_) {}
     } catch (err) {
-      console.error('[Home] loadDashboard error:', err);
+      setError('Failed to load dashboard');
       // Silently ignore
     }
   }, [currentOrgId]);

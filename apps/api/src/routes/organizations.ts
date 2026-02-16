@@ -837,7 +837,10 @@ router.post(
   requireRole('org_admin'),
   (req: Request, res: Response, next) => {
     logoUpload.single('logo')(req, res, (err) => {
-      if (err) return res.status(400).json({ success: false, error: err.message });
+      if (err) {
+        logger.warn('Logo upload error', err);
+        return res.status(400).json({ success: false, error: 'Invalid file upload' });
+      }
       next();
     });
   },

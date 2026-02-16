@@ -56,7 +56,7 @@ router.post(
         title: 'New Event',
         body: `${title} — ${new Date(startDate).toLocaleDateString()}`,
         data: { eventId: event.id, type: 'event' },
-      }, req.user!.userId).catch(() => {});
+      }, req.user!.userId).catch(err => logger.warn('Push notification failed (new event)', err));
 
       res.status(201).json({ success: true, data: event });
     } catch (err) {

@@ -33,6 +33,7 @@ export default function WalletsScreen() {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [activeWallet, setActiveWallet] = useState<WalletType>('ai');
   const [aiWallet, setAiWallet] = useState<any>(null);
   const [translationWallet, setTranslationWallet] = useState<any>(null);
@@ -53,7 +54,7 @@ export default function WalletsScreen() {
       setAiHistory(aiHistRes.data?.data || []);
       setTransHistory(transHistRes.data?.data || []);
     } catch (err: any) {
-      console.error('Load wallets error', err);
+      setError('Failed to load wallet data');
     } finally {
       setLoading(false);
       setRefreshing(false);

@@ -45,6 +45,7 @@ export default function ExpensesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Create form state
   const [description, setDescription] = useState('');
@@ -60,11 +61,12 @@ export default function ExpensesScreen() {
   const loadExpenses = async () => {
     if (!currentOrgId) return;
     try {
+      setError(null);
       setLoading(true);
       const res = await api.expenses.list(currentOrgId);
       setExpenses(res.data.data || []);
     } catch (err: any) {
-      console.error('Failed to load expenses', err);
+      setError('Failed to load expenses');
       showAlert('Error', 'Failed to load expenses');
     } finally {
       setLoading(false);
@@ -109,7 +111,7 @@ export default function ExpensesScreen() {
       setViewMode('list');
       loadExpenses();
     } catch (err: any) {
-      console.error('Failed to create expense', err);
+      // Error handled by showAlert below
       showAlert('Error', err.response?.data?.error || 'Failed to record expense');
     } finally {
       setCreating(false);

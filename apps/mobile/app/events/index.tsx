@@ -34,6 +34,7 @@ export default function EventsScreen() {
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -52,11 +53,12 @@ export default function EventsScreen() {
 
   const loadEvents = useCallback(async () => {
     if (!currentOrgId) return;
+    setError(null);
     try {
       const res = await api.events.list(currentOrgId, { upcoming: 'true' });
       setEvents(res.data.data || []);
     } catch (err) {
-      console.error('Failed to load events', err);
+      setError('Failed to load events');
     } finally {
       setLoading(false);
       setRefreshing(false);
