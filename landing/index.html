@@ -70,8 +70,8 @@
           "@type": "AggregateOffer",
           "priceCurrency": "USD",
           "lowPrice": "300",
-          "highPrice": "2500",
-          "offerCount": "3"
+          "highPrice": "5000",
+          "offerCount": "4"
         },
         "description": "All-in-one SaaS platform for managing organizations across borders — AI meeting summaries, real-time translation, financial management, events, polls, and more.",
         "featureList": "AI Meeting Summaries, Real-Time Language Translation, Dues & Financial Management, Event Management, Polls & Voting, Document Storage, Member Directory, Chat & Announcements"
@@ -333,9 +333,12 @@
       letter-spacing: .1em;
     }
     .pricing-plan-name { font-size: .95rem; font-weight: 700; color: var(--gray-400); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
-    .pricing-amount { font-size: 2.8rem; font-weight: 900; color: var(--white); font-family: 'Space Grotesk', sans-serif; letter-spacing: -.03em; margin-bottom: 4px; }
+    .pricing-amount { font-size: 2.8rem; font-weight: 900; color: var(--white); font-family: 'Space Grotesk', sans-serif; letter-spacing: -.03em; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pricing-amount.ngn-price { font-size: 1.7rem; }
     .pricing-amount .currency { font-size: 1.1rem; vertical-align: top; margin-right: 2px; font-weight: 700; }
+    .pricing-amount.ngn-price .currency { font-size: .85rem; }
     .pricing-amount .period { font-size: .9rem; font-weight: 400; color: var(--gray-500); letter-spacing: 0; }
+    .pricing-amount.ngn-price .period { font-size: .75rem; }
     .pricing-desc { font-size: .85rem; color: var(--gray-500); margin-bottom: 28px; padding-bottom: 28px; border-bottom: 1px solid var(--dark-border-2); }
     .pricing-features { list-style: none; margin-bottom: 32px; }
     .pricing-features li { padding: 8px 0; font-size: .88rem; color: var(--gray-300); display: flex; align-items: flex-start; gap: 10px; }
@@ -450,6 +453,7 @@
       .pricing-grid { grid-template-columns: 1fr; gap: 16px; }
       .pricing-card { padding: 28px; }
       .pricing-amount { font-size: 2.2rem; }
+      .pricing-amount.ngn-price { font-size: 1.45rem; }
       .addons-grid { grid-template-columns: 1fr; }
       .hero-proof { gap: 20px; }
       .infra-grid { grid-template-columns: 1fr 1fr; }
@@ -467,6 +471,9 @@
       .hero { padding: 100px 0 60px; }
       .section-title { font-size: 1.6rem; }
       .section-subtitle { font-size: .95rem; }
+      .pricing-amount { font-size: 1.9rem; }
+      .pricing-amount.ngn-price { font-size: 1.3rem; }
+      .pricing-card { padding: 24px; }
     }
   </style>
 </head>
@@ -713,7 +720,7 @@
       <!-- Enterprise Pro -->
       <div class="pricing-card anim anim-delay-3">
         <div class="pricing-plan-name">Enterprise Pro</div>
-        <div class="pricing-amount" style="font-size:1.8rem;margin-bottom:4px;">
+        <div class="pricing-amount" data-custom style="font-size:1.8rem;margin-bottom:4px;">
           Custom Pricing
         </div>
         <div class="pricing-desc">For organizations with <strong>500+ members</strong>. Tailored to your scale.</div>
@@ -722,7 +729,7 @@
           <li><span class="feat-check">&#10003;</span> Unlimited Members</li>
           <li><span class="feat-check">&#10003;</span> Dedicated Infrastructure</li>
           <li><span class="feat-check">&#10003;</span> Custom SLA &amp; Uptime Guarantee</li>
-          <li><span class="feat-check">&#10003;</span> White-Label Options</li>
+          <li><span class="feat-check">&#10003;</span> Unlimited Storage</li>
           <li><span class="feat-check">&#10003;</span> Custom Integrations &amp; API</li>
           <li><span class="feat-check">&#10003;</span> Priority Onboarding &amp; Training</li>
           <li><span class="feat-check">&#10003;</span> Dedicated Account Manager</li>
@@ -975,13 +982,17 @@
 
   function renderPricing() {
     var sym = region === 'global' ? '$' : '\u20A6';
+    var isNGN = region === 'nigeria';
     document.querySelectorAll('[data-cur]').forEach(function(el) { el.textContent = sym; });
+    // Toggle ngn-price class on all pricing-amount containers for font-size
+    document.querySelectorAll('.pricing-amount').forEach(function(el) {
+      if (!el.hasAttribute('data-custom')) {
+        el.classList.toggle('ngn-price', isNGN);
+      }
+    });
     document.querySelectorAll('[data-price]').forEach(function(el) {
       var key = el.getAttribute('data-price');
-      // Preserve the "+" superscript for enterprise
-      if (key === 'enterprise') {
-        el.innerHTML = prices[key][region] + '<sup style="font-size:.5em;vertical-align:super;color:var(--gray-500);">+</sup>';
-      } else {
+      if (prices[key]) {
         el.textContent = prices[key][region];
       }
     });
