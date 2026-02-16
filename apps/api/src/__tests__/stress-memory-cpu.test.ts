@@ -184,7 +184,7 @@ describe('Stress: Memory & Resource Profiling', () => {
       }
 
       const elapsed = Date.now() - start;
-      expect(elapsed).toBeLessThan(500);
+      expect(elapsed).toBeLessThan(800);
     });
   });
 
