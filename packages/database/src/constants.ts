@@ -65,15 +65,14 @@ export const WALLET_PRICES = {
 
 // ── Subscription Plan Defaults ──────────────────────────────
 export const PLAN_SLUGS = {
-  FREE: 'free',
   STANDARD: 'standard',
   PROFESSIONAL: 'professional',
   ENTERPRISE: 'enterprise',
+  ENTERPRISE_PRO: 'enterprise_pro',
 } as const;
 
 // ── Defaults ────────────────────────────────────────────────
 export const DEFAULTS = {
-  MAX_MEMBERS_FREE: 50,
   MAX_FILE_UPLOAD_MB: 10,
   DEFAULT_BILLING_CYCLE: BILLING_CYCLES.ANNUAL,
   DEFAULT_CURRENCY: CURRENCIES.USD,
