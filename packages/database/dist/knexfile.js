@@ -1,17 +1,23 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const connection = process.env.DATABASE_URL
-    ? { connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } }
-    : {
+function buildConnection() {
+    if (process.env.DATABASE_URL) {
+        return {
+            connectionString: process.env.DATABASE_URL,
+            ssl: { rejectUnauthorized: false },
+        };
+    }
+    return {
         host: process.env.DB_HOST || 'localhost',
         port: Number(process.env.DB_PORT) || 5433,
         user: process.env.DB_USER || 'orgsledger',
         password: process.env.DB_PASSWORD || 'orgsledger_dev',
         database: process.env.DB_NAME || 'orgsledger',
     };
+}
 const config = {
     client: 'pg',
-    connection,
+    connection: buildConnection(),
     pool: { min: 2, max: 20 },
     migrations: {
         directory: './migrations',

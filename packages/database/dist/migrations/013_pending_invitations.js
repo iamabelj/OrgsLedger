@@ -10,6 +10,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.up = up;
 exports.down = down;
 async function up(knex) {
+    if (await knex.schema.hasTable('pending_invitations'))
+        return;
     await knex.schema.createTable('pending_invitations', (t) => {
         t.uuid('id').primary().defaultTo(knex.fn.uuid());
         t.string('email').notNullable();

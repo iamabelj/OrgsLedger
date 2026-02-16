@@ -19,10 +19,12 @@ async function up(knex) {
     await knex.schema.dropTableIfExists('ai_credits');
     // ── 2. Drop license_id FK from organizations ──────────────
     // First: remove the FK constraint, then the column
-    await knex.schema.alterTable('organizations', (t) => {
-        t.dropForeign('license_id');
-        t.dropColumn('license_id');
-    });
+    if (await knex.schema.hasColumn('organizations', 'license_id')) {
+        await knex.schema.alterTable('organizations', (t) => {
+            t.dropForeign('license_id');
+            t.dropColumn('license_id');
+        });
+    }
     // ── 3. Drop licenses table ────────────────────────────────
     // Fully superseded by subscription_plans + subscriptions
     await knex.schema.dropTableIfExists('licenses');
@@ -31,14 +33,16 @@ async function up(knex) {
     await knex('organizations')
         .whereNull('billing_currency')
         .update({ billing_currency: 'USD' });
-    await knex.raw(`ALTER TABLE organizations ALTER COLUMN billing_currency SET NOT NULL`);
-    await knex.raw(`ALTER TABLE organizations ALTER COLUMN billing_currency SET DEFAULT 'USD'`);
+    await knex.schema.alterTable('organizations', (t) => {
+        t.string('billing_currency', 5).notNullable().defaultTo('USD').alter();
+    });
     // subscription_status: every org should have one
     await knex('organizations')
         .whereNull('subscription_status')
         .update({ subscription_status: 'active' });
-    await knex.raw(`ALTER TABLE organizations ALTER COLUMN subscription_status SET NOT NULL`);
-    await knex.raw(`ALTER TABLE organizations ALTER COLUMN subscription_status SET DEFAULT 'active'`);
+    await knex.schema.alterTable('organizations', (t) => {
+        t.string('subscription_status').notNullable().defaultTo('active').alter();
+    });
 }
 async function down(knex) {
     // Re-create licenses table
@@ -60,8 +64,10 @@ async function down(knex) {
         t.uuid('license_id').nullable().references('id').inTable('licenses').onDelete('SET NULL');
     });
     // Make columns nullable again
-    await knex.raw(`ALTER TABLE organizations ALTER COLUMN billing_currency DROP NOT NULL`);
-    await knex.raw(`ALTER TABLE organizations ALTER COLUMN subscription_status DROP NOT NULL`);
+    await knex.schema.alterTable('organizations', (t) => {
+        t.string('billing_currency', 5).nullable().alter();
+        t.string('subscription_status').nullable().alter();
+    });
     // Re-create legacy ai_credits
     await knex.schema.createTable('ai_credits', (t) => {
         t.uuid('id').primary().defaultTo(knex.raw('uuid_generate_v4()'));

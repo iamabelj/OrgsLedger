@@ -7,17 +7,29 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.up = up;
 exports.down = down;
 async function up(knex) {
-    // Add CHECK constraint to ai_wallet to prevent negative balances
+    // CHECK constraints require raw SQL — Knex DSL does not support them.
+    // Use DO $$ blocks for idempotency (skip if constraint already exists).
     await knex.raw(`
-    ALTER TABLE ai_wallet
-    ADD CONSTRAINT ai_wallet_balance_non_negative
-    CHECK (balance_minutes >= 0)
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'ai_wallet_balance_non_negative'
+      ) THEN
+        ALTER TABLE ai_wallet
+        ADD CONSTRAINT ai_wallet_balance_non_negative
+        CHECK (balance_minutes >= 0);
+      END IF;
+    END $$
   `);
-    // Add CHECK constraint to translation_wallet to prevent negative balances
     await knex.raw(`
-    ALTER TABLE translation_wallet
-    ADD CONSTRAINT translation_wallet_balance_non_negative
-    CHECK (balance_minutes >= 0)
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'translation_wallet_balance_non_negative'
+      ) THEN
+        ALTER TABLE translation_wallet
+        ADD CONSTRAINT translation_wallet_balance_non_negative
+        CHECK (balance_minutes >= 0);
+      END IF;
+    END $$
   `);
 }
 async function down(knex) {
