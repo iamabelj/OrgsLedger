@@ -442,7 +442,7 @@ router.get('/admin/organizations', middleware_1.authenticate, (0, middleware_1.r
             .leftJoin('subscription_plans', 'subscriptions.plan_id', 'subscription_plans.id')
             .leftJoin('ai_wallet', 'organizations.id', 'ai_wallet.organization_id')
             .leftJoin('translation_wallet', 'organizations.id', 'translation_wallet.organization_id')
-            .select('organizations.id', 'organizations.name', 'organizations.subscription_status', 'organizations.billing_currency', 'organizations.billing_country', 'organizations.created_at', 'subscription_plans.name as plan_name', 'subscription_plans.slug as plan_slug', 'subscriptions.status as sub_status', 'subscriptions.current_period_end', 'ai_wallet.balance_minutes as ai_balance_minutes', 'translation_wallet.balance_minutes as translation_balance_minutes')
+            .select('organizations.id', 'organizations.name', 'organizations.slug', 'organizations.status', 'organizations.subscription_status', 'organizations.billing_currency', 'organizations.billing_country', 'organizations.created_at', 'subscription_plans.name as plan_name', 'subscription_plans.slug as plan_slug', 'subscriptions.status as sub_status', 'subscriptions.current_period_end', 'ai_wallet.balance_minutes as ai_balance_minutes', 'translation_wallet.balance_minutes as translation_balance_minutes')
             .orderBy('organizations.created_at', 'desc');
         // Add member count
         const orgIds = orgs.map((o) => o.id);

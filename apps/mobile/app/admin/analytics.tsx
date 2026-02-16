@@ -22,6 +22,7 @@ export default function AnalyticsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [aiHours, setAiHours] = useState<{ balance: number; used: number; remaining: number } | null>(null);
+  const [orgCurrency, setOrgCurrency] = useState<string>('USD');
 
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const memberships = useAuthStore((s) => s.memberships);
@@ -35,6 +36,15 @@ export default function AnalyticsScreen() {
       setAnalytics(res.data.data);
     } catch (err) {
       console.error('Failed to load analytics', err);
+    }
+
+    // Load org details to get currency
+    try {
+      const orgRes = await api.orgs.get(currentOrgId);
+      const currency = orgRes.data?.data?.billing_currency || 'USD';
+      setOrgCurrency(currency);
+    } catch (err) {
+      console.error(`Failed to load org currency for org ${currentOrgId}`, err);
     }
 
     // Load AI hours from wallet
@@ -60,7 +70,10 @@ export default function AnalyticsScreen() {
   const data = analytics || { members: {}, finances: {}, meetings: {} };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', minimumFractionDigits: 0 }).format(amount);
+    if (orgCurrency === 'NGN') {
+      return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', minimumFractionDigits: 0 }).format(amount);
+    }
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(amount);
   };
 
   return (

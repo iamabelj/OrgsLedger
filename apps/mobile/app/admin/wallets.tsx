@@ -24,6 +24,9 @@ import { showAlert } from '../../src/utils/alert';
 
 type WalletType = 'ai' | 'translation';
 
+// Default currency when org currency is not set
+const DEFAULT_CURRENCY = 'USD';
+
 export default function WalletsScreen() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const memberships = useAuthStore((s) => s.memberships);
@@ -69,12 +72,23 @@ export default function WalletsScreen() {
     if (!hours || hours < 1) return showAlert('Invalid', 'Enter at least 1 hour.');
 
     const wallet = activeWallet === 'ai' ? aiWallet : translationWallet;
-    const priceKey = activeWallet === 'ai' ? 'price_per_hour_usd' : 'price_per_hour_usd';
-    const price = parseFloat(wallet?.[priceKey] || (activeWallet === 'ai' ? 10 : 25));
+    // Price keys for USD and NGN currencies - same for both AI and translation wallets
+    const usdPriceKey = 'price_per_hour_usd';
+    const ngnPriceKey = 'price_per_hour_ngn';
+    const orgCurrency = wallet?.currency || DEFAULT_CURRENCY;
+    const priceKeyToUse = orgCurrency === 'NGN' ? ngnPriceKey : usdPriceKey;
+    const defaultPrice = orgCurrency === 'NGN' 
+      ? (activeWallet === 'ai' ? 18000 : 45000) 
+      : (activeWallet === 'ai' ? 10 : 25);
+    const price = parseFloat(wallet?.[priceKeyToUse] || defaultPrice);
     const cost = hours * price;
     const label = activeWallet === 'ai' ? 'AI' : 'Translation';
+    const currencySymbol = orgCurrency === 'NGN' ? '₦' : '$';
+    const formattedCost = orgCurrency === 'NGN' 
+      ? cost.toLocaleString('en-NG', { maximumFractionDigits: 0 })
+      : cost.toFixed(2);
 
-    showAlert(`Top Up ${label} Wallet`, `Add ${hours} hour(s) for $${cost.toFixed(2)}?`, [
+    showAlert(`Top Up ${label} Wallet`, `Add ${hours} hour(s) for ${currencySymbol}${formattedCost}?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Confirm',

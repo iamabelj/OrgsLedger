@@ -318,11 +318,17 @@ All in-memory state prevents clustering:
 
 These are small, safe changes that don't require service extraction:
 
-- [ ] Fix `wallets.tsx` L72 `priceKey` bug (both branches identical)
-- [ ] Fix `create-fine.tsx` L110 hardcoded `currency: 'USD'` → use org currency
-- [ ] Fix `analytics.tsx` L64 hardcoded NGN formatting → use org currency
-- [ ] Wrap `adminAdjustAiWallet` / `adminAdjustTranslationWallet` in `db.transaction()`
-- [ ] Cap `errorFrequency` Map at 500 entries
-- [ ] Cap `orgUsage` Map at 1000 entries
-- [ ] Fix `routeMetrics` key to use `req.route?.path || 'unknown'` (not `req.path`)
-- [ ] Fix wallet auto-creation to respect org `billing_currency`
+- [x] Fix `wallets.tsx` L72 `priceKey` bug (both branches identical) — **FIXED: Now uses org currency and correct price key**
+- [x] Fix `create-fine.tsx` L110 hardcoded `currency: 'USD'` → use org currency — **FIXED: Now fetches org billing_currency and uses it for fines**
+- [x] Fix `analytics.tsx` L64 hardcoded NGN formatting → use org currency — **FIXED: Now fetches org billing_currency and formats accordingly**
+- [x] Wrap `adminAdjustAiWallet` / `adminAdjustTranslationWallet` in `db.transaction()` — **ALREADY FIXED: Uses db.transaction() with GREATEST() floor check**
+- [x] Cap `errorFrequency` Map at 500 entries — **ALREADY FIXED: LRU eviction at 500**
+- [x] Cap `orgUsage` Map at 1000 entries — **ALREADY FIXED: LRU eviction at 1000**
+- [x] Fix `routeMetrics` key to use `req.route?.path || 'unknown'` (not `req.path`) — **ALREADY FIXED: Capped at 200 entries with route pattern keys**
+- [x] Fix wallet auto-creation to respect org `billing_currency` — **ALREADY FIXED: Uses org's billing_currency**
+
+---
+
+## Status: All Quick Win Fixes Complete ✅
+
+All identified quick win fixes have been implemented. The project is now ready for larger refactoring efforts as outlined in Phase 8A-8D above.
