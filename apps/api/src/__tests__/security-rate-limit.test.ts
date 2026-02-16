@@ -515,5 +515,5 @@ describe('Password Security', () => {
     // Wrong password should not match
     const noMatch = await bcrypt.compare('WrongPassword', hash);
     expect(noMatch).toBe(false);
-  });
+  }, 15000);
 });

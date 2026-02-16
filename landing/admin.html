@@ -463,7 +463,8 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
 
 // ── CONFIG ──────────────────────────────────────────────
 const API_BASE = location.origin; // gateway is same origin
-const APP_API = window.APP_API_BASE || (location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://api.orgsledger.com');
+const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+const APP_API = window.APP_API_BASE || (isLocal ? 'http://localhost:3000' : 'https://api.orgsledger.com');
 
 let TOKEN = localStorage.getItem('dev_token') || '';
 let ADMIN_EMAIL = localStorage.getItem('dev_email') || '';

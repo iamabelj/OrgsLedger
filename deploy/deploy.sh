@@ -75,7 +75,7 @@ EMAIL_FROM=noreply@${DOMAIN}
 UPLOAD_DIR=./uploads
 MAX_FILE_SIZE_MB=50
 FIREBASE_PROJECT_ID=
-CORS_ORIGINS=https://${DOMAIN}
+CORS_ORIGINS=https://${DOMAIN},https://app.${DOMAIN}
 ENVEOF
 echo "  ✓ .env.production created"
 
@@ -131,7 +131,7 @@ echo "  ✓ Database ready"
 echo "▸ [7/7] Getting SSL certificate..."
 docker compose -f docker-compose.prod.yml run --rm certbot certonly \
     --webroot -w /usr/share/nginx/html \
-    -d "$DOMAIN" -d "www.$DOMAIN" -d "api.$DOMAIN" \
+    -d "$DOMAIN" -d "www.$DOMAIN" -d "api.$DOMAIN" -d "app.$DOMAIN" \
     --email "$EMAIL" --agree-tos --no-eff-email --force-renewal
 
 # Switch to full SSL nginx config

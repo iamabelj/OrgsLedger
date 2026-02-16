@@ -24,13 +24,22 @@ cd packages/database && npx tsc && cd ../..
 echo "🚀 Building API..."
 cd apps/api && npx tsc && cd ../..
 
-# 5. Build web frontend
+# 5. Install landing (gateway) dependencies
+echo "📦 Installing landing gateway dependencies..."
+cd landing && npm install --omit=dev && cd ..
+
+# 6. Build web frontend
 echo "🌐 Building web frontend..."
 cd apps/mobile && npx expo export --platform web && cd ../..
 
+# 7. Copy web build into API serving directory
+echo "📋 Copying web build to API web directory..."
+node scripts/post-export-web.js
+
 echo ""
 echo "✅ Build complete!"
-echo "   API:  apps/api/dist/"
-echo "   Web:  apps/mobile/dist/"
+echo "   API:      apps/api/dist/"
+echo "   Web:      apps/api/web/ (copied from apps/mobile/dist/)"
+echo "   Landing:  landing/ (gateway + admin console)"
 echo ""
 echo "Next: Upload to Hostinger (see DEPLOY.md)"
