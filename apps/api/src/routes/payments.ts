@@ -1022,12 +1022,12 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { credits: creditsToPurchase } = req.body;
-      const existingCredits = await db('ai_credits')
+      const wallet = await db('ai_wallet')
         .where({ organization_id: req.params.orgId })
         .first();
 
-      const pricePerCredit = existingCredits?.price_per_credit_hour || 7.00;
-      const totalPrice = creditsToPurchase * pricePerCredit;
+      const pricePerHour = parseFloat(wallet?.price_per_hour_usd) || 10.00;
+      const totalPrice = creditsToPurchase * pricePerHour;
 
       // Create payment transaction
       const [transaction] = await db('transactions')
@@ -1048,19 +1048,20 @@ router.post(
           .where({ id: transaction.id })
           .update({ status: 'completed' });
 
-        // Add credits
-        await db('ai_credits')
+        // Add minutes to AI wallet
+        await db('ai_wallet')
           .where({ organization_id: req.params.orgId })
           .update({
-            total_credits: db.raw('total_credits + ?', [creditsToPurchase]),
+            balance_minutes: db.raw('balance_minutes + ?', [creditsToPurchase * 60]),
           });
 
-        await db('ai_credit_transactions').insert({
+        await db('ai_wallet_transactions').insert({
           organization_id: req.params.orgId,
-          type: 'purchase',
-          amount: creditsToPurchase,
-          transaction_id: transaction.id,
-          description: `Purchased ${creditsToPurchase} AI credit${creditsToPurchase > 1 ? 's' : ''}`,
+          type: 'topup',
+          amount_minutes: creditsToPurchase * 60,
+          cost: totalPrice,
+          currency: 'USD',
+          description: `Purchased ${creditsToPurchase} hour${creditsToPurchase > 1 ? 's' : ''} of AI credits`,
         });
 
         await (req as any).audit?.({
