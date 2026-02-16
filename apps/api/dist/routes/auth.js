@@ -57,6 +57,27 @@ const registerSchema = zod_1.z.object({
     orgSlug: zod_1.z.string().nullable().optional(),
     inviteCode: zod_1.z.string({ required_error: 'Invite code is required' }).min(1, 'Invite code is required').max(32, 'Invite code is too long'),
 });
+const adminRegisterSchema = zod_1.z.object({
+    email: zod_1.z.string().email('Please enter a valid email address'),
+    password: zod_1.z.string().min(8, 'Password must be at least 8 characters').max(128),
+    firstName: zod_1.z.string().min(1, 'First name is required').max(100),
+    lastName: zod_1.z.string().min(1, 'Last name is required').max(100),
+    phone: zod_1.z.string().nullable().optional(),
+    orgName: zod_1.z.string().min(2, 'Organization name is required').max(200),
+    orgSlug: zod_1.z.string().min(3, 'Organization URL must be at least 3 characters').max(60).regex(/^[a-z0-9-]+$/, 'URL can only contain lowercase letters, numbers, and hyphens'),
+    plan: zod_1.z.string().optional(),
+    billingCycle: zod_1.z.string().optional(),
+    billingRegion: zod_1.z.string().optional(),
+    currency: zod_1.z.string().optional(),
+});
+const registerWithInviteSchema = zod_1.z.object({
+    email: zod_1.z.string().email('Please enter a valid email address'),
+    password: zod_1.z.string().min(8, 'Password must be at least 8 characters').max(128),
+    firstName: zod_1.z.string().min(1, 'First name is required').max(100),
+    lastName: zod_1.z.string().min(1, 'Last name is required').max(100),
+    phone: zod_1.z.string().nullable().optional(),
+    inviteCode: zod_1.z.string().min(1, 'Invite code is required').max(100),
+});
 const loginSchema = zod_1.z.object({
     email: zod_1.z.string().email(),
     password: zod_1.z.string().min(1),
@@ -267,6 +288,275 @@ router.post('/register', (0, middleware_1.validate)(registerSchema), async (req,
     }
     catch (err) {
         logger_1.logger.error('Registration error', err);
+        res.status(500).json({ success: false, error: 'Registration failed' });
+    }
+});
+// ── Admin Register (Organization Founder) ───────────────────
+// Creates a super admin account + new organization in one step.
+// No invite code needed — this is for new org founders from pricing page.
+router.post('/admin-register', (0, middleware_1.validate)(adminRegisterSchema), async (req, res) => {
+    try {
+        const { email, password, firstName, lastName, phone, orgName, orgSlug, plan, billingCycle, billingRegion, currency } = req.body;
+        const result = await db_1.default.transaction(async (trx) => {
+            // Check if user already exists
+            const existing = await trx('users').where({ email }).first();
+            if (existing) {
+                return { status: 409, error: 'Email already registered' };
+            }
+            // Check if org slug is taken
+            const existingOrg = await trx('organizations').where({ slug: orgSlug }).first();
+            if (existingOrg) {
+                return { status: 409, error: 'This organization URL is already taken. Please choose a different one.' };
+            }
+            // Create the user as org_admin (they become super admin of their own org)
+            const passwordHash = await bcryptjs_1.default.hash(password, 12);
+            const [user] = await trx('users')
+                .insert({
+                email,
+                password_hash: passwordHash,
+                first_name: firstName,
+                last_name: lastName,
+                phone: phone || null,
+                global_role: 'member',
+            })
+                .returning(['id', 'email', 'first_name', 'last_name', 'global_role', 'created_at']);
+            // Create the organization
+            const [org] = await trx('organizations')
+                .insert({
+                name: orgName,
+                slug: orgSlug,
+                created_by: user.id,
+                billing_currency: currency || 'USD',
+            })
+                .returning('*');
+            // Add founder as org_admin
+            await trx('memberships').insert({
+                user_id: user.id,
+                organization_id: org.id,
+                role: 'org_admin',
+                is_active: true,
+                joined_at: trx.fn.now(),
+            });
+            // Create default General channel
+            const [generalChannel] = await trx('channels')
+                .insert({
+                organization_id: org.id,
+                name: 'General',
+                description: 'General discussion channel',
+                created_by: user.id,
+            })
+                .returning('*');
+            // Add founder to general channel
+            if (generalChannel) {
+                await trx('channel_members').insert({
+                    channel_id: generalChannel.id,
+                    user_id: user.id,
+                }).onConflict(['channel_id', 'user_id']).ignore();
+            }
+            // If a plan was selected, create a subscription
+            if (plan) {
+                const planRecord = await trx('plans').where({ slug: plan, is_active: true }).first();
+                if (planRecord) {
+                    const billingCycleVal = billingCycle || 'annual';
+                    const currencyVal = currency || 'USD';
+                    const currLower = currencyVal.toLowerCase();
+                    const priceField = billingCycleVal === 'annual'
+                        ? `price_${currLower}_annual`
+                        : `price_${currLower}_monthly`;
+                    const price = planRecord[priceField] || planRecord.price_usd_annual || 0;
+                    const periodEnd = new Date();
+                    if (billingCycleVal === 'annual') {
+                        periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+                    }
+                    else {
+                        periodEnd.setMonth(periodEnd.getMonth() + 1);
+                    }
+                    await trx('subscriptions').insert({
+                        organization_id: org.id,
+                        plan_id: planRecord.id,
+                        status: 'active',
+                        billing_cycle: billingCycleVal,
+                        currency: currencyVal,
+                        amount_paid: price,
+                        current_period_start: trx.fn.now(),
+                        current_period_end: periodEnd.toISOString(),
+                    });
+                }
+            }
+            return { success: true, user, org };
+        });
+        if ('error' in result) {
+            res.status(result.status).json({ success: false, error: result.error });
+            return;
+        }
+        const user = result.user;
+        const org = result.org;
+        const tokens = generateTokens(user.id, user.email, user.global_role);
+        const memberships = [{
+                id: undefined,
+                role: 'org_admin',
+                organizationId: org.id,
+                organization_id: org.id,
+                organizationName: org.name,
+                organizationSlug: org.slug,
+            }];
+        await (0, middleware_1.writeAuditLog)({
+            userId: user.id,
+            organizationId: org.id,
+            action: 'create',
+            entityType: 'organization',
+            entityId: org.id,
+            newValue: { orgName, orgSlug, plan },
+            ipAddress: req.ip || '',
+            userAgent: req.headers['user-agent'] || '',
+        });
+        logger_1.logger.info(`Admin registered: ${email}, org: ${orgSlug}`);
+        res.status(201).json({
+            success: true,
+            data: {
+                user: {
+                    id: user.id,
+                    email: user.email,
+                    firstName: user.first_name,
+                    lastName: user.last_name,
+                    role: user.global_role,
+                    globalRole: user.global_role,
+                },
+                memberships,
+                ...tokens,
+            },
+        });
+    }
+    catch (err) {
+        logger_1.logger.error('Admin registration error', err);
+        res.status(500).json({ success: false, error: 'Registration failed' });
+    }
+});
+// ── Register with Org Invite Link (Member Signup + Join) ────
+// For unauthenticated users clicking an org invite link.
+// Creates account + joins the org + returns tokens in one step.
+router.post('/register-with-invite', (0, middleware_1.validate)(registerWithInviteSchema), async (req, res) => {
+    try {
+        const { email, password, firstName, lastName, phone, inviteCode } = req.body;
+        const result = await db_1.default.transaction(async (trx) => {
+            // Validate the invite link (NULL expires_at = never expires)
+            const invite = await trx('invite_links')
+                .where({ code: inviteCode, is_active: true })
+                .where(function () {
+                this.whereNull('expires_at').orWhere('expires_at', '>', trx.fn.now());
+            })
+                .forUpdate()
+                .first();
+            if (!invite) {
+                return { status: 404, error: 'Invalid or expired invite link' };
+            }
+            if (invite.max_uses && invite.use_count >= invite.max_uses) {
+                return { status: 403, error: 'This invite link has reached its maximum number of uses.' };
+            }
+            // Check if user already exists
+            const existing = await trx('users').where({ email }).first();
+            if (existing) {
+                return { status: 409, error: 'Email already registered. Please sign in instead.' };
+            }
+            // Get the organization
+            const org = await trx('organizations').where({ id: invite.organization_id }).first();
+            if (!org) {
+                return { status: 404, error: 'Organization not found' };
+            }
+            // Check member limit
+            const countResult = await trx('memberships')
+                .where({ organization_id: org.id, is_active: true })
+                .count('id as count')
+                .first();
+            const memberCount = parseInt(countResult?.count) || 0;
+            const sub = await trx('subscriptions')
+                .where({ organization_id: org.id })
+                .orderBy('created_at', 'desc')
+                .first();
+            const planRecord = sub?.plan_id ? await trx('plans').where({ id: sub.plan_id }).first() : null;
+            const maxMembers = planRecord?.max_members || 100;
+            if (memberCount >= maxMembers) {
+                return { status: 403, error: 'This organization has reached its member limit.' };
+            }
+            // Create the user
+            const passwordHash = await bcryptjs_1.default.hash(password, 12);
+            const [user] = await trx('users')
+                .insert({
+                email,
+                password_hash: passwordHash,
+                first_name: firstName,
+                last_name: lastName,
+                phone: phone || null,
+                global_role: 'member',
+            })
+                .returning(['id', 'email', 'first_name', 'last_name', 'global_role', 'created_at']);
+            // Join the organization
+            await trx('memberships').insert({
+                user_id: user.id,
+                organization_id: org.id,
+                role: invite.role || 'member',
+                is_active: true,
+                joined_at: trx.fn.now(),
+            });
+            // Add to General channel
+            const generalChannel = await trx('channels')
+                .where({ organization_id: org.id, name: 'General' })
+                .first();
+            if (generalChannel) {
+                await trx('channel_members').insert({
+                    channel_id: generalChannel.id,
+                    user_id: user.id,
+                }).onConflict(['channel_id', 'user_id']).ignore();
+            }
+            // Increment invite use count
+            await trx('invite_links').where({ id: invite.id }).update({
+                use_count: trx.raw('use_count + 1'),
+            });
+            logger_1.logger.info(`User ${email} registered + joined org ${org.slug} via invite (role: ${invite.role})`);
+            return { success: true, user, org };
+        });
+        if ('error' in result) {
+            res.status(result.status).json({ success: false, error: result.error });
+            return;
+        }
+        const user = result.user;
+        const org = result.org;
+        const tokens = generateTokens(user.id, user.email, user.global_role);
+        const memberships = [{
+                role: 'member',
+                organizationId: org.id,
+                organization_id: org.id,
+                organizationName: org.name,
+                organizationSlug: org.slug,
+            }];
+        await (0, middleware_1.writeAuditLog)({
+            userId: user.id,
+            organizationId: org.id,
+            action: 'create',
+            entityType: 'user',
+            entityId: user.id,
+            newValue: { email, firstName, lastName, joinedViaInvite: true },
+            ipAddress: req.ip || '',
+            userAgent: req.headers['user-agent'] || '',
+        });
+        res.status(201).json({
+            success: true,
+            data: {
+                user: {
+                    id: user.id,
+                    email: user.email,
+                    firstName: user.first_name,
+                    lastName: user.last_name,
+                    role: user.global_role,
+                    globalRole: user.global_role,
+                },
+                memberships,
+                ...tokens,
+            },
+        });
+    }
+    catch (err) {
+        logger_1.logger.error('Register-with-invite error', err);
         res.status(500).json({ success: false, error: 'Registration failed' });
     }
 });

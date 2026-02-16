@@ -459,7 +459,7 @@ async function getTranslationWalletHistory(orgId, limit = 50, offset = 0) {
 function generateInviteCode() {
     return crypto_1.default.randomBytes(4).toString('hex').toUpperCase();
 }
-async function createInviteLink(orgId, createdBy, role = 'member', maxUses, expiresAt) {
+async function createInviteLink(orgId, createdBy, role = 'member', maxUses, expiresAt, description) {
     const safeCreatedBy = (0, validators_1.isUUID)(createdBy) ? createdBy : null;
     const code = generateInviteCode();
     const [link] = await (0, db_1.default)('invite_links').insert({
@@ -469,6 +469,7 @@ async function createInviteLink(orgId, createdBy, role = 'member', maxUses, expi
         max_uses: maxUses || null,
         expires_at: expiresAt || null,
         created_by: safeCreatedBy,
+        description: description?.trim() || null,
     }).returning('*');
     return link;
 }

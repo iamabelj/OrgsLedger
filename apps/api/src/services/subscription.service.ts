@@ -514,7 +514,8 @@ export async function createInviteLink(
   createdBy?: string | null,
   role: string = 'member',
   maxUses?: number,
-  expiresAt?: string
+  expiresAt?: string,
+  description?: string
 ) {
   const safeCreatedBy = isUUID(createdBy) ? createdBy : null;
   const code = generateInviteCode();
@@ -525,6 +526,7 @@ export async function createInviteLink(
     max_uses: maxUses || null,
     expires_at: expiresAt || null,
     created_by: safeCreatedBy,
+    description: description?.trim() || null,
   }).returning('*');
   return link;
 }

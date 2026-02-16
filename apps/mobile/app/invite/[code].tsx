@@ -57,13 +57,16 @@ export default function InviteJoinScreen() {
     setLoading(true);
     try {
       const res = await api.subscriptions.validateInvite(code!);
-      setInvite(res.data?.data || res.data);
+      const d = res.data?.data || res.data;
+      setInvite(d);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Invalid or expired invite code');
     } finally {
       setLoading(false);
     }
   };
+
+  const orgName = invite?.organizationName || 'the organization';
 
   // ── Authenticated user: direct join ───────────────────
   const handleJoin = async () => {
@@ -218,28 +221,26 @@ export default function InviteJoinScreen() {
               </View>
               <Text style={styles.title}>Welcome!</Text>
               <Text style={styles.subtitle}>
-                You've successfully joined {invite?.organizationName || 'the organization'}.
+                You've successfully joined {orgName}.
               </Text>
               <Button title="Go to Dashboard" onPress={goHome} variant="primary" />
             </Card>
           ) : isAuthenticated ? (
             /* ── Authenticated: simple join card ──────────── */
             <Card style={styles.card}>
-              <View style={styles.iconWrap}>
-                <Ionicons name="people" size={64} color={Colors.highlight} />
-              </View>
-              <Text style={styles.title}>You're Invited!</Text>
-
-              {invite?.organizationName && (
-                <View style={styles.orgBadge}>
-                  <Ionicons name="business" size={18} color={Colors.highlight} />
-                  <Text style={styles.orgName}>{invite.organizationName}</Text>
+              <View style={styles.orgInviteBanner}>
+                <View style={styles.iconWrap}>
+                  <Ionicons name="business" size={48} color={Colors.highlight} />
                 </View>
-              )}
-
-              <Text style={styles.subtitle}>
-                You've been invited to join this organization on OrgsLedger.
-              </Text>
+                <Text style={styles.orgNameLarge}>{invite?.organizationName || 'Organization'}</Text>
+                <Text style={styles.inviteCaption}>is inviting you to join</Text>
+                {invite?.description && (
+                  <View style={styles.descriptionBadge}>
+                    <Ionicons name="document-text-outline" size={14} color={Colors.highlight} />
+                    <Text style={styles.descriptionText}>{invite.description}</Text>
+                  </View>
+                )}
+              </View>
 
               {invite?.role && (
                 <View style={styles.roleRow}>
@@ -260,16 +261,19 @@ export default function InviteJoinScreen() {
             <>
               {/* Invite Header */}
               <View style={styles.inviteHeader}>
-                <View style={styles.iconWrap}>
-                  <Ionicons name="people" size={48} color={Colors.highlight} />
-                </View>
-                <Text style={styles.title}>You're Invited!</Text>
-                {invite?.organizationName && (
-                  <View style={styles.orgBadge}>
-                    <Ionicons name="business" size={16} color={Colors.highlight} />
-                    <Text style={styles.orgName}>{invite.organizationName}</Text>
+                <View style={styles.orgInviteBanner}>
+                  <View style={styles.iconWrap}>
+                    <Ionicons name="business" size={48} color={Colors.highlight} />
                   </View>
-                )}
+                  <Text style={styles.orgNameLarge}>{invite?.organizationName || 'Organization'}</Text>
+                  <Text style={styles.inviteCaption}>is inviting you to join</Text>
+                  {invite?.description && (
+                    <View style={styles.descriptionBadge}>
+                      <Ionicons name="document-text-outline" size={14} color={Colors.highlight} />
+                      <Text style={styles.descriptionText}>{invite.description}</Text>
+                    </View>
+                  )}
+                </View>
                 {invite?.role && (
                   <View style={styles.roleRow}>
                     <Ionicons name="shield-checkmark" size={14} color={Colors.info} />
@@ -340,7 +344,7 @@ export default function InviteJoinScreen() {
                 <View style={[styles.formCard, responsive.isPhone && styles.formCardPhone]}>
                   <Text style={styles.formTitle}>Create your account</Text>
                   <Text style={styles.formSubtitle}>
-                    Sign up and join {invite?.organizationName || 'the organization'} instantly.
+                    Sign up and join {orgName} instantly.
                   </Text>
 
                   <View style={[styles.nameRow, responsive.isPhone && styles.nameRowPhone]}>
@@ -481,6 +485,30 @@ const styles = StyleSheet.create({
   orgName: {
     fontSize: FontSize.lg, fontWeight: FontWeight.semibold as any,
     color: Colors.highlight,
+  },
+  orgInviteBanner: {
+    alignItems: 'center', gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+  },
+  orgNameLarge: {
+    fontSize: 26, fontWeight: FontWeight.bold as any,
+    color: Colors.highlight, textAlign: 'center',
+    letterSpacing: 0.4,
+  },
+  inviteCaption: {
+    fontSize: FontSize.md, color: Colors.textSecondary,
+    textAlign: 'center', marginTop: -4,
+  },
+  descriptionBadge: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.xs,
+    backgroundColor: Colors.highlightSubtle,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.lg, marginTop: Spacing.xs,
+    maxWidth: 400,
+  },
+  descriptionText: {
+    fontSize: FontSize.sm, color: Colors.textSecondary,
+    lineHeight: 20, flex: 1,
   },
   roleRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   roleText: {

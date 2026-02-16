@@ -492,10 +492,12 @@ router.post('/register-with-invite', validate(registerWithInviteSchema), async (
     const { email, password, firstName, lastName, phone, inviteCode } = req.body;
 
     const result = await db.transaction(async (trx) => {
-      // Validate the invite link
+      // Validate the invite link (NULL expires_at = never expires)
       const invite = await trx('invite_links')
         .where({ code: inviteCode, is_active: true })
-        .where('expires_at', '>', trx.fn.now())
+        .where(function (this: any) {
+          this.whereNull('expires_at').orWhere('expires_at', '>', trx.fn.now());
+        })
         .forUpdate()
         .first();
 

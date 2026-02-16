@@ -69,6 +69,7 @@ const createInviteSchema = zod_1.z.object({
     role: zod_1.z.enum(['member', 'executive', 'org_admin']).default('member'),
     maxUses: zod_1.z.number().int().min(1).max(1000).default(50),
     expiresAt: zod_1.z.string().optional(),
+    description: zod_1.z.string().max(500).optional(),
 });
 const adjustWalletSchema = zod_1.z.object({
     organizationId: zod_1.z.string().uuid().optional(),
@@ -108,11 +109,25 @@ router.get('/plans', async (_req, res) => {
 router.get('/invite/:code', async (req, res) => {
     try {
         const invite = await subSvc.validateInviteLink(req.params.code);
-        if (!invite) {
-            res.status(404).json({ success: false, error: 'Invalid or expired invite link' });
+        if (!invite || !invite.valid) {
+            res.status(404).json({ success: false, error: invite?.error || 'Invalid or expired invite link' });
             return;
         }
-        res.json({ success: true, data: invite });
+        // Return flattened data with org info for a premium invite UX
+        res.json({
+            success: true,
+            data: {
+                valid: true,
+                role: invite.link?.role || 'member',
+                organizationName: invite.organization?.name || '',
+                organizationSlug: invite.organization?.slug || '',
+                organizationLogo: invite.organization?.logo_url || null,
+                description: invite.link?.description || null,
+                expiresAt: invite.link?.expires_at || null,
+                maxUses: invite.link?.max_uses || null,
+                useCount: invite.link?.use_count || 0,
+            },
+        });
     }
     catch (err) {
         logger_1.logger.error('Validate invite error', err);
@@ -334,8 +349,8 @@ router.get('/:orgId/wallet/translation/history', middleware_1.authenticate, midd
 // POST /:orgId/invite
 router.post('/:orgId/invite', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), (0, middleware_1.validate)(createInviteSchema), async (req, res) => {
     try {
-        const { role, maxUses, expiresAt } = req.body;
-        const invite = await subSvc.createInviteLink(req.params.orgId, req.user.userId, role || 'member', maxUses || 50, expiresAt);
+        const { role, maxUses, expiresAt, description } = req.body;
+        const invite = await subSvc.createInviteLink(req.params.orgId, req.user.userId, role || 'member', maxUses || 50, expiresAt, description);
         res.json({ success: true, data: invite });
     }
     catch (err) {
