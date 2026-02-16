@@ -73,6 +73,15 @@ class ApiClient {
   auth = {
     register: (data: { email: string; password: string; firstName: string; lastName: string; phone?: string; orgSlug?: string; inviteCode: string }) =>
       this.client.post('/auth/register', data),
+    adminRegister: (data: {
+      email: string; password: string; firstName: string; lastName: string;
+      phone?: string; orgName: string; orgSlug: string;
+      plan?: string; billingCycle?: string; billingRegion?: string; currency?: string;
+    }) => this.client.post('/auth/admin-register', data),
+    registerWithInvite: (data: {
+      email: string; password: string; firstName: string; lastName: string;
+      phone?: string; inviteCode: string;
+    }) => this.client.post('/auth/register-with-invite', data),
     login: (data: { email: string; password: string }) =>
       this.client.post('/auth/login', data),
     me: () => this.client.get('/auth/me'),
