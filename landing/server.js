@@ -67,6 +67,8 @@ async function initDB() {
         active BOOLEAN DEFAULT true,
         hours_balance DECIMAL(10,2) DEFAULT 0,
         hours_used DECIMAL(10,2) DEFAULT 0,
+        translation_hours_balance DECIMAL(10,2) DEFAULT 0,
+        translation_hours_used DECIMAL(10,2) DEFAULT 0,
         notes TEXT,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
@@ -126,6 +128,8 @@ async function initDB() {
       `ALTER TABLE ai_clients ADD COLUMN IF NOT EXISTS hours_balance DECIMAL(10,2) DEFAULT 0`,
       `ALTER TABLE ai_clients ADD COLUMN IF NOT EXISTS hours_used DECIMAL(10,2) DEFAULT 0`,
       `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS hours_deducted DECIMAL(10,4) DEFAULT 0`,
+      `ALTER TABLE ai_clients ADD COLUMN IF NOT EXISTS translation_hours_balance DECIMAL(10,2) DEFAULT 0`,
+      `ALTER TABLE ai_clients ADD COLUMN IF NOT EXISTS translation_hours_used DECIMAL(10,2) DEFAULT 0`,
     ];
     for (const sql of migrations) {
       await client.query(sql).catch(() => {}); // ignore if column exists

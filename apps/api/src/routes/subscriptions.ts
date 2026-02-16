@@ -1364,7 +1364,7 @@ router.get('/admin/users', authenticate, requireDeveloper(), async (req: Request
         'users.first_name',
         'users.last_name',
         'users.global_role',
-        'users.is_verified',
+        'users.email_verified',
         'users.created_at',
         'users.last_login_at',
         db.raw('(SELECT COUNT(*) FROM memberships WHERE memberships.user_id = users.id AND memberships.is_active = true) as org_count'),
@@ -1409,7 +1409,7 @@ router.get('/admin/users/:userId', authenticate, requireDeveloper(), async (req:
   try {
     const user = await db('users')
       .where({ id: req.params.userId })
-      .select('id', 'email', 'first_name', 'last_name', 'phone', 'global_role', 'is_verified', 'avatar_url', 'created_at', 'last_login_at')
+      .select('id', 'email', 'first_name', 'last_name', 'phone', 'global_role', 'email_verified', 'avatar_url', 'created_at', 'last_login_at')
       .first();
 
     if (!user) {
@@ -1456,7 +1456,7 @@ router.get('/admin/users/:userId', authenticate, requireDeveloper(), async (req:
 const updateUserSchema = z.object({
   firstName: z.string().min(1).max(100).optional(),
   lastName: z.string().min(1).max(100).optional(),
-  globalRole: z.enum(['user', 'developer', 'super_admin']).optional(),
+  globalRole: z.enum(['member', 'developer', 'super_admin']).optional(),
   isVerified: z.boolean().optional(),
 });
 
@@ -1474,7 +1474,7 @@ router.put('/admin/users/:userId', authenticate, requireDeveloper(), validate(up
     if (firstName !== undefined) updates.first_name = firstName;
     if (lastName !== undefined) updates.last_name = lastName;
     if (globalRole !== undefined) updates.global_role = globalRole;
-    if (isVerified !== undefined) updates.is_verified = isVerified;
+    if (isVerified !== undefined) updates.email_verified = isVerified;
 
     await db('users').where({ id: req.params.userId }).update(updates);
 
@@ -1483,7 +1483,7 @@ router.put('/admin/users/:userId', authenticate, requireDeveloper(), validate(up
       action: 'admin_update_user',
       entityType: 'user',
       entityId: req.params.userId,
-      previousValue: { globalRole: previous.global_role, isVerified: previous.is_verified },
+      previousValue: { globalRole: previous.global_role, isVerified: previous.email_verified },
       newValue: updates,
       ipAddress: req.ip || '',
       userAgent: req.headers['user-agent'] || '',
@@ -1491,7 +1491,7 @@ router.put('/admin/users/:userId', authenticate, requireDeveloper(), validate(up
 
     const updated = await db('users')
       .where({ id: req.params.userId })
-      .select('id', 'email', 'first_name', 'last_name', 'global_role', 'is_verified')
+      .select('id', 'email', 'first_name', 'last_name', 'global_role', 'email_verified')
       .first();
 
     logger.info(`Admin updated user: ${updated.email} - role: ${updated.global_role}`);
