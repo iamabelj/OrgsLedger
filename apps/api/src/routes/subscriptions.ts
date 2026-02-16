@@ -666,6 +666,8 @@ router.post('/admin/wallet/ai/adjust', authenticate, requireDeveloper(), validat
     const hours = req.body.hours;
     const description = req.body.description || req.body.reason;
     const minutes = hours * 60;
+    // Ensure wallet row exists before adjusting
+    await subSvc.getAiWallet(organizationId);
     const wallet = await subSvc.adminAdjustAiWallet(organizationId, minutes, description);
     await writeAuditLog({
       organizationId,
@@ -680,7 +682,7 @@ router.post('/admin/wallet/ai/adjust', authenticate, requireDeveloper(), validat
     res.json({ success: true, data: wallet });
   } catch (err: any) {
     logger.error('Admin adjust AI error', err);
-    res.status(500).json({ success: false, error: 'Adjustment failed' });
+    res.status(500).json({ success: false, error: err.message || 'Adjustment failed' });
   }
 });
 
@@ -691,6 +693,8 @@ router.post('/admin/wallet/translation/adjust', authenticate, requireDeveloper()
     const hours = req.body.hours;
     const description = req.body.description || req.body.reason;
     const minutes = hours * 60;
+    // Ensure wallet row exists before adjusting
+    await subSvc.getTranslationWallet(organizationId);
     const wallet = await subSvc.adminAdjustTranslationWallet(organizationId, minutes, description);
     await writeAuditLog({
       organizationId,
@@ -705,7 +709,7 @@ router.post('/admin/wallet/translation/adjust', authenticate, requireDeveloper()
     res.json({ success: true, data: wallet });
   } catch (err: any) {
     logger.error('Admin adjust translation error', err);
-    res.status(500).json({ success: false, error: 'Adjustment failed' });
+    res.status(500).json({ success: false, error: err.message || 'Adjustment failed' });
   }
 });
 
