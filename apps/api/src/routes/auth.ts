@@ -164,7 +164,7 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
 
     // Handle transaction-level validation errors
     if ('error' in result) {
-      res.status(result.status).json({ success: false, error: result.error });
+      res.status(result.status as number).json({ success: false, error: result.error });
       return;
     }
 
