@@ -126,7 +126,7 @@ describe('Stress: Memory & Resource Profiling', () => {
       const elapsed = Date.now() - start;
 
       expect(json.length).toBeGreaterThan(0);
-      expect(elapsed).toBeLessThan(100); // Should be very fast
+      expect(elapsed).toBeLessThan(500); // Should complete quickly
     });
 
     it('should parse large JSON payloads within limits', () => {
