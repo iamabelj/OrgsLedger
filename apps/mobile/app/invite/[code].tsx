@@ -8,7 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ActivityIndicator,
-  TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform,
+  TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
@@ -22,6 +22,8 @@ import { showAlert } from '../../src/utils/alert';
 import { useResponsive } from '../../src/hooks/useResponsive';
 import storage from '../../src/utils/storage';
 import { socketClient } from '../../src/api/socket';
+
+const LOGO = require('../../assets/logo-no-bg.png');
 
 export default function InviteJoinScreen() {
   const { code } = useLocalSearchParams<{ code: string }>();
@@ -44,9 +46,6 @@ export default function InviteJoinScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [registering, setRegistering] = useState(false);
-  const [showLoginForm, setShowLoginForm] = useState(false);
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
 
   useEffect(() => {
     if (!code) { setError('No invite code provided'); setLoading(false); return; }
@@ -156,29 +155,6 @@ export default function InviteJoinScreen() {
     }
   };
 
-  // ── Existing user: login + join ───────────────────────
-  const handleLoginAndJoin = async () => {
-    const trimmedEmail = loginEmail.trim().toLowerCase();
-    if (!trimmedEmail || !loginPassword) {
-      showAlert('Error', 'Please enter your email and password');
-      return;
-    }
-
-    setRegistering(true);
-    try {
-      await useAuthStore.getState().login(trimmedEmail, loginPassword);
-      // Now join the org
-      await api.subscriptions.joinViaInvite(code!);
-      await loadUser();
-      setJoined(true);
-    } catch (err: any) {
-      const data = err.response?.data;
-      showAlert('Error', data?.error || 'Login failed. Please check your credentials.');
-    } finally {
-      setRegistering(false);
-    }
-  };
-
   const goHome = () => router.replace('/(tabs)/home');
 
   return (
@@ -229,9 +205,7 @@ export default function InviteJoinScreen() {
             /* ── Authenticated: simple join card ──────────── */
             <Card style={styles.card}>
               <View style={styles.orgInviteBanner}>
-                <View style={styles.iconWrap}>
-                  <Ionicons name="business" size={48} color={Colors.highlight} />
-                </View>
+                <Image source={LOGO} style={styles.logoImage} resizeMode="contain" />
                 <Text style={styles.orgNameLarge}>{invite?.organizationName || 'Organization'}</Text>
                 <Text style={styles.inviteCaption}>is inviting you to join</Text>
                 {invite?.description && (
@@ -257,14 +231,12 @@ export default function InviteJoinScreen() {
               />
             </Card>
           ) : (
-            /* ── Not Authenticated: inline signup form ────── */
+            /* ── Not Authenticated: registration form only ── */
             <>
-              {/* Invite Header */}
+              {/* Invite Header with Logo */}
               <View style={styles.inviteHeader}>
                 <View style={styles.orgInviteBanner}>
-                  <View style={styles.iconWrap}>
-                    <Ionicons name="business" size={48} color={Colors.highlight} />
-                  </View>
+                  <Image source={LOGO} style={styles.logoImage} resizeMode="contain" />
                   <Text style={styles.orgNameLarge}>{invite?.organizationName || 'Organization'}</Text>
                   <Text style={styles.inviteCaption}>is inviting you to join</Text>
                   {invite?.description && (
@@ -282,66 +254,8 @@ export default function InviteJoinScreen() {
                 )}
               </View>
 
-              {/* Toggle: Sign Up / Sign In */}
-              <View style={styles.toggleRow}>
-                <TouchableOpacity
-                  style={[styles.toggleBtn, !showLoginForm && styles.toggleBtnActive]}
-                  onPress={() => setShowLoginForm(false)}
-                >
-                  <Text style={[styles.toggleText, !showLoginForm && styles.toggleTextActive]}>
-                    Create Account
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.toggleBtn, showLoginForm && styles.toggleBtnActive]}
-                  onPress={() => setShowLoginForm(true)}
-                >
-                  <Text style={[styles.toggleText, showLoginForm && styles.toggleTextActive]}>
-                    Sign In
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {showLoginForm ? (
-                /* ── Existing user login form ──────────────── */
-                <View style={[styles.formCard, responsive.isPhone && styles.formCardPhone]}>
-                  <Text style={styles.formTitle}>Sign in to join</Text>
-                  <Text style={styles.formSubtitle}>
-                    Already have an account? Sign in and join instantly.
-                  </Text>
-
-                  <Input
-                    label="EMAIL ADDRESS"
-                    placeholder="you@example.com"
-                    value={loginEmail}
-                    onChangeText={setLoginEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    icon="mail-outline"
-                  />
-
-                  <Input
-                    label="PASSWORD"
-                    placeholder="Enter your password"
-                    value={loginPassword}
-                    onChangeText={setLoginPassword}
-                    secureTextEntry
-                    icon="lock-closed-outline"
-                  />
-
-                  <Button
-                    title={registering ? 'Signing In...' : 'Sign In & Join'}
-                    onPress={handleLoginAndJoin}
-                    loading={registering}
-                    icon="log-in-outline"
-                    fullWidth
-                    size="lg"
-                    style={{ marginTop: Spacing.sm }}
-                  />
-                </View>
-              ) : (
-                /* ── New member signup form ────────────────── */
-                <View style={[styles.formCard, responsive.isPhone && styles.formCardPhone]}>
+              {/* Registration Form */}
+              <View style={[styles.formCard, responsive.isPhone && styles.formCardPhone]}>
                   <Text style={styles.formTitle}>Create your account</Text>
                   <Text style={styles.formSubtitle}>
                     Sign up and join {orgName} instantly.
@@ -445,8 +359,15 @@ export default function InviteJoinScreen() {
                     size="lg"
                     style={{ marginTop: Spacing.sm }}
                   />
+
+                  {/* Already have an account? Link to login */}
+                  <View style={styles.loginLinkRow}>
+                    <Text style={styles.loginLinkText}>Already have an account? </Text>
+                    <TouchableOpacity onPress={() => router.push('/(auth)/login')}>
+                      <Text style={styles.loginLinkBold}>Sign in</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              )}
 
               <PoweredByFooter />
             </>
@@ -463,6 +384,9 @@ const styles = StyleSheet.create({
   center: { alignItems: 'center', gap: Spacing.md },
   loadingText: { color: Colors.textSecondary, fontSize: FontSize.md },
   card: { padding: Spacing.xl, alignItems: 'center', gap: Spacing.md },
+  logoImage: {
+    width: 64, height: 64, marginBottom: Spacing.xs,
+  },
   iconWrap: {
     width: 100, height: 100, borderRadius: 50,
     backgroundColor: Colors.highlightSubtle,
@@ -517,21 +441,6 @@ const styles = StyleSheet.create({
   inviteHeader: {
     alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.lg,
   },
-  toggleRow: {
-    flexDirection: 'row', gap: Spacing.xs, marginBottom: Spacing.md,
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
-    padding: Spacing.xs,
-  },
-  toggleBtn: {
-    flex: 1, paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.md, alignItems: 'center',
-  },
-  toggleBtnActive: { backgroundColor: Colors.highlightSubtle },
-  toggleText: {
-    fontSize: FontSize.md, color: Colors.textSecondary,
-    fontWeight: FontWeight.medium as any,
-  },
-  toggleTextActive: { color: Colors.highlight, fontWeight: FontWeight.bold as any },
   formCard: {
     backgroundColor: Colors.surface, borderRadius: BorderRadius.xl,
     padding: Spacing.xl, borderWidth: 1,
@@ -555,4 +464,14 @@ const styles = StyleSheet.create({
   rulesList: { gap: Spacing.xs, marginTop: Spacing.xs },
   ruleRow2: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
   ruleText: { fontSize: FontSize.sm, color: Colors.textLight },
+  loginLinkRow: {
+    flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
+    marginTop: Spacing.md, paddingTop: Spacing.md,
+    borderTopWidth: 1, borderTopColor: Colors.borderLight,
+  },
+  loginLinkText: { fontSize: FontSize.sm, color: Colors.textSecondary },
+  loginLinkBold: {
+    fontSize: FontSize.sm, color: Colors.highlight,
+    fontWeight: FontWeight.bold as any,
+  },
 });

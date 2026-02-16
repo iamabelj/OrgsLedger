@@ -1,27 +1,53 @@
 // ============================================================
-// OrgsLedger Mobile — Login Screen (Royal Design)
+// OrgsLedger — Login Screen (Split Layout — Royal Design)
+// Desktop: Left panel (benefits + branding) | Right panel (login form)
+// Mobile: Single column — branding → login
 // ============================================================
 
 import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Dimensions,
+  View, Text, TouchableOpacity, StyleSheet,
+  KeyboardAvoidingView, Platform, ScrollView, Image,
 } from 'react-native';
 import { showAlert } from '../../src/utils/alert';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
-import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
+import {
+  Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow,
+} from '../../src/theme';
 import { Input, Button, PoweredByFooter } from '../../src/components/ui';
 import { useResponsive } from '../../src/hooks/useResponsive';
 
-const { width } = Dimensions.get('window');
+const LOGO = require('../../assets/logo-no-bg.png');
+
+const BENEFITS = [
+  {
+    icon: 'wallet-outline' as const,
+    title: 'Financial Transparency',
+    desc: 'Track dues, payments, and expenses with full audit trails your members can trust.',
+  },
+  {
+    icon: 'people-outline' as const,
+    title: 'Member Management',
+    desc: 'Onboard members, assign roles, and manage your entire roster effortlessly.',
+  },
+  {
+    icon: 'chatbubbles-outline' as const,
+    title: 'Built-in Communication',
+    desc: 'Real-time chat, announcements, polls, and meeting coordination — all in one place.',
+  },
+  {
+    icon: 'document-text-outline' as const,
+    title: 'Document Vault',
+    desc: 'Store minutes, receipts, and legal documents with secure role-based access.',
+  },
+  {
+    icon: 'globe-outline' as const,
+    title: 'Cross-Border Ready',
+    desc: 'Multi-currency support with Stripe, Paystack, and Flutterwave integrations.',
+  },
+];
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -39,175 +65,302 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       await login(email.trim().toLowerCase(), password);
-      // Use setTimeout to ensure state update completes before navigation
-      setTimeout(() => {
-        router.replace('/(tabs)/home');
-      }, 100);
+      setTimeout(() => router.replace('/(tabs)/home'), 100);
     } catch (err: any) {
-      showAlert(
-        'Login Failed',
-        err.response?.data?.error || 'Invalid credentials'
-      );
+      showAlert('Login Failed', err.response?.data?.error || 'Invalid credentials');
     } finally {
       setLoading(false);
     }
   };
 
+  const isWide = responsive.isDesktop || responsive.isTablet;
+
+  // ── Left Panel: Benefits & Branding ─────────────────────
+  const BenefitsPanel = () => (
+    <View style={[s.leftPanel, !isWide && s.leftPanelMobile]}>
+      {/* Logo + Brand */}
+      <View style={s.brandSection}>
+        <Image source={LOGO} style={s.logoImage} resizeMode="contain" />
+        <Text style={s.brandName}>OrgsLedger</Text>
+        <View style={s.ornament}>
+          <View style={s.ornamentLine} />
+          <Ionicons name="diamond" size={8} color={Colors.highlight} />
+          <View style={s.ornamentLine} />
+        </View>
+        <Text style={s.tagline}>Your organization's operational hub</Text>
+      </View>
+
+      {/* Benefits List */}
+      {!responsive.isPhone && (
+        <View style={s.benefitsList}>
+          {BENEFITS.map((b, i) => (
+            <View key={i} style={s.benefitRow}>
+              <View style={s.benefitIcon}>
+                <Ionicons name={b.icon} size={20} color={Colors.highlight} />
+              </View>
+              <View style={s.benefitContent}>
+                <Text style={s.benefitTitle}>{b.title}</Text>
+                <Text style={s.benefitDesc}>{b.desc}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Compact mobile benefits */}
+      {responsive.isPhone && (
+        <View style={s.benefitsCompact}>
+          {BENEFITS.slice(0, 3).map((b, i) => (
+            <View key={i} style={s.benefitChip}>
+              <Ionicons name={b.icon} size={14} color={Colors.highlight} />
+              <Text style={s.benefitChipText}>{b.title}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+
+  // ── Right Panel: Login Form ─────────────────────────────
+  const LoginForm = () => (
+    <View style={[s.rightPanel, !isWide && s.rightPanelMobile]}>
+      <View style={[s.formCard, responsive.isPhone && s.formCardPhone]}>
+        <Text style={s.formTitle}>Welcome Back</Text>
+        <Text style={s.formSubtitle}>Sign in to your account</Text>
+
+        <View style={s.formFields}>
+          <Input
+            label="EMAIL ADDRESS"
+            placeholder="you@example.com"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            icon="mail-outline"
+          />
+
+          <View>
+            <Input
+              label="PASSWORD"
+              placeholder="Your password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              icon="lock-closed-outline"
+            />
+            <TouchableOpacity
+              style={s.eyeBtn}
+              onPress={() => setShowPassword(!showPassword)}
+            >
+              <Ionicons
+                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                size={20}
+                color={Colors.textLight}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={s.forgotBtn} onPress={() => router.push('/(auth)/forgot-password')}>
+            <Text style={s.forgotText}>Forgot Password?</Text>
+          </TouchableOpacity>
+
+          <Button
+            title="Sign In"
+            onPress={handleLogin}
+            loading={loading}
+            icon="log-in-outline"
+            fullWidth
+            size="lg"
+          />
+        </View>
+
+        {/* Footer info */}
+        <View style={s.footerInfo}>
+          <Text style={s.footerText}>
+            Need an account? Contact your organization admin for an invite link.
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={s.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
         contentContainerStyle={[
-          styles.scroll,
-          responsive.isPhone && styles.scrollPhone,
-          { maxWidth: responsive.contentMaxWidth, alignSelf: 'center', width: '100%' },
+          s.scroll,
+          isWide && s.scrollWide,
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Royal Crest/Brand Section */}
-        <View style={styles.brand}>
-          <View style={styles.crest}>
-            <View style={styles.crestInner}>
-              <Ionicons name="shield-checkmark" size={42} color={Colors.highlight} />
-            </View>
+        {isWide ? (
+          /* ── Desktop / Tablet: side-by-side ──────────── */
+          <View style={s.splitContainer}>
+            <BenefitsPanel />
+            <LoginForm />
           </View>
-          <Text style={styles.logo}>OrgsLedger</Text>
-          <Text style={styles.tagline}>Your organization's operational hub</Text>
-          <View style={styles.ornament}>
-            <View style={styles.ornamentLine} />
-            <Ionicons name="diamond" size={10} color={Colors.highlight} />
-            <View style={styles.ornamentLine} />
+        ) : (
+          /* ── Phone: stacked ──────────────────────────── */
+          <View style={s.stackContainer}>
+            <BenefitsPanel />
+            <LoginForm />
+            <PoweredByFooter />
           </View>
-        </View>
-
-        {/* Login Form */}
-        <View style={[styles.formCard, responsive.isPhone && styles.formCardPhone]}>
-          <Text style={styles.formTitle}>Welcome Back</Text>
-          <Text style={styles.formSubtitle}>Sign in to your account</Text>
-
-          <View style={styles.formFields}>
-            <Input
-              label="EMAIL ADDRESS"
-              placeholder="you@example.com"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              icon="mail-outline"
-            />
-
-            <View>
-              <Input
-                label="PASSWORD"
-                placeholder="Your password"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                icon="lock-closed-outline"
-              />
-              <TouchableOpacity
-                style={styles.eyeBtn}
-                onPress={() => setShowPassword(!showPassword)}
-              >
-                <Ionicons
-                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                  size={20}
-                  color={Colors.textLight}
-                />
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity style={styles.forgotBtn} onPress={() => router.push('/(auth)/forgot-password')}>
-              <Text style={styles.forgotText}>Forgot Password?</Text>
-            </TouchableOpacity>
-
-            <Button
-              title="Sign In"
-              onPress={handleLogin}
-              loading={loading}
-              icon="log-in-outline"
-              fullWidth
-              size="lg"
-            />
-          </View>
-        </View>
-
-        {/* Footer — signup is invite-only, show info text */}
-        <View style={styles.footerLink}>
-          <Text style={styles.footerText}>
-            Need an account? Contact your organization admin for an invite link.
-          </Text>
-        </View>
-
-        <PoweredByFooter />
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
   },
   scroll: {
     flexGrow: 1,
+  },
+  scrollWide: {
     justifyContent: 'center',
-    padding: Spacing.lg,
+    minHeight: '100%',
   },
-  scrollPhone: {
+
+  // ── Split Layout (Desktop/Tablet) ─────────────────────
+  splitContainer: {
+    flexDirection: 'row',
+    flex: 1,
+    minHeight: '100%',
+  },
+
+  // ── Stacked Layout (Phone) ────────────────────────────
+  stackContainer: {
     padding: Spacing.md,
+    gap: Spacing.lg,
+    paddingBottom: Spacing.xxl,
   },
-  brand: {
+
+  // ── Left Panel ────────────────────────────────────────
+  leftPanel: {
+    flex: 1,
+    backgroundColor: Colors.primary,
+    padding: Spacing.xxl,
+    justifyContent: 'center',
+    borderRightWidth: 1,
+    borderRightColor: Colors.accent,
+  },
+  leftPanelMobile: {
+    padding: 0,
+    borderRightWidth: 0,
+    backgroundColor: 'transparent',
+  },
+
+  brandSection: {
     alignItems: 'center',
     marginBottom: Spacing.xl,
   },
-  crest: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: Colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: Colors.highlight,
-    ...Shadow.lg,
-    marginBottom: Spacing.md,
-  },
-  crestInner: {
+  logoImage: {
     width: 72,
     height: 72,
-    borderRadius: 36,
-    backgroundColor: Colors.highlightSubtle,
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginBottom: Spacing.sm,
   },
-  logo: {
-    fontSize: 32,
+  brandName: {
+    fontSize: 30,
     fontWeight: FontWeight.extrabold,
-    color: Colors.textPrimary,
+    color: Colors.highlight,
     letterSpacing: 1.5,
-  },
-  tagline: {
-    fontSize: FontSize.md,
-    color: Colors.textSecondary,
-    marginTop: Spacing.xs,
   },
   ornament: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    marginTop: Spacing.md,
+    marginVertical: Spacing.sm,
   },
   ornamentLine: {
     width: 40,
     height: 1,
     backgroundColor: Colors.highlight,
-    opacity: 0.5,
+    opacity: 0.4,
   },
+  tagline: {
+    fontSize: FontSize.md,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+
+  // ── Benefits (Desktop/Tablet) ─────────────────────────
+  benefitsList: {
+    gap: Spacing.md,
+    maxWidth: 420,
+    alignSelf: 'center',
+  },
+  benefitRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    alignItems: 'flex-start',
+  },
+  benefitIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: Colors.highlightSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  benefitContent: {
+    flex: 1,
+  },
+  benefitTitle: {
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.semibold,
+    color: Colors.textPrimary,
+    marginBottom: 2,
+  },
+  benefitDesc: {
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+
+  // ── Benefits Compact (Phone) ──────────────────────────
+  benefitsCompact: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+    justifyContent: 'center',
+  },
+  benefitChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.highlightSubtle,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
+  },
+  benefitChipText: {
+    fontSize: FontSize.xs,
+    color: Colors.highlight,
+    fontWeight: FontWeight.medium,
+  },
+
+  // ── Right Panel ───────────────────────────────────────
+  rightPanel: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: Spacing.xxl,
+    maxWidth: 520,
+  },
+  rightPanelMobile: {
+    padding: 0,
+    maxWidth: '100%',
+  },
+
+  // ── Form Card ─────────────────────────────────────────
   formCard: {
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.xl,
@@ -251,17 +404,17 @@ const styles = StyleSheet.create({
     color: Colors.highlight,
     fontWeight: FontWeight.medium,
   },
-  footerLink: {
+  footerInfo: {
     alignItems: 'center',
-    marginTop: Spacing.xl,
-    paddingVertical: Spacing.md,
+    marginTop: Spacing.lg,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.borderLight,
   },
   footerText: {
     color: Colors.textSecondary,
-    fontSize: FontSize.md,
-  },
-  footerBold: {
-    color: Colors.highlight,
-    fontWeight: FontWeight.bold,
+    fontSize: FontSize.sm,
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });

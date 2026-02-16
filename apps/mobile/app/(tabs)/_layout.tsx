@@ -5,7 +5,7 @@
 // collapsible; mobile uses overlay drawer.
 
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Platform, Image } from 'react-native';
 import { Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontWeight, FontSize, Spacing, BorderRadius } from '../../src/theme';
@@ -13,6 +13,17 @@ import { HamburgerButton } from '../../src/components/HamburgerButton';
 import { useDrawer } from '../../src/contexts/DrawerContext';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { router } from 'expo-router';
+
+const LOGO = require('../../assets/logo-no-bg.png');
+
+function HeaderLeft() {
+  return (
+    <View style={headerStyles.left}>
+      <HamburgerButton />
+      <Image source={LOGO} style={headerStyles.logoImg} resizeMode="contain" />
+    </View>
+  );
+}
 
 function HeaderRight() {
   const user = useAuthStore((s) => s.user);
@@ -32,6 +43,16 @@ function HeaderRight() {
 }
 
 const headerStyles = StyleSheet.create({
+  left: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginLeft: Spacing.xs,
+  },
+  logoImg: {
+    width: 28,
+    height: 28,
+  },
   right: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -62,7 +83,7 @@ export default function TabLayout() {
           color: Colors.textPrimary,
           letterSpacing: 0.3,
         },
-        headerLeft: () => <HamburgerButton />,
+        headerLeft: () => <HeaderLeft />,
         headerRight: () => <HeaderRight />,
         headerShadowVisible: false,
         contentStyle: { backgroundColor: Colors.background },

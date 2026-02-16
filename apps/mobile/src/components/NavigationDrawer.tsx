@@ -22,6 +22,8 @@ import { useAuthStore } from '../stores/auth.store';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../theme';
 import { useDrawer, DRAWER_WIDTH, DRAWER_COLLAPSED_WIDTH } from '../contexts/DrawerContext';
 
+const LOGO = require('../../assets/logo-no-bg.png');
+
 interface NavItem {
   label: string;
   icon: string;
@@ -213,7 +215,7 @@ export function NavigationDrawer() {
         {!isCollapsed ? (
           <View style={styles.brandRow}>
             <View style={styles.logoWrap}>
-              <Ionicons name="business" size={24} color={Colors.highlight} />
+              <Image source={LOGO} style={styles.logoImg} resizeMode="contain" />
             </View>
             <Text style={styles.appName}>OrgsLedger</Text>
             {isDesktop && (
@@ -240,7 +242,7 @@ export function NavigationDrawer() {
             style={styles.collapsedLogoBtn}
             onPress={toggle}
           >
-            <Ionicons name="menu" size={22} color={Colors.highlight} />
+            <Image source={LOGO} style={{ width: 24, height: 24 }} resizeMode="contain" />
           </TouchableOpacity>
         )}
       </View>
@@ -391,6 +393,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.highlightSubtle,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  logoImg: {
+    width: 28,
+    height: 28,
   },
   appName: {
     flex: 1,

@@ -7,12 +7,14 @@
 import React, { useState, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ScrollView,
+  KeyboardAvoidingView, Platform, ScrollView, Image,
 } from 'react-native';
 import { showAlert } from '../../src/utils/alert';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
+
+const LOGO = require('../../assets/logo-no-bg.png');
 import { api } from '../../src/api/client';
 import {
   Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow,
@@ -179,7 +181,7 @@ export default function AdminRegisterScreen() {
         {/* Brand Section */}
         <View style={styles.brand}>
           <View style={styles.crest}>
-            <Ionicons name="shield-checkmark" size={32} color={Colors.highlight} />
+            <Image source={LOGO} style={{ width: 36, height: 36 }} resizeMode="contain" />
           </View>
           <Text style={styles.logo}>
             {step === 'account' ? 'Create Admin Account' : 'Set Up Organization'}
