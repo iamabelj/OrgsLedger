@@ -262,6 +262,8 @@ export async function topUpAiWallet(params: {
 }) {
   await db.transaction(async (trx) => {
     const wallet = await trx('ai_wallet').where({ organization_id: params.orgId }).first();
+    const balanceBefore = parseFloat(wallet.balance_minutes);
+    const balanceAfter = balanceBefore + params.minutes;
     await trx('ai_wallet')
       .where({ organization_id: params.orgId })
       .update({
@@ -274,6 +276,7 @@ export async function topUpAiWallet(params: {
       organization_id: params.orgId,
       type: 'topup',
       amount_minutes: params.minutes,
+      balance_after: balanceAfter,
       cost: params.cost,
       currency: params.currency,
       payment_ref: params.paymentRef,
@@ -313,6 +316,8 @@ export async function topUpTranslationWallet(params: {
 }) {
   await db.transaction(async (trx) => {
     const wallet = await trx('translation_wallet').where({ organization_id: params.orgId }).first();
+    const balanceBefore = parseFloat(wallet.balance_minutes);
+    const balanceAfter = balanceBefore + params.minutes;
     await trx('translation_wallet')
       .where({ organization_id: params.orgId })
       .update({
@@ -325,6 +330,7 @@ export async function topUpTranslationWallet(params: {
       organization_id: params.orgId,
       type: 'topup',
       amount_minutes: params.minutes,
+      balance_after: balanceAfter,
       cost: params.cost,
       currency: params.currency,
       payment_ref: params.paymentRef,
@@ -385,6 +391,7 @@ export async function deductAiWallet(orgId: string, minutes: number, description
       organization_id: orgId,
       type: 'usage',
       amount_minutes: -minutes,
+      balance_after: balanceBefore - minutes,
       description: description || `AI usage: ${minutes.toFixed(1)} minutes`,
     });
 
@@ -439,6 +446,7 @@ export async function deductTranslationWallet(orgId: string, minutes: number, de
       organization_id: orgId,
       type: 'usage',
       amount_minutes: -minutes,
+      balance_after: balanceBefore - minutes,
       description: description || `Translation usage: ${minutes.toFixed(1)} minutes`,
     });
 
@@ -588,6 +596,8 @@ export async function completeUsageRecord(recordId: string, durationMinutes: num
 export async function adminAdjustAiWallet(orgId: string, minutes: number, description: string) {
   await db.transaction(async (trx) => {
     const wallet = await trx('ai_wallet').where({ organization_id: orgId }).first();
+    const balanceBefore = parseFloat(wallet.balance_minutes);
+    const balanceAfter = Math.max(balanceBefore + minutes, 0);
     await trx('ai_wallet')
       .where({ organization_id: orgId })
       .update({
@@ -600,6 +610,7 @@ export async function adminAdjustAiWallet(orgId: string, minutes: number, descri
       organization_id: orgId,
       type: 'admin_adjustment',
       amount_minutes: minutes,
+      balance_after: balanceAfter,
       description,
     });
   });
@@ -610,6 +621,8 @@ export async function adminAdjustAiWallet(orgId: string, minutes: number, descri
 export async function adminAdjustTranslationWallet(orgId: string, minutes: number, description: string) {
   await db.transaction(async (trx) => {
     const wallet = await trx('translation_wallet').where({ organization_id: orgId }).first();
+    const balanceBefore = parseFloat(wallet.balance_minutes);
+    const balanceAfter = Math.max(balanceBefore + minutes, 0);
     await trx('translation_wallet')
       .where({ organization_id: orgId })
       .update({
@@ -622,6 +635,7 @@ export async function adminAdjustTranslationWallet(orgId: string, minutes: numbe
       organization_id: orgId,
       type: 'admin_adjustment',
       amount_minutes: minutes,
+      balance_after: balanceAfter,
       description,
     });
   });
