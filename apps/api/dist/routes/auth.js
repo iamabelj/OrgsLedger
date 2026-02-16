@@ -55,6 +55,7 @@ const registerSchema = zod_1.z.object({
     lastName: zod_1.z.string({ required_error: 'Last name is required' }).min(1, 'Last name is required').max(100, 'Last name is too long'),
     phone: zod_1.z.string().nullable().optional(),
     orgSlug: zod_1.z.string().nullable().optional(),
+    inviteCode: zod_1.z.string({ required_error: 'Invite code is required' }).min(1, 'Invite code is required').max(32, 'Invite code is too long'),
 });
 const loginSchema = zod_1.z.object({
     email: zod_1.z.string().email(),
@@ -69,24 +70,90 @@ function generateTokens(userId, email, globalRole) {
 // ── Register ────────────────────────────────────────────────
 router.post('/register', (0, middleware_1.validate)(registerSchema), async (req, res) => {
     try {
-        const { email, password, firstName, lastName, phone, orgSlug } = req.body;
-        // Check if user already exists
-        const existing = await (0, db_1.default)('users').where({ email }).first();
-        if (existing) {
-            res.status(409).json({ success: false, error: 'Email already registered' });
+        const { email, password, firstName, lastName, phone, orgSlug, inviteCode } = req.body;
+        // ── Wrap entire registration in a transaction for atomicity ──
+        const result = await db_1.default.transaction(async (trx) => {
+            // Lock the invite row (FOR UPDATE) to prevent race conditions when
+            // two users try to register with the same single-use invite simultaneously
+            const signupInvite = await trx('signup_invites')
+                .where({ code: inviteCode, is_active: true })
+                .forUpdate()
+                .first();
+            if (!signupInvite) {
+                return { status: 403, error: 'Invalid or expired invite code. Registration requires a valid invite link.' };
+            }
+            if (signupInvite.expires_at && new Date(signupInvite.expires_at) < new Date()) {
+                return { status: 403, error: 'This invite code has expired. Please request a new one.' };
+            }
+            if (signupInvite.max_uses && signupInvite.use_count >= signupInvite.max_uses) {
+                return { status: 403, error: 'This invite code has reached its maximum number of uses.' };
+            }
+            // If invite is targeted to a specific email, validate
+            if (signupInvite.email && signupInvite.email.toLowerCase() !== email.toLowerCase()) {
+                return { status: 403, error: 'This invite code is not valid for this email address.' };
+            }
+            // Check if user already exists
+            const existing = await trx('users').where({ email }).first();
+            if (existing) {
+                return { status: 409, error: 'Email already registered' };
+            }
+            const passwordHash = await bcryptjs_1.default.hash(password, 12);
+            const [user] = await trx('users')
+                .insert({
+                email,
+                password_hash: passwordHash,
+                first_name: firstName,
+                last_name: lastName,
+                phone: phone || null,
+                global_role: 'member',
+                signup_invite_code: inviteCode,
+            })
+                .returning(['id', 'email', 'first_name', 'last_name', 'global_role', 'created_at']);
+            // Atomically increment signup invite use count
+            await trx('signup_invites').where({ id: signupInvite.id }).update({ use_count: trx.raw('use_count + 1') });
+            // If the signup invite is tied to an organization, auto-join that org
+            if (signupInvite.organization_id) {
+                const inviteOrg = await trx('organizations').where({ id: signupInvite.organization_id }).first();
+                if (inviteOrg) {
+                    const countResult = await trx('memberships')
+                        .where({ organization_id: inviteOrg.id, is_active: true })
+                        .count('id as count')
+                        .first();
+                    const memberCount = parseInt(countResult?.count) || 0;
+                    const sub = await trx('subscriptions')
+                        .where({ organization_id: inviteOrg.id })
+                        .orderBy('created_at', 'desc')
+                        .first();
+                    const maxMembers = sub ? 100 : 100; // Default limit
+                    if (memberCount < maxMembers) {
+                        await trx('memberships').insert({
+                            user_id: user.id,
+                            organization_id: inviteOrg.id,
+                            role: signupInvite.role || 'member',
+                            is_active: true,
+                            joined_at: trx.fn.now(),
+                        });
+                        const generalChannel = await trx('channels')
+                            .where({ organization_id: inviteOrg.id, name: 'General' })
+                            .first();
+                        if (generalChannel) {
+                            await trx('channel_members').insert({
+                                channel_id: generalChannel.id,
+                                user_id: user.id,
+                            }).onConflict(['channel_id', 'user_id']).ignore();
+                        }
+                        logger_1.logger.info(`User ${email} auto-joined org ${inviteOrg.slug} via signup invite (role: ${signupInvite.role})`);
+                    }
+                }
+            }
+            return { success: true, user };
+        });
+        // Handle transaction-level validation errors
+        if ('error' in result) {
+            res.status(result.status).json({ success: false, error: result.error });
             return;
         }
-        const passwordHash = await bcryptjs_1.default.hash(password, 12);
-        const [user] = await (0, db_1.default)('users')
-            .insert({
-            email,
-            password_hash: passwordHash,
-            first_name: firstName,
-            last_name: lastName,
-            phone: phone || null,
-            global_role: 'member',
-        })
-            .returning(['id', 'email', 'first_name', 'last_name', 'global_role', 'created_at']);
+        const user = result.user;
         const tokens = generateTokens(user.id, user.email, user.global_role);
         // Check for pending invitations from developer org creation
         const pendingInvites = await (0, db_1.default)('pending_invitations')

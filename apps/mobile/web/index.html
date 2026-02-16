@@ -32,6 +32,17 @@
         height: 100%;
         flex: 1;
       }
+      /* Smooth global transitions for OrgsLedger */
+      * { -webkit-tap-highlight-color: transparent; }
+      body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+      /* Scrollbar theming for dark UI */
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: rgba(201,168,76,0.25); border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: rgba(201,168,76,0.4); }
+      /* Smooth link/button transitions */
+      [role="button"], a, button { transition: opacity 0.15s ease, transform 0.15s ease; }
+      [role="button"]:active, button:active { transform: scale(0.97); }
     </style>
   </head>
 

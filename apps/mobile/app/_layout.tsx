@@ -54,8 +54,13 @@ function AppShell() {
             headerBackTitleVisible: false,
             headerLeft: () => <SmartHeaderLeft />,
             contentStyle: { backgroundColor: Colors.background },
+            // Smooth transitions for page navigation
             ...(Platform.OS === 'web' && {
               headerBackImageSource: undefined,
+              animation: 'fade' as const,
+            }),
+            ...(Platform.OS !== 'web' && {
+              animation: 'slide_from_right' as const,
             }),
           }}
         >

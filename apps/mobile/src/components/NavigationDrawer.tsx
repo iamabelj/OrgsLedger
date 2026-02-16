@@ -87,6 +87,30 @@ const legalItems: NavItem[] = [
 
 const API_BASE = __DEV__ ? 'http://localhost:3000' : 'https://app.orgsledger.com';
 
+// Inject CSS keyframes on web for smooth animations
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  const styleId = 'orgsledger-drawer-animations';
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      @keyframes drawerSlideIn {
+        from { transform: translateX(-100%); opacity: 0.5; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+      @keyframes overlayFadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes pageContentFadeIn {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+}
+
 export function NavigationDrawer() {
   const pathname = usePathname();
   const { isOpen, isCollapsed, close, toggle, isDesktop } = useDrawer();
@@ -290,11 +314,20 @@ export function NavigationDrawer() {
     </View>
   );
 
-  // Mobile: overlay + slide-in
+  // Mobile: overlay with smooth slide-in (CSS on web, instant on native)
   if (!isDesktop) {
     return (
-      <Pressable style={styles.overlay} onPress={close}>
-        <Pressable onPress={(e) => e.stopPropagation()}>
+      <Pressable
+        style={[
+          styles.overlay,
+          Platform.OS === 'web' && ({ animation: 'overlayFadeIn 0.25s ease-out' } as any),
+        ]}
+        onPress={close}
+      >
+        <Pressable
+          onPress={(e) => e.stopPropagation()}
+          style={Platform.OS === 'web' ? ({ animation: 'drawerSlideIn 0.25s ease-out' } as any) : undefined}
+        >
           {drawer}
         </Pressable>
       </Pressable>

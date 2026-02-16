@@ -128,39 +128,43 @@ async function createSubscription(params) {
     }
     const graceEnd = new Date(periodEnd);
     graceEnd.setDate(graceEnd.getDate() + 7);
-    // Deactivate ALL old subscriptions (including expired) so the LEFT JOIN
-    // in GET /admin/organizations never produces duplicate rows per org
-    await (0, db_1.default)('subscriptions')
-        .where({ organization_id: params.organizationId })
-        .whereIn('status', ['active', 'grace_period', 'expired'])
-        .update({ status: 'cancelled', updated_at: db_1.default.fn.now() });
-    const [sub] = await (0, db_1.default)('subscriptions').insert({
-        organization_id: params.organizationId,
-        plan_id: params.planId,
-        status: initialStatus,
-        billing_cycle: params.billingCycle,
-        currency: params.currency,
-        billing_country: params.billingCountry,
-        amount_paid: params.amountPaid,
-        current_period_start: now.toISOString(),
-        current_period_end: periodEnd.toISOString(),
-        grace_period_end: graceEnd.toISOString(),
-        payment_gateway: params.paymentGateway,
-        gateway_subscription_id: params.gatewaySubscriptionId,
-        created_by: safeCreatedBy,
-    }).returning('*');
-    // Update org
-    await (0, db_1.default)('organizations').where({ id: params.organizationId }).update({
-        subscription_status: initialStatus === 'active' ? 'active' : 'pending',
-        billing_currency: params.currency,
-        billing_country: params.billingCountry,
-    });
-    // Log history
-    await (0, db_1.default)('subscription_history').insert({
-        subscription_id: sub.id,
-        organization_id: params.organizationId,
-        action: 'created',
-        metadata: JSON.stringify({ planId: params.planId, amountPaid: params.amountPaid, cycle: params.billingCycle }),
+    // Wrap all subscription writes in a single transaction for atomicity
+    const sub = await db_1.default.transaction(async (trx) => {
+        // Deactivate ALL old subscriptions (including expired) so the LEFT JOIN
+        // in GET /admin/organizations never produces duplicate rows per org
+        await trx('subscriptions')
+            .where({ organization_id: params.organizationId })
+            .whereIn('status', ['active', 'grace_period', 'expired'])
+            .update({ status: 'cancelled', updated_at: trx.fn.now() });
+        const [newSub] = await trx('subscriptions').insert({
+            organization_id: params.organizationId,
+            plan_id: params.planId,
+            status: initialStatus,
+            billing_cycle: params.billingCycle,
+            currency: params.currency,
+            billing_country: params.billingCountry,
+            amount_paid: params.amountPaid,
+            current_period_start: now.toISOString(),
+            current_period_end: periodEnd.toISOString(),
+            grace_period_end: graceEnd.toISOString(),
+            payment_gateway: params.paymentGateway,
+            gateway_subscription_id: params.gatewaySubscriptionId,
+            created_by: safeCreatedBy,
+        }).returning('*');
+        // Update org
+        await trx('organizations').where({ id: params.organizationId }).update({
+            subscription_status: initialStatus === 'active' ? 'active' : 'pending',
+            billing_currency: params.currency,
+            billing_country: params.billingCountry,
+        });
+        // Log history
+        await trx('subscription_history').insert({
+            subscription_id: newSub.id,
+            organization_id: params.organizationId,
+            action: 'created',
+            metadata: JSON.stringify({ planId: params.planId, amountPaid: params.amountPaid, cycle: params.billingCycle }),
+        });
+        return newSub;
     });
     logger_1.logger.info('[SUB] Subscription created', {
         orgId: params.organizationId,
@@ -200,21 +204,24 @@ async function renewSubscription(orgId, amountPaid, paymentRef) {
     }
     const graceEnd = new Date(newEnd);
     graceEnd.setDate(graceEnd.getDate() + 7);
-    await (0, db_1.default)('subscriptions').where({ id: sub.id }).update({
-        status: 'active',
-        amount_paid: amountPaid,
-        current_period_start: now.toISOString(),
-        current_period_end: newEnd.toISOString(),
-        grace_period_end: graceEnd.toISOString(),
-        gateway_subscription_id: paymentRef || sub.gateway_subscription_id,
-        updated_at: db_1.default.fn.now(),
-    });
-    await (0, db_1.default)('organizations').where({ id: orgId }).update({ subscription_status: 'active' });
-    await (0, db_1.default)('subscription_history').insert({
-        subscription_id: sub.id,
-        organization_id: orgId,
-        action: 'renewed',
-        metadata: JSON.stringify({ amountPaid, paymentRef }),
+    // Wrap renewal in a transaction for atomicity
+    await db_1.default.transaction(async (trx) => {
+        await trx('subscriptions').where({ id: sub.id }).update({
+            status: 'active',
+            amount_paid: amountPaid,
+            current_period_start: now.toISOString(),
+            current_period_end: newEnd.toISOString(),
+            grace_period_end: graceEnd.toISOString(),
+            gateway_subscription_id: paymentRef || sub.gateway_subscription_id,
+            updated_at: trx.fn.now(),
+        });
+        await trx('organizations').where({ id: orgId }).update({ subscription_status: 'active' });
+        await trx('subscription_history').insert({
+            subscription_id: sub.id,
+            organization_id: orgId,
+            action: 'renewed',
+            metadata: JSON.stringify({ amountPaid, paymentRef }),
+        });
     });
     await (0, audit_1.writeAuditLog)({
         organizationId: orgId,
@@ -250,16 +257,26 @@ async function getTranslationWallet(orgId) {
 }
 async function topUpAiWallet(params) {
     await db_1.default.transaction(async (trx) => {
+        // Lock wallet row to prevent concurrent top-up race conditions
+        const wallet = await trx('ai_wallet').where({ organization_id: params.orgId }).forUpdate().first();
+        if (!wallet) {
+            throw new Error('AI wallet not found for top-up');
+        }
+        const balanceBefore = parseFloat(wallet.balance_minutes);
+        const balanceAfter = balanceBefore + params.minutes;
         await trx('ai_wallet')
             .where({ organization_id: params.orgId })
             .update({
             balance_minutes: trx.raw('balance_minutes + ?', [params.minutes]),
+            total_topped_up: trx.raw('COALESCE(total_topped_up, 0) + ?', [params.minutes]),
             updated_at: trx.fn.now(),
         });
         await trx('ai_wallet_transactions').insert({
+            wallet_id: wallet.id,
             organization_id: params.orgId,
             type: 'topup',
             amount_minutes: params.minutes,
+            balance_after: balanceAfter,
             cost: params.cost,
             currency: params.currency,
             payment_ref: params.paymentRef,
@@ -287,16 +304,26 @@ async function topUpAiWallet(params) {
 }
 async function topUpTranslationWallet(params) {
     await db_1.default.transaction(async (trx) => {
+        // Lock wallet row to prevent concurrent top-up race conditions
+        const wallet = await trx('translation_wallet').where({ organization_id: params.orgId }).forUpdate().first();
+        if (!wallet) {
+            throw new Error('Translation wallet not found for top-up');
+        }
+        const balanceBefore = parseFloat(wallet.balance_minutes);
+        const balanceAfter = balanceBefore + params.minutes;
         await trx('translation_wallet')
             .where({ organization_id: params.orgId })
             .update({
             balance_minutes: trx.raw('balance_minutes + ?', [params.minutes]),
+            total_topped_up: trx.raw('COALESCE(total_topped_up, 0) + ?', [params.minutes]),
             updated_at: trx.fn.now(),
         });
         await trx('translation_wallet_transactions').insert({
+            wallet_id: wallet.id,
             organization_id: params.orgId,
             type: 'topup',
             amount_minutes: params.minutes,
+            balance_after: balanceAfter,
             cost: params.cost,
             currency: params.currency,
             payment_ref: params.paymentRef,
@@ -345,9 +372,11 @@ async function deductAiWallet(orgId, minutes, description) {
             updated_at: trx.fn.now(),
         });
         await trx('ai_wallet_transactions').insert({
+            wallet_id: wallet.id,
             organization_id: orgId,
             type: 'usage',
             amount_minutes: -minutes,
+            balance_after: balanceBefore - minutes,
             description: description || `AI usage: ${minutes.toFixed(1)} minutes`,
         });
         logger_1.logger.info('[WALLET] AI wallet deducted', { orgId, minutes, balanceBefore, balanceAfter: balanceBefore - minutes, description });
@@ -389,9 +418,11 @@ async function deductTranslationWallet(orgId, minutes, description) {
             updated_at: trx.fn.now(),
         });
         await trx('translation_wallet_transactions').insert({
+            wallet_id: wallet.id,
             organization_id: orgId,
             type: 'usage',
             amount_minutes: -minutes,
+            balance_after: balanceBefore - minutes,
             description: description || `Translation usage: ${minutes.toFixed(1)} minutes`,
         });
         logger_1.logger.info('[WALLET] Translation wallet deducted', { orgId, minutes, balanceBefore, balanceAfter: balanceBefore - minutes, description });
@@ -515,6 +546,9 @@ async function completeUsageRecord(recordId, durationMinutes, cost, currency) {
 // ── Admin Adjustments ─────────────────────────────────────
 async function adminAdjustAiWallet(orgId, minutes, description) {
     await db_1.default.transaction(async (trx) => {
+        const wallet = await trx('ai_wallet').where({ organization_id: orgId }).first();
+        const balanceBefore = parseFloat(wallet.balance_minutes);
+        const balanceAfter = Math.max(balanceBefore + minutes, 0);
         await trx('ai_wallet')
             .where({ organization_id: orgId })
             .update({
@@ -522,9 +556,11 @@ async function adminAdjustAiWallet(orgId, minutes, description) {
             updated_at: db_1.default.fn.now(),
         });
         await trx('ai_wallet_transactions').insert({
+            wallet_id: wallet.id,
             organization_id: orgId,
             type: 'admin_adjustment',
             amount_minutes: minutes,
+            balance_after: balanceAfter,
             description,
         });
     });
@@ -532,6 +568,9 @@ async function adminAdjustAiWallet(orgId, minutes, description) {
 }
 async function adminAdjustTranslationWallet(orgId, minutes, description) {
     await db_1.default.transaction(async (trx) => {
+        const wallet = await trx('translation_wallet').where({ organization_id: orgId }).first();
+        const balanceBefore = parseFloat(wallet.balance_minutes);
+        const balanceAfter = Math.max(balanceBefore + minutes, 0);
         await trx('translation_wallet')
             .where({ organization_id: orgId })
             .update({
@@ -539,9 +578,11 @@ async function adminAdjustTranslationWallet(orgId, minutes, description) {
             updated_at: db_1.default.fn.now(),
         });
         await trx('translation_wallet_transactions').insert({
+            wallet_id: wallet.id,
             organization_id: orgId,
             type: 'admin_adjustment',
             amount_minutes: minutes,
+            balance_after: balanceAfter,
             description,
         });
     });

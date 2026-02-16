@@ -52,16 +52,24 @@ function mountLandingGateway(app) {
             });
         }
         // Gateway API routes on landing domain
+        // Only forward paths that the gateway owns. Other /api/admin/* paths
+        // (observability, config, analytics, audit-logs) belong to the main API.
         app.use((req, res, next) => {
             if ((0, constants_1.isLandingHost)(req.headers.host || '')) {
                 const p = req.path;
-                if (p.startsWith('/api/admin') ||
+                const isGatewayPath = p === '/api/admin/login' ||
+                    p.startsWith('/api/admin/clients') ||
+                    p.startsWith('/api/admin/stats') ||
+                    p.startsWith('/api/admin/logs') ||
+                    p.startsWith('/api/admin/purchase-hours') ||
+                    p.startsWith('/api/admin/orders') ||
                     p.startsWith('/api/checkout') ||
                     p.startsWith('/api/ai') ||
                     p.startsWith('/api/geo') ||
                     p.startsWith('/api/license') ||
                     p.startsWith('/api/webhooks') ||
-                    p === '/health') {
+                    p === '/health';
+                if (isGatewayPath) {
                     return gatewayApp(req, res, next);
                 }
             }

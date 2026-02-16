@@ -1,0 +1,1 @@
+{"version":3,"file":"016_wallet_transaction_wallet_id.d.ts","sourceRoot":"","sources":["../../src/migrations/016_wallet_transaction_wallet_id.ts"],"names":[],"mappings":"AAOA,OAAO,EAAE,IAAI,EAAE,MAAM,MAAM,CAAC;AAE5B,wBAAsB,EAAE,CAAC,IAAI,EAAE,IAAI,GAAG,OAAO,CAAC,IAAI,CAAC,CAyElD;AAED,wBAAsB,IAAI,CAAC,IAAI,EAAE,IAAI,GAAG,OAAO,CAAC,IAAI,CAAC,CAQpD"}

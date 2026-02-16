@@ -5,7 +5,7 @@
 // collapsible; mobile uses overlay drawer.
 
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontWeight, FontSize, Spacing, BorderRadius } from '../../src/theme';
@@ -66,6 +66,12 @@ export default function TabLayout() {
         headerRight: () => <HeaderRight />,
         headerShadowVisible: false,
         contentStyle: { backgroundColor: Colors.background },
+        ...(Platform.OS === 'web' && {
+          animation: 'fade' as const,
+        }),
+        ...(Platform.OS !== 'web' && {
+          animation: 'slide_from_right' as const,
+        }),
       }}
     >
       <Stack.Screen name="home" options={{ title: 'Dashboard' }} />
