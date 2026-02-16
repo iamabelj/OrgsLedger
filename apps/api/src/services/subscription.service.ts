@@ -261,6 +261,7 @@ export async function topUpAiWallet(params: {
   paymentGateway?: string;
 }) {
   await db.transaction(async (trx) => {
+    const wallet = await trx('ai_wallet').where({ organization_id: params.orgId }).first();
     await trx('ai_wallet')
       .where({ organization_id: params.orgId })
       .update({
@@ -269,6 +270,7 @@ export async function topUpAiWallet(params: {
       });
 
     await trx('ai_wallet_transactions').insert({
+      wallet_id: wallet.id,
       organization_id: params.orgId,
       type: 'topup',
       amount_minutes: params.minutes,
@@ -310,6 +312,7 @@ export async function topUpTranslationWallet(params: {
   paymentGateway?: string;
 }) {
   await db.transaction(async (trx) => {
+    const wallet = await trx('translation_wallet').where({ organization_id: params.orgId }).first();
     await trx('translation_wallet')
       .where({ organization_id: params.orgId })
       .update({
@@ -318,6 +321,7 @@ export async function topUpTranslationWallet(params: {
       });
 
     await trx('translation_wallet_transactions').insert({
+      wallet_id: wallet.id,
       organization_id: params.orgId,
       type: 'topup',
       amount_minutes: params.minutes,
@@ -377,6 +381,7 @@ export async function deductAiWallet(orgId: string, minutes: number, description
       });
 
     await trx('ai_wallet_transactions').insert({
+      wallet_id: wallet.id,
       organization_id: orgId,
       type: 'usage',
       amount_minutes: -minutes,
@@ -430,6 +435,7 @@ export async function deductTranslationWallet(orgId: string, minutes: number, de
       });
 
     await trx('translation_wallet_transactions').insert({
+      wallet_id: wallet.id,
       organization_id: orgId,
       type: 'usage',
       amount_minutes: -minutes,
@@ -581,6 +587,7 @@ export async function completeUsageRecord(recordId: string, durationMinutes: num
 // ── Admin Adjustments ─────────────────────────────────────
 export async function adminAdjustAiWallet(orgId: string, minutes: number, description: string) {
   await db.transaction(async (trx) => {
+    const wallet = await trx('ai_wallet').where({ organization_id: orgId }).first();
     await trx('ai_wallet')
       .where({ organization_id: orgId })
       .update({
@@ -589,6 +596,7 @@ export async function adminAdjustAiWallet(orgId: string, minutes: number, descri
       });
 
     await trx('ai_wallet_transactions').insert({
+      wallet_id: wallet.id,
       organization_id: orgId,
       type: 'admin_adjustment',
       amount_minutes: minutes,
@@ -601,6 +609,7 @@ export async function adminAdjustAiWallet(orgId: string, minutes: number, descri
 
 export async function adminAdjustTranslationWallet(orgId: string, minutes: number, description: string) {
   await db.transaction(async (trx) => {
+    const wallet = await trx('translation_wallet').where({ organization_id: orgId }).first();
     await trx('translation_wallet')
       .where({ organization_id: orgId })
       .update({
@@ -609,6 +618,7 @@ export async function adminAdjustTranslationWallet(orgId: string, minutes: numbe
       });
 
     await trx('translation_wallet_transactions').insert({
+      wallet_id: wallet.id,
       organization_id: orgId,
       type: 'admin_adjustment',
       amount_minutes: minutes,

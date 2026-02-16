@@ -30,6 +30,8 @@ import {
 // ── Helpers ─────────────────────────────────────────────────
 
 function setupTransactionMock(walletRow: any | null) {
+  // Ensure wallet has an id for wallet_id lookup (if wallet exists)
+  if (walletRow && !walletRow.id) walletRow.id = 'wallet-mock-id';
   db.transaction.mockImplementation(async (callback: Function) => {
     const methods = [
       'where', 'whereIn', 'orderBy', 'first', 'insert', 'update',
@@ -78,7 +80,7 @@ describe('Money Flow — Wallet Operations', () => {
   describe('topUpAiWallet', () => {
     it('should credit wallet inside db.transaction', async () => {
       // First call: getAiWallet after topup
-      setupTransactionMock(null); // transaction callback
+      setupTransactionMock({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '0.00' }); // transaction callback
       setupDbChain({ organization_id: 'org-1', balance_minutes: '120.00' });
 
       await topUpAiWallet({
@@ -104,6 +106,7 @@ describe('Money Flow — Wallet Operations', () => {
           }
           chain.fn = { now: jest.fn().mockReturnValue('NOW()') };
           chain.raw = jest.fn((...args: any[]) => args);
+          chain.first.mockResolvedValue({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '0.00' });
           // Capture insert calls to wallet_transactions
           chain.insert.mockImplementation((data: any) => {
             if (_table === 'ai_wallet_transactions') insertedData = data;
@@ -137,7 +140,7 @@ describe('Money Flow — Wallet Operations', () => {
     it('BUG: accepts ANY paymentRef string without verification', async () => {
       // This test documents the bug: wallet top-up trusts client-supplied paymentReference
       // No gateway verification call is made. An attacker can POST fake paymentReference.
-      setupTransactionMock(null);
+      setupTransactionMock({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '0.00' });
       setupDbChain({ organization_id: 'org-1', balance_minutes: '60.00' });
 
       // Fake payment reference should NOT be accepted — but it is
@@ -161,7 +164,7 @@ describe('Money Flow — Wallet Operations', () => {
       const hours = 2;
       const expectedCost = hours * pricePerHour; // 36000
 
-      setupTransactionMock(null);
+      setupTransactionMock({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '0.00' });
       setupDbChain({ organization_id: 'org-1', balance_minutes: '120.00' });
 
       await topUpAiWallet({
@@ -179,7 +182,7 @@ describe('Money Flow — Wallet Operations', () => {
 
   describe('topUpTranslationWallet', () => {
     it('should credit translation wallet inside db.transaction', async () => {
-      setupTransactionMock(null);
+      setupTransactionMock({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '0.00' });
       setupDbChain({ organization_id: 'org-1', balance_minutes: '30.00' });
 
       await topUpTranslationWallet({
@@ -195,7 +198,7 @@ describe('Money Flow — Wallet Operations', () => {
     });
 
     it('BUG: accepts fake paymentRef for translation wallet too', async () => {
-      setupTransactionMock(null);
+      setupTransactionMock({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '0.00' });
       setupDbChain({ organization_id: 'org-1', balance_minutes: '30.00' });
 
       const result = await topUpTranslationWallet({
@@ -225,7 +228,7 @@ describe('Money Flow — Wallet Operations', () => {
           }
           chain.fn = { now: jest.fn().mockReturnValue('NOW()') };
           chain.raw = jest.fn((...args: any[]) => args);
-          chain.first.mockResolvedValue({ organization_id: 'org-1', balance_minutes: '100.00' });
+          chain.first.mockResolvedValue({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '100.00' });
           chain.forUpdate.mockImplementation(() => {
             usedForUpdate = true;
             return chain;
@@ -242,7 +245,7 @@ describe('Money Flow — Wallet Operations', () => {
     });
 
     it('should reject deduction when balance < requested minutes', async () => {
-      setupTransactionMock({ organization_id: 'org-1', balance_minutes: '10.00' });
+      setupTransactionMock({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '10.00' });
 
       const result = await deductAiWallet('org-1', 60, 'Expensive operation');
 
@@ -258,7 +261,7 @@ describe('Money Flow — Wallet Operations', () => {
     });
 
     it('should deduct exact amount from balance', async () => {
-      setupTransactionMock({ organization_id: 'org-1', balance_minutes: '100.00' });
+      setupTransactionMock({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '100.00' });
 
       const result = await deductAiWallet('org-1', 45.5, 'Precise deduction');
 
@@ -266,7 +269,7 @@ describe('Money Flow — Wallet Operations', () => {
     });
 
     it('should deduct entire balance (edge: balance == requested)', async () => {
-      setupTransactionMock({ organization_id: 'org-1', balance_minutes: '60.00' });
+      setupTransactionMock({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '60.00' });
 
       const result = await deductAiWallet('org-1', 60, 'Exact balance');
 
@@ -274,7 +277,7 @@ describe('Money Flow — Wallet Operations', () => {
     });
 
     it('should fail for zero balance', async () => {
-      setupTransactionMock({ organization_id: 'org-1', balance_minutes: '0.00' });
+      setupTransactionMock({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '0.00' });
 
       const result = await deductAiWallet('org-1', 1, 'Zero balance deduction');
 
@@ -296,7 +299,7 @@ describe('Money Flow — Wallet Operations', () => {
           }
           chain.fn = { now: jest.fn().mockReturnValue('NOW()') };
           chain.raw = jest.fn((...args: any[]) => args);
-          chain.first.mockResolvedValue({ organization_id: 'org-1', balance_minutes: '50.00' });
+          chain.first.mockResolvedValue({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '50.00' });
           chain.forUpdate.mockImplementation(() => {
             usedForUpdate = true;
             return chain;
@@ -315,14 +318,14 @@ describe('Money Flow — Wallet Operations', () => {
     it('BUG DOCUMENTED: translation deducts 0.5 min per batch regardless of content size', async () => {
       // In socket.ts, translation deduction is hardcoded to 0.5 minutes per batch
       // This documents that the deduction amount is arbitrary
-      setupTransactionMock({ organization_id: 'org-1', balance_minutes: '50.00' });
+      setupTransactionMock({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '50.00' });
 
       const result = await deductTranslationWallet('org-1', 0.5, '100KB translation batch');
       expect(result).toEqual({ success: true });
     });
 
     it('should reject when insufficient balance', async () => {
-      setupTransactionMock({ organization_id: 'org-1', balance_minutes: '0.30' });
+      setupTransactionMock({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '0.30' });
 
       const result = await deductTranslationWallet('org-1', 0.5, 'Short balance');
       expect(result).toEqual({ success: false, error: 'Insufficient translation wallet balance' });
@@ -333,7 +336,7 @@ describe('Money Flow — Wallet Operations', () => {
 
   describe('adminAdjustAiWallet', () => {
     it('should use db.transaction for atomicity', async () => {
-      setupTransactionMock(null);
+      setupTransactionMock({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '0.00' });
       setupDbChain({ organization_id: 'org-1', balance_minutes: '100.00' });
 
       await adminAdjustAiWallet('org-1', 50, 'Admin bonus');
@@ -352,6 +355,7 @@ describe('Money Flow — Wallet Operations', () => {
           }
           chain.fn = { now: jest.fn().mockReturnValue('NOW()') };
           chain.raw = jest.fn((...args: any[]) => args);
+          chain.first.mockResolvedValue({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '10.00' });
           return chain;
         });
         trx.fn = { now: jest.fn().mockReturnValue('NOW()') };
@@ -384,6 +388,7 @@ describe('Money Flow — Wallet Operations', () => {
           }
           chain.fn = { now: jest.fn().mockReturnValue('NOW()') };
           chain.raw = jest.fn((...args: any[]) => args);
+          chain.first.mockResolvedValue({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '100.00' });
           chain.insert.mockImplementation((data: any) => {
             if (_table === 'ai_wallet_transactions') insertedData = data;
             return chain;

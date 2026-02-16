@@ -25,6 +25,8 @@ import {
 // ── Helpers ─────────────────────────────────────────────────
 
 function setupTransactionMock(walletRow: any | null) {
+  // Ensure wallet has an id for wallet_id lookup (if wallet exists)
+  if (walletRow && !walletRow.id) walletRow.id = 'wallet-mock-id';
   // db.transaction(async (trx) => { ... })
   // We need to simulate the trx object and execute the callback
   db.transaction.mockImplementation(async (callback: Function) => {
@@ -355,12 +357,13 @@ describe('Wallet Deduction Algorithm', () => {
       db.transaction.mockImplementation(async (callback: Function) => {
         const trx: any = jest.fn((_table: string) => {
           const chain: any = {};
-          const methods = ['where', 'update', 'insert', 'raw'];
+          const methods = ['where', 'update', 'insert', 'raw', 'first'];
           for (const m of methods) {
             chain[m] = jest.fn().mockReturnValue(chain);
           }
           chain.fn = { now: jest.fn().mockReturnValue('NOW()') };
           chain.raw = jest.fn((...args: any[]) => args);
+          chain.first.mockResolvedValue({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '0.00' });
           return chain;
         });
         trx.fn = { now: jest.fn().mockReturnValue('NOW()') };
@@ -388,12 +391,13 @@ describe('Wallet Deduction Algorithm', () => {
       db.transaction.mockImplementation(async (callback: Function) => {
         const trx: any = jest.fn((_table: string) => {
           const chain: any = {};
-          const methods = ['where', 'update', 'insert', 'raw'];
+          const methods = ['where', 'update', 'insert', 'raw', 'first'];
           for (const m of methods) {
             chain[m] = jest.fn().mockReturnValue(chain);
           }
           chain.fn = { now: jest.fn().mockReturnValue('NOW()') };
           chain.raw = jest.fn((...args: any[]) => args);
+          chain.first.mockResolvedValue({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '0.00' });
           return chain;
         });
         trx.fn = { now: jest.fn().mockReturnValue('NOW()') };

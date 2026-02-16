@@ -24,6 +24,8 @@ import {
 // ── Helpers ─────────────────────────────────────────────────
 
 function setupTransactionMock(walletRow: any | null) {
+  // Ensure wallet has an id for wallet_id lookup (if wallet exists)
+  if (walletRow && !walletRow.id) walletRow.id = 'wallet-mock-id';
   db.transaction.mockImplementation(async (callback: Function) => {
     const trx: any = jest.fn((_table: string) => {
       const chain: any = {};
@@ -82,7 +84,7 @@ describe('Malicious Money Attack Simulations', () => {
       // The route does NOT verify the payment with any gateway
       // Result: Unlimited free wallet credits
 
-      setupTransactionMock(null);
+      setupTransactionMock({ id: 'wallet-mock-id', organization_id: 'org-victim', balance_minutes: '0.00' });
       setupDbChain({ organization_id: 'org-victim', balance_minutes: '0.00' });
 
       // Attacker claims they paid $1000 for 100 hours
@@ -101,7 +103,7 @@ describe('Malicious Money Attack Simulations', () => {
     });
 
     it('EXPLOITABLE: attacker gets free translation credits with fake ref', async () => {
-      setupTransactionMock(null);
+      setupTransactionMock({ id: 'wallet-mock-id', organization_id: 'org-victim', balance_minutes: '0.00' });
       setupDbChain({ organization_id: 'org-victim', balance_minutes: '0.00' });
 
       const result = await topUpTranslationWallet({
@@ -173,7 +175,7 @@ describe('Malicious Money Attack Simulations', () => {
     });
 
     it('zero-cost topup creates audit trail pollution', async () => {
-      setupTransactionMock(null);
+      setupTransactionMock({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '0.00' });
       setupDbChain({ organization_id: 'org-1', balance_minutes: '0.00' });
 
       // Top up with 0 cost — creates useless transaction records
@@ -258,7 +260,7 @@ describe('Malicious Money Attack Simulations', () => {
 
   describe('ATTACK: Rapid-fire operations', () => {
     it('no rate limit on wallet top-up endpoint', async () => {
-      setupTransactionMock(null);
+      setupTransactionMock({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '0.00' });
       setupDbChain({ organization_id: 'org-1', balance_minutes: '0.00' });
 
       // Simulate 100 rapid top-ups with fake payment references
@@ -299,7 +301,7 @@ describe('Malicious Money Attack Simulations', () => {
     });
 
     it('topup targets specific orgId (tenant scoped at route level only)', async () => {
-      setupTransactionMock(null);
+      setupTransactionMock({ id: 'wallet-mock-id', organization_id: 'org-victim', balance_minutes: '0.00' });
       setupDbChain({ organization_id: 'org-victim', balance_minutes: '0.00' });
 
       // Service function has no authorization — accepts any orgId
@@ -319,7 +321,7 @@ describe('Malicious Money Attack Simulations', () => {
 
   describe('ATTACK: Numeric boundary attacks', () => {
     it('should handle extremely large minute values', async () => {
-      setupTransactionMock(null);
+      setupTransactionMock({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '0.00' });
       setupDbChain({ organization_id: 'org-1', balance_minutes: '0.00' });
 
       // Top up with Number.MAX_SAFE_INTEGER minutes
@@ -336,7 +338,7 @@ describe('Malicious Money Attack Simulations', () => {
     });
 
     it('should handle Infinity minutes (parseFloat edge case)', async () => {
-      setupTransactionMock(null);
+      setupTransactionMock({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '0.00' });
       setupDbChain({ organization_id: 'org-1', balance_minutes: '0.00' });
 
       // Infinity → PostgreSQL error, but no JS-level guard
