@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OrgsLedger — Developer Console</title>
 <meta name="robots" content="noindex, nofollow">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" sizes="192x192" href="/logo.png">
+<link rel="apple-touch-icon" href="/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -242,7 +245,8 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
         <button class="nav-link" data-page="observability"><span class="nav-icon">&#128200;</span> Observability</button>
       </div>
       <div class="nav-section">
-        <div class="nav-section-label">Gateway</div>
+        <div class="nav-section-label">Services</div>
+        <button class="nav-link" data-page="credits"><span class="nav-icon">&#9889;</span> Credit Manager</button>
         <button class="nav-link" data-page="clients"><span class="nav-icon">&#128273;</span> AI Clients</button>
       </div>
     </nav>
@@ -401,6 +405,35 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
       </div>
     </div>
 
+    <!-- ═══ CREDIT MANAGER PAGE ═══ -->
+    <div class="page" id="page-credits">
+      <div class="stats-grid" id="credit-stats"></div>
+      <div class="detail-grid">
+        <div class="detail-card">
+          <h4>&#9889; Grant AI Credits</h4>
+          <div class="form-group"><label>Organization</label><select id="cr-ai-org" style="width:100%"></select></div>
+          <div class="form-group"><label>Hours to Grant</label><input id="cr-ai-hours" type="number" step="0.5" value="10" placeholder="Hours"></div>
+          <div class="form-group"><label>Method</label><select id="cr-ai-method"><option value="manual">Manual (Developer Grant)</option><option value="paid">Paid (Enter Reference)</option></select></div>
+          <div class="form-group" id="cr-ai-ref-wrap" style="display:none"><label>Payment Reference</label><input id="cr-ai-ref" placeholder="e.g. pi_3abc123..."></div>
+          <div class="form-group"><label>Description</label><input id="cr-ai-desc" placeholder="Reason for grant"></div>
+          <button class="btn btn-primary" onclick="grantAiCredits()" style="width:100%">Grant AI Credits</button>
+        </div>
+        <div class="detail-card">
+          <h4>&#127760; Grant Translation Credits</h4>
+          <div class="form-group"><label>Organization</label><select id="cr-tr-org" style="width:100%"></select></div>
+          <div class="form-group"><label>Hours to Grant</label><input id="cr-tr-hours" type="number" step="0.5" value="5" placeholder="Hours"></div>
+          <div class="form-group"><label>Method</label><select id="cr-tr-method"><option value="manual">Manual (Developer Grant)</option><option value="paid">Paid (Enter Reference)</option></select></div>
+          <div class="form-group" id="cr-tr-ref-wrap" style="display:none"><label>Payment Reference</label><input id="cr-tr-ref" placeholder="e.g. pay_ref_abc..."></div>
+          <div class="form-group"><label>Description</label><input id="cr-tr-desc" placeholder="Reason for grant"></div>
+          <button class="btn btn-accent" onclick="grantTranslationCredits()" style="width:100%">Grant Translation Credits</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <div class="table-header"><h3>All Organization Wallets</h3></div>
+        <div class="table-responsive"><table><thead><tr><th>Organization</th><th>AI Balance</th><th>AI Used</th><th>Trans. Balance</th><th>Trans. Used</th><th>Currency</th><th>Quick Actions</th></tr></thead><tbody id="credit-wallet-table"></tbody></table></div>
+      </div>
+    </div>
+
     <!-- ═══ AI CLIENTS PAGE ═══ -->
     <div class="page" id="page-clients">
       <div class="stats-grid" id="client-stats"></div>
@@ -430,7 +463,7 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
 
 // ── CONFIG ──────────────────────────────────────────────
 const API_BASE = location.origin; // gateway is same origin
-const APP_API = window.APP_API_BASE || (location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://app.orgsledger.com');
+const APP_API = window.APP_API_BASE || (location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://api.orgsledger.com');
 
 let TOKEN = localStorage.getItem('dev_token') || '';
 let ADMIN_EMAIL = localStorage.getItem('dev_email') || '';
@@ -512,7 +545,7 @@ window.navigateTo = function(page){
   if(el) el.classList.add('active');
   var nav = document.querySelector('.nav-link[data-page="'+page+'"]');
   if(nav) nav.classList.add('active');
-  var titles={'dashboard':'Dashboard','organizations':'Organizations','org-detail':'Organization Detail','users':'Users','subscriptions':'Subscriptions','plans':'Plans','revenue':'Revenue','wallets':'Wallets','audit':'Audit Logs','risk':'Risk Monitor','observability':'Observability','clients':'AI Clients'};
+  var titles={'dashboard':'Dashboard','organizations':'Organizations','org-detail':'Organization Detail','users':'Users','subscriptions':'Subscriptions','plans':'Plans','revenue':'Revenue','wallets':'Wallets','audit':'Audit Logs','risk':'Risk Monitor','observability':'Observability','credits':'Credit Manager','clients':'AI Clients'};
   $('page-title').textContent=titles[page]||page;
   // Close mobile sidebar
   $('sidebar').classList.remove('open');$('sidebar-overlay').classList.remove('show');
@@ -539,6 +572,7 @@ async function loadPage(page){
       case 'audit': await loadAuditLogs(); break;
       case 'risk': await loadRisk(); break;
       case 'observability': await loadObservability(); break;
+      case 'credits': await loadCredits(); break;
       case 'clients': await loadClients(); break;
     }
   }catch(e){console.error('Load error:',e);toast(e.message,'error')}
@@ -680,6 +714,7 @@ window.saveEditOrg = async function(id){
 
 window.openAssignPlan = function(id){
   openModal('Assign Plan',
+    '<div style="background:var(--bg-3);border-radius:var(--radius-xs);padding:12px 16px;margin-bottom:18px;font-size:.82rem;color:var(--text-2)">&#9432; Plans purchased via the app are <strong>automatically processed</strong> by Stripe/Paystack webhooks. Use this for <strong>manual</strong> assignments.</div>'+
     formGroup('Plan','<select id="m-plan-slug"><option value="standard">Standard</option><option value="professional">Professional</option><option value="enterprise">Enterprise</option><option value="enterprise_pro">Enterprise Pro</option></select>')+
     formGroup('Billing Cycle','<select id="m-plan-cycle"><option value="annual">Annual</option><option value="monthly">Monthly</option></select>'),
     '<button class="btn btn-primary" onclick="assignPlan(\''+id+'\')">Assign Plan</button>'
@@ -695,6 +730,7 @@ window.assignPlan = async function(id){
 
 window.openAdjustWallet = function(id){
   openModal('Adjust Wallet',
+    '<div style="background:var(--bg-3);border-radius:var(--radius-xs);padding:12px 16px;margin-bottom:18px;font-size:.82rem;color:var(--text-2)">&#9432; Credit purchases via the app are <strong>auto-processed</strong> by payment webhooks. Use this for <strong>manual</strong> adjustments (grants, corrections, refunds).</div>'+
     formGroup('Wallet Type','<select id="m-w-type"><option value="ai">AI Wallet</option><option value="translation">Translation Wallet</option></select>')+
     formGroup('Hours (negative to deduct)','<input id="m-w-hours" type="number" step="0.5" placeholder="10">')+
     formGroup('Description','<input id="m-w-desc" placeholder="Reason for adjustment">'),
@@ -961,6 +997,118 @@ async function loadObservability(){
     $('obs-trend-table').innerHTML='';
   }
 }
+
+// ═══════════════════════════════════════════════════════
+// CREDIT MANAGER
+// ═══════════════════════════════════════════════════════
+let creditOrgCache = [];
+
+async function loadCredits(){
+  try{
+    const [walletData, orgsData] = await Promise.all([
+      api('/api/subscriptions/admin/wallet-analytics').catch(()=>({})),
+      api('/api/subscriptions/admin/organizations').catch(()=>({data:[]}))
+    ]);
+    const d = walletData.data || walletData;
+    const orgs = orgsData.data || orgsData.organizations || [];
+    creditOrgCache = orgs;
+    const walletOrgs = d.organizations || d.orgs || [];
+
+    $('credit-stats').innerHTML =
+      statCard('Total AI Balance',fmtMins((d.platformTotals?.totalAiBalance||0)),'primary')+
+      statCard('Total AI Used',fmtMins((d.platformTotals?.totalAiUsed||0)),'warn')+
+      statCard('Total Trans Balance',fmtMins((d.platformTotals?.totalTranslationBalance||0)),'accent')+
+      statCard('Total Trans Used',fmtMins((d.platformTotals?.totalTranslationUsed||0)),'warn');
+
+    // Populate org selects
+    var optionsHtml = orgs.map(function(o){return '<option value="'+o.id+'">'+esc(o.name||o.org_name)+' ('+(o.billing_currency||'USD')+')</option>'}).join('');
+    $('cr-ai-org').innerHTML = optionsHtml;
+    $('cr-tr-org').innerHTML = optionsHtml;
+
+    // Wire up method toggles
+    $('cr-ai-method').onchange = function(){ $('cr-ai-ref-wrap').style.display = this.value==='paid'?'block':'none' };
+    $('cr-tr-method').onchange = function(){ $('cr-tr-ref-wrap').style.display = this.value==='paid'?'block':'none' };
+
+    $('credit-wallet-table').innerHTML = walletOrgs.length ? walletOrgs.map(function(o){return '<tr>'+
+      '<td><strong>'+esc(o.org_name||o.name)+'</strong></td>'+
+      '<td>'+fmtMins(o.ai_balance||0)+'</td>'+
+      '<td>'+fmtMins(o.ai_used||0)+'</td>'+
+      '<td>'+fmtMins(o.translation_balance||0)+'</td>'+
+      '<td>'+fmtMins(o.translation_used||0)+'</td>'+
+      '<td>'+(o.currency||'USD')+'</td>'+
+      '<td style="white-space:nowrap">'+
+        '<button class="btn btn-sm btn-outline" onclick="quickGrantAi(\''+o.org_id+'\')">+AI</button> '+
+        '<button class="btn btn-sm btn-outline" onclick="quickGrantTrans(\''+o.org_id+'\')">+Trans</button>'+
+      '</td></tr>'}).join('') :
+      '<tr><td colspan="7"><div class="empty-state"><p>No wallet data</p></div></td></tr>';
+  }catch(e){toast('Credit Manager: '+e.message,'error')}
+}
+
+window.grantAiCredits = async function(){
+  const orgId = $('cr-ai-org').value;
+  const hours = parseFloat($('cr-ai-hours').value);
+  const method = $('cr-ai-method').value;
+  const desc = $('cr-ai-desc').value || (method==='manual' ? 'Developer manual grant' : 'Paid top-up');
+  if(!orgId||!hours){toast('Select org and enter hours','error');return}
+
+  try{
+    if(method==='paid'){
+      const ref = $('cr-ai-ref').value.trim();
+      if(!ref){toast('Payment reference required for paid top-up','error');return}
+      await api('/api/subscriptions/'+orgId+'/wallet/ai/topup',{method:'POST',body:JSON.stringify({hours:hours,paymentGateway:'manual',paymentReference:ref})});
+    } else {
+      await api('/api/subscriptions/admin/wallet/ai/adjust',{method:'POST',body:JSON.stringify({organizationId:orgId,hours:hours,description:desc})});
+    }
+    toast(hours+'h AI credits granted','success'); loadCredits();
+  }catch(e){toast(e.message,'error')}
+};
+
+window.grantTranslationCredits = async function(){
+  const orgId = $('cr-tr-org').value;
+  const hours = parseFloat($('cr-tr-hours').value);
+  const method = $('cr-tr-method').value;
+  const desc = $('cr-tr-desc').value || (method==='manual' ? 'Developer manual grant' : 'Paid top-up');
+  if(!orgId||!hours){toast('Select org and enter hours','error');return}
+
+  try{
+    if(method==='paid'){
+      const ref = $('cr-tr-ref').value.trim();
+      if(!ref){toast('Payment reference required for paid top-up','error');return}
+      await api('/api/subscriptions/'+orgId+'/wallet/translation/topup',{method:'POST',body:JSON.stringify({hours:hours,paymentGateway:'manual',paymentReference:ref})});
+    } else {
+      await api('/api/subscriptions/admin/wallet/translation/adjust',{method:'POST',body:JSON.stringify({organizationId:orgId,hours:hours,description:desc})});
+    }
+    toast(hours+'h translation credits granted','success'); loadCredits();
+  }catch(e){toast(e.message,'error')}
+};
+
+window.quickGrantAi = function(orgId){
+  openModal('Grant AI Credits',
+    formGroup('Hours','<input id="m-qai-hrs" type="number" step="0.5" value="10">')+
+    formGroup('Description','<input id="m-qai-desc" placeholder="Reason">'),
+    '<button class="btn btn-primary" onclick="doQuickGrantAi(\''+orgId+'\')">Grant</button>'
+  );
+};
+window.doQuickGrantAi = async function(orgId){
+  try{
+    await api('/api/subscriptions/admin/wallet/ai/adjust',{method:'POST',body:JSON.stringify({organizationId:orgId,hours:parseFloat($('m-qai-hrs').value),description:$('m-qai-desc').value||'Developer grant'})});
+    closeModal(); toast('AI credits granted','success'); loadCredits();
+  }catch(e){toast(e.message,'error')}
+};
+
+window.quickGrantTrans = function(orgId){
+  openModal('Grant Translation Credits',
+    formGroup('Hours','<input id="m-qtr-hrs" type="number" step="0.5" value="5">')+
+    formGroup('Description','<input id="m-qtr-desc" placeholder="Reason">'),
+    '<button class="btn btn-accent" onclick="doQuickGrantTrans(\''+orgId+'\')">Grant</button>'
+  );
+};
+window.doQuickGrantTrans = async function(orgId){
+  try{
+    await api('/api/subscriptions/admin/wallet/translation/adjust',{method:'POST',body:JSON.stringify({organizationId:orgId,hours:parseFloat($('m-qtr-hrs').value),description:$('m-qtr-desc').value||'Developer grant'})});
+    closeModal(); toast('Translation credits granted','success'); loadCredits();
+  }catch(e){toast(e.message,'error')}
+};
 
 // ═══════════════════════════════════════════════════════
 // AI CLIENTS (Gateway)
