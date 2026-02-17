@@ -186,9 +186,14 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
       query = query.whereIn('id', orgIds);
     }
 
-    const orgs = await query.select('*').orderBy('name');
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 100));
+    const offset = (page - 1) * limit;
 
-    res.json({ success: true, data: orgs });
+    const total = await query.clone().clear('select').count('id as count').first();
+    const orgs = await query.select('*').orderBy('name').limit(limit).offset(offset);
+
+    res.json({ success: true, data: orgs, meta: { page, limit, total: parseInt(total?.count as string) || 0 } });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Failed to list organizations' });
   }

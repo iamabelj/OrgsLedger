@@ -1105,6 +1105,10 @@ router.get(
   requireRole('org_admin'),
   async (req: Request, res: Response) => {
     try {
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+      const offset = (page - 1) * limit;
+
       const transfers = await db('transactions')
         .leftJoin('users', 'transactions.user_id', 'users.id')
         .where({
@@ -1118,9 +1122,11 @@ router.get(
           'users.last_name',
           'users.email'
         )
-        .orderBy('transactions.created_at', 'desc');
+        .orderBy('transactions.created_at', 'desc')
+        .limit(limit)
+        .offset(offset);
 
-      res.json({ success: true, data: transfers });
+      res.json({ success: true, data: transfers, meta: { page, limit } });
     } catch (err) {
       res.status(500).json({ success: false, error: 'Failed to load pending transfers' });
     }

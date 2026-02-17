@@ -344,19 +344,24 @@ router.get(
         .offset((page - 1) * limit)
         .limit(limit);
 
-      // Attach attendance count
-      const enriched = await Promise.all(
-        meetings.map(async (m) => {
-          const attendeeCount = await db('meeting_attendance')
-            .where({ meeting_id: m.id })
-            .count('id as count')
-            .first();
-          return {
-            ...m,
-            attendeeCount: parseInt(attendeeCount?.count as string) || 0,
-          };
-        })
-      );
+      // Batch: attendance counts for all meetings in one query (GROUP BY)
+      let enriched = meetings;
+      if (meetings.length) {
+        const meetingIds = meetings.map((m: any) => m.id);
+        const attendanceCounts = await db('meeting_attendance')
+          .whereIn('meeting_id', meetingIds)
+          .select('meeting_id')
+          .count('id as count')
+          .groupBy('meeting_id');
+
+        const attendanceMap: Record<string, number> = {};
+        attendanceCounts.forEach((ac: any) => { attendanceMap[ac.meeting_id] = parseInt(ac.count as string) || 0; });
+
+        enriched = meetings.map((m: any) => ({
+          ...m,
+          attendeeCount: attendanceMap[m.id] || 0,
+        }));
+      }
 
       res.json({
         success: true,

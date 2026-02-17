@@ -50,7 +50,8 @@ router.get(
           'chair_user.avatar_url as chair_avatar_url'
         )
         .groupBy('committees.id', 'chair_user.id', 'chair_user.first_name', 'chair_user.last_name', 'chair_user.email', 'chair_user.avatar_url')
-        .orderBy('committees.name');
+        .orderBy('committees.name')
+        .limit(100);
 
       const data = rows.map((row: any) => {
         const { chair_id, chair_first_name, chair_last_name, chair_email, chair_avatar_url, ...committee } = row;

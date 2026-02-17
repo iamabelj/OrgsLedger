@@ -171,20 +171,29 @@ router.get(
         .limit(limit)
         .offset(offset);
 
-      // Attach payment stats per due
-      const enriched = await Promise.all(
-        dues.map(async (d) => {
-          const stats = await db('transactions')
-            .where({ reference_id: d.id, reference_type: 'due' })
-            .select(
-              db.raw("count(*) filter (where status = 'completed') as paid_count"),
-              db.raw("count(*) filter (where status = 'pending') as pending_count"),
-              db.raw("coalesce(sum(amount) filter (where status = 'completed'), 0) as total_collected")
-            )
-            .first();
+      // Batch: payment stats for all dues in one query (GROUP BY)
+      let enriched = dues;
+      if (dues.length) {
+        const dueIds = dues.map((d: any) => d.id);
+        const allStats = await db('transactions')
+          .whereIn('reference_id', dueIds)
+          .where({ reference_type: 'due' })
+          .select(
+            'reference_id',
+            db.raw("count(*) filter (where status = 'completed') as paid_count"),
+            db.raw("count(*) filter (where status = 'pending') as pending_count"),
+            db.raw("coalesce(sum(amount) filter (where status = 'completed'), 0) as total_collected")
+          )
+          .groupBy('reference_id');
+
+        const statsMap: Record<string, any> = {};
+        allStats.forEach((s: any) => { statsMap[s.reference_id] = s; });
+
+        enriched = dues.map((d: any) => {
+          const stats = statsMap[d.id] || { paid_count: 0, pending_count: 0, total_collected: 0 };
           return { ...d, ...stats };
-        })
-      );
+        });
+      }
 
       res.json({ success: true, data: enriched });
     } catch (err) {
@@ -366,24 +375,40 @@ router.get(
   loadMembership,
   async (req: Request, res: Response) => {
     try {
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+      const offset = (page - 1) * limit;
+
       const campaigns = await db('donation_campaigns')
         .where({ organization_id: req.params.orgId })
-        .orderBy('created_at', 'desc');
+        .orderBy('created_at', 'desc')
+        .limit(limit)
+        .offset(offset);
 
-      const enriched = await Promise.all(
-        campaigns.map(async (c) => {
-          const stats = await db('donations')
-            .where({ campaign_id: c.id, status: 'completed' })
-            .select(
-              db.raw('count(*) as donation_count'),
-              db.raw('coalesce(sum(amount), 0) as total_raised')
-            )
-            .first();
+      // Batch: donation stats for all campaigns in one query (GROUP BY)
+      let enriched = campaigns;
+      if (campaigns.length) {
+        const campaignIds = campaigns.map((c: any) => c.id);
+        const allStats = await db('donations')
+          .whereIn('campaign_id', campaignIds)
+          .where({ status: 'completed' })
+          .select(
+            'campaign_id',
+            db.raw('count(*) as donation_count'),
+            db.raw('coalesce(sum(amount), 0) as total_raised')
+          )
+          .groupBy('campaign_id');
+
+        const statsMap: Record<string, any> = {};
+        allStats.forEach((s: any) => { statsMap[s.campaign_id] = s; });
+
+        enriched = campaigns.map((c: any) => {
+          const stats = statsMap[c.id] || { donation_count: 0, total_raised: 0 };
           return { ...c, ...stats };
-        })
-      );
+        });
+      }
 
-      res.json({ success: true, data: enriched });
+      res.json({ success: true, data: enriched, meta: { page, limit } });
     } catch (err) {
       res.status(500).json({ success: false, error: 'Failed to list campaigns' });
     }
@@ -520,12 +545,18 @@ router.get(
         return;
       }
 
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 50));
+      const offset = (page - 1) * limit;
+
       const transactions = await db('transactions')
         .where({
           organization_id: req.params.orgId,
           user_id: req.params.userId,
         })
-        .orderBy('created_at', 'desc');
+        .orderBy('created_at', 'desc')
+        .limit(limit)
+        .offset(offset);
 
       const outstanding = await db('transactions')
         .where({
@@ -590,7 +621,7 @@ router.get(
       if (fromDate) query = query.where('transactions.created_at', '>=', fromDate);
       if (toDate) query = query.where('transactions.created_at', '<=', toDate);
 
-      const transactions = await query;
+      const transactions = await query.limit(50000);
 
       // Generate CSV — properly escape fields
       const escapeCSV = (val: any): string => {

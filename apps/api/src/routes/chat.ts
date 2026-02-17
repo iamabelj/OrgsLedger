@@ -120,7 +120,8 @@ router.get(
           db.raw(`count(case when messages.created_at > coalesce(cm.last_read_at, '1970-01-01') then 1 end)::int as "unreadCount"`)
         )
         .groupBy('channels.id', 'cm.last_read_at')
-        .orderBy('channels.name');
+        .orderBy('channels.name')
+        .limit(200);
 
       res.json({ success: true, data: channelData });
     } catch (err) {
@@ -283,23 +284,35 @@ router.get(
         .orderBy('messages.created_at', 'desc')
         .limit(limit);
 
-      // Attach thread counts + attachments
-      const enriched = await Promise.all(
-        messages.map(async (msg) => {
-          const threadCount = await db('messages')
-            .where({ thread_id: msg.id, is_deleted: false })
-            .count('id as count')
-            .first();
-          const attachments = await db('attachments')
-            .where({ message_id: msg.id })
-            .select('*');
-          return {
-            ...msg,
-            threadCount: parseInt(threadCount?.count as string) || 0,
-            attachments,
-          };
-        })
-      );
+      // Batch: thread counts for all messages in one query (GROUP BY)
+      let threadCountMap: Record<string, number> = {};
+      let attachmentMap: Record<string, any[]> = {};
+
+      if (messages.length) {
+        const msgIds = messages.map((m: any) => m.id);
+
+        const threadCounts = await db('messages')
+          .whereIn('thread_id', msgIds)
+          .where({ is_deleted: false })
+          .select('thread_id')
+          .count('id as count')
+          .groupBy('thread_id');
+        threadCounts.forEach((tc: any) => { threadCountMap[tc.thread_id] = parseInt(tc.count as string) || 0; });
+
+        // Batch: all attachments for all messages in one query
+        const allAttachments = await db('attachments')
+          .whereIn('message_id', msgIds);
+        allAttachments.forEach((a: any) => {
+          if (!attachmentMap[a.message_id]) attachmentMap[a.message_id] = [];
+          attachmentMap[a.message_id].push(a);
+        });
+      }
+
+      const enriched = messages.map((msg: any) => ({
+        ...msg,
+        threadCount: threadCountMap[msg.id] || 0,
+        attachments: attachmentMap[msg.id] || [],
+      }));
 
       // Update last read
       await db('channel_members')
@@ -410,7 +423,10 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user!.userId, res, req))) return;
-      const replies = await db('messages')
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+      const before = req.query.before as string; // cursor-based pagination
+
+      let query = db('messages')
         .join('users', 'messages.sender_id', 'users.id')
         .where({
           'messages.thread_id': req.params.messageId,
@@ -421,8 +437,15 @@ router.get(
           'users.first_name as senderFirstName',
           'users.last_name as senderLastName',
           'users.avatar_url as senderAvatar'
-        )
-        .orderBy('messages.created_at', 'asc');
+        );
+
+      if (before) {
+        query = query.where('messages.created_at', '<', before);
+      }
+
+      const replies = await query
+        .orderBy('messages.created_at', 'asc')
+        .limit(limit);
 
       res.json({ success: true, data: replies });
     } catch (err) {

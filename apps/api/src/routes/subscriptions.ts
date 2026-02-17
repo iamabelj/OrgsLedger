@@ -359,10 +359,16 @@ router.post('/:orgId/invite', authenticate, loadMembership, requireRole('org_adm
 // GET /:orgId/invites
 router.get('/:orgId/invites', authenticate, loadMembership, async (req: Request, res: Response) => {
   try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+    const offset = (page - 1) * limit;
+
     const invites = await db('invite_links')
       .where({ organization_id: req.params.orgId })
-      .orderBy('created_at', 'desc');
-    res.json({ success: true, data: invites });
+      .orderBy('created_at', 'desc')
+      .limit(limit)
+      .offset(offset);
+    res.json({ success: true, data: invites, meta: { page, limit } });
   } catch (err: any) {
     logger.error('Get invites error', { orgId: req.params.orgId, error: err.message });
     // If table doesn't exist, return empty array instead of error

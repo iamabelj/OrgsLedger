@@ -96,19 +96,25 @@ router.get(
         .offset((page - 1) * limit)
         .limit(limit);
 
-      // Attach RSVP counts
-      const enriched = await Promise.all(
-        events.map(async (evt: any) => {
-          const rsvpCount = await db('event_rsvps')
-            .where({ event_id: evt.id, status: 'attending' })
-            .count('id as count')
-            .first();
-          return {
-            ...evt,
-            rsvpCount: parseInt(rsvpCount?.count as string) || 0,
-          };
-        })
-      );
+      // Batch: RSVP counts for all events in one query (GROUP BY)
+      let enriched = events;
+      if (events.length) {
+        const eventIds = events.map((e: any) => e.id);
+        const rsvpCounts = await db('event_rsvps')
+          .whereIn('event_id', eventIds)
+          .where({ status: 'attending' })
+          .select('event_id')
+          .count('id as count')
+          .groupBy('event_id');
+
+        const rsvpMap: Record<string, number> = {};
+        rsvpCounts.forEach((rc: any) => { rsvpMap[rc.event_id] = parseInt(rc.count as string) || 0; });
+
+        enriched = events.map((evt: any) => ({
+          ...evt,
+          rsvpCount: rsvpMap[evt.id] || 0,
+        }));
+      }
 
       res.json({
         success: true,
@@ -140,7 +146,8 @@ router.get(
       const rsvps = await db('event_rsvps')
         .join('users', 'event_rsvps.user_id', 'users.id')
         .where({ event_id: event.id })
-        .select('event_rsvps.*', 'users.first_name', 'users.last_name');
+        .select('event_rsvps.*', 'users.first_name', 'users.last_name')
+        .limit(500);
 
       res.json({
         success: true,

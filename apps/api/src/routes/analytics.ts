@@ -160,32 +160,61 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const orgId = req.params.orgId;
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 50));
+      const offset = (page - 1) * limit;
+
+      const totalCount = await db('memberships')
+        .where({ organization_id: orgId, is_active: true })
+        .count('id as count')
+        .first();
 
       const members = await db('memberships')
         .join('users', 'memberships.user_id', 'users.id')
         .where({ 'memberships.organization_id': orgId, 'memberships.is_active': true })
-        .select('users.id', 'users.first_name', 'users.last_name', 'users.email', 'memberships.role');
+        .select('users.id', 'users.first_name', 'users.last_name', 'users.email', 'memberships.role')
+        .orderBy('users.last_name')
+        .limit(limit)
+        .offset(offset);
 
-      const enriched = await Promise.all(
-        members.map(async (m: any) => {
-          const totalOwed = await db('transactions')
-            .where({ organization_id: orgId, user_id: m.id, status: 'pending' })
-            .sum('amount as total').first();
+      if (!members.length) {
+        res.json({ success: true, data: [], meta: { page, limit, total: parseInt(totalCount?.count as string) || 0 } });
+        return;
+      }
 
-          const totalPaid = await db('transactions')
-            .where({ organization_id: orgId, user_id: m.id, status: 'completed' })
-            .sum('amount as total').first();
+      const memberIds = members.map((m: any) => m.id);
 
-          return {
-            ...m,
-            totalOwed: parseFloat(totalOwed?.total || '0'),
-            totalPaid: parseFloat(totalPaid?.total || '0'),
-            status: parseFloat(totalOwed?.total || '0') > 0 ? 'outstanding' : 'clear',
-          };
-        })
-      );
+      // Batch aggregate: one query for all members' pending + completed totals
+      const paymentStats = await db('transactions')
+        .where({ organization_id: orgId })
+        .whereIn('user_id', memberIds)
+        .whereIn('status', ['pending', 'completed'])
+        .select(
+          'user_id',
+          db.raw("coalesce(sum(amount) filter (where status = 'pending'), 0) as total_owed"),
+          db.raw("coalesce(sum(amount) filter (where status = 'completed'), 0) as total_paid")
+        )
+        .groupBy('user_id');
 
-      res.json({ success: true, data: enriched });
+      const statsMap: Record<string, { totalOwed: number; totalPaid: number }> = {};
+      paymentStats.forEach((s: any) => {
+        statsMap[s.user_id] = {
+          totalOwed: parseFloat(s.total_owed),
+          totalPaid: parseFloat(s.total_paid),
+        };
+      });
+
+      const enriched = members.map((m: any) => {
+        const stats = statsMap[m.id] || { totalOwed: 0, totalPaid: 0 };
+        return {
+          ...m,
+          totalOwed: stats.totalOwed,
+          totalPaid: stats.totalPaid,
+          status: stats.totalOwed > 0 ? 'outstanding' : 'clear',
+        };
+      });
+
+      res.json({ success: true, data: enriched, meta: { page, limit, total: parseInt(totalCount?.count as string) || 0 } });
     } catch (err) {
       res.status(500).json({ success: false, error: 'Failed to get member payments' });
     }
