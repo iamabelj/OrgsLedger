@@ -15,6 +15,7 @@ import { DrawerProvider, useDrawer } from '../src/contexts/DrawerContext';
 import { NavigationDrawer } from '../src/components/NavigationDrawer';
 import { SmartHeaderLeft } from '../src/components/SmartHeaderLeft';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
+import { ToastContainer } from '../src/components/ui/Toast';
 
 // Keep splash screen visible while we load fonts
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -46,6 +47,7 @@ function AppShell() {
         marginLeft: isDesktop ? 0 : 0, // drawer is inline on desktop, overlay on mobile
       }}>
         <StatusBar style="light" />
+        <ToastContainer />
         <Stack
           screenOptions={{
             headerStyle: { backgroundColor: Colors.primary },

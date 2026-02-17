@@ -93,8 +93,9 @@ export default function CommitteesScreen() {
       setCommittees(raw);
       const rawMembers = memRes.data?.data || memRes.data || [];
       // Normalize members to { id, fullName, email, role }
+      // Must use userId (users.id) not m.id (memberships.id) — committee API validates against user_id
       const normalized = rawMembers.map((m: any) => ({
-        id: m.id || m.user_id || m.userId,
+        id: m.userId || m.user_id || m.id,
         fullName: m.fullName || m.full_name || `${m.first_name || ''} ${m.last_name || ''}`.trim() || m.name || 'Unknown',
         email: m.email || '',
         role: m.role || 'member',

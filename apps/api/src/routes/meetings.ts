@@ -9,7 +9,7 @@ import multer from 'multer';
 import path from 'path';
 import crypto from 'crypto';
 import db from '../db';
-import { authenticate, loadMembershipAndSub as loadMembership, requireRole, validate } from '../middleware';
+import { authenticate, loadMembership, requireRole, validate } from '../middleware';
 import { logger } from '../logger';
 import { sendPushToOrg } from '../services/push.service';
 import { config } from '../config';

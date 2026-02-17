@@ -244,7 +244,7 @@ router.get(
 router.put(
   '/:orgId/settings',
   authenticate,
-  loadMembershipAndSub,
+  loadMembership,
   requireRole('org_admin'),
   async (req: Request, res: Response) => {
     try {

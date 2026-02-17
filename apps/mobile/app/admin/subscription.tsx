@@ -97,7 +97,7 @@ export default function SubscriptionScreen() {
             <View style={styles.planBannerRow}>
               <View>
                 <Text style={styles.planLabel}>Current Plan</Text>
-                <Text style={styles.planName}>{sub.plan_name || sub.plan || 'Standard'}</Text>
+                <Text style={styles.planName}>{sub.plan_name || sub.planName || sub.plan?.name || (typeof sub.plan === 'string' ? sub.plan : 'Standard')}</Text>
               </View>
               <Badge
                 label={isActive ? 'Active' : isPending ? 'Pending' : sub.status || 'Unknown'}
