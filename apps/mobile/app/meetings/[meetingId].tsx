@@ -446,6 +446,7 @@ export default function MeetingDetailScreen() {
       const res = await api.meetings.join(currentOrgId, meetingId, joinType);
       const config = res.data?.data;
       if (!config) throw new Error('No join config returned');
+      if (!config.jwt) throw new Error('Meeting token not received. Please contact your administrator.');
       setJoinConfig(config);
 
       if (Platform.OS === 'web') {

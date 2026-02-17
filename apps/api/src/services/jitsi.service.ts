@@ -73,11 +73,24 @@ export function generateJitsiToken(payload: JitsiTokenPayload): string {
 
   const now = Math.floor(Date.now() / 1000);
 
+  // ── Prosody token auth expects these exact claims ──────
+  //   aud   = "jitsi"  (hardcoded in mod_token_verification)
+  //   iss   = app_id   (must match Prosody's app_id)
+  //   sub   = domain   (must match Prosody's VirtualHost, i.e. XMPP domain)
+  //   room  = "*" or exact room name ("*" allows any room)
+  //   exp   = expiry timestamp
+  //   context.user.affiliation = "owner" → moderator, "member" → participant
+  //     This is read by mod_token_affiliation to assign XMPP role.
+  //   context.user.moderator = boolean (used by lib-jitsi-meet / Jicofo)
+  //
+  // Both affiliation AND moderator are set for maximum compatibility
+  // across Prosody plugins and Jicofo versions.
+
   const jwtPayload: Record<string, any> = {
     aud: 'jitsi',
     iss: appId,
     sub: domain,
-    room: payload.room,
+    room: payload.room,  // exact room name for security (not "*")
     exp: now + tokenExpirySeconds,
     iat: now,
     nbf: now - 10, // 10s clock skew tolerance
@@ -87,6 +100,10 @@ export function generateJitsiToken(payload: JitsiTokenPayload): string {
         name: payload.user.name,
         email: payload.user.email,
         avatar: payload.user.avatar || '',
+        // ── Critical: Prosody mod_token_affiliation reads this ──
+        affiliation: payload.moderator ? 'owner' : 'member',
+        // ── Jicofo reads this for moderator grant ──
+        moderator: payload.moderator,
       },
       features: {
         recording: payload.features?.recording ?? false,
@@ -94,11 +111,12 @@ export function generateJitsiToken(payload: JitsiTokenPayload): string {
         transcription: payload.features?.transcription ?? false,
       },
     },
+    // Top-level moderator for backward compat with older Jitsi versions
     moderator: payload.moderator,
   };
 
   const token = jwt.sign(jwtPayload, appSecret, { algorithm: 'HS256' });
-  logger.info(`Jitsi JWT generated for user ${payload.user.id}, room ${payload.room}, moderator=${payload.moderator}`);
+  logger.info(`Jitsi JWT generated for user ${payload.user.id}, room ${payload.room}, moderator=${payload.moderator}, affiliation=${payload.moderator ? 'owner' : 'member'}`);
   return token;
 }
 
@@ -121,6 +139,8 @@ export function getVideoConfig(): Record<string, any> {
     hideRecordingLabel: true,
     disableInviteFunctions: true,
     enableLobbyChat: true,
+    // Enforce JWT auth — prevent anonymous fallback
+    tokenAuthUrl: true,
     toolbarButtons: [
       'camera', 'chat', 'closedcaptions', 'desktop', 'download',
       'filmstrip', 'fullscreen', 'hangup', 'microphone', 'noisesuppression',
@@ -151,6 +171,8 @@ export function getAudioConfig(): Record<string, any> {
     requireDisplayName: false,
     hideRecordingLabel: true,
     disableInviteFunctions: true,
+    // Enforce JWT auth — prevent anonymous fallback
+    tokenAuthUrl: true,
     // Audio-only specific: disable camera entirely
     disableVideo: true,
     startVideoMuted: true,

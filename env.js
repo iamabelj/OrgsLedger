@@ -23,6 +23,15 @@ const defaults = {
   AI_PROXY_URL: 'https://orgsledger.com',
   GATEWAY_URL: 'https://orgsledger.com',
 
+  // Jitsi Secure-Domain (JWT authentication)
+  // JITSI_DOMAIN must match the Prosody virtualhost and the Jitsi web hostname.
+  // JITSI_APP_ID must match app_id in Prosody's token auth config.
+  // JITSI_APP_SECRET must match app_secret in Prosody's token auth config.
+  JITSI_DOMAIN: 'meet.orgsledger.com',
+  JITSI_APP_ID: 'orgsledger',
+  JITSI_APP_SECRET: 'orgsledger_jitsi_secret_change_me',
+  JITSI_TOKEN_EXPIRY: '7200',
+
   // CORS
   CORS_ORIGINS: 'https://orgsledger.com,https://app.orgsledger.com',
 

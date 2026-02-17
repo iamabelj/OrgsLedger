@@ -581,50 +581,45 @@ router.post(
       // 10. Generate room name (deterministic, tenant-isolated)
       const roomName = meeting.jitsi_room_id || generateRoomName(orgId, meetingId);
 
-      // 11. Check if Jitsi JWT auth is configured
-      let token = '';
-      let joinConfig: any;
-
-      if (config.jitsi.appSecret) {
-        // JWT-authenticated mode (JaaS or self-hosted with secure-domain)
-        token = generateJitsiToken({
-          room: roomName,
-          moderator: isModerator,
-          user: {
-            id: user.id,
-            name: `${user.first_name} ${user.last_name}`.trim(),
-            email: user.email,
-            avatar: user.avatar_url || undefined,
-          },
-          meetingType,
-          features: {
-            recording: isModerator,
-            livestreaming: false,
-            transcription: meeting.ai_enabled || false,
-          },
+      // 11. Generate JWT (REQUIRED — no public fallback)
+      //     Jitsi secure-domain requires every participant to present a
+      //     backend-issued JWT. Without it, Prosody rejects the XMPP connection
+      //     and users see a login prompt or "no moderator" error.
+      if (!config.jitsi.appSecret) {
+        logger.error('JITSI_APP_SECRET is not configured — cannot issue meeting tokens');
+        res.status(503).json({
+          success: false,
+          error: 'Meeting service is not configured. Please contact your administrator.',
         });
-
-        joinConfig = buildJoinConfig({
-          meetingType,
-          roomName,
-          token,
-          userName: `${user.first_name} ${user.last_name}`.trim(),
-          userEmail: user.email,
-          orgName: org?.name,
-          lobbyEnabled: meeting.lobby_enabled,
-        });
-      } else {
-        // Fallback: public Jitsi (no JWT) — still provides config presets
-        joinConfig = buildJoinConfig({
-          meetingType,
-          roomName,
-          token: '', // no JWT
-          userName: `${user.first_name} ${user.last_name}`.trim(),
-          userEmail: user.email,
-          orgName: org?.name,
-          lobbyEnabled: meeting.lobby_enabled,
-        });
+        return;
       }
+
+      const token = generateJitsiToken({
+        room: roomName,
+        moderator: isModerator,
+        user: {
+          id: user.id,
+          name: `${user.first_name} ${user.last_name}`.trim(),
+          email: user.email,
+          avatar: user.avatar_url || undefined,
+        },
+        meetingType,
+        features: {
+          recording: isModerator,
+          livestreaming: false,
+          transcription: meeting.ai_enabled || false,
+        },
+      });
+
+      const joinConfig = buildJoinConfig({
+        meetingType,
+        roomName,
+        token,
+        userName: `${user.first_name} ${user.last_name}`.trim(),
+        userEmail: user.email,
+        orgName: org?.name,
+        lobbyEnabled: meeting.lobby_enabled,
+      });
 
       // 12. Log join event (defensive — table may not exist if migration 020 not run)
       try {

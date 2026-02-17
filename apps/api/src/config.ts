@@ -93,8 +93,8 @@ export const config = {
     appId: process.env.JITSI_APP_ID || 'orgsledger',
     // Shared secret for signing JWTs (REQUIRED for JWT auth)
     appSecret: process.env.JITSI_APP_SECRET || '',
-    // JWT expiry in seconds (default 5 minutes — short-lived for security)
-    tokenExpirySeconds: parseInt(process.env.JITSI_TOKEN_EXPIRY || '300', 10),
+    // JWT expiry in seconds (default 2 hours — long enough for any meeting)
+    tokenExpirySeconds: parseInt(process.env.JITSI_TOKEN_EXPIRY || '7200', 10),
   },
 };
 
