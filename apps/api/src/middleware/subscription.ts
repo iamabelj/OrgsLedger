@@ -5,6 +5,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { getOrgSubscription, getAiWallet, getTranslationWallet } from '../services/subscription.service';
 import { logger } from '../logger';
+import db from '../db';
 
 /**
  * Block request if organization has no active subscription.
@@ -53,7 +54,7 @@ export async function requireActiveSubscription(req: Request, res: Response, nex
         newEnd.setFullYear(newEnd.getFullYear() + 1);
         const newGrace = new Date(newEnd);
         newGrace.setDate(newGrace.getDate() + 7);
-        const subDb = require('../db').default;
+        const subDb = db;
         await subDb('subscriptions').where({ id: sub.id }).update({
           status: 'active',
           current_period_start: now.toISOString(),

@@ -246,9 +246,26 @@ router.put(
       const previous = await db('organizations').where({ id: req.params.orgId }).first();
       const { name, settings } = req.body;
 
+      // Validate settings shape if provided
+      const ALLOWED_SETTINGS_KEYS = [
+        'allowPublicJoin', 'requireApproval', 'defaultRole',
+        'billingCurrency', 'paymentMethods', 'enablePaystack', 'enableStripe', 'enableFlutterwave',
+        'enableBankTransfer', 'bankDetails', 'primaryColor', 'accentColor',
+      ];
+
       const updates: Record<string, any> = {};
-      if (name) updates.name = name;
-      if (settings) updates.settings = JSON.stringify(settings);
+      if (name && typeof name === 'string' && name.trim().length > 0 && name.length <= 200) {
+        updates.name = name.trim();
+      }
+      if (settings && typeof settings === 'object' && !Array.isArray(settings)) {
+        const filtered: Record<string, any> = {};
+        for (const key of Object.keys(settings)) {
+          if (ALLOWED_SETTINGS_KEYS.includes(key)) {
+            filtered[key] = settings[key];
+          }
+        }
+        updates.settings = JSON.stringify(filtered);
+      }
 
       await db('organizations').where({ id: req.params.orgId }).update(updates);
 

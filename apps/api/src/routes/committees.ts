@@ -307,6 +307,15 @@ router.post(
     try {
       const { userId } = req.body;
 
+      // Verify committee belongs to this org
+      const committee = await db('committees')
+        .where({ id: req.params.committeeId, organization_id: req.params.orgId })
+        .first();
+      if (!committee) {
+        res.status(404).json({ success: false, error: 'Committee not found' });
+        return;
+      }
+
       // Verify user is an org member
       const membership = await db('memberships')
         .where({ user_id: userId, organization_id: req.params.orgId, is_active: true })
@@ -371,6 +380,15 @@ router.delete(
   requireRole('org_admin', 'executive'),
   async (req: Request, res: Response) => {
     try {
+      // Verify committee belongs to this org
+      const committee = await db('committees')
+        .where({ id: req.params.committeeId, organization_id: req.params.orgId })
+        .first();
+      if (!committee) {
+        res.status(404).json({ success: false, error: 'Committee not found' });
+        return;
+      }
+
       await db('committee_members')
         .where({
           committee_id: req.params.committeeId,

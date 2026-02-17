@@ -154,6 +154,12 @@ router.post(
     try {
       const { name, parentId } = req.body;
 
+      // Validate folder name
+      if (!name || typeof name !== 'string' || !name.trim() || name.length > 200) {
+        res.status(400).json({ success: false, error: 'Folder name is required and must be 1-200 characters' });
+        return;
+      }
+
       const [folder] = await db('document_folders')
         .insert({
           organization_id: req.params.orgId,
@@ -236,8 +242,11 @@ router.delete(
 
       // Delete file from disk
       const filePath = path.resolve(config.upload.dir, 'documents', path.basename(doc.file_path));
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+      try {
+        await fs.promises.access(filePath);
+        await fs.promises.unlink(filePath);
+      } catch {
+        // File may not exist on disk — continue with DB deletion
       }
 
       await db('documents').where({ id: doc.id }).delete();

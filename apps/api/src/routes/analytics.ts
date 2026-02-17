@@ -13,7 +13,7 @@ router.get(
   '/:orgId/dashboard',
   authenticate,
   loadMembership,
-  requireRole('org_admin', 'executive', 'treasurer'),
+  requireRole('org_admin', 'executive'),
   async (req: Request, res: Response) => {
     try {
       const orgId = req.params.orgId;
@@ -156,7 +156,7 @@ router.get(
   '/:orgId/member-payments',
   authenticate,
   loadMembership,
-  requireRole('org_admin', 'executive', 'treasurer'),
+  requireRole('org_admin', 'executive'),
   async (req: Request, res: Response) => {
     try {
       const orgId = req.params.orgId;
@@ -210,7 +210,7 @@ router.get(
 
       // Only allow viewing own receipts or admin
       const membership = (req as any).membership;
-      if (record.user_id !== req.user!.userId && !['org_admin', 'treasurer', 'executive'].includes(membership?.role)) {
+      if (record.user_id !== req.user!.userId && !['org_admin', 'executive'].includes(membership?.role)) {
         res.status(403).json({ success: false, error: 'Forbidden' });
         return;
       }

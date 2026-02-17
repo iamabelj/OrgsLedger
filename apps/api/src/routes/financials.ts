@@ -161,9 +161,15 @@ router.get(
   loadMembership,
   async (req: Request, res: Response) => {
     try {
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 50));
+      const offset = (page - 1) * limit;
+
       const dues = await db('dues')
         .where({ organization_id: req.params.orgId })
-        .orderBy('due_date', 'desc');
+        .orderBy('due_date', 'desc')
+        .limit(limit)
+        .offset(offset);
 
       // Attach payment stats per due
       const enriched = await Promise.all(
@@ -309,8 +315,12 @@ router.get(
         query = query.where({ 'fines.user_id': req.user!.userId });
       }
 
-      const fines = await query.orderBy('fines.created_at', 'desc');
-      res.json({ success: true, data: fines });
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 50));
+      const offset = (page - 1) * limit;
+
+      const fines = await query.orderBy('fines.created_at', 'desc').limit(limit).offset(offset);
+      res.json({ success: true, data: fines, meta: { page, limit } });
     } catch (err) {
       res.status(500).json({ success: false, error: 'Failed to list fines' });
     }

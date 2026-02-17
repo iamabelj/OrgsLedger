@@ -731,7 +731,7 @@ router.get('/paystack/callback', async (req: Request, res: Response) => {
         const expectedAmount = Math.round(tx.amount * 100);
         if (paidAmount < expectedAmount) {
           logger.error('[PAYSTACK-CB] Amount mismatch', { txId: tx.id, paid: paidAmount, expected: expectedAmount, reference });
-          res.redirect(`orgsledger://payment-complete?reference=${reference}&status=amount_mismatch`);
+          res.redirect(`orgsledger://payment-complete?reference=${encodeURIComponent(reference)}&status=amount_mismatch`);
           return;
         }
 
@@ -752,7 +752,7 @@ router.get('/paystack/callback', async (req: Request, res: Response) => {
     }
 
     // Redirect to mobile deep link
-    res.redirect(`orgsledger://payment-complete?reference=${reference}&status=${result.status}`);
+    res.redirect(`orgsledger://payment-complete?reference=${encodeURIComponent(reference)}&status=${result.status}`);
   } catch (err) {
     logger.error('Paystack callback error', err);
     res.redirect('orgsledger://payment-complete?status=error');
@@ -864,7 +864,7 @@ router.get('/flutterwave/callback', async (req: Request, res: Response) => {
         const expectedAmount = parseFloat(tx.amount) || 0;
         if (paidAmount < expectedAmount) {
           logger.error('[FLUTTERWAVE-CB] Amount mismatch', { txId: tx.id, paid: paidAmount, expected: expectedAmount, txRef });
-          res.redirect(`orgsledger://payment-complete?tx_ref=${txRef}&status=amount_mismatch`);
+          res.redirect(`orgsledger://payment-complete?tx_ref=${encodeURIComponent(txRef)}&status=amount_mismatch`);
           return;
         }
 
@@ -884,7 +884,7 @@ router.get('/flutterwave/callback', async (req: Request, res: Response) => {
       }
     }
 
-    res.redirect(`orgsledger://payment-complete?tx_ref=${txRef}&status=${result.status}`);
+    res.redirect(`orgsledger://payment-complete?tx_ref=${encodeURIComponent(txRef)}&status=${result.status}`);
   } catch (err) {
     logger.error('Flutterwave callback error', err);
     res.redirect('orgsledger://payment-complete?status=error');
@@ -904,7 +904,9 @@ router.get(
         ? (typeof org.settings === 'string' ? JSON.parse(org.settings) : org.settings)
         : {};
       orgMethods = settings.payment_methods;
-    } catch {}
+    } catch (err) {
+      logger.warn('Failed to parse org payment settings', err);
+    }
 
     const gateways: any[] = [];
 

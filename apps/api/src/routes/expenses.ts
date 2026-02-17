@@ -164,6 +164,12 @@ router.put(
         return;
       }
 
+      // Members can only update their own expenses
+      if (req.membership!.role === 'member' && existing.created_by !== req.user!.userId) {
+        res.status(403).json({ success: false, error: 'You can only edit your own expenses' });
+        return;
+      }
+
       const updates: Record<string, any> = {};
       if (title !== undefined) updates.title = title;
       if (description !== undefined) updates.description = description;
@@ -210,6 +216,12 @@ router.delete(
 
       if (!expense) {
         res.status(404).json({ success: false, error: 'Expense not found' });
+        return;
+      }
+
+      // Members can only delete their own expenses
+      if (req.membership!.role === 'member' && expense.created_by !== req.user!.userId) {
+        res.status(403).json({ success: false, error: 'You can only delete your own expenses' });
         return;
       }
 

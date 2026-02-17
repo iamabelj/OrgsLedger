@@ -183,7 +183,7 @@ router.put(
         .where({ id: req.params.announcementId })
         .update({ pinned: !announcement.pinned });
 
-      res.json({ success: true, pinned: !announcement.pinned });
+      res.json({ success: true, data: { pinned: !announcement.pinned } });
     } catch (err) {
       res.status(500).json({ success: false, error: 'Failed to toggle pin' });
     }

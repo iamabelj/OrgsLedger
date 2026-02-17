@@ -803,6 +803,14 @@ router.post(
 
       // Check translation wallet if org context is provided
       if (organizationId) {
+        // Verify user is a member of this org
+        const userMembership = await db('memberships')
+          .where({ user_id: req.user!.userId, organization_id: organizationId, is_active: true })
+          .first();
+        if (!userMembership) {
+          return res.status(403).json({ success: false, error: 'You are not a member of this organization' });
+        }
+
         const wallet = await db('translation_wallet').where({ organization_id: organizationId }).first();
         if (wallet && parseFloat(wallet.balance_minutes) <= 0) {
           return res.status(402).json({ success: false, error: 'Translation wallet balance is zero. Please contact your administrator.' });

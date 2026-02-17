@@ -483,6 +483,16 @@ router.put(
   loadMembership,
   async (req: Request, res: Response) => {
     try {
+      const { content } = req.body;
+      if (!content || typeof content !== 'string' || !content.trim()) {
+        res.status(400).json({ success: false, error: 'content is required' });
+        return;
+      }
+      if (content.length > 10000) {
+        res.status(400).json({ success: false, error: 'content must be at most 10000 characters' });
+        return;
+      }
+
       if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user!.userId, res, req))) return;
       const message = await db('messages')
         .where({ id: req.params.messageId, sender_id: req.user!.userId })

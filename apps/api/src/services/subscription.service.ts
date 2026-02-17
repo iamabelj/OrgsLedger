@@ -594,7 +594,7 @@ export async function useInviteLink(code: string, userId: string) {
         .first();
       let maxMembers = 15; // free tier default
       if (sub) {
-        const plan = await trx('plans').where({ id: sub.plan_id }).first();
+        const plan = await trx('subscription_plans').where({ id: sub.plan_id }).first();
         maxMembers = plan?.max_members || 100;
       }
       const current = parseInt(String(memberCount?.count || 0));

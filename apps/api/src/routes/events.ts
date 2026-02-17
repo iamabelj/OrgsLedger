@@ -219,10 +219,15 @@ router.delete(
   requireRole('org_admin'),
   async (req: Request, res: Response) => {
     try {
-      await db('event_rsvps').where({ event_id: req.params.eventId }).delete();
-      await db('events')
+      const event = await db('events')
         .where({ id: req.params.eventId, organization_id: req.params.orgId })
-        .delete();
+        .first();
+      if (!event) {
+        res.status(404).json({ success: false, error: 'Event not found' });
+        return;
+      }
+      await db('event_rsvps').where({ event_id: event.id }).delete();
+      await db('events').where({ id: event.id }).delete();
       res.json({ success: true, message: 'Event deleted' });
     } catch (err) {
       res.status(500).json({ success: false, error: 'Failed to delete event' });

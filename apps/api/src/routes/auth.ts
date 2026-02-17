@@ -161,7 +161,7 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
             .first();
           let maxMembers = 100; // Default limit
           if (sub?.plan_id) {
-            const planRecord = await trx('plans').where({ id: sub.plan_id }).first();
+            const planRecord = await trx('subscription_plans').where({ id: sub.plan_id }).first();
             maxMembers = planRecord?.max_members || 100;
           }
           if (memberCount < maxMembers) {
@@ -403,7 +403,7 @@ router.post('/admin-register', validate(adminRegisterSchema), async (req: Reques
 
       // If a plan was selected, create a subscription
       if (plan) {
-        const planRecord = await trx('plans').where({ slug: plan, is_active: true }).first();
+        const planRecord = await trx('subscription_plans').where({ slug: plan, is_active: true }).first();
         if (planRecord) {
           const billingCycleVal = billingCycle || 'annual';
           const currencyVal = currency || 'USD';
