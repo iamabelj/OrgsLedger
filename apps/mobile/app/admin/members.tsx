@@ -260,9 +260,14 @@ export default function MembersScreen() {
     setActionLoading(member.user_id);
     try {
       const res = await api.chat.getOrCreateDM(currentOrgId, member.user_id);
-      const channelId = res.data.data?.id;
-      if (channelId) router.push(`/chat/${channelId}`);
+      const channelId = res.data?.data?.id;
+      if (channelId) {
+        router.push(`/chat/${channelId}`);
+      } else {
+        showAlert('Error', 'Could not create or find DM channel');
+      }
     } catch (err: any) {
+      console.error('DM creation error:', err?.response?.data || err);
       showAlert('Error', err.response?.data?.error || 'Failed to start conversation');
     } finally {
       setActionLoading(null);

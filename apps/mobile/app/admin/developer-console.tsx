@@ -21,6 +21,7 @@ import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius } from '../../src/theme';
 import { Card, SectionHeader, ResponsiveScrollView } from '../../src/components/ui';
+import { useResponsive } from '../../src/hooks/useResponsive';
 import { showAlert } from '../../src/utils/alert';
 
 type Tab = 'overview' | 'plans' | 'orgs' | 'users' | 'audit';
@@ -71,6 +72,7 @@ interface User {
 export default function DeveloperConsole() {
   const globalRole = useAuthStore((s) => s.user?.globalRole);
   const isDeveloper = globalRole === 'developer';
+  const responsive = useResponsive();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -448,14 +450,14 @@ export default function DeveloperConsole() {
       onRefresh={onRefresh}
     >
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingHorizontal: responsive.contentPadding }]}>
         <Text style={styles.headerTitle}>Developer Console</Text>
         <Text style={styles.headerSubtitle}>Platform Management</Text>
       </View>
 
       {/* Tabs */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll}>
-        <View style={styles.tabs}>
+        <View style={[styles.tabs, { paddingHorizontal: responsive.contentPadding }]}>
           {([
             { key: 'overview', label: 'Overview', icon: 'stats-chart' },
             { key: 'plans', label: 'Plans', icon: 'layers' },
@@ -479,7 +481,7 @@ export default function DeveloperConsole() {
       {/* OVERVIEW TAB */}
       {/* ════════════════════════════════════════════════════════ */}
       {tab === 'overview' && (
-        <View style={styles.section}>
+        <View style={[styles.section, { padding: responsive.contentPadding }]}>
           <SectionHeader title="Platform Metrics" />
           <View style={styles.statsGrid}>
             <StatCard label="Total Revenue (USD)" value={`$${fmtNum(revenue?.total_revenue_usd || 0)}`} icon="cash" color={Colors.success} />
@@ -538,7 +540,7 @@ export default function DeveloperConsole() {
       {/* PLANS TAB */}
       {/* ════════════════════════════════════════════════════════ */}
       {tab === 'plans' && (
-        <View style={styles.section}>
+        <View style={[styles.section, { padding: responsive.contentPadding }]}>
           <View style={styles.sectionHeaderRow}>
             <SectionHeader title={`Subscription Plans (${plans.length})`} />
             <TouchableOpacity style={styles.addBtn} onPress={() => openPlanModal()}>
@@ -605,7 +607,7 @@ export default function DeveloperConsole() {
       {/* ORGANIZATIONS TAB */}
       {/* ════════════════════════════════════════════════════════ */}
       {tab === 'orgs' && (
-        <View style={styles.section}>
+        <View style={[styles.section, { padding: responsive.contentPadding }]}>
           <View style={styles.sectionHeaderRow}>
             <SectionHeader title={`Organizations (${filteredOrgs.length})`} />
             <TouchableOpacity style={styles.addBtn} onPress={() => openOrgModal(undefined, 'create')}>
@@ -692,7 +694,7 @@ export default function DeveloperConsole() {
       {/* USERS TAB */}
       {/* ════════════════════════════════════════════════════════ */}
       {tab === 'users' && (
-        <View style={styles.section}>
+        <View style={[styles.section, { padding: responsive.contentPadding }]}>
           <SectionHeader title={`Platform Users (${filteredUsers.length})`} />
 
           <TextInput
@@ -747,7 +749,7 @@ export default function DeveloperConsole() {
       {/* AUDIT TAB */}
       {/* ════════════════════════════════════════════════════════ */}
       {tab === 'audit' && (
-        <View style={styles.section}>
+        <View style={[styles.section, { padding: responsive.contentPadding }]}>
           <SectionHeader title="Recent Audit Logs" />
 
           {auditLogs.length === 0 ? (
@@ -1133,26 +1135,26 @@ function actionColor(action: string): string {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background, gap: Spacing.md, padding: Spacing.xl },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background, gap: Spacing.md, padding: Spacing.md },
   deniedTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold as any, color: Colors.textPrimary, marginTop: Spacing.md },
   deniedText: { fontSize: FontSize.md, color: Colors.textLight, textAlign: 'center' },
   loadingText: { fontSize: FontSize.sm, color: Colors.textLight, marginTop: Spacing.md },
 
   // Header
-  header: { padding: Spacing.lg, paddingBottom: 0 },
+  header: { paddingTop: Spacing.md, paddingBottom: 0 },
   headerTitle: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold as any, color: Colors.textPrimary },
   headerSubtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
 
   // Tabs
   tabsScroll: { marginVertical: Spacing.md },
-  tabs: { flexDirection: 'row', paddingHorizontal: Spacing.lg, gap: Spacing.sm },
+  tabs: { flexDirection: 'row', gap: Spacing.sm },
   tab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 16, borderRadius: BorderRadius.md, backgroundColor: Colors.surface },
   tabActive: { backgroundColor: Colors.highlightSubtle },
   tabText: { fontSize: FontSize.sm, color: Colors.textLight },
   tabTextActive: { color: Colors.highlight, fontWeight: FontWeight.semibold as any },
 
   // Section
-  section: { padding: Spacing.lg },
+  section: { paddingTop: Spacing.md },
   sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
 
   // Stats

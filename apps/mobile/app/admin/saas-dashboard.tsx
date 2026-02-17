@@ -19,6 +19,7 @@ import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius } from '../../src/theme';
 import { Card, SectionHeader, ResponsiveScrollView } from '../../src/components/ui';
+import { useResponsive } from '../../src/hooks/useResponsive';
 import { showAlert } from '../../src/utils/alert';
 
 type Tab = 'overview' | 'orgs' | 'adjust';
@@ -39,6 +40,7 @@ export default function SaasDashboard() {
     );
   }
 
+  const responsive = useResponsive();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<Tab>('overview');
@@ -168,7 +170,7 @@ export default function SaasDashboard() {
       onRefresh={onRefresh}
     >
       {/* Tabs */}
-      <View style={styles.tabs}>
+      <View style={[styles.tabs, { marginHorizontal: responsive.contentPadding }]}>
         {([
           { key: 'overview', label: 'Overview', icon: 'stats-chart' },
           { key: 'orgs', label: 'Organizations', icon: 'business' },
@@ -187,7 +189,7 @@ export default function SaasDashboard() {
 
       {/* ── Overview Tab ─────────────────────────────── */}
       {tab === 'overview' && (
-        <View style={styles.section}>
+        <View style={[styles.section, { padding: responsive.contentPadding }]}>
           {/* Revenue */}
           <SectionHeader title="Platform Revenue" />
           <View style={styles.statsGrid}>
@@ -238,7 +240,7 @@ export default function SaasDashboard() {
 
       {/* ── Organizations Tab ────────────────────────── */}
       {tab === 'orgs' && (
-        <View style={styles.section}>
+        <View style={[styles.section, { padding: responsive.contentPadding }]}>
           <SectionHeader title={`Organizations (${orgs.length})`} />
           {orgs.length === 0 ? (
             <Text style={styles.emptyText}>No organizations found</Text>
@@ -316,7 +318,7 @@ export default function SaasDashboard() {
 
       {/* ── Adjust Wallet Tab ────────────────────────── */}
       {tab === 'adjust' && (
-        <View style={styles.section}>
+        <View style={[styles.section, { padding: responsive.contentPadding }]}>
           <SectionHeader title="Adjust Organization Wallet" />
           <Text style={styles.adjustSubtitle}>
             Add or deduct wallet hours for any organization. Use negative values to deduct.
@@ -428,10 +430,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background, gap: Spacing.md },
   deniedText: { fontSize: FontSize.md, color: Colors.textLight },
-  section: { padding: Spacing.lg },
+  section: { paddingTop: Spacing.md },
 
   // Tabs
-  tabs: { flexDirection: 'row', margin: Spacing.lg, marginBottom: 0, backgroundColor: Colors.surface, borderRadius: BorderRadius.md, padding: 4 },
+  tabs: { flexDirection: 'row', marginTop: Spacing.md, marginBottom: 0, backgroundColor: Colors.surface, borderRadius: BorderRadius.md, padding: 4 },
   tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 10, borderRadius: BorderRadius.sm },
   tabActive: { backgroundColor: Colors.primaryLight },
   tabText: { fontSize: FontSize.xs, color: Colors.textLight },
