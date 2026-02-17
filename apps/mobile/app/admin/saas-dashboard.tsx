@@ -26,15 +26,15 @@ type Tab = 'overview' | 'orgs' | 'adjust';
 
 export default function SaasDashboard() {
   const globalRole = useAuthStore((s) => s.user?.globalRole);
-  const isSuperAdmin = globalRole === 'developer';
+  const canAccess = globalRole === 'developer' || globalRole === 'super_admin';
 
-  if (!isSuperAdmin) {
+  if (!canAccess) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background }}>
         <Text style={{ fontSize: 48, marginBottom: 16 }}>{String.fromCodePoint(0x1F512)}</Text>
-        <Text style={{ color: Colors.text, fontSize: 18, fontWeight: '600' as const }}>Developer Access Only</Text>
+        <Text style={{ color: Colors.text, fontSize: 18, fontWeight: '600' as const }}>Super Admin Access Only</Text>
         <Text style={{ color: Colors.textLight, fontSize: 14, marginTop: 8, textAlign: 'center' as const, paddingHorizontal: 32 }}>
-          This dashboard is restricted to the platform developer.
+          This dashboard is restricted to super admins and developers.
         </Text>
       </View>
     );
@@ -95,7 +95,7 @@ export default function SaasDashboard() {
     }
   }, []);
 
-  useEffect(() => { if (isSuperAdmin) loadData(); }, [isSuperAdmin, loadData]);
+  useEffect(() => { if (canAccess) loadData(); }, [canAccess, loadData]);
   const onRefresh = () => { setRefreshing(true); loadData(); };
 
   const handleSuspend = (org: any) => {
@@ -141,15 +141,6 @@ export default function SaasDashboard() {
       showAlert('Error', err?.response?.data?.error || 'Adjustment failed');
     }
   };
-
-  if (!isSuperAdmin) {
-    return (
-      <View style={styles.center}>
-        <Ionicons name="shield" size={48} color={Colors.textLight} />
-        <Text style={styles.deniedText}>Super Admin access required</Text>
-      </View>
-    );
-  }
 
   if (loading) {
     return (

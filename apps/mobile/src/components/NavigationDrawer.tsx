@@ -73,10 +73,15 @@ const executiveItems: NavItem[] = [
   { label: 'Reports', icon: 'stats-chart-outline', path: '/admin/reports' },
 ];
 
-const developerItems: NavItem[] = [
-  { label: 'Developer Console', icon: 'code-slash-outline', path: '/admin/developer-console' },
+// Super Admin items - visible to super_admin and developer
+const superAdminItems: NavItem[] = [
   { label: 'SaaS Dashboard', icon: 'planet-outline', path: '/admin/saas-dashboard' },
   { label: 'Signup Invites', icon: 'mail-outline', path: '/admin/signup-invites' },
+];
+
+// Developer-only items
+const developerItems: NavItem[] = [
+  { label: 'Developer Console', icon: 'code-slash-outline', path: '/admin/developer-console' },
 ];
 
 const legalItems: NavItem[] = [
@@ -287,6 +292,8 @@ export function NavigationDrawer() {
           isOrgAdmin ? 'ADMINISTRATION' : 'MANAGEMENT',
           drawerAdminItems,
         )}
+
+        {isSuperAdmin && renderGroup('PLATFORM', superAdminItems)}
 
         {isDeveloper && renderGroup('DEVELOPER', developerItems)}
 
