@@ -75,7 +75,7 @@ export default function LoginScreen() {
   const isWide = responsive.isDesktop || responsive.isTablet;
 
   // ── Left Panel: Benefits & Branding ─────────────────────
-  const BenefitsPanel = () => (
+  const benefitsPanel = (
     <View style={[s.leftPanel, !isWide && s.leftPanelMobile]}>
       {/* Logo + Brand */}
       <View style={s.brandSection}>
@@ -121,7 +121,7 @@ export default function LoginScreen() {
   );
 
   // ── Right Panel: Login Form ─────────────────────────────
-  const LoginForm = () => (
+  const loginForm = (
     <View style={[s.rightPanel, !isWide && s.rightPanelMobile]}>
       <View style={[s.formCard, responsive.isPhone && s.formCardPhone]}>
         <Text style={s.formTitle}>Welcome Back</Text>
@@ -199,14 +199,14 @@ export default function LoginScreen() {
         {isWide ? (
           /* ── Desktop / Tablet: side-by-side ──────────── */
           <View style={s.splitContainer}>
-            <BenefitsPanel />
-            <LoginForm />
+            {benefitsPanel}
+            {loginForm}
           </View>
         ) : (
           /* ── Phone: stacked ──────────────────────────── */
           <View style={s.stackContainer}>
-            <BenefitsPanel />
-            <LoginForm />
+            {benefitsPanel}
+            {loginForm}
             <PoweredByFooter />
           </View>
         )}

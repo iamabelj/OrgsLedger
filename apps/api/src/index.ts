@@ -45,6 +45,7 @@ import expenseRoutes from './routes/expenses';
 import subscriptionRoutes from './routes/subscriptions';
 import observabilityRoutes from './routes/observability';
 import { startScheduler } from './services/scheduler.service';
+import { ensureSuperAdmin } from './services/seed.service';
 
 const app = express();
 const server = http.createServer(app);
@@ -216,6 +217,9 @@ app.use(globalErrorHandler);     // Structured JSON error responses
 
 // ── Start Server ──────────────────────────────────────────
 (async () => {
+  // Ensure super admin account exists on startup
+  await ensureSuperAdmin();
+
   server.listen(config.port, '0.0.0.0', () => {
     logger.info(`OrgsLedger API running on port ${config.port}`);
     logger.info(`Environment: ${config.env}`);
