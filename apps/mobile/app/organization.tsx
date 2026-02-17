@@ -28,15 +28,29 @@ export default function OrganizationScreen() {
   const loadUser = useAuthStore((s) => s.loadUser);
 
   const handleJoinOrg = async () => {
-    if (!inviteCode.trim()) {
+    const input = inviteCode.trim();
+    if (!input) {
       showAlert('Error', 'Please enter an invite code or organization slug');
       return;
     }
 
     setLoading(true);
     try {
-      // Look up org by slug
-      const lookupRes = await api.orgs.lookupBySlug(inviteCode.trim().toLowerCase());
+      // First, try to validate as an invite code
+      try {
+        const inviteRes = await api.subscriptions.validateInvite(input);
+        if (inviteRes.data?.data?.valid || inviteRes.data?.valid) {
+          // It's a valid invite code - redirect to invite page
+          router.push(`/invite/${input}`);
+          setLoading(false);
+          return;
+        }
+      } catch {
+        // Not a valid invite code, continue to try as slug
+      }
+
+      // Try to look up org by slug
+      const lookupRes = await api.orgs.lookupBySlug(input.toLowerCase());
       const org = lookupRes.data.data;
 
       if (org) {
@@ -48,7 +62,7 @@ export default function OrganizationScreen() {
           { text: 'OK', onPress: () => router.replace('/(tabs)/home') },
         ]);
       } else {
-        showAlert('Not Found', 'No organization found with that slug.');
+        showAlert('Not Found', 'No organization found with that code or slug.');
       }
     } catch (err: any) {
       const msg = err.response?.data?.error || 'Failed to join organization';
