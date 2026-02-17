@@ -70,7 +70,7 @@ interface User {
 
 export default function DeveloperConsole() {
   const globalRole = useAuthStore((s) => s.user?.globalRole);
-  const isDeveloper = globalRole === 'developer' || globalRole === 'super_admin';
+  const isDeveloper = globalRole === 'developer';
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

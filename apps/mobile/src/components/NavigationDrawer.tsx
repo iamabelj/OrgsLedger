@@ -288,7 +288,7 @@ export function NavigationDrawer() {
           drawerAdminItems,
         )}
 
-        {isSuperAdmin && renderGroup('DEVELOPER', developerItems)}
+        {isDeveloper && renderGroup('DEVELOPER', developerItems)}
 
         {renderGroup('LEGAL', legalItems)}
       </ScrollView>
