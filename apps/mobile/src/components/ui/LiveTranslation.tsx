@@ -22,7 +22,7 @@ import { api } from '../../api/client';
 import { showAlert } from '../../utils/alert';
 
 // ── Language Configuration ────────────────────────────────
-const LANGUAGES: Record<string, string> = {
+export const LANGUAGES: Record<string, string> = {
   en: 'English',
   es: 'Spanish',
   fr: 'French',
@@ -60,7 +60,7 @@ const SPEECH_CODES: Record<string, string> = {
   tw: 'ak-GH',
 };
 
-const LANG_FLAGS: Record<string, string> = {
+export const LANG_FLAGS: Record<string, string> = {
   en: '🇬🇧', es: '🇪🇸', fr: '🇫🇷', pt: '🇧🇷', ar: '🇸🇦',
   zh: '🇨🇳', hi: '🇮🇳', sw: '🇰🇪', yo: '🇳🇬', ha: '🇳🇬',
   ig: '🇳🇬', am: '🇪🇹', de: '🇩🇪', it: '🇮🇹', ja: '🇯🇵',
@@ -85,12 +85,22 @@ interface Participant {
   language: string;
 }
 
+export interface LiveTranslationRef {
+  startListening: () => void;
+  stopListening: () => void;
+  selectLanguage: (lang: string) => void;
+  isListening: () => boolean;
+  getLanguage: () => string;
+}
+
 interface LiveTranslationProps {
   meetingId: string;
   userId: string;
+  hideControls?: boolean;
 }
 
-export default function LiveTranslation({ meetingId, userId }: LiveTranslationProps) {
+const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProps>(
+  function LiveTranslation({ meetingId, userId, hideControls = false }, ref) {
   const [myLanguage, setMyLanguage] = useState('en');
   const [isListening, setIsListening] = useState(false);
   const [showLanguagePicker, setShowLanguagePicker] = useState(true); // Show on first join so members pick their language
@@ -277,6 +287,15 @@ export default function LiveTranslation({ meetingId, userId }: LiveTranslationPr
     setInterimText('');
   }, []);
 
+  // ── Expose control API to parent via ref ────────────────
+  React.useImperativeHandle(ref, () => ({
+    startListening,
+    stopListening,
+    selectLanguage,
+    isListening: () => isListening,
+    getLanguage: () => myLanguage,
+  }), [startListening, stopListening, selectLanguage, isListening, myLanguage]);
+
   // ── Text-to-Speech (Web + Android + iOS) ───────────────
   const speak = useCallback((text: string, lang: string) => {
     const langCode = SPEECH_CODES[lang] || 'en-US';
@@ -339,6 +358,7 @@ export default function LiveTranslation({ meetingId, userId }: LiveTranslationPr
 
       {isExpanded && (
         <>
+          {!hideControls && (<>
           {/* ── Language Selector + Controls ────────────────── */}
           <View style={styles.controls}>
             <TouchableOpacity style={styles.langButton} onPress={() => setShowLanguagePicker(!showLanguagePicker)} activeOpacity={0.7}>
@@ -401,6 +421,7 @@ export default function LiveTranslation({ meetingId, userId }: LiveTranslationPr
               </ScrollView>
             </View>
           )}
+          </>)}
 
           {/* ── Participant Languages ──────────────────────── */}
           {participants.length > 0 && (
@@ -467,7 +488,10 @@ export default function LiveTranslation({ meetingId, userId }: LiveTranslationPr
       )}
     </View>
   );
-}
+  }
+);
+
+export default LiveTranslation;
 
 const styles = StyleSheet.create({
   container: {
