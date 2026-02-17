@@ -301,6 +301,7 @@ const styles = StyleSheet.create({
   },
   filterRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs,
     gap: Spacing.xs,
@@ -432,6 +433,7 @@ const styles = StyleSheet.create({
   },
   typeRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: Spacing.xs,
     marginTop: 4,
   },

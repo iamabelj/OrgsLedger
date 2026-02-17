@@ -496,7 +496,7 @@ const infoStyles = StyleSheet.create({
   border: { borderBottomWidth: 0.5, borderBottomColor: Colors.borderLight },
   iconWrap: { width: 30, height: 30, borderRadius: 15, backgroundColor: Colors.primaryLight, alignItems: 'center', justifyContent: 'center' },
   label: { fontSize: FontSize.xs, color: Colors.textLight, letterSpacing: 0.3 },
-  value: { fontSize: FontSize.md, color: Colors.textPrimary, fontWeight: FontWeight.medium as any, marginTop: 1 },
+  value: { fontSize: FontSize.md, color: Colors.textPrimary, fontWeight: FontWeight.medium as any, marginTop: 1, flexShrink: 1 },
 });
 
 const qaStyles = StyleSheet.create({
@@ -742,6 +742,7 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     color: Colors.textPrimary,
     fontWeight: FontWeight.medium as any,
+    flexShrink: 1,
   },
 
   // Org Selector

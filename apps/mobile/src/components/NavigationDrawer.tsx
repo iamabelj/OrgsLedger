@@ -140,7 +140,7 @@ export function NavigationDrawer() {
 
   const handleLogout = async () => {
     showAlert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel' },
+      { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign Out',
         style: 'destructive',

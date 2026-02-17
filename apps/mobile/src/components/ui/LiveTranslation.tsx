@@ -508,8 +508,8 @@ export default LiveTranslation;
 
 const styles = StyleSheet.create({
   container: {
-    marginHorizontal: Spacing.md,
-    marginBottom: Spacing.md,
+    marginHorizontal: Spacing.sm,
+    marginBottom: Spacing.sm,
     borderRadius: BorderRadius.lg,
     backgroundColor: Colors.surface,
     overflow: 'hidden',
@@ -589,8 +589,8 @@ const styles = StyleSheet.create({
   },
 
   langDropdown: {
-    marginHorizontal: Spacing.md,
-    marginBottom: Spacing.sm,
+    marginHorizontal: Spacing.sm,
+    marginBottom: Spacing.xs,
     backgroundColor: Colors.primaryLight,
     borderRadius: BorderRadius.md,
     padding: Spacing.sm,
@@ -661,8 +661,8 @@ const styles = StyleSheet.create({
   chipName: { color: Colors.textSecondary, fontSize: FontSize.xs, maxWidth: 60 },
 
   feed: {
-    maxHeight: 280,
-    paddingHorizontal: Spacing.md,
+    maxHeight: 200,
+    paddingHorizontal: Spacing.sm,
     paddingBottom: Spacing.sm,
   },
   feedEmpty: { flex: 1, justifyContent: 'center' },

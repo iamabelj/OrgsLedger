@@ -1073,15 +1073,17 @@ const styles = StyleSheet.create({
   },
   finCardGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-around',
     alignItems: 'center',
   },
   finCardItem: {
     alignItems: 'center',
     gap: 4,
+    flexShrink: 1,
   },
   finCardValue: {
-    fontSize: FontSize.xxl,
+    fontSize: FontSize.lg,
     fontWeight: FontWeight.extrabold,
     color: Colors.textPrimary,
     letterSpacing: -0.5,
@@ -1127,13 +1129,15 @@ const styles = StyleSheet.create({
   },
   quickCard: {
     alignItems: 'center',
-    width: 76,
+    flexBasis: 68,
+    flexGrow: 1,
+    maxWidth: 80,
     gap: 6,
     paddingVertical: Spacing.xs,
   },
   quickIcon: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1300,7 +1304,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   pulseCard: {
-    flexBasis: '48%',
+    flexBasis: '46%',
     flexGrow: 1,
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.lg,

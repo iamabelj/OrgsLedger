@@ -1347,7 +1347,7 @@ const z = StyleSheet.create({
   errorText: { color: Colors.textLight, fontSize: FontSize.lg },
 
   // ── Header Card ─────────────────────────────────────────
-  headerCard: { margin: Spacing.md, padding: Spacing.lg, overflow: 'hidden' },
+  headerCard: { marginHorizontal: Spacing.sm, marginTop: Spacing.sm, padding: Spacing.md, overflow: 'hidden' },
   headerLive: { borderWidth: 1, borderColor: 'rgba(52, 211, 153, 0.25)' },
   liveStripe: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: '#34D399' },
   headerTopRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm },
@@ -1355,7 +1355,7 @@ const z = StyleSheet.create({
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: Spacing.sm, paddingVertical: 3, borderRadius: BorderRadius.full },
   statusText: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, textTransform: 'uppercase', letterSpacing: 0.5 },
   editIconBtn: { padding: 6, borderRadius: BorderRadius.sm, backgroundColor: Colors.primaryLight },
-  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.textWhite, marginBottom: 2 },
+  title: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textWhite, marginBottom: 2 },
   description: { fontSize: FontSize.md, color: Colors.textLight, marginTop: Spacing.xs, lineHeight: 22 },
   typeBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.sm },
   typeBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(129, 140, 248, 0.12)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: BorderRadius.full },
@@ -1367,25 +1367,25 @@ const z = StyleSheet.create({
   metaText: { color: Colors.textSecondary, fontSize: FontSize.sm },
 
   // ── Timer ───────────────────────────────────────────────
-  timerCard: { marginHorizontal: Spacing.md, marginBottom: Spacing.sm, padding: Spacing.md },
+  timerCard: { marginHorizontal: Spacing.sm, marginBottom: Spacing.xs, padding: Spacing.sm },
   timerInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   timerLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   timerLabel: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
-  timerValue: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.textWhite, fontVariant: ['tabular-nums'] as any, letterSpacing: 2 },
+  timerValue: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textWhite, fontVariant: ['tabular-nums'] as any, letterSpacing: 2 },
   durationLimitRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: Spacing.xs },
   durationLimitText: { color: Colors.warning, fontSize: FontSize.xs },
 
   // ── Countdown ───────────────────────────────────────────
-  countdownCard: { marginHorizontal: Spacing.md, marginBottom: Spacing.sm, padding: Spacing.lg, alignItems: 'center' },
+  countdownCard: { marginHorizontal: Spacing.sm, marginBottom: Spacing.xs, padding: Spacing.md, alignItems: 'center' },
   countdownLabel: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: FontWeight.medium, marginBottom: Spacing.md, textTransform: 'uppercase', letterSpacing: 1 },
   countdownBoxes: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  countdownUnit: { alignItems: 'center', backgroundColor: Colors.primaryLight, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, borderRadius: BorderRadius.md, minWidth: 68 },
-  countdownNum: { fontSize: 32, fontWeight: FontWeight.bold, color: Colors.textWhite, fontVariant: ['tabular-nums'] as any },
+  countdownUnit: { alignItems: 'center', backgroundColor: Colors.primaryLight, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderRadius: BorderRadius.md, minWidth: 56 },
+  countdownNum: { fontSize: 24, fontWeight: FontWeight.bold, color: Colors.textWhite, fontVariant: ['tabular-nums'] as any },
   countdownSuffix: { fontSize: FontSize.xs, color: Colors.textLight, marginTop: 2, textTransform: 'uppercase' },
   countdownSep: { fontSize: 28, fontWeight: FontWeight.bold, color: Colors.textLight },
 
   // ── Video Embed ─────────────────────────────────────────
-  videoWrapper: { marginHorizontal: Spacing.md, marginBottom: Spacing.md, borderRadius: BorderRadius.lg, overflow: 'hidden', backgroundColor: '#000', ...Shadow.lg },
+  videoWrapper: { marginHorizontal: Spacing.sm, marginBottom: Spacing.sm, borderRadius: BorderRadius.lg, overflow: 'hidden', backgroundColor: '#000', ...Shadow.lg },
   videoToolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(15, 26, 46, 0.95)', paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
   videoToolbarText: { color: '#34D399', fontSize: FontSize.sm, fontWeight: FontWeight.semibold },
   videoTimerText: { color: Colors.textLight, fontSize: FontSize.xs, fontVariant: ['tabular-nums'] as any, marginLeft: Spacing.xs },
@@ -1393,7 +1393,7 @@ const z = StyleSheet.create({
   toolbarBtnActive: { backgroundColor: Colors.highlight },
   toolbarBadge: { position: 'absolute', top: -4, right: -4, backgroundColor: Colors.error, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   toolbarBadgeText: { color: '#FFF', fontSize: 10, fontWeight: FontWeight.bold },
-  videoContainer: { height: 420, backgroundColor: '#000' },
+  videoContainer: { height: 320, backgroundColor: '#000' },
 
   // ── Join Card ───────────────────────────────────────────
   joinCard: { marginHorizontal: Spacing.md, marginBottom: Spacing.sm, padding: Spacing.lg },
@@ -1409,12 +1409,12 @@ const z = StyleSheet.create({
   liveActionText: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
 
   // ── Action Area ─────────────────────────────────────────
-  actionArea: { marginHorizontal: Spacing.md, marginBottom: Spacing.sm, gap: Spacing.sm },
+  actionArea: { marginHorizontal: Spacing.sm, marginBottom: Spacing.xs, gap: Spacing.sm },
   cancelMeetingBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: Spacing.sm, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.error },
   cancelMeetingText: { color: Colors.error, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
 
   // ── Section ─────────────────────────────────────────────
-  section: { marginHorizontal: Spacing.md, marginBottom: Spacing.md, padding: Spacing.md },
+  section: { marginHorizontal: Spacing.sm, marginBottom: Spacing.sm, padding: Spacing.sm },
 
   // ── Services ────────────────────────────────────────────
   serviceRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingVertical: Spacing.sm, borderBottomWidth: 0.5, borderBottomColor: Colors.accent },
@@ -1482,10 +1482,10 @@ const z = StyleSheet.create({
   handRaisedIcon: { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.highlightSubtle, alignItems: 'center', justifyContent: 'center' },
 
   // ── Unified Control Bar ─────────────────────────────────
-  controlBarCard: { marginHorizontal: Spacing.md, marginBottom: Spacing.sm, paddingHorizontal: Spacing.sm, paddingVertical: Spacing.md },
+  controlBarCard: { marginHorizontal: Spacing.sm, marginBottom: Spacing.xs, paddingHorizontal: Spacing.xs, paddingVertical: Spacing.sm },
   controlBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly' },
-  controlItem: { alignItems: 'center', gap: 4, minWidth: 64 },
-  controlIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  controlItem: { alignItems: 'center', gap: 3, flex: 1 },
+  controlIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   controlIconActive: { backgroundColor: '#6366F1' },
   controlIconOff: { backgroundColor: Colors.primaryLight, borderWidth: 1, borderColor: Colors.accent },
   controlIconMic: { backgroundColor: '#10B981' },
@@ -1498,7 +1498,7 @@ const z = StyleSheet.create({
   controlSecText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.medium as any },
 
   // ── Language Picker ─────────────────────────────────────
-  langPickerCard: { marginHorizontal: Spacing.md, marginBottom: Spacing.sm, padding: Spacing.md },
+  langPickerCard: { marginHorizontal: Spacing.sm, marginBottom: Spacing.xs, padding: Spacing.sm },
   langPickerHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm },
   langPickerTitle: { flex: 1, fontSize: FontSize.md, fontWeight: FontWeight.semibold as any, color: Colors.textWhite },
   langPickerItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.xs + 2, paddingHorizontal: Spacing.xs, borderRadius: BorderRadius.sm },
@@ -1506,7 +1506,7 @@ const z = StyleSheet.create({
   langPickerName: { flex: 1, color: Colors.textWhite, fontSize: FontSize.sm },
 
   // ── Recording Status ────────────────────────────────────
-  recordStatusCard: { marginHorizontal: Spacing.md, marginBottom: Spacing.sm, padding: Spacing.md },
+  recordStatusCard: { marginHorizontal: Spacing.sm, marginBottom: Spacing.xs, padding: Spacing.sm },
   uploadSmBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.success, alignItems: 'center', justifyContent: 'center' },
 
   // ── Video Status Bar ────────────────────────────────────

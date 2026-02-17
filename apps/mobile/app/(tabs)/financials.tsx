@@ -591,10 +591,11 @@ const styles = StyleSheet.create({
     fontWeight: FontWeight.medium as any,
   },
   heroValue: {
-    fontSize: 32,
+    fontSize: 26,
     fontWeight: FontWeight.bold as any,
     color: Colors.highlight,
     marginTop: 2,
+    flexShrink: 1,
   },
   heroIconWrap: {
     width: 48,
@@ -764,7 +765,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: BorderRadius.full,
     marginTop: Spacing.sm,
-    marginLeft: 52,
+    marginLeft: Spacing.md,
   },
   recurringText: {
     color: Colors.highlight,
@@ -787,6 +788,7 @@ const styles = StyleSheet.create({
     color: Colors.textWhite,
     fontSize: FontSize.lg,
     fontWeight: FontWeight.semibold as any,
+    flex: 1,
   },
   campDesc: {
     color: Colors.textLight,
@@ -810,15 +812,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 6,
+    flexWrap: 'wrap',
   },
   progressRaised: {
     color: Colors.success,
     fontSize: FontSize.sm,
     fontWeight: FontWeight.semibold as any,
+    flexShrink: 1,
   },
   progressGoal: {
     color: Colors.textLight,
     fontSize: FontSize.sm,
+    flexShrink: 1,
   },
   donateBtn: {
     flexDirection: 'row',
