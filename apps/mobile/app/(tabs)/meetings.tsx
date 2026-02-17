@@ -2,7 +2,7 @@
 // OrgsLedger Mobile — Meetings List Screen (Royal Design)
 // ============================================================
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { router } from 'expo-router';
 import { format, isToday, isTomorrow, isThisWeek, isPast } from 'date-fns';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
+import { socketClient } from '../../src/api/socket';
 import {
   Colors, Spacing, FontSize, FontWeight,
   BorderRadius, Shadow,
@@ -53,7 +54,7 @@ export default function MeetingsScreen() {
   const canCreate = globalRole === 'super_admin' || globalRole === 'developer' || (membership &&
     ['org_admin', 'executive'].includes(membership.role));
 
-  const loadMeetings = async () => {
+  const loadMeetings = useCallback(async () => {
     if (!currentOrgId) return;
     try {
       const params: any = { limit: 50 };
@@ -63,12 +64,34 @@ export default function MeetingsScreen() {
     } catch (err) {
       console.warn('Failed to load meetings:', err);
     }
-  };
+  }, [currentOrgId, filter]);
 
   useEffect(() => {
     setLoading(true);
     loadMeetings().finally(() => setLoading(false));
-  }, [currentOrgId, filter]);
+  }, [loadMeetings]);
+
+  // ── Socket: Real-time meeting state sync ────────────────
+  useEffect(() => {
+    const handleMeetingStarted = (data: any) => {
+      setMeetings((prev) =>
+        prev.map((m) => m.id === data.meetingId ? { ...m, status: 'live', actual_start: new Date().toISOString() } : m)
+      );
+    };
+    const handleMeetingEnded = (data: any) => {
+      setMeetings((prev) =>
+        prev.map((m) => m.id === data.meetingId ? { ...m, status: 'ended', actual_end: new Date().toISOString() } : m)
+      );
+    };
+
+    const unsub1 = socketClient.on('meeting:started', handleMeetingStarted);
+    const unsub2 = socketClient.on('meeting:ended', handleMeetingEnded);
+
+    return () => {
+      unsub1();
+      unsub2();
+    };
+  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);

@@ -313,14 +313,32 @@ export default function MeetingDetailScreen() {
       );
     };
 
+    // Real-time meeting state sync — no manual refresh needed
+    const handleMeetingStarted = (data: any) => {
+      if (data.meetingId === meetingId) {
+        setMeeting((prev: any) => prev ? { ...prev, status: 'live', actual_start: new Date().toISOString() } : prev);
+      }
+    };
+    const handleMeetingEnded = (data: any) => {
+      if (data.meetingId === meetingId) {
+        setMeeting((prev: any) => prev ? { ...prev, status: 'ended', actual_end: new Date().toISOString() } : prev);
+        // Full reload to get AI minutes data etc.
+        loadMeeting();
+      }
+    };
+
     const unsub1 = socketClient.on('meeting:participant-joined', handleParticipantJoined);
     const unsub2 = socketClient.on('meeting:participant-left', handleParticipantLeft);
     const unsub3 = socketClient.on('meeting:hand-raised', handleHandRaised);
+    const unsub4 = socketClient.on('meeting:started', handleMeetingStarted);
+    const unsub5 = socketClient.on('meeting:ended', handleMeetingEnded);
 
     return () => {
       unsub1();
       unsub2();
       unsub3();
+      unsub4();
+      unsub5();
     };
   }, [meetingId]);
 
@@ -330,7 +348,8 @@ export default function MeetingDetailScreen() {
     setActionLoading(true);
     try {
       await api.meetings.start(currentOrgId, meetingId);
-      await loadMeeting();
+      // Instant local UI update — socket event handles other participants
+      setMeeting((prev: any) => prev ? { ...prev, status: 'live', actual_start: new Date().toISOString() } : prev);
       socketClient.joinMeeting(meetingId);
     } catch (err: any) {
       showAlert('Error', err.response?.data?.error || 'Failed to start meeting');
@@ -350,7 +369,8 @@ export default function MeetingDetailScreen() {
           setActionLoading(true);
           try {
             await api.meetings.end(currentOrgId, meetingId);
-            await loadMeeting();
+            // Instant local UI update — socket event handles other participants
+            setMeeting((prev: any) => prev ? { ...prev, status: 'ended', actual_end: new Date().toISOString() } : prev);
           } catch (err: any) {
             showAlert('Error', err.response?.data?.error || 'Failed to end meeting');
           } finally {

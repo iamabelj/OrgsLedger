@@ -743,13 +743,16 @@ router.post(
         .where({ id: req.params.meetingId })
         .update({ status: 'live', actual_start: db.fn.now() });
 
-      // Notify
+      // Notify org room AND meeting room so all viewers get instant update
       const io = req.app.get('io');
       if (io) {
-        io.to(`org:${req.params.orgId}`).emit('meeting:started', {
+        const payload = {
           meetingId: req.params.meetingId,
           title: meeting.title,
-        });
+          status: 'live',
+        };
+        io.to(`org:${req.params.orgId}`).emit('meeting:started', payload);
+        io.to(`meeting:${req.params.meetingId}`).emit('meeting:started', payload);
       }
 
       await (req as any).audit?.({
@@ -787,10 +790,21 @@ router.post(
         .where({ id: req.params.meetingId })
         .update({ status: 'ended', actual_end: db.fn.now() });
 
+      // Broadcast meeting:ended to org room AND meeting room
+      const io = req.app.get('io');
+      if (io) {
+        const endPayload = {
+          meetingId: req.params.meetingId,
+          title: meeting.title,
+          status: 'ended',
+        };
+        io.to(`org:${req.params.orgId}`).emit('meeting:ended', endPayload);
+        io.to(`meeting:${req.params.meetingId}`).emit('meeting:ended', endPayload);
+      }
+
       // If AI enabled, trigger AI minutes generation
       if (meeting.ai_enabled && meeting.audio_storage_url) {
         // The AI service will be triggered asynchronously
-        const io = req.app.get('io');
         if (io) {
           io.to(`org:${req.params.orgId}`).emit('meeting:minutes:processing', {
             meetingId: req.params.meetingId,
