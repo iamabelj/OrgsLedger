@@ -20,6 +20,7 @@ import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../
 import { socketClient } from '../../api/socket';
 import { api } from '../../api/client';
 import { showAlert } from '../../utils/alert';
+import { useMeetingStore } from '../../stores/meeting.store';
 
 // ── Language Configuration ────────────────────────────────
 export const LANGUAGES: Record<string, string> = {
@@ -111,6 +112,12 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
   const [speakEnabled, setSpeakEnabled] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
 
+  // Zustand store sync — keep centralized state updated
+  const storeSetMyLanguage = useMeetingStore((s) => s.setMyLanguage);
+  const storeAddTranslation = useMeetingStore((s) => s.addTranslation);
+  const storeSetInterimText = useMeetingStore((s) => s.setInterimText);
+  const storeSetTranslationParticipants = useMeetingStore((s) => s.setTranslationParticipants);
+
   const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<ScrollView>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -142,6 +149,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
     const unsubParticipants = socketClient.on('translation:participants', (data: any) => {
       if (data.meetingId === meetingId) {
         setParticipants(data.participants || []);
+        storeSetTranslationParticipants(data.participants || []);
       }
     });
 
@@ -166,6 +174,9 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
         return next;
       });
       setInterimText('');
+      // Sync to Zustand store
+      storeAddTranslation(entry);
+      storeSetInterimText('');
 
       // Text-to-speech for received translations (not own speech)
       if (speakEnabledRef.current && data.speakerId !== userId && Platform.OS === 'web') {
@@ -179,6 +190,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
     const unsubInterim = socketClient.on('translation:interim', (data: any) => {
       if (data.meetingId === meetingId && data.speakerId !== userId) {
         setInterimText(`${data.speakerName}: ${data.text}`);
+        storeSetInterimText(`${data.speakerName}: ${data.text}`);
       }
     });
 
@@ -201,6 +213,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
     setShowLanguagePicker(false);
     setHasChosenLanguage(true);
     socketClient.setTranslationLanguage(meetingId, lang);
+    storeSetMyLanguage(lang);
   }, [meetingId]);
 
   // Initialize: set default language on mount

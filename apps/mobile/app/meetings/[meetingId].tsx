@@ -24,6 +24,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, Stack, router } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
+import { useMeetingStore } from '../../src/stores/meeting.store';
 import { api } from '../../src/api/client';
 import { socketClient } from '../../src/api/socket';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
@@ -184,6 +185,10 @@ export default function MeetingDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
+  // ── Zustand Meeting Store (centralized state) ───────────
+  const meetingStore = useMeetingStore();
+  const meetingEndedByModerator = useMeetingStore((s) => s.meetingEndedByModerator);
+
   // ── Edit State ──────────────────────────────────────────
   const [editMode, setEditMode] = useState(false);
   const [editTitle, setEditTitle] = useState('');
@@ -254,6 +259,23 @@ export default function MeetingDetailScreen() {
 
   useEffect(() => { loadMeeting(); }, [loadMeeting]);
 
+  // ── Initialize Zustand meeting store ────────────────────
+  useEffect(() => {
+    if (meetingId && currentOrgId) {
+      meetingStore.enterMeeting(meetingId, currentOrgId);
+    }
+    return () => {
+      meetingStore.reset();
+    };
+  }, [meetingId, currentOrgId]);
+
+  // Sync loaded meeting into store
+  useEffect(() => {
+    if (meeting) {
+      meetingStore.setMeeting(meeting);
+    }
+  }, [meeting]);
+
   // ── Meeting Timer (elapsed since actual_start) ──────────
   useEffect(() => {
     if (meeting?.status === 'live' && meeting.actual_start) {
@@ -293,37 +315,94 @@ export default function MeetingDetailScreen() {
     }
   }, [bandwidthChecked]);
 
-  // ── Socket: Real-time participant tracking ──────────────
+  // ── Socket: Real-time event-driven architecture ────────
   useEffect(() => {
     if (!meetingId) return;
     socketClient.joinMeeting(meetingId);
 
+    // -- Participant events --
     const handleParticipantJoined = (data: any) => {
       setLiveParticipants((prev) => {
         if (prev.find((p) => p.userId === data.userId)) return prev;
         return [...prev, { ...data, handRaised: false }];
       });
+      meetingStore.addParticipant({ userId: data.userId, name: data.name, isModerator: data.isModerator });
     };
     const handleParticipantLeft = (data: any) => {
       setLiveParticipants((prev) => prev.filter((p) => p.userId !== data.userId));
+      meetingStore.removeParticipant(data.userId);
     };
     const handleHandRaised = (data: any) => {
       setLiveParticipants((prev) =>
         prev.map((p) => p.userId === data.userId ? { ...p, handRaised: data.raised } : p)
       );
+      meetingStore.setHandRaised(data.userId, data.raised);
     };
 
-    // Real-time meeting state sync — no manual refresh needed
+    // -- Meeting lifecycle events (instant, no refresh) --
     const handleMeetingStarted = (data: any) => {
       if (data.meetingId === meetingId) {
         setMeeting((prev: any) => prev ? { ...prev, status: 'live', actual_start: new Date().toISOString() } : prev);
+        meetingStore.onMeetingStarted(data);
       }
     };
     const handleMeetingEnded = (data: any) => {
       if (data.meetingId === meetingId) {
         setMeeting((prev: any) => prev ? { ...prev, status: 'ended', actual_end: new Date().toISOString() } : prev);
-        // Full reload to get AI minutes data etc.
+        meetingStore.onMeetingEnded(data);
+        // Stop any active Jitsi/video session
+        setShowVideo(false);
+        setJoinConfig(null);
+        setHandRaised(false);
+        // Stop translation mic if active
+        if (translationListening) {
+          translationRef.current?.stopListening();
+          setTranslationListening(false);
+        }
+        // Stop recording if active
+        if (isRecording && recordingRef.current) {
+          stopRecording();
+        }
+      }
+    };
+
+    // -- Force disconnect: server kicked all sockets --
+    const handleForceDisconnect = (data: any) => {
+      if (data.meetingId === meetingId) {
+        // Clean up all local meeting state
+        setShowVideo(false);
+        setJoinConfig(null);
+        setHandRaised(false);
+        setLiveParticipants([]);
+        if (translationListening) {
+          translationRef.current?.stopListening();
+          setTranslationListening(false);
+        }
+        if (isRecording && recordingRef.current) {
+          stopRecording();
+        }
+        meetingStore.setMeetingEndedByModerator(true);
+        meetingStore.setStatus('ended');
+        // Reload to get final meeting state (AI minutes etc.)
         loadMeeting();
+      }
+    };
+
+    // -- Moderator control broadcasts --
+    const handleRecordingStarted = (data: any) => {
+      if (data.meetingId === meetingId) meetingStore.setRecording(true);
+    };
+    const handleRecordingStopped = (data: any) => {
+      if (data.meetingId === meetingId) meetingStore.setRecording(false);
+    };
+    const handleLockChanged = (data: any) => {
+      if (data.meetingId === meetingId) meetingStore.setLocked(data.locked);
+    };
+
+    // -- Join rejected (meeting already ended) --
+    const handleJoinRejected = (data: any) => {
+      if (data.meetingId === meetingId) {
+        showAlert('Cannot Join', data.reason || 'Meeting has ended');
       }
     };
 
@@ -332,13 +411,16 @@ export default function MeetingDetailScreen() {
     const unsub3 = socketClient.on('meeting:hand-raised', handleHandRaised);
     const unsub4 = socketClient.on('meeting:started', handleMeetingStarted);
     const unsub5 = socketClient.on('meeting:ended', handleMeetingEnded);
+    const unsub6 = socketClient.on('meeting:force-disconnect', handleForceDisconnect);
+    const unsub7 = socketClient.on('meeting:recording-started', handleRecordingStarted);
+    const unsub8 = socketClient.on('meeting:recording-stopped', handleRecordingStopped);
+    const unsub9 = socketClient.on('meeting:lock-changed', handleLockChanged);
+    const unsub10 = socketClient.on('meeting:join-rejected', handleJoinRejected);
 
     return () => {
-      unsub1();
-      unsub2();
-      unsub3();
-      unsub4();
-      unsub5();
+      unsub1(); unsub2(); unsub3(); unsub4(); unsub5();
+      unsub6(); unsub7(); unsub8(); unsub9(); unsub10();
+      socketClient.leaveMeeting(meetingId);
     };
   }, [meetingId]);
 
@@ -348,9 +430,9 @@ export default function MeetingDetailScreen() {
     setActionLoading(true);
     try {
       await api.meetings.start(currentOrgId, meetingId);
-      // Instant local UI update — socket event handles other participants
+      // Instant local update — socket broadcasts to everyone else
       setMeeting((prev: any) => prev ? { ...prev, status: 'live', actual_start: new Date().toISOString() } : prev);
-      socketClient.joinMeeting(meetingId);
+      meetingStore.setStatus('live');
     } catch (err: any) {
       showAlert('Error', err.response?.data?.error || 'Failed to start meeting');
     } finally {
@@ -369,8 +451,10 @@ export default function MeetingDetailScreen() {
           setActionLoading(true);
           try {
             await api.meetings.end(currentOrgId, meetingId);
-            // Instant local UI update — socket event handles other participants
+            // Server emits meeting:ended + force-disconnect;
+            // socket handlers update local state automatically.
             setMeeting((prev: any) => prev ? { ...prev, status: 'ended', actual_end: new Date().toISOString() } : prev);
+            meetingStore.setStatus('ended');
           } catch (err: any) {
             showAlert('Error', err.response?.data?.error || 'Failed to end meeting');
           } finally {
@@ -653,6 +737,28 @@ export default function MeetingDetailScreen() {
   return (
     <ResponsiveScrollView style={z.container}>
       <Stack.Screen options={{ title: meeting.title || 'Meeting', headerShown: true }} />
+
+      {/* ═══ MEETING ENDED BY MODERATOR OVERLAY ══════════════ */}
+      {meetingEndedByModerator && (
+        <Card style={StyleSheet.flatten([z.section, { backgroundColor: Colors.errorSubtle, borderColor: Colors.error, borderWidth: 1 }])}>
+          <View style={{ alignItems: 'center', paddingVertical: Spacing.lg }}>
+            <Ionicons name="stop-circle" size={48} color={Colors.error} />
+            <Text style={{ color: Colors.error, fontSize: FontSize.xl, fontWeight: FontWeight.bold as any, marginTop: Spacing.sm }}>
+              Meeting Ended
+            </Text>
+            <Text style={{ color: Colors.textPrimary, fontSize: FontSize.md, textAlign: 'center', marginTop: Spacing.xs }}>
+              The moderator has ended this meeting. All participants have been disconnected.
+            </Text>
+            <TouchableOpacity
+              style={{ marginTop: Spacing.md, backgroundColor: Colors.highlight, paddingHorizontal: Spacing.xl, paddingVertical: Spacing.sm, borderRadius: BorderRadius.md }}
+              onPress={() => router.back()}
+              activeOpacity={0.7}
+            >
+              <Text style={{ color: '#FFF', fontWeight: FontWeight.semibold as any, fontSize: FontSize.md }}>Back to Meetings</Text>
+            </TouchableOpacity>
+          </View>
+        </Card>
+      )}
 
       {/* ═══ EDIT MODE ═══════════════════════════════════════ */}
       {editMode && isAdmin && (

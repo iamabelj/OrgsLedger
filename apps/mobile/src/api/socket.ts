@@ -1,5 +1,7 @@
 // ============================================================
 // OrgsLedger Mobile — Socket.io Client
+// Event-driven real-time layer with reconnection,
+// meeting state sync, and room auto-rejoin.
 // ============================================================
 
 import { io, Socket } from 'socket.io-client';
@@ -12,32 +14,44 @@ const SOCKET_URL = __DEV__
 class SocketClient {
   private socket: Socket | null = null;
   private listeners: Map<string, Set<Function>> = new Map();
+  private activeMeetingId: string | null = null;
 
   async connect(): Promise<void> {
     const token = await storage.getItemAsync('accessToken');
     if (!token) return;
+
+    // Prevent duplicate connections
+    if (this.socket?.connected) return;
 
     this.socket = io(SOCKET_URL, {
       auth: { token },
       transports: ['websocket'],
       reconnection: true,
       reconnectionDelay: 1000,
-      reconnectionAttempts: 10,
+      reconnectionDelayMax: 10000,
+      reconnectionAttempts: Infinity,
     });
 
     this.socket.on('connect', () => {
-      // connected
+      // Re-join active meeting room on reconnect
+      if (this.activeMeetingId) {
+        this.socket?.emit('meeting:join', this.activeMeetingId);
+      }
     });
 
-    this.socket.on('disconnect', (_reason) => {
-      // disconnected
+    this.socket.on('disconnect', (reason) => {
+      // If server disconnected us (e.g. meeting:force-disconnect),
+      // don't auto-rejoin — the server did it deliberately
+      if (reason === 'io server disconnect') {
+        this.activeMeetingId = null;
+      }
     });
 
     this.socket.on('connect_error', (_err) => {
-      // connection error — will auto-retry
+      // Reconnection is handled automatically
     });
 
-    // Re-attach listeners
+    // Re-attach persistent listeners
     this.listeners.forEach((callbacks, event) => {
       callbacks.forEach((cb) => {
         this.socket?.on(event, cb as any);
@@ -46,10 +60,15 @@ class SocketClient {
   }
 
   disconnect(): void {
+    this.activeMeetingId = null;
     this.socket?.disconnect();
     this.socket = null;
   }
 
+  /**
+   * Subscribe to a socket event. Returns unsubscribe function.
+   * Listeners persist across reconnections.
+   */
   on(event: string, callback: Function): () => void {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set());
@@ -57,7 +76,6 @@ class SocketClient {
     this.listeners.get(event)!.add(callback);
     this.socket?.on(event, callback as any);
 
-    // Return unsubscribe function
     return () => {
       this.listeners.get(event)?.delete(callback);
       this.socket?.off(event, callback as any);
@@ -68,20 +86,14 @@ class SocketClient {
     this.socket?.emit(event, data);
   }
 
+  // ── Channel Methods ─────────────────────────────────────
+
   joinChannel(channelId: string): void {
     this.socket?.emit('channel:join', channelId);
   }
 
   leaveChannel(channelId: string): void {
     this.socket?.emit('channel:leave', channelId);
-  }
-
-  joinMeeting(meetingId: string): void {
-    this.socket?.emit('meeting:join', meetingId);
-  }
-
-  leaveMeeting(meetingId: string): void {
-    this.socket?.emit('meeting:leave', meetingId);
   }
 
   sendTyping(channelId: string): void {
@@ -96,11 +108,26 @@ class SocketClient {
     this.socket?.emit('channel:read', { channelId });
   }
 
+  // ── Meeting Methods ─────────────────────────────────────
+
+  joinMeeting(meetingId: string): void {
+    this.activeMeetingId = meetingId;
+    this.socket?.emit('meeting:join', meetingId);
+  }
+
+  leaveMeeting(meetingId: string): void {
+    this.activeMeetingId = null;
+    this.socket?.emit('meeting:leave', meetingId);
+  }
+
+  // ── Ledger ──────────────────────────────────────────────
+
   subscribeLedger(orgId: string): void {
     this.socket?.emit('ledger:subscribe', orgId);
   }
 
   // ── Translation ─────────────────────────────────────────
+
   setTranslationLanguage(meetingId: string, language: string): void {
     this.socket?.emit('translation:set-language', { meetingId, language });
   }
@@ -109,8 +136,14 @@ class SocketClient {
     this.socket?.emit('translation:speech', { meetingId, text, sourceLang, isFinal });
   }
 
+  // ── Status ──────────────────────────────────────────────
+
   get isConnected(): boolean {
     return this.socket?.connected ?? false;
+  }
+
+  get socketId(): string | undefined {
+    return this.socket?.id;
   }
 }
 

@@ -169,9 +169,15 @@ export function setupSocketIO(httpServer: HttpServer): Server {
     socket.on('meeting:join', async (meetingId: string) => {
       try {
         // Verify user is a member of the meeting's organization
-        const meeting = await db('meetings').where({ id: meetingId }).select('organization_id').first();
+        const meeting = await db('meetings').where({ id: meetingId }).select('organization_id', 'status').first();
         if (!meeting) {
           socket.emit('error', { message: 'Meeting not found' });
+          return;
+        }
+
+        // Prevent joining ended meetings
+        if (meeting.status === 'ended') {
+          socket.emit('meeting:join-rejected', { meetingId, reason: 'Meeting has ended' });
           return;
         }
 
@@ -183,14 +189,61 @@ export function setupSocketIO(httpServer: HttpServer): Server {
           return;
         }
 
+        // Get user name for participant payload
+        const user = await db('users').where({ id: userId }).select('first_name', 'last_name').first();
+        const name = user ? `${user.first_name} ${user.last_name}`.trim() : 'Unknown';
+        const isModerator = ['org_admin', 'executive'].includes(membership.role);
+
         socket.join(`meeting:${meetingId}`);
+        // Store meeting association on socket for cleanup
+        (socket as any)._meetingId = meetingId;
+
         socket.to(`meeting:${meetingId}`).emit('meeting:participant-joined', {
           userId,
+          name,
+          isModerator,
+          meetingId,
         });
-        logger.debug(`User ${userId} joined meeting ${meetingId}`);
+        logger.debug(`User ${userId} (${name}) joined meeting ${meetingId}`);
       } catch (err) {
         logger.error('meeting:join authorization error', err);
       }
+    });
+
+    // ── Raise Hand ──────────────────────────────────────
+    socket.on('meeting:raise-hand', (data: { meetingId: string; userId: string; name: string; raised: boolean }) => {
+      if (!data.meetingId) return;
+      socket.to(`meeting:${data.meetingId}`).emit('meeting:hand-raised', {
+        userId: data.userId,
+        name: data.name,
+        raised: data.raised,
+      });
+    });
+
+    // ── Moderator Controls ──────────────────────────────
+    socket.on('meeting:recording-started', (data: { meetingId: string }) => {
+      if (!data.meetingId) return;
+      io.to(`meeting:${data.meetingId}`).emit('meeting:recording-started', {
+        meetingId: data.meetingId,
+        startedBy: userId,
+      });
+    });
+
+    socket.on('meeting:recording-stopped', (data: { meetingId: string }) => {
+      if (!data.meetingId) return;
+      io.to(`meeting:${data.meetingId}`).emit('meeting:recording-stopped', {
+        meetingId: data.meetingId,
+        stoppedBy: userId,
+      });
+    });
+
+    socket.on('meeting:lock', (data: { meetingId: string; locked: boolean }) => {
+      if (!data.meetingId) return;
+      io.to(`meeting:${data.meetingId}`).emit('meeting:lock-changed', {
+        meetingId: data.meetingId,
+        locked: data.locked,
+        changedBy: userId,
+      });
     });
 
     // ── Audio Streaming for AI ──────────────────────────
@@ -350,11 +403,13 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       }
     });
 
-    // Clean up translation data when meeting ends
+    // Clean up translation data when user leaves
     socket.on('meeting:leave', (meetingId: string) => {
       socket.leave(`meeting:${meetingId}`);
+      (socket as any)._meetingId = null;
       socket.to(`meeting:${meetingId}`).emit('meeting:participant-left', {
         userId,
+        meetingId,
       });
 
       // Remove from translation map
@@ -413,6 +468,35 @@ export function setupSocketIO(httpServer: HttpServer): Server {
   });
 
   return io;
+}
+
+/**
+ * Force-disconnect all sockets from a meeting room.
+ * Called when moderator ends meeting.
+ * Emits meeting:force-disconnect before disconnecting.
+ */
+export async function forceDisconnectMeeting(
+  io: Server,
+  meetingId: string
+): Promise<void> {
+  const roomName = `meeting:${meetingId}`;
+
+  // Emit force-disconnect event BEFORE removing sockets
+  io.to(roomName).emit('meeting:force-disconnect', {
+    meetingId,
+    reason: 'Meeting ended by moderator',
+  });
+
+  // Get all sockets in the meeting room and force them out
+  const sockets = await io.in(roomName).fetchSockets();
+  for (const s of sockets) {
+    s.leave(roomName);
+  }
+
+  // Clean up translation session data for this meeting
+  meetingLanguages.delete(meetingId);
+
+  logger.info(`Force-disconnected ${sockets.length} sockets from meeting ${meetingId}`);
 }
 
 /**

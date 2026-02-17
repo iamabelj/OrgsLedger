@@ -16,6 +16,7 @@ import { config } from '../config';
 import { SUPPORTED_LANGUAGES, SPEECH_RECOGNITION_CODES, translateText } from '../services/translation.service';
 import { getAiWallet, getOrgSubscription } from '../services/subscription.service';
 import { generateRoomName, generateJitsiToken, buildJoinConfig } from '../services/jitsi.service';
+import { forceDisconnectMeeting } from '../socket';
 
 const router = Router();
 
@@ -709,6 +710,7 @@ router.post(
       if (io) {
         io.to(`meeting:${meetingId}`).emit('meeting:participant-left', {
           userId,
+          meetingId,
         });
       }
 
@@ -800,6 +802,13 @@ router.post(
         };
         io.to(`org:${req.params.orgId}`).emit('meeting:ended', endPayload);
         io.to(`meeting:${req.params.meetingId}`).emit('meeting:ended', endPayload);
+
+        // Force disconnect ALL sockets from the meeting room.
+        // This emits meeting:force-disconnect, removes sockets from room,
+        // and cleans up translation session data.
+        forceDisconnectMeeting(io, req.params.meetingId).catch((err) =>
+          logger.warn('Force disconnect failed', err)
+        );
       }
 
       // If AI enabled, trigger AI minutes generation
