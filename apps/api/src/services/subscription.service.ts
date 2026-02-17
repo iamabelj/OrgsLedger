@@ -519,15 +519,23 @@ export async function createInviteLink(
 ) {
   const safeCreatedBy = isUUID(createdBy) ? createdBy : null;
   const code = generateInviteCode();
-  const [link] = await db('invite_links').insert({
+  
+  // Build insert object - only include description if provided (column may not exist in older DBs)
+  const insertData: Record<string, any> = {
     organization_id: orgId,
     code,
     role,
     max_uses: maxUses || null,
     expires_at: expiresAt || null,
     created_by: safeCreatedBy,
-    description: description?.trim() || null,
-  }).returning('*');
+  };
+  
+  // Only add description if provided (avoids error if column doesn't exist)
+  if (description?.trim()) {
+    insertData.description = description.trim();
+  }
+  
+  const [link] = await db('invite_links').insert(insertData).returning('*');
   return link;
 }
 

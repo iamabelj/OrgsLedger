@@ -341,8 +341,16 @@ router.post('/:orgId/invite', authenticate, loadMembership, requireRole('org_adm
     );
     res.json({ success: true, data: invite });
   } catch (err: any) {
-    logger.error('Create invite error', err);
-    res.status(500).json({ success: false, error: 'Failed to create invite' });
+    logger.error('Create invite error', { orgId: req.params.orgId, error: err.message, stack: err.stack });
+    // Check for common DB errors
+    const msg = err.message || '';
+    if (msg.includes('relation') && msg.includes('does not exist')) {
+      res.status(500).json({ success: false, error: 'Database not fully migrated. Please run migrations.' });
+    } else if (msg.includes('column') && msg.includes('does not exist')) {
+      res.status(500).json({ success: false, error: 'Database schema outdated. Please run migrations.' });
+    } else {
+      res.status(500).json({ success: false, error: 'Failed to create invite link' });
+    }
   }
 });
 
@@ -354,7 +362,13 @@ router.get('/:orgId/invites', authenticate, loadMembership, async (req: Request,
       .orderBy('created_at', 'desc');
     res.json({ success: true, data: invites });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: 'Failed to get invites' });
+    logger.error('Get invites error', { orgId: req.params.orgId, error: err.message });
+    // If table doesn't exist, return empty array instead of error
+    if (err.message?.includes('does not exist')) {
+      res.json({ success: true, data: [] });
+    } else {
+      res.status(500).json({ success: false, error: 'Failed to get invites' });
+    }
   }
 });
 
