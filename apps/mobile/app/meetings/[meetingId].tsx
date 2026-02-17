@@ -39,6 +39,7 @@ export default function MeetingDetailScreen() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const userId = useAuthStore((s) => s.user?.id);
   const globalRole = useAuthStore((s) => s.user?.globalRole);
+  const userName = useAuthStore((s) => s.user ? `${s.user.firstName} ${s.user.lastName}`.trim() : 'Guest');
   const membership = useAuthStore((s) =>
     s.memberships.find((m) => m.organization_id === s.currentOrgId)
   );
@@ -464,23 +465,75 @@ export default function MeetingDetailScreen() {
       {meeting.status === 'live' && (
         <View style={styles.actionArea}>
           {meeting.jitsi_room_id && !showVideo && (
-            <TouchableOpacity
-              style={styles.jitsiBtn}
-              onPress={async () => {
-                const jitsiUrl = `https://meet.jit.si/${meeting.jitsi_room_id}#config.prejoinPageEnabled=false&config.startWithAudioMuted=true`;
-                if (Platform.OS === 'web') setShowVideo(true);
-                else await WebBrowser.openBrowserAsync(jitsiUrl, { toolbarColor: Colors.surface, controlsColor: Colors.highlight, dismissButtonStyle: 'close', presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN });
-              }}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="videocam" size={22} color="#FFF" />
-              <Text style={styles.jitsiBtnText}>Join Video Call</Text>
-            </TouchableOpacity>
+            <>
+              {/* Video Call Button */}
+              <TouchableOpacity
+                style={styles.jitsiBtn}
+                onPress={async () => {
+                  // Build Jitsi URL with seamless join configuration
+                  const encodedName = encodeURIComponent(userName || 'Guest');
+                  const encodedTitle = encodeURIComponent(meeting.title || 'Meeting');
+                  const jitsiConfig = [
+                    'config.prejoinConfig.enabled=false',
+                    'config.startWithAudioMuted=false',
+                    'config.startWithVideoMuted=false',
+                    'config.disableDeepLinking=true',
+                    'config.requireDisplayName=false',
+                    'config.enableNoisyMicDetection=false',
+                    'config.enableNoAudioDetection=false',
+                    'config.disableModeratorIndicator=true',
+                    'config.enableInsecureRoomNameWarning=false',
+                    'config.hideRecordingLabel=true',
+                    'config.disableInviteFunctions=true',
+                    'config.disableTileEnlargement=false',
+                    `config.subject=${encodedTitle}`,
+                    `userInfo.displayName=${encodedName}`,
+                  ].join('&');
+                  const jitsiUrl = `https://meet.jit.si/${meeting.jitsi_room_id}#${jitsiConfig}`;
+                  if (Platform.OS === 'web') setShowVideo(true);
+                  else await WebBrowser.openBrowserAsync(jitsiUrl, { toolbarColor: Colors.surface, controlsColor: Colors.highlight, dismissButtonStyle: 'close', presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN });
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="videocam" size={22} color="#FFF" />
+                <Text style={styles.jitsiBtnText}>Join Video Call</Text>
+              </TouchableOpacity>
+              {/* Audio Only Button */}
+              <TouchableOpacity
+                style={[styles.jitsiBtn, { backgroundColor: Colors.success }]}
+                onPress={async () => {
+                  const encodedName = encodeURIComponent(userName || 'Guest');
+                  const encodedTitle = encodeURIComponent(meeting.title || 'Meeting');
+                  const jitsiConfig = [
+                    'config.prejoinConfig.enabled=false',
+                    'config.startWithAudioMuted=false',
+                    'config.startWithVideoMuted=true',
+                    'config.disableDeepLinking=true',
+                    'config.requireDisplayName=false',
+                    'config.enableNoisyMicDetection=false',
+                    'config.enableNoAudioDetection=false',
+                    'config.disableModeratorIndicator=true',
+                    'config.enableInsecureRoomNameWarning=false',
+                    'config.hideRecordingLabel=true',
+                    'config.disableInviteFunctions=true',
+                    `config.subject=${encodedTitle}`,
+                    `userInfo.displayName=${encodedName}`,
+                  ].join('&');
+                  const jitsiUrl = `https://meet.jit.si/${meeting.jitsi_room_id}#${jitsiConfig}`;
+                  if (Platform.OS === 'web') setShowVideo(true);
+                  else await WebBrowser.openBrowserAsync(jitsiUrl, { toolbarColor: Colors.surface, controlsColor: Colors.highlight, dismissButtonStyle: 'close', presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN });
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="call" size={22} color="#FFF" />
+                <Text style={styles.jitsiBtnText}>Join Audio Only</Text>
+              </TouchableOpacity>
+            </>
           )}
           {meeting.jitsi_room_id && showVideo && Platform.OS === 'web' && (
             <TouchableOpacity style={[styles.jitsiBtn, { backgroundColor: Colors.error }]} onPress={() => setShowVideo(false)} activeOpacity={0.7}>
               <Ionicons name="close-circle" size={22} color="#FFF" />
-              <Text style={styles.jitsiBtnText}>Leave Video Call</Text>
+              <Text style={styles.jitsiBtnText}>Leave Call</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity style={styles.attendanceBtn} onPress={handleMarkAttendance} disabled={actionLoading} activeOpacity={0.7}>
@@ -496,16 +549,35 @@ export default function MeetingDetailScreen() {
       )}
 
       {/* Embedded Jitsi Video */}
-      {showVideo && meeting.jitsi_room_id && Platform.OS === 'web' && (
-        <View style={styles.videoContainer}>
-          <iframe
-            src={`https://meet.jit.si/${meeting.jitsi_room_id}#config.prejoinPageEnabled=false&config.startWithAudioMuted=true`}
-            style={{ width: '100%', height: '100%', border: 'none', borderRadius: 12 } as any}
-            allow="camera; microphone; fullscreen; display-capture; autoplay"
-            allowFullScreen
-          />
-        </View>
-      )}
+      {showVideo && meeting.jitsi_room_id && Platform.OS === 'web' && (() => {
+        const encodedName = encodeURIComponent(userName || 'Guest');
+        const encodedTitle = encodeURIComponent(meeting.title || 'Meeting');
+        const jitsiConfig = [
+          'config.prejoinConfig.enabled=false',
+          'config.startWithAudioMuted=false',
+          'config.startWithVideoMuted=false',
+          'config.disableDeepLinking=true',
+          'config.requireDisplayName=false',
+          'config.enableNoisyMicDetection=false',
+          'config.enableNoAudioDetection=false',
+          'config.disableModeratorIndicator=true',
+          'config.enableInsecureRoomNameWarning=false',
+          'config.hideRecordingLabel=true',
+          'config.disableInviteFunctions=true',
+          `config.subject=${encodedTitle}`,
+          `userInfo.displayName=${encodedName}`,
+        ].join('&');
+        return (
+          <View style={styles.videoContainer}>
+            <iframe
+              src={`https://meet.jit.si/${meeting.jitsi_room_id}#${jitsiConfig}`}
+              style={{ width: '100%', height: '100%', border: 'none', borderRadius: 12 } as any}
+              allow="camera; microphone; fullscreen; display-capture; autoplay"
+              allowFullScreen
+            />
+          </View>
+        );
+      })()}
 
       {/* ── Audio Recording (live + AI enabled) ────────────── */}
       {meeting.status === 'live' && isAdmin && meeting.ai_enabled && (
