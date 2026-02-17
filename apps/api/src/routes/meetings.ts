@@ -517,17 +517,24 @@ router.post(
         // If no subscription system or free tier, allow join
       }
 
-      // 4. Check max participants
+      // 4. Check max participants (defensive — table may not exist if migration 020 not run)
       if (meeting.max_participants > 0) {
-        const currentCount = await db('meeting_join_logs')
-          .where({ meeting_id: meetingId })
-          .whereNull('left_at')
-          .count('id as count')
-          .first();
-        const count = parseInt(currentCount?.count as string) || 0;
-        if (count >= meeting.max_participants) {
-          res.status(403).json({ success: false, error: `Meeting has reached the maximum of ${meeting.max_participants} participants.` });
-          return;
+        try {
+          const hasTable = await db.schema.hasTable('meeting_join_logs');
+          if (hasTable) {
+            const currentCount = await db('meeting_join_logs')
+              .where({ meeting_id: meetingId })
+              .whereNull('left_at')
+              .count('id as count')
+              .first();
+            const count = parseInt(currentCount?.count as string) || 0;
+            if (count >= meeting.max_participants) {
+              res.status(403).json({ success: false, error: `Meeting has reached the maximum of ${meeting.max_participants} participants.` });
+              return;
+            }
+          }
+        } catch (e) {
+          logger.warn('meeting_join_logs check skipped (table may not exist)', e);
         }
       }
 
@@ -619,16 +626,23 @@ router.post(
         });
       }
 
-      // 12. Log join event
-      await db('meeting_join_logs').insert({
-        meeting_id: meetingId,
-        user_id: userId,
-        organization_id: orgId,
-        join_type: meetingType,
-        is_moderator: isModerator,
-        ip_address: req.ip || null,
-        user_agent: (req.headers['user-agent'] || '').slice(0, 500) || null,
-      });
+      // 12. Log join event (defensive — table may not exist if migration 020 not run)
+      try {
+        const hasJoinLogs = await db.schema.hasTable('meeting_join_logs');
+        if (hasJoinLogs) {
+          await db('meeting_join_logs').insert({
+            meeting_id: meetingId,
+            user_id: userId,
+            organization_id: orgId,
+            join_type: meetingType,
+            is_moderator: isModerator,
+            ip_address: req.ip || null,
+            user_agent: (req.headers['user-agent'] || '').slice(0, 500) || null,
+          });
+        }
+      } catch (e) {
+        logger.warn('meeting_join_logs insert skipped', e);
+      }
 
       // 13. Auto-record attendance on join
       await db('meeting_attendance')
