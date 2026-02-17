@@ -14,7 +14,8 @@ import { logger } from '../logger';
 import { sendPushToOrg } from '../services/push.service';
 import { config } from '../config';
 import { SUPPORTED_LANGUAGES, SPEECH_RECOGNITION_CODES, translateText } from '../services/translation.service';
-import { getAiWallet } from '../services/subscription.service';
+import { getAiWallet, getOrgSubscription } from '../services/subscription.service';
+import { generateRoomName, generateJitsiToken, buildJoinConfig } from '../services/jitsi.service';
 
 const router = Router();
 
@@ -47,10 +48,14 @@ const createMeetingSchema = z.object({
   location: z.string().max(500).optional(),
   scheduledStart: flexDateTime,
   scheduledEnd: flexDateTime.optional(),
+  meetingType: z.enum(['video', 'audio']).default('video'),
   aiEnabled: z.boolean().default(false),
   translationEnabled: z.boolean().default(false),
   recurringPattern: z.enum(['none', 'daily', 'weekly', 'biweekly', 'monthly']).default('none'),
   recurringEndDate: flexDateTime.optional(),
+  maxParticipants: z.number().int().min(0).max(1000).default(0),
+  durationLimitMinutes: z.number().int().min(0).max(1440).default(0),
+  lobbyEnabled: z.boolean().default(false),
   agendaItems: z
     .array(
       z.object({
@@ -78,7 +83,7 @@ router.post(
   validate(createMeetingSchema),
   async (req: Request, res: Response) => {
     try {
-      const { title, description, location, scheduledStart, scheduledEnd, aiEnabled, translationEnabled, agendaItems, recurringPattern, recurringEndDate } = req.body;
+      const { title, description, location, scheduledStart, scheduledEnd, meetingType, aiEnabled, translationEnabled, agendaItems, recurringPattern, recurringEndDate, maxParticipants, durationLimitMinutes, lobbyEnabled } = req.body;
 
       // If AI enabled, check AI wallet balance (SaaS wallet, not legacy ai_credits)
       if (aiEnabled) {
@@ -93,9 +98,7 @@ router.post(
         }
       }
 
-      // Generate a unique Jitsi room ID for video conferencing
-      const jitsiRoomId = `orgsledger-${req.params.orgId.slice(0, 8)}-${Date.now().toString(36)}`;
-
+      // Insert meeting first to get ID, then generate deterministic room name
       const [meeting] = await db('meetings')
         .insert({
           organization_id: req.params.orgId,
@@ -105,13 +108,22 @@ router.post(
           scheduled_start: scheduledStart,
           scheduled_end: scheduledEnd || null,
           created_by: req.user!.userId,
+          meeting_type: meetingType || 'video',
           ai_enabled: aiEnabled,
           translation_enabled: translationEnabled || false,
-          jitsi_room_id: jitsiRoomId,
+          jitsi_room_id: 'pending', // placeholder, updated below
           recurring_pattern: recurringPattern || 'none',
           recurring_end_date: recurringEndDate || null,
+          max_participants: maxParticipants || 0,
+          duration_limit_minutes: durationLimitMinutes || 0,
+          lobby_enabled: lobbyEnabled || false,
         })
         .returning('*');
+
+      // Generate tenant-isolated room name: org_<orgId>_meeting_<meetingId>
+      const jitsiRoomId = generateRoomName(req.params.orgId, meeting.id);
+      await db('meetings').where({ id: meeting.id }).update({ jitsi_room_id: jitsiRoomId });
+      meeting.jitsi_room_id = jitsiRoomId;
 
       // Create agenda items
       if (agendaItems?.length) {
@@ -172,10 +184,14 @@ const updateMeetingSchema = z.object({
   location: z.string().max(500).optional().nullable(),
   scheduledStart: flexDateTime.optional(),
   scheduledEnd: flexDateTime.optional().nullable(),
+  meetingType: z.enum(['video', 'audio']).optional(),
   aiEnabled: z.boolean().optional(),
   translationEnabled: z.boolean().optional(),
   recurringPattern: z.enum(['none', 'daily', 'weekly', 'biweekly', 'monthly']).optional(),
   status: z.enum(['scheduled', 'cancelled']).optional(),
+  maxParticipants: z.number().int().min(0).max(1000).optional(),
+  durationLimitMinutes: z.number().int().min(0).max(1440).optional(),
+  lobbyEnabled: z.boolean().optional(),
   agendaItems: z
     .array(
       z.object({
@@ -208,7 +224,7 @@ router.put(
         return;
       }
 
-      const { title, description, location, scheduledStart, scheduledEnd, aiEnabled, translationEnabled, recurringPattern, status, agendaItems } = req.body;
+      const { title, description, location, scheduledStart, scheduledEnd, meetingType, aiEnabled, translationEnabled, recurringPattern, status, maxParticipants, durationLimitMinutes, lobbyEnabled, agendaItems } = req.body;
 
       // If enabling AI, check AI wallet balance
       if (aiEnabled === true && !meeting.ai_enabled) {
@@ -233,6 +249,10 @@ router.put(
       if (translationEnabled !== undefined) updates.translation_enabled = translationEnabled;
       if (recurringPattern !== undefined) updates.recurring_pattern = recurringPattern;
       if (status !== undefined) updates.status = status;
+      if (meetingType !== undefined) updates.meeting_type = meetingType;
+      if (maxParticipants !== undefined) updates.max_participants = maxParticipants;
+      if (durationLimitMinutes !== undefined) updates.duration_limit_minutes = durationLimitMinutes;
+      if (lobbyEnabled !== undefined) updates.lobby_enabled = lobbyEnabled;
       updates.updated_at = db.fn.now();
 
       const [updated] = await db('meetings')
@@ -430,6 +450,251 @@ router.get(
       });
     } catch (err) {
       res.status(500).json({ success: false, error: 'Failed to get meeting' });
+    }
+  }
+);
+
+// ── Join Meeting (JWT Token Generation) ─────────────────────
+// This is the ONLY way to get a Jitsi token. Returns a short-lived
+// JWT + full embed configuration for the client.
+//
+// Security checks performed:
+//   1. User is authenticated
+//   2. User belongs to the organization
+//   3. Organization subscription is active (or in grace period)
+//   4. Meeting exists and belongs to the organization
+//   5. Meeting is in 'live' status
+//   6. Max participants not exceeded
+//   7. Meeting duration limit not exceeded
+//
+// Creator gets moderator=true, others get moderator=false.
+// Org admins also receive moderator=true (fallback if creator leaves).
+
+router.post(
+  '/:orgId/:meetingId/join',
+  authenticate,
+  loadMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const { orgId, meetingId } = req.params;
+      const userId = req.user!.userId;
+      const joinType = (req.body?.joinType === 'audio' ? 'audio' : undefined); // override per-request
+
+      // 1. Meeting must exist and belong to org
+      const meeting = await db('meetings')
+        .where({ id: meetingId, organization_id: orgId })
+        .first();
+      if (!meeting) {
+        res.status(404).json({ success: false, error: 'Meeting not found' });
+        return;
+      }
+
+      // 2. Meeting must be live
+      if (meeting.status !== 'live') {
+        res.status(400).json({ success: false, error: 'Meeting is not live. Cannot join.' });
+        return;
+      }
+
+      // 3. Check subscription validity
+      try {
+        const sub = await getOrgSubscription(orgId);
+        if (sub && sub.status !== 'active' && sub.status !== 'grace') {
+          res.status(403).json({ success: false, error: 'Organization subscription is not active.' });
+          return;
+        }
+      } catch {
+        // If no subscription system or free tier, allow join
+      }
+
+      // 4. Check max participants
+      if (meeting.max_participants > 0) {
+        const currentCount = await db('meeting_join_logs')
+          .where({ meeting_id: meetingId })
+          .whereNull('left_at')
+          .count('id as count')
+          .first();
+        const count = parseInt(currentCount?.count as string) || 0;
+        if (count >= meeting.max_participants) {
+          res.status(403).json({ success: false, error: `Meeting has reached the maximum of ${meeting.max_participants} participants.` });
+          return;
+        }
+      }
+
+      // 5. Check meeting duration limit
+      if (meeting.duration_limit_minutes > 0 && meeting.actual_start) {
+        const startTime = new Date(meeting.actual_start).getTime();
+        const elapsed = (Date.now() - startTime) / (1000 * 60);
+        if (elapsed >= meeting.duration_limit_minutes) {
+          res.status(403).json({ success: false, error: 'Meeting has exceeded its duration limit.' });
+          return;
+        }
+      }
+
+      // 6. Get user info for JWT context
+      const user = await db('users')
+        .where({ id: userId })
+        .select('id', 'first_name', 'last_name', 'email', 'avatar_url')
+        .first();
+      if (!user) {
+        res.status(404).json({ success: false, error: 'User not found' });
+        return;
+      }
+
+      // 7. Get org info for branding
+      const org = await db('organizations')
+        .where({ id: orgId })
+        .select('name')
+        .first();
+
+      // 8. Determine moderator status
+      //    - Meeting creator = always moderator
+      //    - Org admins/executives = moderator (fallback when creator leaves)
+      const membership = await db('memberships')
+        .where({ user_id: userId, organization_id: orgId, is_active: true })
+        .select('role')
+        .first();
+      const isCreator = meeting.created_by === userId;
+      const isOrgAdmin = membership && ['org_admin', 'executive'].includes(membership.role);
+      const isModerator = isCreator || !!isOrgAdmin;
+
+      // 9. Determine meeting type (allow per-request override to 'audio')
+      const meetingType = joinType === 'audio' ? 'audio' : (meeting.meeting_type || 'video');
+
+      // 10. Generate room name (deterministic, tenant-isolated)
+      const roomName = meeting.jitsi_room_id || generateRoomName(orgId, meetingId);
+
+      // 11. Check if Jitsi JWT auth is configured
+      let token = '';
+      let joinConfig: any;
+
+      if (config.jitsi.appSecret) {
+        // JWT-authenticated mode (JaaS or self-hosted with secure-domain)
+        token = generateJitsiToken({
+          room: roomName,
+          moderator: isModerator,
+          user: {
+            id: user.id,
+            name: `${user.first_name} ${user.last_name}`.trim(),
+            email: user.email,
+            avatar: user.avatar_url || undefined,
+          },
+          meetingType,
+          features: {
+            recording: isModerator,
+            livestreaming: false,
+            transcription: meeting.ai_enabled || false,
+          },
+        });
+
+        joinConfig = buildJoinConfig({
+          meetingType,
+          roomName,
+          token,
+          userName: `${user.first_name} ${user.last_name}`.trim(),
+          userEmail: user.email,
+          orgName: org?.name,
+          lobbyEnabled: meeting.lobby_enabled,
+        });
+      } else {
+        // Fallback: public Jitsi (no JWT) — still provides config presets
+        joinConfig = buildJoinConfig({
+          meetingType,
+          roomName,
+          token: '', // no JWT
+          userName: `${user.first_name} ${user.last_name}`.trim(),
+          userEmail: user.email,
+          orgName: org?.name,
+          lobbyEnabled: meeting.lobby_enabled,
+        });
+      }
+
+      // 12. Log join event
+      await db('meeting_join_logs').insert({
+        meeting_id: meetingId,
+        user_id: userId,
+        organization_id: orgId,
+        join_type: meetingType,
+        is_moderator: isModerator,
+        ip_address: req.ip || null,
+        user_agent: (req.headers['user-agent'] || '').slice(0, 500) || null,
+      });
+
+      // 13. Auto-record attendance on join
+      await db('meeting_attendance')
+        .insert({
+          meeting_id: meetingId,
+          user_id: userId,
+          status: 'present',
+          joined_at: db.fn.now(),
+        })
+        .onConflict(['meeting_id', 'user_id'])
+        .ignore();
+
+      // 14. Emit participant joined event
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`meeting:${meetingId}`).emit('meeting:participant-joined', {
+          userId,
+          name: `${user.first_name} ${user.last_name}`.trim(),
+          isModerator,
+          meetingType,
+        });
+      }
+
+      logger.info(`User ${userId} joined meeting ${meetingId} as ${meetingType} (moderator=${isModerator})`);
+
+      res.json({
+        success: true,
+        data: {
+          ...joinConfig,
+          meetingType,
+          isModerator,
+          meetingTitle: meeting.title,
+          meetingStatus: meeting.status,
+        },
+      });
+    } catch (err) {
+      logger.error('Join meeting error', err);
+      res.status(500).json({ success: false, error: 'Failed to join meeting' });
+    }
+  }
+);
+
+// ── Leave Meeting (update join log) ─────────────────────────
+router.post(
+  '/:orgId/:meetingId/leave',
+  authenticate,
+  loadMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const { meetingId } = req.params;
+      const userId = req.user!.userId;
+
+      // Update the most recent join log entry without a left_at
+      await db('meeting_join_logs')
+        .where({ meeting_id: meetingId, user_id: userId })
+        .whereNull('left_at')
+        .orderBy('joined_at', 'desc')
+        .limit(1)
+        .update({ left_at: db.fn.now() });
+
+      // Update attendance left_at
+      await db('meeting_attendance')
+        .where({ meeting_id: meetingId, user_id: userId })
+        .whereNull('left_at')
+        .update({ left_at: db.fn.now() });
+
+      // Emit participant left event
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`meeting:${meetingId}`).emit('meeting:participant-left', {
+          userId,
+        });
+      }
+
+      res.json({ success: true, message: 'Left meeting' });
+    } catch (err) {
+      res.status(500).json({ success: false, error: 'Failed to leave meeting' });
     }
   }
 );

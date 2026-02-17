@@ -45,6 +45,7 @@ export default function CreateMeetingScreen() {
   ]);
   const [loading, setLoading] = useState(false);
   const [recurringPattern, setRecurringPattern] = useState<string>('none');
+  const [meetingType, setMeetingType] = useState<'video' | 'audio'>('video');
   const [aiEnabled, setAiEnabled] = useState(false);
   const [translationEnabled, setTranslationEnabled] = useState(false);
 
@@ -110,6 +111,7 @@ export default function CreateMeetingScreen() {
         location: location.trim() || undefined,
         scheduledStart,
         recurringPattern,
+        meetingType,
         aiEnabled,
         translationEnabled,
         agendaItems: filteredAgenda.length > 0 ? filteredAgenda : undefined,
@@ -140,6 +142,33 @@ export default function CreateMeetingScreen() {
         <Input label="Title *" value={title} onChangeText={setTitle} placeholder="e.g. Board Meeting, Budget Review" icon="text-outline" />
         <Input label="Description" value={description} onChangeText={setDescription} placeholder="What's this meeting about?" icon="document-text-outline" multiline numberOfLines={3} />
         <Input label="Location" value={location} onChangeText={setLocation} placeholder="Room name, Zoom link, etc." icon="location-outline" />
+
+        {/* Meeting Type */}
+        <SectionHeader title="Meeting Type" />
+        <View style={styles.recurRow}>
+          <TouchableOpacity
+            style={[styles.recurChip, meetingType === 'video' && styles.recurChipActive]}
+            onPress={() => setMeetingType('video')}
+          >
+            <Ionicons name="videocam" size={16} color={meetingType === 'video' ? Colors.highlight : Colors.textSecondary} style={{ marginRight: 4 }} />
+            <Text style={[styles.recurChipText, meetingType === 'video' && styles.recurChipTextActive]}>Video</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.recurChip, meetingType === 'audio' && styles.recurChipActive]}
+            onPress={() => setMeetingType('audio')}
+          >
+            <Ionicons name="call" size={16} color={meetingType === 'audio' ? Colors.highlight : Colors.textSecondary} style={{ marginRight: 4 }} />
+            <Text style={[styles.recurChipText, meetingType === 'audio' && styles.recurChipTextActive]}>Audio Only</Text>
+          </TouchableOpacity>
+        </View>
+        {meetingType === 'audio' && (
+          <View style={styles.aiNote}>
+            <Ionicons name="cellular" size={16} color={Colors.highlight} />
+            <Text style={styles.aiNoteText}>
+              Audio-only mode reduces bandwidth by 80-90%. Ideal for low-bandwidth regions and cross-border meetings.
+            </Text>
+          </View>
+        )}
 
         {/* Date & Time */}
         <SectionHeader title="Schedule" />

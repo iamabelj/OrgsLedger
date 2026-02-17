@@ -191,6 +191,10 @@ class ApiClient {
       this.client.post(`/meetings/${orgId}/${meetingId}/start`),
     end: (orgId: string, meetingId: string) =>
       this.client.post(`/meetings/${orgId}/${meetingId}/end`),
+    join: (orgId: string, meetingId: string, joinType?: 'video' | 'audio') =>
+      this.client.post(`/meetings/${orgId}/${meetingId}/join`, { joinType }),
+    leave: (orgId: string, meetingId: string) =>
+      this.client.post(`/meetings/${orgId}/${meetingId}/leave`),
     recordAttendance: (orgId: string, meetingId: string) =>
       this.client.post(`/meetings/${orgId}/${meetingId}/attendance`),
     createVote: (orgId: string, meetingId: string, data: any) =>
