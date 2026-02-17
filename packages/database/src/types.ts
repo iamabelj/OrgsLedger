@@ -40,6 +40,13 @@ export interface UserRow {
   fcm_token: string | null;
   apns_token: string | null;
   last_login_at: string | null;
+  reset_code: string | null;
+  reset_code_expires_at: string | null;
+  verification_code: string | null;
+  verification_code_expires_at: string | null;
+  notification_preferences: Record<string, unknown> | null;
+  password_changed_at: string | null;
+  signup_invite_code: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -75,6 +82,7 @@ export interface ChannelRow {
   name: string;
   type: string;
   description: string | null;
+  committee_id: string | null;
   is_archived: boolean;
   created_at: string;
   updated_at: string;
@@ -93,6 +101,8 @@ export interface SubscriptionPlanRow {
   is_active: boolean;
   sort_order: number;
   description: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface InviteLinkRow {
@@ -105,6 +115,9 @@ export interface InviteLinkRow {
   expires_at: string | null;
   is_active: boolean;
   created_by: string | null;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface PlatformConfigRow {
@@ -119,4 +132,9 @@ export interface WalletRow {
   organization_id: string;
   balance_minutes: string;
   currency: string;
+  total_topped_up: string;
+  price_per_hour_usd: string;
+  price_per_hour_ngn: string;
+  created_at: string;
+  updated_at: string;
 }

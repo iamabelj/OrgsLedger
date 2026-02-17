@@ -175,7 +175,7 @@ describe('Stress: 500 Concurrent API Calls', () => {
     mockDb.mockReturnValue({ insert: mockInsert });
 
     const promises = Array.from({ length: WRITE_COUNT }, (_, i) =>
-      mockDb('audit_log').insert({
+      mockDb('audit_logs').insert({
         user_id: `user-${i % 50}`,
         action: 'test',
         entity_type: 'stress_test',
