@@ -13,8 +13,7 @@ import { showAlert } from '../../src/utils/alert';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
-
-const LOGO = require('../../assets/logo-no-bg.png');
+import { LOGO } from '../../src/logo';
 import { api } from '../../src/api/client';
 import {
   Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow,

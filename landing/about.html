@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- ── Favicon ──────────────────────────────────────── -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/logo.png" />
+  <link rel="apple-touch-icon" href="/logo.png" />
+
+  <!-- ── Primary Meta ─────────────────────────────────── -->
+  <title>About Us — OrgsLedger</title>
+  <meta name="description" content="Learn about OrgsLedger — the AI-powered cross-border organization management platform built for associations, nonprofits, and international communities." />
+  <meta name="theme-color" content="#2563eb" />
+  <link rel="canonical" href="https://orgsledger.com/about" />
+
+  <!-- ── Open Graph ───────────────────────────────────── -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://orgsledger.com/about" />
+  <meta property="og:title" content="About Us — OrgsLedger" />
+  <meta property="og:description" content="The cross-border organizational infrastructure platform. AI-powered meetings, real-time translation, financial management." />
+  <meta property="og:image" content="https://orgsledger.com/logo.png" />
+
+  <!-- ── Fonts ────────────────────────────────────────── -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --primary-deeper: #1e40af;
+      --primary-light: #3b82f6;
+      --primary-subtle: rgba(37,99,235,0.08);
+      --accent: #06d6a0;
+      --accent-dark: #05b88a;
+      --dark: #0a0f1e;
+      --dark-2: #0f172a;
+      --dark-3: #1e293b;
+      --dark-4: #263548;
+      --dark-border: #1e293b;
+      --dark-border-2: #334155;
+      --gray-50: #f8fafc;
+      --gray-100: #f1f5f9;
+      --gray-200: #e2e8f0;
+      --gray-300: #cbd5e1;
+      --gray-400: #94a3b8;
+      --gray-500: #64748b;
+      --gray-600: #475569;
+      --gray-700: #334155;
+      --gray-800: #1e293b;
+      --gray-900: #0f172a;
+      --white: #ffffff;
+      --gradient-brand: linear-gradient(135deg, #2563eb 0%, #06d6a0 100%);
+      --radius: 16px;
+      --radius-sm: 10px;
+      --radius-xs: 6px;
+      --shadow: 0 4px 16px rgba(0,0,0,0.12);
+      --shadow-lg: 0 12px 40px rgba(0,0,0,0.15);
+    }
+
+    html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: var(--gray-300); line-height: 1.7; background: var(--dark); overflow-x: hidden; }
+    h1,h2,h3,h4,h5,h6 { font-family: 'Space Grotesk', 'Inter', sans-serif; line-height: 1.15; color: var(--white); }
+    a { text-decoration: none; color: inherit; }
+    img { max-width: 100%; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+
+    /* ── Animations ──────────────────────────────────── */
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .6; } }
+    @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+    .anim { opacity: 0; transform: translateY(40px); transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1); }
+    .anim.visible { opacity: 1; transform: translateY(0); }
+    .anim-delay-1 { transition-delay: .1s; }
+    .anim-delay-2 { transition-delay: .2s; }
+    .anim-delay-3 { transition-delay: .3s; }
+
+    /* ── Navigation ─────────────────────────────────── */
+    .nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(10,15,30,0.92); backdrop-filter: blur(20px) saturate(1.6); border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .nav .container { display: flex; align-items: center; justify-content: space-between; height: 80px; }
+    .nav-logo { display: flex; align-items: center; gap: 12px; }
+    .nav-logo-icon { width: 38px; height: 38px; border-radius: 10px; object-fit: contain; }
+    .nav-logo-text { font-size: 1.15rem; font-weight: 800; color: var(--white); letter-spacing: -.02em; }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a { color: var(--gray-400); font-size: .88rem; font-weight: 500; transition: color .2s; }
+    .nav-links a:hover { color: var(--white); }
+    .nav-links a.active { color: var(--white); }
+    .nav-cta { padding: 10px 24px; background: var(--primary); color: var(--white) !important; border-radius: var(--radius-xs); font-weight: 700 !important; font-size: .85rem !important; transition: all .2s; box-shadow: 0 2px 12px rgba(37,99,235,0.3); }
+    .nav-cta:hover { background: var(--primary-dark); transform: translateY(-1px); }
+    .nav-hamburger { display: none; background: none; border: none; color: var(--white); font-size: 1.6rem; cursor: pointer; padding: 4px; }
+    @media (max-width: 900px) {
+      .nav-links { position: fixed; top: 80px; left: 0; right: 0; background: rgba(10,15,30,0.98); backdrop-filter: blur(20px); flex-direction: column; padding: 24px; gap: 16px; display: none; border-bottom: 1px solid var(--dark-border-2); }
+      .nav-links.show { display: flex; }
+      .nav-hamburger { display: block; }
+    }
+
+    /* ── Buttons ─────────────────────────────────────── */
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 16px 36px; border: none; border-radius: var(--radius-sm); font-size: 1rem; font-weight: 700; cursor: pointer; transition: all .25s cubic-bezier(.16,1,.3,1); font-family: inherit; }
+    .btn-lg { padding: 18px 42px; font-size: 1.05rem; }
+    .btn-primary { background: var(--primary); color: var(--white); box-shadow: 0 4px 20px rgba(37,99,235,0.35); }
+    .btn-primary:hover { background: var(--primary-dark); transform: translateY(-2px); box-shadow: 0 8px 30px rgba(37,99,235,0.45); }
+    .btn-outline { background: transparent; color: var(--white); border: 2px solid var(--dark-border-2); }
+    .btn-outline:hover { border-color: var(--gray-400); transform: translateY(-2px); }
+
+    /* ── Hero ─────────────────────────────────────────── */
+    .hero { padding: 160px 0 100px; text-align: center; position: relative; overflow: hidden; background: var(--dark); }
+    .hero::before {
+      content: '';
+      position: absolute; top: -40%; left: -20%; width: 140%; height: 140%;
+      background:
+        radial-gradient(ellipse 600px 400px at 25% 40%, rgba(37,99,235,0.08) 0%, transparent 70%),
+        radial-gradient(ellipse 500px 350px at 75% 30%, rgba(6,214,160,0.05) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero::after {
+      content: '';
+      position: absolute; bottom: 0; left: 0; right: 0; height: 200px;
+      background: linear-gradient(to top, var(--dark-2), transparent);
+      pointer-events: none;
+    }
+    .hero-content { position: relative; z-index: 2; }
+    .hero-badge { display: inline-flex; align-items: center; gap: 8px; padding: 8px 20px; background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.15); border-radius: 50px; font-size: .78rem; font-weight: 600; color: var(--primary-light); margin-bottom: 32px; animation: fadeUp .8s ease both; }
+    .hero-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 2s ease infinite; }
+    .hero h1 {
+      font-size: clamp(2.2rem, 5vw, 3.4rem);
+      font-weight: 900;
+      color: var(--white);
+      max-width: 800px;
+      margin: 0 auto 24px;
+      letter-spacing: -.04em;
+      line-height: 1.1;
+      animation: fadeUp .8s ease .1s both;
+    }
+    .hero h1 .gradient-text {
+      background: var(--gradient-brand);
+      background-size: 200% 200%;
+      animation: gradientShift 6s ease infinite;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-sub {
+      font-size: 1.15rem;
+      color: var(--gray-400);
+      max-width: 600px;
+      margin: 0 auto;
+      line-height: 1.8;
+      animation: fadeUp .8s ease .2s both;
+    }
+
+    /* ── Section Utilities ───────────────────────────── */
+    .section { padding: 100px 0; position: relative; }
+    .section-dark { background: var(--dark); }
+    .section-darker { background: var(--dark-2); }
+    .section-header { text-align: center; margin-bottom: 64px; }
+    .section-tag { display: inline-flex; align-items: center; gap: 6px; padding: 6px 18px; background: var(--primary-subtle); color: var(--primary-light); border: 1px solid rgba(37,99,235,0.15); border-radius: 50px; font-size: .76rem; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; margin-bottom: 20px; }
+    .section-tag::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--primary-light); animation: pulse 2s ease infinite; }
+    .section-title { font-size: clamp(1.8rem, 4vw, 2.5rem); font-weight: 800; margin-bottom: 16px; letter-spacing: -.03em; }
+    .section-subtitle { color: var(--gray-400); font-size: 1.05rem; max-width: 640px; margin: 0 auto; line-height: 1.7; }
+
+    /* ── Mission Cards ───────────────────────────────── */
+    .mission-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+    }
+    .mission-card {
+      background: var(--dark-2);
+      border: 1px solid var(--dark-border);
+      border-radius: var(--radius);
+      padding: 40px 32px;
+      transition: all .3s;
+    }
+    .mission-card:hover {
+      border-color: var(--dark-border-2);
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+    }
+    .mission-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.6rem;
+      margin-bottom: 24px;
+    }
+    .mission-icon.blue { background: rgba(37,99,235,0.12); }
+    .mission-icon.green { background: rgba(6,214,160,0.12); }
+    .mission-icon.purple { background: rgba(139,92,246,0.12); }
+    .mission-card h3 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .mission-card p {
+      color: var(--gray-400);
+      font-size: .95rem;
+      line-height: 1.7;
+    }
+
+    /* ── Story Section ───────────────────────────────── */
+    .story-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: center;
+    }
+    .story-text h2 {
+      font-size: 2rem;
+      font-weight: 800;
+      margin-bottom: 24px;
+      letter-spacing: -.03em;
+    }
+    .story-text p {
+      color: var(--gray-400);
+      font-size: 1.05rem;
+      line-height: 1.8;
+      margin-bottom: 20px;
+    }
+    .story-visual {
+      position: relative;
+    }
+    .story-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    .stat-card {
+      background: var(--dark-3);
+      border: 1px solid var(--dark-border);
+      border-radius: var(--radius-sm);
+      padding: 28px 24px;
+      text-align: center;
+      transition: all .3s;
+    }
+    .stat-card:hover {
+      border-color: var(--dark-border-2);
+      transform: translateY(-2px);
+    }
+    .stat-number {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 2rem;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+    .stat-number.blue { color: var(--primary-light); }
+    .stat-number.green { color: var(--accent); }
+    .stat-number.purple { color: #a78bfa; }
+    .stat-number.gold { color: #fbbf24; }
+    .stat-label {
+      color: var(--gray-500);
+      font-size: .82rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+
+    /* ── Values Section ──────────────────────────────── */
+    .values-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 32px;
+    }
+    .value-card {
+      background: var(--dark-2);
+      border: 1px solid var(--dark-border);
+      border-radius: var(--radius);
+      padding: 36px 32px;
+      display: flex;
+      gap: 20px;
+      transition: all .3s;
+    }
+    .value-card:hover {
+      border-color: var(--dark-border-2);
+      transform: translateY(-2px);
+    }
+    .value-num {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1.8rem;
+      font-weight: 800;
+      color: var(--primary-light);
+      opacity: .4;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .value-content h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .value-content p {
+      color: var(--gray-400);
+      font-size: .92rem;
+      line-height: 1.7;
+    }
+
+    /* ── CTA Section ─────────────────────────────────── */
+    .final-cta {
+      text-align: center;
+      padding: 100px 0;
+    }
+    .final-cta h2 {
+      font-size: clamp(1.8rem, 4vw, 2.5rem);
+      font-weight: 800;
+      margin-bottom: 20px;
+      letter-spacing: -.03em;
+    }
+    .final-cta p {
+      color: var(--gray-400);
+      font-size: 1.05rem;
+      max-width: 600px;
+      margin: 0 auto 36px;
+      line-height: 1.7;
+    }
+    .cta-actions {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    /* ── Footer ──────────────────────────────────────── */
+    .footer { background: var(--dark-2); border-top: 1px solid var(--dark-border); padding: 64px 0 32px; }
+    .footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 48px; margin-bottom: 48px; }
+    .footer-brand-text { display: flex; align-items: center; gap: 10px; font-weight: 800; color: var(--white); font-size: 1.05rem; margin-bottom: 16px; }
+    .f-icon { width: 30px; height: 30px; border-radius: 8px; object-fit: contain; }
+    .footer-brand p { color: var(--gray-500); font-size: .88rem; line-height: 1.7; }
+    .footer-col h5 { color: var(--gray-200); font-size: .8rem; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 16px; }
+    .footer-col a { display: block; color: var(--gray-500); font-size: .88rem; margin-bottom: 10px; transition: color .2s; }
+    .footer-col a:hover { color: var(--gray-300); }
+    .footer-bottom { display: flex; align-items: center; justify-content: space-between; padding-top: 32px; border-top: 1px solid var(--dark-border); }
+    .footer-bottom p { color: var(--gray-600); font-size: .82rem; }
+    .footer-bottom-links a { color: var(--gray-500); font-size: .82rem; transition: color .2s; }
+    .footer-bottom-links a:hover { color: var(--gray-300); }
+
+    /* ── Responsive ──────────────────────────────────── */
+    @media (max-width: 900px) {
+      .mission-grid { grid-template-columns: 1fr; }
+      .story-layout { grid-template-columns: 1fr; gap: 48px; }
+      .values-grid { grid-template-columns: 1fr; }
+      .footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; }
+    }
+    @media (max-width: 600px) {
+      .footer-grid { grid-template-columns: 1fr; gap: 24px; }
+      .footer-bottom { flex-direction: column; text-align: center; gap: 12px; }
+      .hero { padding: 120px 0 60px; }
+      .section { padding: 60px 0; }
+      .cta-actions { flex-direction: column; }
+      .cta-actions .btn { width: 100%; }
+      .story-stats { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════
+     NAVIGATION
+     ════════════════════════════════════════════════════════ -->
+<header class="nav">
+  <div class="container">
+    <a href="/" class="nav-logo">
+      <img src="/logo.png" alt="OrgsLedger" class="nav-logo-icon" />
+      <span class="nav-logo-text">OrgsLedger</span>
+    </a>
+    <div class="nav-links" id="nav-links">
+      <a href="/#problems">Why OrgsLedger</a>
+      <a href="/#solutions">Platform</a>
+      <a href="/#pricing">Pricing</a>
+      <a href="/about" class="active">About</a>
+      <a href="/#pricing" class="nav-cta">Start Your Organization</a>
+    </div>
+    <button class="nav-hamburger" aria-label="Toggle navigation" onclick="document.getElementById('nav-links').classList.toggle('show')">&#9776;</button>
+  </div>
+</header>
+
+<!-- ════════════════════════════════════════════════════════
+     HERO
+     ════════════════════════════════════════════════════════ -->
+<section class="hero">
+  <div class="container hero-content">
+    <div class="hero-badge">
+      <span class="dot"></span>
+      About OrgsLedger
+    </div>
+
+    <h1>Empowering Organizations <span class="gradient-text">Across Borders</span></h1>
+
+    <p class="hero-sub">
+      We build the infrastructure that helps organizations, associations, and communities operate seamlessly &mdash; no matter where their members are in the world.
+    </p>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════
+     MISSION
+     ════════════════════════════════════════════════════════ -->
+<section class="section section-darker">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-tag anim">Our Mission</div>
+      <h2 class="section-title anim anim-delay-1">Built for the Organizations That Build Communities</h2>
+      <p class="section-subtitle anim anim-delay-2">
+        From diaspora groups managing affairs back home, to professional associations coordinating across continents &mdash; OrgsLedger exists to make organizational leadership simpler, transparent, and technology-forward.
+      </p>
+    </div>
+
+    <div class="mission-grid">
+      <div class="mission-card anim">
+        <div class="mission-icon blue">&#127758;</div>
+        <h3>Cross-Border by Design</h3>
+        <p>Most organization software assumes everyone is in one country. We don't. OrgsLedger is built for groups that span time zones, currencies, and languages &mdash; from day one.</p>
+      </div>
+      <div class="mission-card anim anim-delay-1">
+        <div class="mission-icon green">&#128200;</div>
+        <h3>Financial Transparency</h3>
+        <p>Every dues payment, every expense, every receipt &mdash; tracked with an immutable audit trail. Members deserve to see where their money goes, and leaders deserve tools that make reporting effortless.</p>
+      </div>
+      <div class="mission-card anim anim-delay-2">
+        <div class="mission-icon purple">&#129302;</div>
+        <h3>AI-Powered Operations</h3>
+        <p>Meetings shouldn't require someone to take notes. Communication shouldn't break down because of language. Our AI handles meeting summaries and real-time translation so your team can focus on what matters.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════
+     OUR STORY
+     ════════════════════════════════════════════════════════ -->
+<section class="section section-dark">
+  <div class="container">
+    <div class="story-layout">
+      <div class="story-text anim">
+        <div class="section-tag">Our Story</div>
+        <h2>Born From a Real Problem</h2>
+        <p>
+          OrgsLedger started from a simple frustration: managing a cross-border community organization meant juggling WhatsApp groups, spreadsheets, bank transfers, and paper receipts &mdash; with zero accountability and maximum confusion.
+        </p>
+        <p>
+          Existing tools were either too corporate (and expensive) or too simplistic. None understood the unique challenges of organizations that operate across borders &mdash; multiple currencies, language barriers, members in different time zones, and the absolute need for financial transparency.
+        </p>
+        <p>
+          So we built OrgsLedger: a single platform where organizations can manage their entire operation &mdash; from collecting dues in multiple currencies, to running meetings with AI-generated summaries, to keeping every document secure and accessible.
+        </p>
+      </div>
+      <div class="story-visual anim anim-delay-1">
+        <div class="story-stats">
+          <div class="stat-card">
+            <div class="stat-number blue">3+</div>
+            <div class="stat-label">Payment Gateways</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number green">50+</div>
+            <div class="stat-label">Languages Supported</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number purple">100%</div>
+            <div class="stat-label">Audit Trail Coverage</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number gold">24/7</div>
+            <div class="stat-label">Platform Availability</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════
+     VALUES
+     ════════════════════════════════════════════════════════ -->
+<section class="section section-darker">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-tag anim">Our Values</div>
+      <h2 class="section-title anim anim-delay-1">What We Stand For</h2>
+      <p class="section-subtitle anim anim-delay-2">
+        Every feature we build, every decision we make, is guided by these principles.
+      </p>
+    </div>
+
+    <div class="values-grid">
+      <div class="value-card anim">
+        <div class="value-num">01</div>
+        <div class="value-content">
+          <h3>Radical Transparency</h3>
+          <p>Organizations run on trust. Every financial transaction, every decision, every document should be visible to the people who need it. OrgsLedger makes transparency the default, not an afterthought.</p>
+        </div>
+      </div>
+      <div class="value-card anim anim-delay-1">
+        <div class="value-num">02</div>
+        <div class="value-content">
+          <h3>Inclusive by Default</h3>
+          <p>With real-time translation across 50+ languages, multi-currency support, and mobile-first design &mdash; we ensure that every member can participate fully, regardless of where they are or what language they speak.</p>
+        </div>
+      </div>
+      <div class="value-card anim anim-delay-2">
+        <div class="value-num">03</div>
+        <div class="value-content">
+          <h3>Security First</h3>
+          <p>Role-based access controls, encrypted data, secure document storage, and comprehensive audit logs. Your organization's data is treated with the same rigor as enterprise financial systems.</p>
+        </div>
+      </div>
+      <div class="value-card anim anim-delay-3">
+        <div class="value-num">04</div>
+        <div class="value-content">
+          <h3>Community-Driven</h3>
+          <p>We build for real organizations solving real problems. Our roadmap is shaped by the people who use OrgsLedger every day &mdash; from small community groups to large international associations.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════
+     WHO WE SERVE
+     ════════════════════════════════════════════════════════ -->
+<section class="section section-dark">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-tag anim">Who We Serve</div>
+      <h2 class="section-title anim anim-delay-1">Built for Organizations That Matter</h2>
+      <p class="section-subtitle anim anim-delay-2">
+        From hometown associations to global nonprofits, OrgsLedger powers the groups that keep communities connected.
+      </p>
+    </div>
+
+    <div class="mission-grid">
+      <div class="mission-card anim">
+        <div class="mission-icon blue">&#127963;</div>
+        <h3>Diaspora &amp; Cultural Groups</h3>
+        <p>Hometown associations, cultural organizations, and diaspora communities managing affairs across borders with multi-currency dues collection and transparent financial reporting.</p>
+      </div>
+      <div class="mission-card anim anim-delay-1">
+        <div class="mission-icon green">&#127891;</div>
+        <h3>Alumni &amp; Professional Networks</h3>
+        <p>University alumni networks, professional associations, and industry groups coordinating events, membership, and communications across regions and time zones.</p>
+      </div>
+      <div class="mission-card anim anim-delay-2">
+        <div class="mission-icon purple">&#9971;</div>
+        <h3>Nonprofits &amp; Faith Groups</h3>
+        <p>Churches, charities, and nonprofit organizations that need transparent financial management, member communication, and document storage &mdash; without the enterprise price tag.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════
+     CTA
+     ════════════════════════════════════════════════════════ -->
+<section class="final-cta section-darker">
+  <div class="container">
+    <h2 class="anim">Ready to Transform Your Organization?</h2>
+    <p class="anim anim-delay-1">
+      Join organizations already using OrgsLedger to manage operations, collect dues, and collaborate seamlessly across borders.
+    </p>
+    <div class="cta-actions anim anim-delay-2">
+      <a href="/#pricing" class="btn btn-primary btn-lg">Start Your Organization &rarr;</a>
+      <a href="mailto:support@orgsledger.com?subject=Demo%20Request%20%E2%80%94%20OrgsLedger&body=Hi%20OrgsLedger%20Team%2C%0A%0AI%27d%20like%20to%20request%20a%20demo%20and%20an%20invite%20link%20to%20try%20OrgsLedger%20for%20my%20organization.%0A%0AOrganization%20Name%3A%20%0ANumber%20of%20Members%3A%20%0ACountry%2FRegion%3A%20%0A%0ALooking%20forward%20to%20hearing%20from%20you!%0A%0ABest%20regards" class="btn btn-outline btn-lg">Book a Demo</a>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════
+     FOOTER
+     ════════════════════════════════════════════════════════ -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <div class="footer-brand-text"><img src="/logo.png" alt="OrgsLedger" class="f-icon" /> OrgsLedger</div>
+        <p>The cross-border organizational infrastructure platform. AI-powered meetings, real-time translation, financial management &mdash; fully hosted, fully secure.</p>
+      </div>
+      <div class="footer-col">
+        <h5>Platform</h5>
+        <a href="/#solutions">Features</a>
+        <a href="/#pricing">Pricing</a>
+        <a href="/#addons">AI &amp; Translation</a>
+        <a href="/#how-it-works">How It Works</a>
+        <a href="/#security">Security</a>
+      </div>
+      <div class="footer-col">
+        <h5>Company</h5>
+        <a href="/about">About Us</a>
+        <a href="mailto:hello@orgsledger.com">Blog</a>
+        <a href="mailto:careers@orgsledger.com">Careers</a>
+        <a href="mailto:sales@orgsledger.com">Contact Sales</a>
+        <a href="mailto:support@orgsledger.com">Support</a>
+      </div>
+      <div class="footer-col">
+        <h5>Legal</h5>
+        <a href="https://app.orgsledger.com/legal/terms">Terms of Service</a>
+        <a href="https://app.orgsledger.com/legal/privacy">Privacy Policy</a>
+        <a href="https://app.orgsledger.com/legal/privacy">Cookie Policy</a>
+        <a href="https://app.orgsledger.com/legal/acceptable-use">Acceptable Use</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 OrgsLedger. All rights reserved.</p>
+      <div class="footer-bottom-links">
+        <a href="https://app.orgsledger.com">app.orgsledger.com</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- ── JavaScript ─────────────────────────────────────── -->
+<script>
+(function() {
+  'use strict';
+  // Scroll animations
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+  document.querySelectorAll('.anim').forEach(function(el) {
+    observer.observe(el);
+  });
+  // Close mobile nav on link click
+  document.querySelectorAll('#nav-links a').forEach(function(link) {
+    link.addEventListener('click', function() {
+      document.getElementById('nav-links').classList.remove('show');
+    });
+  });
+})();
+</script>
+</body>
+</html>

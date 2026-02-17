@@ -21,8 +21,7 @@ import { router, usePathname } from 'expo-router';
 import { useAuthStore } from '../stores/auth.store';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../theme';
 import { useDrawer, DRAWER_WIDTH, DRAWER_COLLAPSED_WIDTH } from '../contexts/DrawerContext';
-
-const LOGO = require('../../assets/logo-no-bg.png');
+import { LOGO } from '../logo';
 
 interface NavItem {
   label: string;

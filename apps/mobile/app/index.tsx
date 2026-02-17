@@ -8,6 +8,7 @@ import { router } from 'expo-router';
 import { ActivityIndicator, View, Text, StyleSheet, Image } from 'react-native';
 import { useAuthStore } from '../src/stores/auth.store';
 import { Colors, FontSize, FontWeight, Spacing } from '../src/theme';
+import { LOGO } from '../src/logo';
 
 export default function Index() {
   const { isAuthenticated, isLoading } = useAuthStore();
@@ -27,7 +28,7 @@ export default function Index() {
   return (
     <View style={styles.splash}>
       <Image
-        source={require('../assets/logo-no-bg.png')}
+        source={LOGO}
         style={styles.logo}
         resizeMode="contain"
       />

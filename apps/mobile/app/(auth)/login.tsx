@@ -18,8 +18,7 @@ import {
 } from '../../src/theme';
 import { Input, Button, PoweredByFooter } from '../../src/components/ui';
 import { useResponsive } from '../../src/hooks/useResponsive';
-
-const LOGO = require('../../assets/logo-no-bg.png');
+import { LOGO } from '../../src/logo';
 
 const BENEFITS = [
   {

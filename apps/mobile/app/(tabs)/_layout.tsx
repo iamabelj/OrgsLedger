@@ -13,8 +13,7 @@ import { HamburgerButton } from '../../src/components/HamburgerButton';
 import { useDrawer } from '../../src/contexts/DrawerContext';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { router } from 'expo-router';
-
-const LOGO = require('../../assets/logo-no-bg.png');
+import { LOGO } from '../../src/logo';
 
 function HeaderLeft() {
   return (

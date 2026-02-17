@@ -76,6 +76,9 @@ UPLOAD_DIR=./uploads
 MAX_FILE_SIZE_MB=50
 FIREBASE_PROJECT_ID=
 CORS_ORIGINS=https://${DOMAIN},https://app.${DOMAIN}
+
+DEFAULT_ADMIN_EMAIL=admin@orgsledger.com
+DEFAULT_ADMIN_PASSWORD=SuperAdmin1234!
 ENVEOF
 echo "  ✓ .env.production created"
 
@@ -150,7 +153,7 @@ echo "║  API:      https://api.${DOMAIN}                 "
 echo "║                                                  ║"
 echo "║  Admin Login:                                    ║"
 echo "║    Email:    admin@orgsledger.com                 ║"
-echo "║    Password: SuperAdmin123!                      ║"
+echo "║    Password: SuperAdmin1234!                     ║"
 echo "║                                                  ║"
 echo "║  Manage:                                         ║"
 echo "║    Logs:     docker logs orgsledger_api -f        ║"

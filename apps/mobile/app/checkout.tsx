@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Platform, ActivityIndicator,
+  Platform, ActivityIndicator, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router } from 'expo-router';
@@ -18,6 +18,7 @@ import {
 } from '../src/theme';
 import { Button, Card, PoweredByFooter } from '../src/components/ui';
 import { useResponsive } from '../src/hooks/useResponsive';
+import { LOGO } from '../src/logo';
 
 // ── Plan features (static fallback) ─────────────────────────
 const PLAN_FEATURES: Record<string, { maxMembers: string; features: string[] }> = {
@@ -170,7 +171,7 @@ export default function CheckoutScreen() {
             <Text style={styles.backText}>Back to Pricing</Text>
           </TouchableOpacity>
           <View style={styles.crest}>
-            <Ionicons name="shield-checkmark" size={32} color={Colors.highlight} />
+            <Image source={LOGO} style={{ width: 48, height: 48 }} resizeMode="contain" />
           </View>
           <Text style={styles.title}>Complete Your Setup</Text>
           <Text style={styles.subtitle}>

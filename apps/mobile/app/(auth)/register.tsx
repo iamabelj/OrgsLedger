@@ -13,6 +13,7 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { showAlert } from '../../src/utils/alert';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +23,7 @@ import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
 import { Input, Button, PoweredByFooter } from '../../src/components/ui';
 import { useResponsive } from '../../src/hooks/useResponsive';
+import { LOGO } from '../../src/logo';
 
 export default function RegisterScreen() {
   const params = useLocalSearchParams<{ org?: string; invite?: string }>();
@@ -175,7 +177,7 @@ export default function RegisterScreen() {
         {!hasInviteFromUrl && inviteValid !== true ? (
           <View style={styles.restrictedContainer}>
             <View style={styles.crest}>
-              <Ionicons name="lock-closed" size={32} color={Colors.highlight} />
+              <Image source={LOGO} style={{ width: 48, height: 48 }} resizeMode="contain" />
             </View>
             <Text style={styles.logo}>Registration Restricted</Text>
             <Text style={styles.tagline}>
@@ -234,7 +236,7 @@ export default function RegisterScreen() {
             {/* Brand */}
             <View style={styles.brand}>
               <View style={styles.crest}>
-                <Ionicons name="person-add" size={32} color={Colors.highlight} />
+                <Image source={LOGO} style={{ width: 48, height: 48 }} resizeMode="contain" />
               </View>
               <Text style={styles.logo}>Create Account</Text>
               <Text style={styles.tagline}>Join OrgsLedger today</Text>

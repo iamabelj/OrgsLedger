@@ -22,8 +22,7 @@ import { showAlert } from '../../src/utils/alert';
 import { useResponsive } from '../../src/hooks/useResponsive';
 import storage from '../../src/utils/storage';
 import { socketClient } from '../../src/api/socket';
-
-const LOGO = require('../../assets/logo-no-bg.png');
+import { LOGO } from '../../src/logo';
 
 export default function InviteJoinScreen() {
   const { code } = useLocalSearchParams<{ code: string }>();

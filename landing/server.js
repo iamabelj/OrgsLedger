@@ -207,6 +207,10 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
+app.get('/about', (req, res) => {
+  res.sendFile(path.join(__dirname, 'about.html'));
+});
+
 // ── Admin Login Rate Limiter ──────────────────────────────
 const loginAttempts = new Map(); // IP -> { count, firstAttempt }
 function adminLoginRateLimit(req, res, next) {
