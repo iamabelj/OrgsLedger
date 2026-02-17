@@ -117,7 +117,7 @@ echo "  ✓ All services running"
 echo "  Waiting for database..."
 sleep 10
 
-# Run migrations + seed inside the api container
+# Run migrations inside the api container
 docker exec orgsledger_api sh -c "cd /app/packages/database && node -e \"
 const knex = require('knex');
 const config = require('./dist/knexfile').default || require('./dist/knexfile');
@@ -127,6 +127,41 @@ db.migrate.latest().then(r => {
   return db.destroy();
 }).catch(e => { console.error(e); process.exit(1); });
 \"" 2>/dev/null || echo "  (migrations via ts-node fallback)"
+
+# Seed the super admin account
+echo "  Seeding admin account..."
+docker exec orgsledger_api sh -c "node -e \"
+const bcrypt = require('bcryptjs');
+const knex = require('knex');
+const cfg = require('./packages/database/dist/knexfile').default || require('./packages/database/dist/knexfile');
+const db = knex(cfg);
+const email = process.env.DEFAULT_ADMIN_EMAIL || 'admin@orgsledger.com';
+const password = process.env.DEFAULT_ADMIN_PASSWORD || 'SuperAdmin1234!';
+(async () => {
+  const existing = await db('users').where({ email }).first();
+  if (existing) {
+    await db('users').where({ id: existing.id }).update({
+      is_active: true,
+      global_role: 'super_admin',
+      email_verified: true,
+      password_hash: await bcrypt.hash(password, 12)
+    });
+    console.log('  ✓ Admin account updated:', email);
+  } else {
+    await db('users').insert({
+      email,
+      password_hash: await bcrypt.hash(password, 12),
+      first_name: 'Platform',
+      last_name: 'Admin',
+      global_role: 'super_admin',
+      email_verified: true,
+      is_active: true
+    });
+    console.log('  ✓ Admin account created:', email);
+  }
+  await db.destroy();
+})().catch(e => { console.error('  Seed error:', e.message); process.exit(0); });
+\"" 2>/dev/null || echo "  (seed skipped — will run on API startup)"
 
 echo "  ✓ Database ready"
 
