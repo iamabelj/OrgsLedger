@@ -18,6 +18,8 @@ import { api } from '../../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../../src/theme';
 import { Card, Button, LoadingScreen, SectionHeader, ResponsiveScrollView } from '../../../src/components/ui';
 import { showAlert } from '../../../src/utils/alert';
+import { useOrgCurrency } from '../../../src/hooks/useOrgCurrency';
+import { formatCurrency, getCurrencySymbol } from '../../../src/utils/currency';
 
 const PRESET_AMOUNTS = [10, 25, 50, 100, 250, 500];
 
@@ -30,6 +32,8 @@ export default function DonateScreen() {
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const orgCurrency = useOrgCurrency();
+  const sym = getCurrencySymbol(orgCurrency);
 
   useEffect(() => {
     loadCampaign();
@@ -52,7 +56,7 @@ export default function DonateScreen() {
   const handleDonate = async () => {
     const numAmt = parseFloat(amount);
     if (!numAmt || numAmt < 1) {
-      showAlert('Error', 'Please enter a valid amount ($1 minimum)');
+      showAlert('Error', `Please enter a valid amount (${sym}1 minimum)`);
       return;
     }
     if (!currentOrgId || !campaignId) return;
@@ -64,7 +68,7 @@ export default function DonateScreen() {
         amount: numAmt,
         isAnonymous,
       });
-      showAlert('Thank You!', `Your donation of $${numAmt.toFixed(2)} has been recorded.`, [
+      showAlert('Thank You!', `Your donation of ${formatCurrency(numAmt, orgCurrency)} has been recorded.`, [
         { text: 'OK', onPress: () => router.back() },
       ]);
     } catch (err: any) {
@@ -101,8 +105,8 @@ export default function DonateScreen() {
                 <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
               </View>
               <View style={styles.progressRow}>
-                <Text style={styles.progressRaised}>${(campaign.total_raised || 0).toFixed(2)} raised</Text>
-                <Text style={styles.progressGoal}>of ${Number(campaign.goal_amount || 0).toFixed(2)}</Text>
+                <Text style={styles.progressRaised}>{formatCurrency(campaign.total_raised || 0, orgCurrency)} raised</Text>
+                <Text style={styles.progressGoal}>of {formatCurrency(campaign.goal_amount || 0, orgCurrency)}</Text>
               </View>
               <Text style={styles.progressPct}>{progressPct.toFixed(0)}% funded</Text>
             </>
@@ -118,7 +122,7 @@ export default function DonateScreen() {
             const active = amount === String(p);
             return (
               <TouchableOpacity key={p} style={[styles.presetBtn, active && styles.presetActive]} onPress={() => setAmount(String(p))} activeOpacity={0.7}>
-                <Text style={[styles.presetText, active && styles.presetTextActive]}>${p}</Text>
+                <Text style={[styles.presetText, active && styles.presetTextActive]}>{sym}{p}</Text>
               </TouchableOpacity>
             );
           })}
@@ -126,7 +130,7 @@ export default function DonateScreen() {
 
         <Text style={styles.orLabel}>Or enter custom amount</Text>
         <View style={styles.customInputRow}>
-          <Text style={styles.currencySign}>$</Text>
+          <Text style={styles.currencySign}>{sym}</Text>
           <TextInput
             style={styles.customInput}
             placeholder="0.00"
@@ -151,7 +155,7 @@ export default function DonateScreen() {
 
       <View style={styles.submitArea}>
         <Button
-          title={submitting ? 'Processing...' : `Donate${amount ? ` $${parseFloat(amount || '0').toFixed(2)}` : ''}`}
+          title={submitting ? 'Processing...' : `Donate${amount ? ` ${formatCurrency(amount, orgCurrency)}` : ''}`}
           onPress={handleDonate}
           disabled={submitting}
           variant="primary"

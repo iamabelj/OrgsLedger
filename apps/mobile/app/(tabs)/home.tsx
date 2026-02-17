@@ -34,6 +34,8 @@ import {
   ResponsiveScrollView,
 } from '../../src/components/ui';
 import { useResponsive } from '../../src/hooks/useResponsive';
+import { useOrgCurrency } from '../../src/hooks/useOrgCurrency';
+import { formatCurrencyWhole } from '../../src/utils/currency';
 
 export default function HomeScreen() {
   const user = useAuthStore((s) => s.user);
@@ -44,6 +46,7 @@ export default function HomeScreen() {
   const summary = useFinancialStore((s) => s.summary);
   const loadLedger = useFinancialStore((s) => s.loadLedger);
   const responsive = useResponsive();
+  const orgCurrency = useOrgCurrency();
 
   const [refreshing, setRefreshing] = useState(false);
   const [orgDetails, setOrgDetails] = useState<any>(null);
@@ -288,7 +291,7 @@ export default function HomeScreen() {
             <View style={styles.finCardItem}>
               <Ionicons name="trending-up" size={20} color={Colors.success} />
               <Text style={styles.finCardValue}>
-                ${summary ? summary.totalIncome.toFixed(0) : '0'}
+                {formatCurrencyWhole(summary ? summary.totalIncome : 0, orgCurrency)}
               </Text>
               <Text style={styles.finCardLabel}>Total Income</Text>
             </View>
@@ -296,7 +299,7 @@ export default function HomeScreen() {
             <View style={styles.finCardItem}>
               <Ionicons name="cash" size={20} color={Colors.highlight} />
               <Text style={styles.finCardValue}>
-                ${summary ? summary.netBalance.toFixed(0) : '0'}
+                {formatCurrencyWhole(summary ? summary.netBalance : 0, orgCurrency)}
               </Text>
               <Text style={styles.finCardLabel}>Balance</Text>
             </View>
@@ -304,7 +307,7 @@ export default function HomeScreen() {
             <View style={styles.finCardItem}>
               <Ionicons name="time" size={20} color={Colors.warning} />
               <Text style={styles.finCardValue}>
-                ${summary ? summary.pendingAmount.toFixed(0) : '0'}
+                {formatCurrencyWhole(summary ? summary.pendingAmount : 0, orgCurrency)}
               </Text>
               <Text style={styles.finCardLabel}>Pending</Text>
             </View>

@@ -31,19 +31,8 @@ import {
   ResponsiveScrollView,
 } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
-
-const CURRENCIES = [
-  { code: 'USD', symbol: '$', name: 'US Dollar' },
-  { code: 'EUR', symbol: '€', name: 'Euro' },
-  { code: 'GBP', symbol: '£', name: 'British Pound' },
-  { code: 'NGN', symbol: '₦', name: 'Nigerian Naira' },
-  { code: 'GHS', symbol: 'GH₵', name: 'Ghanaian Cedi' },
-  { code: 'KES', symbol: 'KSh', name: 'Kenyan Shilling' },
-  { code: 'ZAR', symbol: 'R', name: 'South African Rand' },
-  { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
-  { code: 'CAD', symbol: 'CA$', name: 'Canadian Dollar' },
-  { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
-];
+import { CURRENCIES } from '../../src/utils/currency';
+import { useOrgCurrencyStore } from '../../src/hooks/useOrgCurrency';
 
 const PAYMENT_GATEWAYS = [
   { id: 'stripe', name: 'Stripe', icon: 'card-outline' as const, available: true },
@@ -53,6 +42,7 @@ const PAYMENT_GATEWAYS = [
 
 export default function SettingsScreen() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
+  const syncCurrency = useOrgCurrencyStore((s) => s.setCurrency);
   const [orgName, setOrgName] = useState('');
   const [orgSlug, setOrgSlug] = useState('');
   const [orgDescription, setOrgDescription] = useState('');
@@ -132,6 +122,8 @@ export default function SettingsScreen() {
           },
         },
       });
+      // Sync currency to global store so all screens reflect the change immediately
+      syncCurrency(currency);
       showAlert('Saved', 'Organization settings updated successfully');
     } catch (err: any) {
       showAlert('Error', err.response?.data?.error || 'Failed to save settings');

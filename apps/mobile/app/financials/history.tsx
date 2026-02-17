@@ -16,6 +16,8 @@ import { useAuthStore } from '../../src/stores/auth.store';
 import { useFinancialStore } from '../../src/stores/financial.store';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
 import { Card, Badge, EmptyState, LoadingScreen, useContentStyle } from '../../src/components/ui';
+import { useOrgCurrency } from '../../src/hooks/useOrgCurrency';
+import { formatCurrency } from '../../src/utils/currency';
 
 const TXN_ICON: Record<string, { icon: string; color: string; bg: string }> = {
   due_payment: { icon: 'card', color: Colors.highlight, bg: Colors.highlightSubtle },
@@ -31,6 +33,7 @@ export default function PaymentHistoryScreen() {
   const loadUserHistory = useFinancialStore((s) => s.loadUserHistory);
   const [loading, setLoading] = useState(true);
   const contentStyle = useContentStyle();
+  const orgCurrency = useOrgCurrency();
 
   useEffect(() => {
     if (currentOrgId && userId) {
@@ -61,7 +64,7 @@ export default function PaymentHistoryScreen() {
           <View style={styles.summaryDivider} />
           <View style={styles.summaryItem}>
             <Text style={[styles.summaryValue, { color: Colors.highlight }]}>
-              ${transactions.reduce((sum: number, t: any) => sum + parseFloat(t.amount || 0), 0).toFixed(2)}
+              {formatCurrency(transactions.reduce((sum: number, t: any) => sum + parseFloat(t.amount || 0), 0), orgCurrency)}
             </Text>
             <Text style={styles.summaryLabel}>Total Paid</Text>
           </View>
@@ -89,7 +92,7 @@ export default function PaymentHistoryScreen() {
                 </Text>
               </View>
               <View style={styles.txnRight}>
-                <Text style={styles.txnAmount}>${parseFloat(item.amount).toFixed(2)}</Text>
+                <Text style={styles.txnAmount}>{formatCurrency(item.amount, orgCurrency)}</Text>
                 <Badge
                   variant={item.status === 'completed' ? 'success' : item.status === 'pending' ? 'warning' : item.status === 'overdue' ? 'danger' : 'neutral'}
                   label={item.status}

@@ -21,6 +21,8 @@ import { format } from 'date-fns';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useFinancialStore } from '../../src/stores/financial.store';
 import { useStripeSafe } from '../../src/utils/stripe';
+import { useOrgCurrency } from '../../src/hooks/useOrgCurrency';
+import { formatCurrency, formatCurrencyWhole, getCurrencySymbol } from '../../src/utils/currency';
 import { api } from '../../src/api/client';
 import { showAlert } from '../../src/utils/alert';
 import {
@@ -69,6 +71,8 @@ export default function FinancialsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [donationCampaigns, setDonationCampaigns] = useState<any[]>([]);
+
+  const orgCurrency = useOrgCurrency();
 
   const isAdmin = globalRole === 'super_admin' || globalRole === 'developer' || (membership &&
     ['org_admin', 'executive'].includes(membership.role));
@@ -126,7 +130,7 @@ export default function FinancialsScreen() {
 
           showAlert(
             'Bank Transfer Details',
-            `${detailLines}\n\nAmount: ₦${amount.toLocaleString()}\n\nAfter transferring, tap "I've Paid" so admin can verify.`,
+            `${detailLines}\n\nAmount: ${formatCurrency(amount, orgCurrency)}\n\nAfter transferring, tap "I've Paid" so admin can verify.`,
             [
               { text: 'Cancel', style: 'cancel' as const },
               {
@@ -280,7 +284,7 @@ export default function FinancialsScreen() {
             <View>
               <Text style={styles.heroLabel}>Net Balance</Text>
               <Text style={styles.heroValue}>
-                ${summary.netBalance?.toFixed(2) || '0.00'}
+                {formatCurrency(summary.netBalance, orgCurrency)}
               </Text>
             </View>
             <View style={styles.heroIconWrap}>
@@ -293,7 +297,7 @@ export default function FinancialsScreen() {
               <Ionicons name="trending-up" size={16} color={Colors.success} />
               <Text style={styles.heroStatLabel}>Income</Text>
               <Text style={[styles.heroStatVal, { color: Colors.success }]}>
-                ${summary.totalIncome?.toFixed(2) || '0.00'}
+                {formatCurrency(summary.totalIncome, orgCurrency)}
               </Text>
             </View>
             <View style={styles.heroStatDivider} />
@@ -301,7 +305,7 @@ export default function FinancialsScreen() {
               <Ionicons name="time" size={16} color={Colors.warning} />
               <Text style={styles.heroStatLabel}>Pending</Text>
               <Text style={[styles.heroStatVal, { color: Colors.warning }]}>
-                ${summary.pendingAmount?.toFixed(2) || '0.00'}
+                {formatCurrency(summary.pendingAmount, orgCurrency)}
               </Text>
             </View>
           </View>
@@ -372,7 +376,7 @@ export default function FinancialsScreen() {
                     </View>
                     <View style={styles.txnRight}>
                       <Text style={[styles.txnAmount, { color: cfg.color }]}>
-                        ${parseFloat(txn.amount).toFixed(2)}
+                        {formatCurrency(txn.amount, orgCurrency)}
                       </Text>
                       <Badge
                         label={txn.status}
@@ -423,7 +427,7 @@ export default function FinancialsScreen() {
                       </Text>
                     </View>
                     <Text style={styles.dueAmount}>
-                      ${parseFloat(due.amount).toFixed(2)}
+                      {formatCurrency(due.amount, orgCurrency)}
                     </Text>
                   </View>
                   {due.is_recurring && (
@@ -461,7 +465,7 @@ export default function FinancialsScreen() {
                       </Text>
                     </View>
                     <Text style={[styles.dueAmount, { color: Colors.error }]}>
-                      ${parseFloat(fine.amount).toFixed(2)}
+                      {formatCurrency(fine.amount, orgCurrency)}
                     </Text>
                   </View>
                 </Card>
@@ -507,10 +511,10 @@ export default function FinancialsScreen() {
                         </View>
                         <View style={styles.progressLabels}>
                           <Text style={styles.progressRaised}>
-                            ${raised.toFixed(2)} raised
+                            {formatCurrency(raised, orgCurrency)} raised
                           </Text>
                           <Text style={styles.progressGoal}>
-                            ${goal.toFixed(2)} goal
+                            {formatCurrency(goal, orgCurrency)} goal
                           </Text>
                         </View>
                       </View>
@@ -547,7 +551,7 @@ export default function FinancialsScreen() {
             } else if (pending.length > 1) {
               // Show picker for multiple pending transactions
               const buttons = pending.slice(0, 5).map((t: any) => ({
-                text: `${t.description || t.type} — ${t.currency} ${t.amount}`,
+                text: `${t.description || t.type} — ${formatCurrency(t.amount, orgCurrency)}`,
                 onPress: () => handlePay(t.id, t.amount),
               }));
               buttons.push({ text: 'Cancel', onPress: () => {}, style: 'cancel' });
