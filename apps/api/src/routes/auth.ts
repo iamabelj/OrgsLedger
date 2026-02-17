@@ -663,100 +663,97 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
       userAgent: req.headers['user-agent'] || '',
     });
 
-    // Process pending invitations (non-critical — wrapped to prevent login failure)
-    try {
-      const pendingInvites = await db('pending_invitations')
-        .where({ email: email.toLowerCase() })
-        .select('*');
+    // Check for pending invitations from developer org creation
+    const pendingInvites = await db('pending_invitations')
+      .where({ email: email.toLowerCase() })
+      .select('*');
 
-      for (const invite of pendingInvites) {
-        const existingMembership = await db('memberships')
-          .where({ user_id: user.id, organization_id: invite.organization_id })
+    // Process pending invitations — auto-join those orgs
+    for (const invite of pendingInvites) {
+      const existingMembership = await db('memberships')
+        .where({ user_id: user.id, organization_id: invite.organization_id })
+        .first();
+
+      if (!existingMembership) {
+        await db('memberships').insert({
+          user_id: user.id,
+          organization_id: invite.organization_id,
+          role: invite.role || 'org_admin',
+          is_active: true,
+          joined_at: db.fn.now(),
+        });
+
+        // Add to general channel if it exists
+        const generalChannel = await db('channels')
+          .where({ organization_id: invite.organization_id, name: 'General' })
           .first();
-
-        if (!existingMembership) {
-          await db('memberships').insert({
+        if (generalChannel) {
+          await db('channel_members').insert({
+            channel_id: generalChannel.id,
             user_id: user.id,
-            organization_id: invite.organization_id,
-            role: invite.role || 'org_admin',
-            is_active: true,
-            joined_at: db.fn.now(),
-          });
-
-          const generalChannel = await db('channels')
-            .where({ organization_id: invite.organization_id, name: 'General' })
-            .first();
-          if (generalChannel) {
-            await db('channel_members').insert({
-              channel_id: generalChannel.id,
-              user_id: user.id,
-            }).onConflict(['channel_id', 'user_id']).ignore();
-          }
-
-          logger.info(`User ${email} joined org via pending invitation on login (role: ${invite.role})`);
+          }).onConflict(['channel_id', 'user_id']).ignore();
         }
-      }
 
-      if (pendingInvites.length > 0) {
-        await db('pending_invitations').where({ email: email.toLowerCase() }).delete();
+        logger.info(`User ${email} joined org via pending invitation on login (role: ${invite.role})`);
       }
-    } catch (pendingErr) {
-      logger.warn('Pending invitations processing failed (non-critical):', pendingErr);
     }
 
-    // Load memberships (with fallback to empty array)
-    let memberships: Array<{id: string; role: string; organizationId: string; organizationName: string; organizationSlug: string}> = [];
-    try {
-      memberships = await db('memberships')
-        .join('organizations', 'memberships.organization_id', 'organizations.id')
-        .where({ 'memberships.user_id': user.id, 'memberships.is_active': true })
-        .select(
-          'memberships.id',
-          'memberships.role',
-          'organizations.id as organizationId',
-          'organizations.name as organizationName',
-          'organizations.slug as organizationSlug'
-        );
-    } catch (membershipErr) {
-      logger.warn('Failed to load memberships:', membershipErr);
+    // Delete processed pending invitations
+    if (pendingInvites.length > 0) {
+      await db('pending_invitations').where({ email: email.toLowerCase() }).delete();
     }
 
-    // Auto-join default org if user has no memberships (non-critical)
+    // Load memberships
+    let memberships = await db('memberships')
+      .join('organizations', 'memberships.organization_id', 'organizations.id')
+      .where({ 'memberships.user_id': user.id, 'memberships.is_active': true })
+      .select(
+        'memberships.id',
+        'memberships.role',
+        'organizations.id as organizationId',
+        'organizations.name as organizationName',
+        'organizations.slug as organizationSlug'
+      );
+
+    // Auto-join default org if user has no memberships (seamless login)
     if (memberships.length === 0) {
       try {
         const defaultOrg = await db('organizations').orderBy('created_at', 'asc').first();
         if (defaultOrg) {
-          // Skip member limit check to avoid subscription table issues
-          await db('memberships').insert({
-            user_id: user.id,
-            organization_id: defaultOrg.id,
-            role: 'member',
-            is_active: true,
-            joined_at: db.fn.now(),
-          }).onConflict(['user_id', 'organization_id']).ignore();
-
-          const generalChannel = await db('channels')
-            .where({ organization_id: defaultOrg.id, name: 'General' })
-            .first();
-          if (generalChannel) {
-            await db('channel_members').insert({
-              channel_id: generalChannel.id,
+          const { allowed, current, max } = await checkMemberLimit(defaultOrg.id);
+          if (!allowed) {
+            logger.warn(`User ${email} cannot auto-join org ${defaultOrg.slug} on login: member limit reached (${current}/${max})`);
+          } else {
+            await db('memberships').insert({
               user_id: user.id,
-            }).onConflict(['channel_id', 'user_id']).ignore();
+              organization_id: defaultOrg.id,
+              role: 'member',
+              is_active: true,
+              joined_at: db.fn.now(),
+            });
+            // Add to general channel
+            const generalChannel = await db('channels')
+              .where({ organization_id: defaultOrg.id, name: 'General' })
+              .first();
+            if (generalChannel) {
+              await db('channel_members').insert({
+                channel_id: generalChannel.id,
+                user_id: user.id,
+              }).onConflict(['channel_id', 'user_id']).ignore();
+            }
+            logger.info(`User ${email} auto-joined default org ${defaultOrg.slug} on login`);
+            // Reload memberships
+            memberships = await db('memberships')
+              .join('organizations', 'memberships.organization_id', 'organizations.id')
+              .where({ 'memberships.user_id': user.id, 'memberships.is_active': true })
+              .select(
+                'memberships.id',
+                'memberships.role',
+                'organizations.id as organizationId',
+                'organizations.name as organizationName',
+                'organizations.slug as organizationSlug'
+              );
           }
-          logger.info(`User ${email} auto-joined default org ${defaultOrg.slug} on login`);
-
-          // Reload memberships
-          memberships = await db('memberships')
-            .join('organizations', 'memberships.organization_id', 'organizations.id')
-            .where({ 'memberships.user_id': user.id, 'memberships.is_active': true })
-            .select(
-              'memberships.id',
-              'memberships.role',
-              'organizations.id as organizationId',
-              'organizations.name as organizationName',
-              'organizations.slug as organizationSlug'
-            );
         }
       } catch (autoJoinErr) {
         logger.warn('Auto-join on login failed:', autoJoinErr);
