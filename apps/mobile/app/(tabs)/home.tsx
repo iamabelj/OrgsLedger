@@ -396,12 +396,6 @@ export default function HomeScreen() {
               onPress={() => router.push('/admin/members')}
             />
             <AdminActionCard
-              icon="mail"
-              label="Signup Invites"
-              color="#7C3AED"
-              onPress={() => router.push('/admin/signup-invites')}
-            />
-            <AdminActionCard
               icon="link"
               label="Org Invites"
               color="#0EA5E9"
@@ -640,8 +634,8 @@ export default function HomeScreen() {
                 <Ionicons name="globe" size={18} color="#7C3AED" />
                 <Text style={styles.finCardTitle}>Platform Overview</Text>
               </View>
-              <TouchableOpacity onPress={() => router.push('/admin/saas-dashboard')}>
-                <Text style={styles.viewAllText}>Full Dashboard</Text>
+              <TouchableOpacity onPress={() => router.push('/admin/developer-console')}>
+                <Text style={styles.viewAllText}>Developer Console</Text>
               </TouchableOpacity>
             </View>
             <View style={styles.finCardGrid}>
