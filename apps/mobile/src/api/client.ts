@@ -215,6 +215,21 @@ class ApiClient {
         timeout: 120000,
       });
     },
+    // Meeting transcripts (live translation history)
+    getTranscripts: (orgId: string, meetingId: string) =>
+      this.client.get(`/meetings/${orgId}/${meetingId}/transcripts`),
+    // AI-generated minutes
+    getMinutes: (orgId: string, meetingId: string) =>
+      this.client.get(`/meetings/${orgId}/${meetingId}/minutes`),
+    // Download minutes as text/json
+    downloadMinutes: (orgId: string, meetingId: string, format: 'txt' | 'json' = 'txt') =>
+      this.client.get(`/meetings/${orgId}/${meetingId}/minutes/download`, {
+        params: { format },
+        responseType: 'text',
+      }),
+    // Trigger AI minutes generation from live transcripts
+    generateMinutes: (orgId: string, meetingId: string) =>
+      this.client.post(`/meetings/${orgId}/${meetingId}/generate-minutes`),
   };
 
   // ── Financials ────────────────────────────────────────

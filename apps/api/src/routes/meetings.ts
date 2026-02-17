@@ -812,27 +812,46 @@ router.post(
       }
 
       // If AI enabled, trigger AI minutes generation
-      if (meeting.ai_enabled && meeting.audio_storage_url) {
-        // The AI service will be triggered asynchronously
-        if (io) {
-          io.to(`org:${req.params.orgId}`).emit('meeting:minutes:processing', {
-            meetingId: req.params.meetingId,
-          });
+      // Supports both audio file AND live transcripts
+      if (meeting.ai_enabled) {
+        const hasAudio = !!meeting.audio_storage_url;
+        const hasTranscriptTable = await db.schema.hasTable('meeting_transcripts').catch(() => false);
+        let hasLiveTranscripts = false;
+        if (hasTranscriptTable) {
+          const transcriptCount = await db('meeting_transcripts')
+            .where({ meeting_id: req.params.meetingId })
+            .count('id as count')
+            .first();
+          hasLiveTranscripts = parseInt(transcriptCount?.count as string) > 0;
         }
 
-        // Create pending minutes record
-        await db('meeting_minutes').insert({
-          meeting_id: req.params.meetingId,
-          organization_id: req.params.orgId,
-          status: 'processing',
-        });
+        if (hasAudio || hasLiveTranscripts) {
+          // Notify that processing is starting
+          if (io) {
+            io.to(`org:${req.params.orgId}`).emit('meeting:minutes:processing', {
+              meetingId: req.params.meetingId,
+            });
+          }
 
-        // Queue AI processing (handled by AI service)
-        const aiService = req.app.get('aiService');
-        if (aiService) {
-          aiService.processMinutes(req.params.meetingId, req.params.orgId).catch((err: any) => {
-            logger.error('AI minutes processing failed', err);
-          });
+          // Create pending minutes record
+          const existing = await db('meeting_minutes').where({ meeting_id: req.params.meetingId }).first();
+          if (!existing) {
+            await db('meeting_minutes').insert({
+              meeting_id: req.params.meetingId,
+              organization_id: req.params.orgId,
+              status: 'processing',
+            });
+          } else {
+            await db('meeting_minutes').where({ meeting_id: req.params.meetingId }).update({ status: 'processing', error_message: null });
+          }
+
+          // Queue AI processing (handled by AI service)
+          const aiService = req.app.get('aiService');
+          if (aiService) {
+            aiService.processMinutes(req.params.meetingId, req.params.orgId).catch((err: any) => {
+              logger.error('AI minutes processing failed', err);
+            });
+          }
         }
       }
 
@@ -1134,6 +1153,313 @@ router.post(
     } catch (err: any) {
       logger.error('Translation endpoint error', err);
       res.status(500).json({ success: false, error: 'Translation failed' });
+    }
+  }
+);
+
+// ── Get Meeting Transcripts ─────────────────────────────────
+// Returns persisted live translation transcripts for a meeting.
+router.get(
+  '/:orgId/:meetingId/transcripts',
+  authenticate,
+  loadMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const { orgId, meetingId } = req.params;
+
+      // Verify meeting belongs to org
+      const meeting = await db('meetings')
+        .where({ id: meetingId, organization_id: orgId })
+        .first();
+      if (!meeting) {
+        res.status(404).json({ success: false, error: 'Meeting not found' });
+        return;
+      }
+
+      // Check if meeting_transcripts table exists
+      const hasTable = await db.schema.hasTable('meeting_transcripts');
+      if (!hasTable) {
+        res.json({ success: true, data: [] });
+        return;
+      }
+
+      const transcripts = await db('meeting_transcripts')
+        .where({ meeting_id: meetingId, organization_id: orgId })
+        .orderBy('spoken_at', 'asc')
+        .select('*');
+
+      res.json({ success: true, data: transcripts });
+    } catch (err) {
+      logger.error('Get transcripts error', err);
+      res.status(500).json({ success: false, error: 'Failed to get transcripts' });
+    }
+  }
+);
+
+// ── Get Meeting Minutes ─────────────────────────────────────
+router.get(
+  '/:orgId/:meetingId/minutes',
+  authenticate,
+  loadMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const { orgId, meetingId } = req.params;
+
+      const meeting = await db('meetings')
+        .where({ id: meetingId, organization_id: orgId })
+        .first();
+      if (!meeting) {
+        res.status(404).json({ success: false, error: 'Meeting not found' });
+        return;
+      }
+
+      const minutes = await db('meeting_minutes')
+        .where({ meeting_id: meetingId })
+        .first();
+
+      if (!minutes) {
+        res.status(404).json({ success: false, error: 'Minutes not generated yet' });
+        return;
+      }
+
+      // Parse JSON fields
+      const parsed = {
+        ...minutes,
+        transcript: typeof minutes.transcript === 'string' ? JSON.parse(minutes.transcript) : minutes.transcript,
+        decisions: typeof minutes.decisions === 'string' ? JSON.parse(minutes.decisions) : minutes.decisions,
+        motions: typeof minutes.motions === 'string' ? JSON.parse(minutes.motions) : minutes.motions,
+        action_items: typeof minutes.action_items === 'string' ? JSON.parse(minutes.action_items) : minutes.action_items,
+        contributions: typeof minutes.contributions === 'string' ? JSON.parse(minutes.contributions) : minutes.contributions,
+        download_formats: typeof minutes.download_formats === 'string' ? JSON.parse(minutes.download_formats) : (minutes.download_formats || {}),
+      };
+
+      res.json({ success: true, data: parsed });
+    } catch (err) {
+      logger.error('Get minutes error', err);
+      res.status(500).json({ success: false, error: 'Failed to get minutes' });
+    }
+  }
+);
+
+// ── Download Meeting Minutes as Text ────────────────────────
+router.get(
+  '/:orgId/:meetingId/minutes/download',
+  authenticate,
+  loadMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const { orgId, meetingId } = req.params;
+      const format = (req.query.format as string) || 'txt';
+
+      const meeting = await db('meetings')
+        .where({ id: meetingId, organization_id: orgId })
+        .first();
+      if (!meeting) {
+        res.status(404).json({ success: false, error: 'Meeting not found' });
+        return;
+      }
+
+      const minutes = await db('meeting_minutes')
+        .where({ meeting_id: meetingId })
+        .first();
+      if (!minutes || minutes.status !== 'completed') {
+        res.status(404).json({ success: false, error: 'Completed minutes not available' });
+        return;
+      }
+
+      // Parse fields
+      const summary = minutes.summary || '';
+      const decisions = typeof minutes.decisions === 'string' ? JSON.parse(minutes.decisions) : (minutes.decisions || []);
+      const motions = typeof minutes.motions === 'string' ? JSON.parse(minutes.motions) : (minutes.motions || []);
+      const actionItems = typeof minutes.action_items === 'string' ? JSON.parse(minutes.action_items) : (minutes.action_items || []);
+      const contributions = typeof minutes.contributions === 'string' ? JSON.parse(minutes.contributions) : (minutes.contributions || []);
+
+      // Get org name
+      const org = await db('organizations').where({ id: orgId }).select('name').first();
+      const orgName = org?.name || 'Organization';
+
+      // Build text document
+      const lines: string[] = [];
+      lines.push('═'.repeat(60));
+      lines.push(`MEETING MINUTES — ${meeting.title}`);
+      lines.push('═'.repeat(60));
+      lines.push('');
+      lines.push(`Organization: ${orgName}`);
+      lines.push(`Date: ${new Date(meeting.scheduled_start).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`);
+      lines.push(`Time: ${new Date(meeting.scheduled_start).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`);
+      if (meeting.actual_start) lines.push(`Started: ${new Date(meeting.actual_start).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`);
+      if (meeting.actual_end) lines.push(`Ended: ${new Date(meeting.actual_end).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`);
+      lines.push(`Type: ${meeting.meeting_type || 'video'}`);
+      lines.push('');
+
+      if (summary) {
+        lines.push('── EXECUTIVE SUMMARY ──────────────────────────────────');
+        lines.push('');
+        lines.push(summary);
+        lines.push('');
+      }
+
+      if (decisions.length > 0) {
+        lines.push('── KEY DECISIONS ──────────────────────────────────────');
+        lines.push('');
+        decisions.forEach((d: string, i: number) => {
+          lines.push(`  ${i + 1}. ${d}`);
+        });
+        lines.push('');
+      }
+
+      if (motions.length > 0) {
+        lines.push('── MOTIONS ────────────────────────────────────────────');
+        lines.push('');
+        motions.forEach((m: any, i: number) => {
+          const mText = typeof m === 'string' ? m : `${m.text}${m.movedBy ? ` (Moved by: ${m.movedBy})` : ''}${m.result ? ` — ${m.result}` : ''}`;
+          lines.push(`  ${i + 1}. ${mText}`);
+        });
+        lines.push('');
+      }
+
+      if (actionItems.length > 0) {
+        lines.push('── ACTION ITEMS ───────────────────────────────────────');
+        lines.push('');
+        actionItems.forEach((a: any, i: number) => {
+          const aText = typeof a === 'string' ? a : `${a.description || a.task}${a.assigneeName || a.assignee ? ` → ${a.assigneeName || a.assignee}` : ''}${a.dueDate ? ` (Due: ${a.dueDate})` : ''}`;
+          lines.push(`  ${i + 1}. ${aText}`);
+        });
+        lines.push('');
+      }
+
+      if (contributions.length > 0) {
+        lines.push('── PARTICIPANT CONTRIBUTIONS ──────────────────────────');
+        lines.push('');
+        contributions.forEach((c: any) => {
+          lines.push(`  ${c.userName}:`);
+          if (c.speakingTimeSeconds) lines.push(`    Speaking time: ${Math.floor(c.speakingTimeSeconds / 60)} min ${c.speakingTimeSeconds % 60} sec`);
+          if (c.keyPoints?.length) {
+            c.keyPoints.forEach((kp: string) => lines.push(`    • ${kp}`));
+          }
+        });
+        lines.push('');
+      }
+
+      // Get live transcripts if available
+      const hasTranscriptTable = await db.schema.hasTable('meeting_transcripts');
+      if (hasTranscriptTable) {
+        const liveTranscripts = await db('meeting_transcripts')
+          .where({ meeting_id: meetingId })
+          .orderBy('spoken_at', 'asc')
+          .select('speaker_name', 'original_text', 'source_lang', 'spoken_at');
+
+        if (liveTranscripts.length > 0) {
+          lines.push('── FULL TRANSCRIPT ────────────────────────────────────');
+          lines.push('');
+          liveTranscripts.forEach((t: any) => {
+            const time = new Date(parseInt(t.spoken_at)).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            lines.push(`  [${time}] ${t.speaker_name}: ${t.original_text}`);
+          });
+          lines.push('');
+        }
+      }
+
+      lines.push('═'.repeat(60));
+      lines.push(`Generated by OrgsLedger AI — ${new Date().toISOString()}`);
+      lines.push('═'.repeat(60));
+
+      const content = lines.join('\n');
+
+      if (format === 'json') {
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename="${meeting.title.replace(/[^a-zA-Z0-9 ]/g, '')}_minutes.json"`);
+        res.json({
+          meeting: {
+            title: meeting.title,
+            date: meeting.scheduled_start,
+            startedAt: meeting.actual_start,
+            endedAt: meeting.actual_end,
+            type: meeting.meeting_type,
+          },
+          summary,
+          decisions,
+          motions,
+          actionItems,
+          contributions,
+          generatedAt: minutes.generated_at,
+        });
+      } else {
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${meeting.title.replace(/[^a-zA-Z0-9 ]/g, '')}_minutes.txt"`);
+        res.send(content);
+      }
+    } catch (err) {
+      logger.error('Download minutes error', err);
+      res.status(500).json({ success: false, error: 'Failed to download minutes' });
+    }
+  }
+);
+
+// ── Generate Minutes from Live Transcripts ──────────────────
+// Allows manual triggering of AI minutes from persisted transcripts
+// (alternative to uploading audio file)
+router.post(
+  '/:orgId/:meetingId/generate-minutes',
+  authenticate,
+  loadMembership,
+  requireRole('org_admin', 'executive'),
+  async (req: Request, res: Response) => {
+    try {
+      const { orgId, meetingId } = req.params;
+
+      const meeting = await db('meetings')
+        .where({ id: meetingId, organization_id: orgId })
+        .first();
+      if (!meeting) {
+        res.status(404).json({ success: false, error: 'Meeting not found' });
+        return;
+      }
+
+      // Check if minutes already exist and are completed
+      const existing = await db('meeting_minutes').where({ meeting_id: meetingId }).first();
+      if (existing?.status === 'completed') {
+        res.status(400).json({ success: false, error: 'Minutes have already been generated' });
+        return;
+      }
+
+      // Check AI wallet
+      const wallet = await getAiWallet(orgId);
+      const balance = parseFloat(wallet.balance_minutes) || 0;
+      if (balance <= 0) {
+        res.status(402).json({ success: false, error: 'Insufficient AI wallet balance' });
+        return;
+      }
+
+      // Create or update minutes record
+      if (existing) {
+        await db('meeting_minutes').where({ meeting_id: meetingId }).update({ status: 'processing', error_message: null });
+      } else {
+        await db('meeting_minutes').insert({
+          meeting_id: meetingId,
+          organization_id: orgId,
+          status: 'processing',
+        });
+      }
+
+      // Emit processing event
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`org:${orgId}`).emit('meeting:minutes:processing', { meetingId });
+      }
+
+      // Queue AI processing
+      const aiService = req.app.get('aiService');
+      if (aiService) {
+        aiService.processMinutes(meetingId, orgId).catch((err: any) => {
+          logger.error('AI minutes processing failed', err);
+        });
+      }
+
+      res.json({ success: true, message: 'Minutes generation started' });
+    } catch (err) {
+      logger.error('Generate minutes error', err);
+      res.status(500).json({ success: false, error: 'Failed to start minutes generation' });
     }
   }
 );

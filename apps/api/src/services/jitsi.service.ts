@@ -132,8 +132,16 @@ export function getVideoConfig(): Record<string, any> {
     disableSimulcast: false,
     prejoinPageEnabled: false,
     disableDeepLinking: true,
-    enableNoisyMicDetection: false,
-    enableNoAudioDetection: false,
+    // Audio pipeline — CRITICAL: ensure audio flows correctly
+    enableNoisyMicDetection: true,
+    enableNoAudioDetection: true,
+    stereo: false,
+    disableAP: false,  // keep audio processing ON
+    disableAEC: false,  // keep acoustic echo cancellation ON
+    disableNS: false,   // keep noise suppression ON
+    disableAGC: false,  // keep automatic gain control ON
+    disableHPF: false,  // keep high-pass filter ON
+    enableTalkWhileMuted: false,
     enableInsecureRoomNameWarning: false,
     requireDisplayName: false,
     hideRecordingLabel: true,
@@ -141,6 +149,15 @@ export function getVideoConfig(): Record<string, any> {
     enableLobbyChat: true,
     // Enforce JWT auth — prevent anonymous fallback
     tokenAuthUrl: true,
+    // P2P mode for small meetings (2 participants) — lower latency audio
+    p2p: {
+      enabled: true,
+      useStunTurn: true,
+      stunServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ],
+    },
     toolbarButtons: [
       'camera', 'chat', 'closedcaptions', 'desktop', 'download',
       'filmstrip', 'fullscreen', 'hangup', 'microphone', 'noisesuppression',
@@ -165,8 +182,16 @@ export function getAudioConfig(): Record<string, any> {
     resolution: 180,
     prejoinPageEnabled: false,
     disableDeepLinking: true,
-    enableNoisyMicDetection: false,
-    enableNoAudioDetection: false,
+    // Audio pipeline — CRITICAL: ensure audio flows correctly
+    enableNoisyMicDetection: true,
+    enableNoAudioDetection: true,
+    stereo: false,
+    disableAP: false,
+    disableAEC: false,
+    disableNS: false,
+    disableAGC: false,
+    disableHPF: false,
+    enableTalkWhileMuted: false,
     enableInsecureRoomNameWarning: false,
     requireDisplayName: false,
     hideRecordingLabel: true,
@@ -177,9 +202,11 @@ export function getAudioConfig(): Record<string, any> {
     disableVideo: true,
     startVideoMuted: true,
     constraints: {
-      video: {
-        height: { ideal: 180, max: 180 },
-        width: { ideal: 320, max: 320 },
+      video: false,
+      audio: {
+        autoGainControl: true,
+        echoCancellation: true,
+        noiseSuppression: true,
       },
     },
     // Hide video-related UI
@@ -197,7 +224,11 @@ export function getAudioConfig(): Record<string, any> {
     },
     p2p: {
       enabled: true,
-      // Optimize for audio-only p2p
+      useStunTurn: true,
+      stunServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ],
     },
   };
 }

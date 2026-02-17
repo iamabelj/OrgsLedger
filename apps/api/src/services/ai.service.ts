@@ -100,10 +100,19 @@ export class AIService {
         throw new Error(deduction.error || 'Wallet deduction failed');
       }
 
-      // Step 1: Transcribe audio
+      // Step 1: Transcribe audio OR use live transcripts
       const transcriptStart = Date.now();
-      const transcript = await this.transcribeAudio(meeting.audio_storage_url);
-      logger.info('[AI] Transcription complete', { meetingId, durationMs: Date.now() - transcriptStart, segments: transcript.length });
+      let transcript: TranscriptSegment[];
+
+      if (meeting.audio_storage_url) {
+        // Prefer uploaded audio for transcription
+        transcript = await this.transcribeAudio(meeting.audio_storage_url);
+        logger.info('[AI] Audio transcription complete', { meetingId, durationMs: Date.now() - transcriptStart, segments: transcript.length });
+      } else {
+        // Fall back to live translation transcripts stored in DB
+        transcript = await this.getTranscriptsFromDB(meetingId);
+        logger.info('[AI] Using live transcripts from DB', { meetingId, segments: transcript.length });
+      }
 
       // Step 2: Generate structured minutes
       const summarizeStart = Date.now();
@@ -462,6 +471,50 @@ Be thorough and accurate. Identify all decisions, motions, and action items.`;
         language: 'en-US',
       },
     ];
+  }
+
+  /**
+   * Get transcripts from the meeting_transcripts table (live translation data).
+   * Falls back to mock if table doesn't exist or is empty.
+   */
+  private async getTranscriptsFromDB(meetingId: string): Promise<TranscriptSegment[]> {
+    try {
+      const hasTable = await db.schema.hasTable('meeting_transcripts');
+      if (!hasTable) {
+        logger.warn('[AI] meeting_transcripts table does not exist');
+        return this.getMockTranscript();
+      }
+
+      const rows = await db('meeting_transcripts')
+        .where({ meeting_id: meetingId })
+        .orderBy('spoken_at', 'asc')
+        .select('*');
+
+      if (rows.length === 0) {
+        logger.warn('[AI] No live transcripts found for meeting', { meetingId });
+        return this.getMockTranscript();
+      }
+
+      // Convert to TranscriptSegment format
+      let prevEndTime = 0;
+      return rows.map((row: any) => {
+        const startTime = prevEndTime;
+        const estimatedDuration = Math.max(3, Math.ceil(row.original_text.length / 15)); // ~15 chars/sec speech
+        const endTime = startTime + estimatedDuration;
+        prevEndTime = endTime;
+        return {
+          speakerId: row.speaker_id,
+          speakerName: row.speaker_name,
+          text: row.original_text,
+          startTime,
+          endTime,
+          language: row.source_lang || 'en',
+        };
+      });
+    } catch (err) {
+      logger.error('[AI] Failed to get transcripts from DB', err);
+      return this.getMockTranscript();
+    }
   }
 
   private getMockMinutes(transcript: TranscriptSegment[]): ProcessedMinutes {

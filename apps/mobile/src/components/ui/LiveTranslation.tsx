@@ -92,16 +92,18 @@ export interface LiveTranslationRef {
   selectLanguage: (lang: string) => void;
   isListening: () => boolean;
   getLanguage: () => string;
+  setAutoTTS: (enabled: boolean) => void;
 }
 
 interface LiveTranslationProps {
   meetingId: string;
   userId: string;
   hideControls?: boolean;
+  autoTTS?: boolean; // Enable voice-to-voice: auto-speak translated text
 }
 
 const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProps>(
-  function LiveTranslation({ meetingId, userId, hideControls = false }, ref) {
+  function LiveTranslation({ meetingId, userId, hideControls = false, autoTTS = false }, ref) {
   const [myLanguage, setMyLanguage] = useState('en');
   const [isListening, setIsListening] = useState(false);
   const [showLanguagePicker, setShowLanguagePicker] = useState(true); // Show on first join so members pick their language
@@ -109,8 +111,9 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
   const [translations, setTranslations] = useState<TranslationEntry[]>([]);
   const [interimText, setInterimText] = useState('');
   const [participants, setParticipants] = useState<Participant[]>([]);
-  const [speakEnabled, setSpeakEnabled] = useState(false);
+  const [speakEnabled, setSpeakEnabled] = useState(autoTTS);
   const [isExpanded, setIsExpanded] = useState(true);
+  const [ttsVolume, setTtsVolume] = useState(0.8); // Voice-to-voice volume control
 
   // Zustand store sync — keep centralized state updated
   const storeSetMyLanguage = useMeetingStore((s) => s.setMyLanguage);
@@ -179,8 +182,12 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
       storeSetInterimText('');
 
       // Text-to-speech for received translations (not own speech)
-      if (speakEnabledRef.current && data.speakerId !== userId && Platform.OS === 'web') {
-        speak(translated, myLang);
+      // Voice-to-voice: auto-play TTS when enabled (either per-user or via ttsEnabled flag)
+      if (data.speakerId !== userId) {
+        const shouldSpeak = speakEnabledRef.current || data.ttsEnabled;
+        if (shouldSpeak && translated) {
+          speak(translated, myLang);
+        }
       }
 
       // Auto-scroll
@@ -307,30 +314,37 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
     selectLanguage,
     isListening: () => isListening,
     getLanguage: () => myLanguage,
+    setAutoTTS: (enabled: boolean) => setSpeakEnabled(enabled),
   }), [startListening, stopListening, selectLanguage, isListening, myLanguage]);
 
-  // ── Text-to-Speech (Web + Android + iOS) ───────────────
+  // ── Text-to-Speech (Web + Android + iOS) — Voice-to-Voice ──
   const speak = useCallback((text: string, lang: string) => {
     const langCode = SPEECH_CODES[lang] || 'en-US';
     try {
       if (Platform.OS === 'web') {
+        // Cancel any queued speech to avoid overlap
+        window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = langCode;
-        utterance.rate = 0.9;
-        utterance.volume = 0.8;
+        utterance.rate = 1.0; // Normal speed for voice-to-voice
+        utterance.volume = ttsVolume;
+        utterance.pitch = 1.0;
         window.speechSynthesis.speak(utterance);
       } else {
+        // Cancel previous speech on native for cleaner voice-to-voice
+        Speech.stop();
         Speech.speak(text, {
           language: langCode,
-          rate: 0.9,
+          rate: 1.0,
           pitch: 1.0,
+          volume: ttsVolume,
           onError: (err) => console.warn('TTS failed', err),
         });
       }
     } catch (e) {
       console.warn('TTS failed', e);
     }
-  }, []);
+  }, [ttsVolume]);
 
   // Cleanup on unmount
   useEffect(() => {

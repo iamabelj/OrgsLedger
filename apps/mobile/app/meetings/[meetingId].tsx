@@ -225,7 +225,16 @@ export default function MeetingDetailScreen() {
   const [showLangPicker, setShowLangPicker] = useState(false);
   const [translationLang, setTranslationLang] = useState('en');
   const [translationListening, setTranslationListening] = useState(false);
+  const [voiceToVoice, setVoiceToVoice] = useState(true); // Auto TTS for translations
   const translationRef = useRef<LiveTranslationRef>(null);
+
+  // ── Tab State ───────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<'meeting' | 'transcript' | 'minutes'>('meeting');
+  const [transcripts, setTranscripts] = useState<any[]>([]);
+  const [minutes, setMinutes] = useState<any>(null);
+  const [minutesLoading, setMinutesLoading] = useState(false);
+  const [transcriptsLoading, setTranscriptsLoading] = useState(false);
+  const [generateLoading, setGenerateLoading] = useState(false);
 
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -258,6 +267,80 @@ export default function MeetingDetailScreen() {
   }, [currentOrgId, meetingId]);
 
   useEffect(() => { loadMeeting(); }, [loadMeeting]);
+
+  // ── Load Transcripts ────────────────────────────────────
+  const loadTranscripts = useCallback(async () => {
+    if (!currentOrgId || !meetingId) return;
+    setTranscriptsLoading(true);
+    try {
+      const res = await api.meetings.getTranscripts(currentOrgId, meetingId);
+      setTranscripts(res.data.data || []);
+    } catch {
+      // Table may not exist yet — not an error
+      setTranscripts([]);
+    } finally {
+      setTranscriptsLoading(false);
+    }
+  }, [currentOrgId, meetingId]);
+
+  // ── Load Minutes ────────────────────────────────────────
+  const loadMinutes = useCallback(async () => {
+    if (!currentOrgId || !meetingId) return;
+    setMinutesLoading(true);
+    try {
+      const res = await api.meetings.getMinutes(currentOrgId, meetingId);
+      setMinutes(res.data.data);
+    } catch {
+      setMinutes(null);
+    } finally {
+      setMinutesLoading(false);
+    }
+  }, [currentOrgId, meetingId]);
+
+  // Load transcripts/minutes when switching tabs
+  useEffect(() => {
+    if (activeTab === 'transcript') loadTranscripts();
+    if (activeTab === 'minutes') loadMinutes();
+  }, [activeTab, loadTranscripts, loadMinutes]);
+
+  // ── Generate Minutes from Live Transcripts ──────────────
+  const handleGenerateMinutes = async () => {
+    if (!currentOrgId || !meetingId) return;
+    setGenerateLoading(true);
+    try {
+      await api.meetings.generateMinutes(currentOrgId, meetingId);
+      showAlert('Processing', 'AI minutes generation started. You will be notified when complete.');
+      await loadMinutes();
+    } catch (err: any) {
+      showAlert('Error', err.response?.data?.error || 'Failed to generate minutes');
+    } finally {
+      setGenerateLoading(false);
+    }
+  };
+
+  // ── Download Minutes ────────────────────────────────────
+  const handleDownloadMinutes = async (format: 'txt' | 'json' = 'txt') => {
+    if (!currentOrgId || !meetingId) return;
+    try {
+      const res = await api.meetings.downloadMinutes(currentOrgId, meetingId, format);
+      if (Platform.OS === 'web') {
+        // Create download blob
+        const blob = new Blob([res.data], { type: format === 'json' ? 'application/json' : 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${meeting?.title || 'meeting'}_minutes.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        showAlert('Downloaded', 'Minutes have been downloaded.');
+      }
+    } catch (err: any) {
+      showAlert('Error', err.response?.data?.error || 'Failed to download minutes');
+    }
+  };
 
   // ── Initialize Zustand meeting store ────────────────────
   useEffect(() => {
@@ -417,9 +500,32 @@ export default function MeetingDetailScreen() {
     const unsub9 = socketClient.on('meeting:lock-changed', handleLockChanged);
     const unsub10 = socketClient.on('meeting:join-rejected', handleJoinRejected);
 
+    // -- AI Minutes lifecycle --
+    const handleMinutesReady = (data: any) => {
+      if (data.meetingId === meetingId) {
+        loadMinutes();
+        showAlert('Minutes Ready', `AI-generated minutes for "${data.title || 'this meeting'}" are now available.`);
+      }
+    };
+    const handleMinutesProcessing = (data: any) => {
+      if (data.meetingId === meetingId) {
+        setMinutes((prev: any) => prev ? { ...prev, status: 'processing' } : { status: 'processing' });
+      }
+    };
+    const handleMinutesFailed = (data: any) => {
+      if (data.meetingId === meetingId) {
+        showAlert('Minutes Failed', data.error || 'AI minutes generation failed.');
+        loadMinutes();
+      }
+    };
+    const unsub11 = socketClient.on('meeting:minutes:ready', handleMinutesReady);
+    const unsub12 = socketClient.on('meeting:minutes:processing', handleMinutesProcessing);
+    const unsub13 = socketClient.on('meeting:minutes:failed', handleMinutesFailed);
+
     return () => {
       unsub1(); unsub2(); unsub3(); unsub4(); unsub5();
       unsub6(); unsub7(); unsub8(); unsub9(); unsub10();
+      unsub11(); unsub12(); unsub13();
       socketClient.leaveMeeting(meetingId);
     };
   }, [meetingId]);
@@ -705,13 +811,22 @@ export default function MeetingDetailScreen() {
   // ── Build Jitsi iframe URL ──────────────────────────────
   const jitsiIframeSrc = useMemo(() => {
     if (!joinConfig) return '';
+    // Flatten config overwrite — stringify nested objects for Jitsi hash params
     const configParams = Object.entries(joinConfig.configOverwrite || {})
-      .filter(([_, v]) => typeof v !== 'object')
-      .map(([k, v]) => `config.${k}=${encodeURIComponent(String(v))}`)
+      .map(([k, v]) => {
+        if (typeof v === 'object' && v !== null) {
+          return `config.${k}=${encodeURIComponent(JSON.stringify(v))}`;
+        }
+        return `config.${k}=${encodeURIComponent(String(v))}`;
+      })
       .join('&');
     const ifaceParams = Object.entries(joinConfig.interfaceConfigOverwrite || {})
-      .filter(([_, v]) => typeof v !== 'object')
-      .map(([k, v]) => `interfaceConfig.${k}=${encodeURIComponent(String(v))}`)
+      .map(([k, v]) => {
+        if (typeof v === 'object' && v !== null) {
+          return `interfaceConfig.${k}=${encodeURIComponent(JSON.stringify(v))}`;
+        }
+        return `interfaceConfig.${k}=${encodeURIComponent(String(v))}`;
+      })
       .join('&');
     const userParams = `userInfo.displayName=${encodeURIComponent(joinConfig.userInfo?.displayName || userName)}`;
     const hash = [configParams, ifaceParams, userParams].filter(Boolean).join('&');
@@ -872,6 +987,283 @@ export default function MeetingDetailScreen() {
         </View>
       </Card>
 
+      {/* ═══ TAB BAR ════════════════════════════════════════ */}
+      <View style={z.tabBar}>
+        <TouchableOpacity
+          style={[z.tab, activeTab === 'meeting' && z.tabActive]}
+          onPress={() => setActiveTab('meeting')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="videocam" size={16} color={activeTab === 'meeting' ? Colors.highlight : Colors.textLight} />
+          <Text style={[z.tabText, activeTab === 'meeting' && z.tabTextActive]}>Meeting</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[z.tab, activeTab === 'transcript' && z.tabActive]}
+          onPress={() => setActiveTab('transcript')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="chatbubbles" size={16} color={activeTab === 'transcript' ? Colors.highlight : Colors.textLight} />
+          <Text style={[z.tabText, activeTab === 'transcript' && z.tabTextActive]}>Transcript</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[z.tab, activeTab === 'minutes' && z.tabActive]}
+          onPress={() => setActiveTab('minutes')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="document-text" size={16} color={activeTab === 'minutes' ? Colors.highlight : Colors.textLight} />
+          <Text style={[z.tabText, activeTab === 'minutes' && z.tabTextActive]}>Minutes</Text>
+          {meeting.minutes && meeting.minutes.status === 'completed' && (
+            <View style={z.tabDot} />
+          )}
+        </TouchableOpacity>
+      </View>
+
+      {/* ═══ TAB: TRANSCRIPT ═════════════════════════════════ */}
+      {activeTab === 'transcript' && (
+        <>
+          <Card style={z.section}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.sm }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.xs }}>
+                <Ionicons name="chatbubbles" size={18} color={Colors.highlight} />
+                <Text style={{ fontSize: FontSize.lg, fontWeight: FontWeight.semibold, color: Colors.highlight }}>
+                  Live Transcript
+                </Text>
+              </View>
+              <TouchableOpacity onPress={loadTranscripts} style={{ padding: Spacing.xs }}>
+                <Ionicons name="refresh" size={18} color={Colors.textLight} />
+              </TouchableOpacity>
+            </View>
+
+            {transcriptsLoading ? (
+              <View style={{ paddingVertical: Spacing.xl, alignItems: 'center' }}>
+                <ActivityIndicator size="small" color={Colors.highlight} />
+                <Text style={{ color: Colors.textLight, marginTop: Spacing.sm }}>Loading transcripts...</Text>
+              </View>
+            ) : transcripts.length === 0 ? (
+              <View style={{ paddingVertical: Spacing.xl, alignItems: 'center' }}>
+                <Ionicons name="chatbubbles-outline" size={40} color={Colors.textLight} />
+                <Text style={{ color: Colors.textLight, fontSize: FontSize.md, marginTop: Spacing.sm, textAlign: 'center' }}>
+                  No transcripts yet.{'\n'}Enable Live Translation and speak to generate a transcript.
+                </Text>
+              </View>
+            ) : (
+              <ScrollView style={{ maxHeight: 500 }} showsVerticalScrollIndicator={false}>
+                {transcripts.map((t: any, idx: number) => {
+                  const time = new Date(parseInt(t.spoken_at)).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                  const isSelf = t.speaker_id === userId;
+                  return (
+                    <View key={t.id || idx} style={[z.transcriptRow, isSelf && z.transcriptRowSelf]}>
+                      <View style={z.transcriptHeader}>
+                        <Text style={z.transcriptSpeaker}>
+                          {LANG_FLAGS[t.source_lang] || '🌐'} {isSelf ? 'You' : t.speaker_name}
+                        </Text>
+                        <Text style={z.transcriptTime}>{time}</Text>
+                      </View>
+                      <Text style={z.transcriptText}>{t.original_text}</Text>
+                      {t.translations && Object.keys(typeof t.translations === 'string' ? JSON.parse(t.translations) : t.translations).length > 0 && (
+                        <View style={z.transcriptTranslations}>
+                          {Object.entries(typeof t.translations === 'string' ? JSON.parse(t.translations) : t.translations).map(([lang, text]) => (
+                            <Text key={lang} style={z.transcriptTranslation}>
+                              {LANG_FLAGS[lang] || '🌐'} {text as string}
+                            </Text>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </Card>
+          <View style={{ height: Spacing.xxl * 2 }} />
+        </>
+      )}
+
+      {/* ═══ TAB: MINUTES ════════════════════════════════════ */}
+      {activeTab === 'minutes' && (
+        <>
+          <Card style={z.section}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.md }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.xs }}>
+                <Ionicons name="document-text" size={18} color={Colors.highlight} />
+                <Text style={{ fontSize: FontSize.lg, fontWeight: FontWeight.semibold, color: Colors.highlight }}>
+                  AI Meeting Minutes
+                </Text>
+              </View>
+              <TouchableOpacity onPress={loadMinutes} style={{ padding: Spacing.xs }}>
+                <Ionicons name="refresh" size={18} color={Colors.textLight} />
+              </TouchableOpacity>
+            </View>
+
+            {minutesLoading ? (
+              <View style={{ paddingVertical: Spacing.xl, alignItems: 'center' }}>
+                <ActivityIndicator size="small" color={Colors.highlight} />
+                <Text style={{ color: Colors.textLight, marginTop: Spacing.sm }}>Loading minutes...</Text>
+              </View>
+            ) : minutes?.status === 'processing' ? (
+              <View style={{ paddingVertical: Spacing.xl, alignItems: 'center' }}>
+                <ActivityIndicator size="large" color={Colors.highlight} />
+                <Text style={{ color: Colors.highlight, fontSize: FontSize.lg, fontWeight: FontWeight.semibold, marginTop: Spacing.md }}>
+                  Generating Minutes...
+                </Text>
+                <Text style={{ color: Colors.textLight, fontSize: FontSize.sm, marginTop: Spacing.xs, textAlign: 'center' }}>
+                  AI is analyzing the meeting transcript. This may take a few moments.
+                </Text>
+              </View>
+            ) : minutes?.status === 'failed' ? (
+              <View style={{ paddingVertical: Spacing.xl, alignItems: 'center' }}>
+                <Ionicons name="alert-circle" size={40} color={Colors.error} />
+                <Text style={{ color: Colors.error, fontSize: FontSize.md, fontWeight: FontWeight.semibold, marginTop: Spacing.sm }}>
+                  Minutes Generation Failed
+                </Text>
+                <Text style={{ color: Colors.textLight, fontSize: FontSize.sm, marginTop: Spacing.xs, textAlign: 'center' }}>
+                  {minutes.error_message || 'An error occurred during AI processing.'}
+                </Text>
+                {isAdmin && (
+                  <TouchableOpacity
+                    style={{ marginTop: Spacing.md, backgroundColor: Colors.highlight, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, borderRadius: BorderRadius.md }}
+                    onPress={handleGenerateMinutes}
+                    disabled={generateLoading}
+                  >
+                    <Text style={{ color: '#FFF', fontWeight: FontWeight.semibold }}>
+                      {generateLoading ? 'Retrying...' : 'Retry Generation'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : minutes?.status === 'completed' ? (
+              <>
+                {/* Summary */}
+                {minutes.summary && (
+                  <View style={z.minutesSection}>
+                    <Text style={z.minutesSectionTitle}>Executive Summary</Text>
+                    <Text style={z.minutesSectionContent}>{minutes.summary}</Text>
+                  </View>
+                )}
+
+                {/* Decisions */}
+                {minutes.decisions?.length > 0 && (
+                  <View style={z.minutesSection}>
+                    <Text style={z.minutesSectionTitle}>Key Decisions</Text>
+                    {minutes.decisions.map((d: string, i: number) => (
+                      <View key={i} style={z.minutesBulletRow}>
+                        <Ionicons name="checkmark-circle" size={14} color={Colors.success} />
+                        <Text style={z.minutesBulletText}>{d}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Motions */}
+                {minutes.motions?.length > 0 && (
+                  <View style={z.minutesSection}>
+                    <Text style={z.minutesSectionTitle}>Motions</Text>
+                    {minutes.motions.map((m: any, i: number) => (
+                      <View key={i} style={z.minutesBulletRow}>
+                        <Ionicons name="megaphone" size={14} color={Colors.warning} />
+                        <Text style={z.minutesBulletText}>
+                          {typeof m === 'string' ? m : `${m.text}${m.movedBy ? ` — Moved by ${m.movedBy}` : ''}${m.result ? ` (${m.result})` : ''}`}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Action Items */}
+                {minutes.action_items?.length > 0 && (
+                  <View style={z.minutesSection}>
+                    <Text style={z.minutesSectionTitle}>Action Items</Text>
+                    {minutes.action_items.map((a: any, i: number) => (
+                      <View key={i} style={z.minutesBulletRow}>
+                        <Ionicons name="arrow-forward-circle" size={14} color={Colors.highlight} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={z.minutesBulletText}>
+                            {typeof a === 'string' ? a : a.description || a.task}
+                          </Text>
+                          {typeof a !== 'string' && (a.assigneeName || a.assignee) && (
+                            <Text style={{ color: Colors.textLight, fontSize: FontSize.xs, marginTop: 2 }}>
+                              Assigned to: {a.assigneeName || a.assignee}
+                              {a.dueDate ? ` — Due: ${a.dueDate}` : ''}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Contributions */}
+                {minutes.contributions?.length > 0 && (
+                  <View style={z.minutesSection}>
+                    <Text style={z.minutesSectionTitle}>Participant Contributions</Text>
+                    {minutes.contributions.map((c: any, i: number) => (
+                      <View key={i} style={z.contributionCard}>
+                        <Text style={z.contributionName}>{c.userName}</Text>
+                        {c.speakingTimeSeconds > 0 && (
+                          <Text style={z.contributionTime}>
+                            Speaking time: {Math.floor(c.speakingTimeSeconds / 60)}m {c.speakingTimeSeconds % 60}s
+                          </Text>
+                        )}
+                        {c.keyPoints?.map((kp: string, j: number) => (
+                          <Text key={j} style={z.contributionPoint}>• {kp}</Text>
+                        ))}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Download Buttons */}
+                <View style={z.downloadRow}>
+                  <TouchableOpacity style={z.downloadBtn} onPress={() => handleDownloadMinutes('txt')} activeOpacity={0.7}>
+                    <Ionicons name="document-outline" size={18} color={Colors.highlight} />
+                    <Text style={z.downloadBtnText}>Download TXT</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={z.downloadBtn} onPress={() => handleDownloadMinutes('json')} activeOpacity={0.7}>
+                    <Ionicons name="code-slash" size={18} color={Colors.highlight} />
+                    <Text style={z.downloadBtnText}>Download JSON</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Generated timestamp */}
+                {minutes.generated_at && (
+                  <Text style={{ color: Colors.textLight, fontSize: FontSize.xs, textAlign: 'center', marginTop: Spacing.sm }}>
+                    Generated {new Date(minutes.generated_at).toLocaleString()}
+                  </Text>
+                )}
+              </>
+            ) : (
+              // No minutes yet
+              <View style={{ paddingVertical: Spacing.xl, alignItems: 'center' }}>
+                <Ionicons name="document-text-outline" size={40} color={Colors.textLight} />
+                <Text style={{ color: Colors.textLight, fontSize: FontSize.md, marginTop: Spacing.sm, textAlign: 'center' }}>
+                  No minutes generated yet.
+                </Text>
+                <Text style={{ color: Colors.textSecondary, fontSize: FontSize.sm, marginTop: Spacing.xs, textAlign: 'center' }}>
+                  {meeting.ai_enabled
+                    ? 'Minutes will be auto-generated when the meeting ends.'
+                    : 'Enable AI Minutes in Meeting Services to use this feature.'}
+                </Text>
+                {isAdmin && meeting.status === 'ended' && transcripts.length > 0 && (
+                  <TouchableOpacity
+                    style={{ marginTop: Spacing.md, backgroundColor: Colors.highlight, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, borderRadius: BorderRadius.md }}
+                    onPress={handleGenerateMinutes}
+                    disabled={generateLoading}
+                  >
+                    <Text style={{ color: '#FFF', fontWeight: FontWeight.semibold }}>
+                      {generateLoading ? 'Generating...' : 'Generate Minutes from Transcript'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </Card>
+          <View style={{ height: Spacing.xxl * 2 }} />
+        </>
+      )}
+
+      {/* ═══ TAB: MEETING (default) ══════════════════════════ */}
+      {activeTab === 'meeting' && (<>
+
       {/* ═══ MEETING TIMER (LIVE) ════════════════════════════ */}
       {meeting.status === 'live' && (
         <Card style={z.timerCard} variant="elevated">
@@ -1028,6 +1420,17 @@ export default function MeetingDetailScreen() {
 
             {/* Secondary Actions */}
             <View style={z.controlSecondary}>
+              <TouchableOpacity
+                style={[z.controlSecBtn, voiceToVoice && { backgroundColor: 'rgba(52, 211, 153, 0.15)', borderColor: '#10B981' }]}
+                onPress={() => {
+                  const next = !voiceToVoice;
+                  setVoiceToVoice(next);
+                  translationRef.current?.setAutoTTS(next);
+                }}
+              >
+                <Ionicons name={voiceToVoice ? 'volume-high' : 'volume-mute'} size={14} color={voiceToVoice ? '#10B981' : Colors.textLight} />
+                <Text style={[z.controlSecText, voiceToVoice && { color: '#10B981' }]}>Voice-to-Voice</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={z.controlSecBtn} onPress={handleMarkAttendance} disabled={actionLoading}>
                 <Ionicons name="hand-left" size={14} color={Colors.highlight} />
                 <Text style={z.controlSecText}>Attendance</Text>
@@ -1326,6 +1729,7 @@ export default function MeetingDetailScreen() {
       )}
 
       <View style={{ height: Spacing.xxl * 2 }} />
+      </>)}
 
       {/* ═══ PARTICIPANT MODAL ═══════════════════════════════ */}
       <ParticipantModal
@@ -1511,4 +1915,36 @@ const z = StyleSheet.create({
 
   // ── Video Status Bar ────────────────────────────────────
   videoStatusBar: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: 'rgba(15, 26, 46, 0.95)', paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
+
+  // ── Tab Bar ─────────────────────────────────────────────
+  tabBar: { flexDirection: 'row', marginHorizontal: Spacing.sm, marginBottom: Spacing.xs, backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: 3, borderWidth: 0.5, borderColor: Colors.accent },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: Spacing.sm, borderRadius: BorderRadius.md },
+  tabActive: { backgroundColor: Colors.primaryLight },
+  tabText: { fontSize: FontSize.sm, color: Colors.textLight, fontWeight: FontWeight.medium as any },
+  tabTextActive: { color: Colors.highlight, fontWeight: FontWeight.semibold as any },
+  tabDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.success, marginLeft: 2 },
+
+  // ── Transcript Tab ──────────────────────────────────────
+  transcriptRow: { paddingVertical: Spacing.sm, paddingHorizontal: Spacing.sm, borderBottomWidth: 0.5, borderBottomColor: Colors.accent },
+  transcriptRowSelf: { backgroundColor: 'rgba(129, 140, 248, 0.06)' },
+  transcriptHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 },
+  transcriptSpeaker: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold as any, color: Colors.highlight },
+  transcriptTime: { fontSize: FontSize.xs, color: Colors.textLight, fontVariant: ['tabular-nums'] as any },
+  transcriptText: { fontSize: FontSize.md, color: Colors.textWhite, lineHeight: 22 },
+  transcriptTranslations: { marginTop: Spacing.xs, paddingTop: Spacing.xs, borderTopWidth: 0.5, borderTopColor: Colors.accent },
+  transcriptTranslation: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 20, marginTop: 2 },
+
+  // ── Minutes Tab ─────────────────────────────────────────
+  minutesSection: { marginBottom: Spacing.md, paddingBottom: Spacing.md, borderBottomWidth: 0.5, borderBottomColor: Colors.accent },
+  minutesSectionTitle: { fontSize: FontSize.md, fontWeight: FontWeight.bold as any, color: Colors.highlight, marginBottom: Spacing.sm, textTransform: 'uppercase', letterSpacing: 0.5 },
+  minutesSectionContent: { fontSize: FontSize.md, color: Colors.textWhite, lineHeight: 24 },
+  minutesBulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: Spacing.xs },
+  minutesBulletText: { fontSize: FontSize.sm, color: Colors.textWhite, flex: 1, lineHeight: 20 },
+  contributionCard: { backgroundColor: Colors.primaryLight, borderRadius: BorderRadius.md, padding: Spacing.sm, marginBottom: Spacing.sm, borderWidth: 0.5, borderColor: Colors.accent },
+  contributionName: { fontSize: FontSize.md, fontWeight: FontWeight.semibold as any, color: Colors.textWhite },
+  contributionTime: { fontSize: FontSize.xs, color: Colors.textLight, marginTop: 2 },
+  contributionPoint: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 3, lineHeight: 20 },
+  downloadRow: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md },
+  downloadBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.xs, paddingVertical: Spacing.sm, borderRadius: BorderRadius.md, backgroundColor: Colors.primaryLight, borderWidth: 1, borderColor: Colors.accent },
+  downloadBtnText: { fontSize: FontSize.sm, color: Colors.highlight, fontWeight: FontWeight.medium as any },
 });

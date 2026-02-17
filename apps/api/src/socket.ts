@@ -369,8 +369,43 @@ export function setupSocketIO(httpServer: HttpServer): Server {
                 meetingId, orgId: meeting.organization_id,
               });
             }
+
+            // ── Persist transcript segment to DB ──────────
+            try {
+              await db('meeting_transcripts').insert({
+                meeting_id: meetingId,
+                organization_id: meeting.organization_id,
+                speaker_id: userId,
+                speaker_name: speakerName,
+                original_text: text,
+                source_lang: sourceLang,
+                translations: JSON.stringify(translations),
+                spoken_at: Date.now(),
+              });
+            } catch (dbErr) {
+              logger.warn('[TRANSLATION] Failed to persist transcript segment', dbErr);
+            }
           } else {
             translations = await translateToMultiple(text, [...targetLangs], sourceLang);
+          }
+        } else {
+          // No translations needed but still persist
+          try {
+            const meeting = await db('meetings').where({ id: meetingId }).select('organization_id').first();
+            if (meeting?.organization_id) {
+              await db('meeting_transcripts').insert({
+                meeting_id: meetingId,
+                organization_id: meeting.organization_id,
+                speaker_id: userId,
+                speaker_name: speakerName,
+                original_text: text,
+                source_lang: sourceLang,
+                translations: JSON.stringify({}),
+                spoken_at: Date.now(),
+              });
+            }
+          } catch (dbErr) {
+            logger.warn('[TRANSLATION] Failed to persist transcript segment', dbErr);
           }
         }
 
@@ -378,6 +413,7 @@ export function setupSocketIO(httpServer: HttpServer): Server {
         translations[sourceLang] = text;
 
         // Broadcast to all meeting participants
+        // Include ttsEnabled flag so clients know to auto-play TTS
         io.to(`meeting:${meetingId}`).emit('translation:result', {
           meetingId,
           speakerId: userId,
@@ -386,6 +422,7 @@ export function setupSocketIO(httpServer: HttpServer): Server {
           sourceLang,
           translations, // { en: "Hello", fr: "Bonjour", es: "Hola" }
           timestamp: Date.now(),
+          ttsEnabled: true, // Signal clients to auto-play TTS for translations
         });
       } catch (err) {
         logger.error('Translation failed', err);
