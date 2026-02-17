@@ -50,7 +50,7 @@ const ROLES = [
 
 export default function SignupInvitesScreen() {
   const globalRole = useAuthStore((s) => s.user?.globalRole);
-  const isSuperAdmin = globalRole === 'super_admin' || globalRole === 'developer';
+  const isSuperAdmin = globalRole === 'developer';
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
 
   const [invites, setInvites] = useState<SignupInvite[]>([]);

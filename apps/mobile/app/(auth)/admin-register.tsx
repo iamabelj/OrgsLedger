@@ -139,11 +139,11 @@ export default function AdminRegisterScreen() {
       // Step 2: Use the response tokens directly (no redundant login call)
       const result = response.data?.data;
       if (result?.accessToken && result?.refreshToken) {
-        const storage = require('../src/utils/storage').default;
+        const storage = require('../../src/utils/storage').default;
         await storage.setItemAsync('accessToken', result.accessToken);
         await storage.setItemAsync('refreshToken', result.refreshToken);
 
-        const { socketClient } = require('../src/api/socket');
+        const { socketClient } = require('../../src/api/socket');
         const memberships = (result.memberships || []).map((m: any) => ({
           ...m,
           organization_id: m.organization_id || m.organizationId,

@@ -74,8 +74,8 @@ const executiveItems: NavItem[] = [
   { label: 'Reports', icon: 'stats-chart-outline', path: '/admin/reports' },
 ];
 
-// Platform items - visible to super_admin and developer only
-const platformItems: NavItem[] = [
+// Developer-only items — NOT visible to super_admin
+const developerItems: NavItem[] = [
   { label: 'Developer Console', icon: 'code-slash-outline', path: '/admin/developer-console' },
 ];
 
@@ -297,7 +297,7 @@ export function NavigationDrawer() {
           drawerAdminItems,
         )}
 
-        {isSuperAdmin && renderGroup('PLATFORM', platformItems)}
+        {isDeveloper && renderGroup('PLATFORM', developerItems)}
 
         {renderGroup('LEGAL', legalItems)}
       </ScrollView>
@@ -365,6 +365,8 @@ const styles = StyleSheet.create({
   },
   mobileDrawerWrap: {
     height: '100%',
+    width: DRAWER_WIDTH,
+    maxWidth: '85%',
   },
 
   // ── Drawer container ──────────────────────────────────

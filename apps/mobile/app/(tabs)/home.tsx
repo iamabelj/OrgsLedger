@@ -67,7 +67,8 @@ export default function HomeScreen() {
   const currentMembership = memberships.find((m) => m.organization_id === currentOrgId);
   const userRole = currentMembership?.role || 'member';
   const globalRole = user?.globalRole;
-  const isSuperAdmin = globalRole === 'super_admin' || globalRole === 'developer';
+  const isDeveloper = globalRole === 'developer';
+  const isSuperAdmin = globalRole === 'super_admin' || isDeveloper;
   const isOrgAdmin = isSuperAdmin || userRole === 'org_admin';
   const isExecutive = userRole === 'executive';
   const isAdmin = isOrgAdmin || isExecutive;
@@ -167,8 +168,8 @@ export default function HomeScreen() {
         }
       } catch (_) {}
 
-      // Load platform stats (super admin only)
-      if (isSuperAdmin) {
+      // Load platform stats (developer only)
+      if (isDeveloper) {
         try {
           const [revRes, subsRes] = await Promise.allSettled([
             api.subscriptions.adminRevenue(),
@@ -187,7 +188,7 @@ export default function HomeScreen() {
     } catch (err) {
       setError('Failed to load dashboard');
     }
-  }, [currentOrgId, isAdmin, isSuperAdmin]);
+  }, [currentOrgId, isAdmin, isDeveloper]);
 
   useEffect(() => {
     loadDashboard();
@@ -384,10 +385,10 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Admin Section — Super Admin (org_admin) gets full control */}
+      {/* Admin Section — org admins get full control */}
       {isOrgAdmin && (
         <View style={styles.section}>
-          <SectionHeader title="Super Admin" />
+          <SectionHeader title="Administration" />
           <View style={styles.adminGrid}>
             <AdminActionCard
               icon="people"
@@ -625,8 +626,8 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Super Admin Platform Overview */}
-      {isSuperAdmin && platformStats && (
+      {/* Developer Platform Overview */}
+      {isDeveloper && platformStats && (
         <View style={styles.section}>
           <Card variant="elevated" style={styles.platformCard}>
             <View style={styles.finCardHeader}>
