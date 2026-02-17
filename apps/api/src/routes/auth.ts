@@ -527,12 +527,22 @@ router.post('/register-with-invite', validate(registerWithInviteSchema), async (
         .count('id as count')
         .first();
       const memberCount = parseInt(countResult?.count as string) || 0;
-      const sub = await trx('subscriptions')
-        .where({ organization_id: org.id })
-        .orderBy('created_at', 'desc')
-        .first();
-      const planRecord = sub?.plan_id ? await trx('plans').where({ id: sub.plan_id }).first() : null;
-      const maxMembers = planRecord?.max_members || 100;
+      
+      // Get subscription and plan for member limit (with fallback for missing tables)
+      let maxMembers = 100; // default
+      try {
+        const sub = await trx('subscriptions')
+          .where({ organization_id: org.id })
+          .orderBy('created_at', 'desc')
+          .first();
+        if (sub?.plan_id) {
+          const planRecord = await trx('subscription_plans').where({ id: sub.plan_id }).first();
+          maxMembers = planRecord?.max_members || 100;
+        }
+      } catch {
+        // Table may not exist - use default
+      }
+      
       if (memberCount >= maxMembers) {
         return { status: 403, error: 'This organization has reached its member limit.' };
       }
@@ -547,6 +557,8 @@ router.post('/register-with-invite', validate(registerWithInviteSchema), async (
           last_name: lastName,
           phone: phone || null,
           global_role: 'member',
+          is_active: true,
+          email_verified: false,
         })
         .returning(['id', 'email', 'first_name', 'last_name', 'global_role', 'created_at']);
 
@@ -623,9 +635,17 @@ router.post('/register-with-invite', validate(registerWithInviteSchema), async (
         ...tokens,
       },
     });
-  } catch (err) {
-    logger.error('Register-with-invite error', err);
-    res.status(500).json({ success: false, error: 'Registration failed' });
+  } catch (err: any) {
+    logger.error('Register-with-invite error', { message: err.message, stack: err.stack });
+    // Check for common database errors and provide helpful messages
+    const msg = err.message || '';
+    if (msg.includes('duplicate key') || msg.includes('unique constraint')) {
+      res.status(409).json({ success: false, error: 'Email already registered. Please sign in instead.' });
+    } else if (msg.includes('does not exist')) {
+      res.status(500).json({ success: false, error: 'System configuration error. Please contact support.' });
+    } else {
+      res.status(500).json({ success: false, error: 'Registration failed. Please try again.' });
+    }
   }
 });
 
