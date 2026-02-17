@@ -232,20 +232,26 @@ router.post(
           .where({ organization_id: req.params.orgId, role: 'org_admin', is_active: true })
           .pluck('user_id');
 
-        for (const adminId of admins) {
-          await db('notifications').insert({
+        // Batch insert notifications (single query instead of N)
+        if (admins.length > 0) {
+          const notificationRows = admins.map((adminId: string) => ({
             user_id: adminId,
             organization_id: req.params.orgId,
             type: 'payment',
             title: 'Bank Transfer Pending Approval',
             body: `${user?.first_name || 'A member'} submitted bank transfer of ${transaction.currency} ${transaction.amount}. Proof: ${proofOfPayment || 'Not provided'}`,
             data: JSON.stringify({ transactionId, type: 'bank_transfer_approval' }),
-          });
-          sendPushToUser(adminId, {
-            title: 'Bank Transfer Pending',
-            body: `${user?.first_name || 'A member'} submitted a bank transfer for ${transaction.currency} ${transaction.amount}. Awaiting your approval.`,
-            data: { transactionId, type: 'bank_transfer_approval' },
-          }).catch(err => logger.warn('Push notification failed (bank transfer pending)', err));
+          }));
+          await db('notifications').insert(notificationRows);
+
+          // Push notifications are external API calls — fire in parallel
+          for (const adminId of admins) {
+            sendPushToUser(adminId, {
+              title: 'Bank Transfer Pending',
+              body: `${user?.first_name || 'A member'} submitted a bank transfer for ${transaction.currency} ${transaction.amount}. Awaiting your approval.`,
+              data: { transactionId, type: 'bank_transfer_approval' },
+            }).catch(err => logger.warn('Push notification failed (bank transfer pending)', err));
+          }
         }
 
         res.json({

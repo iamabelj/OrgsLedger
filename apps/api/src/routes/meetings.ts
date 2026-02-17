@@ -612,17 +612,16 @@ router.post(
         }
       }
 
-      for (const a of attendees) {
-        await db('meeting_attendance')
-          .insert({
-            meeting_id: req.params.meetingId,
-            user_id: a.userId,
-            status: a.status || 'present',
-            joined_at: db.fn.now(),
-          })
-          .onConflict(['meeting_id', 'user_id'])
-          .merge({ status: a.status || 'present' });
-      }
+      const attendanceRows = attendees.map((a: { userId: string; status?: string }) => ({
+        meeting_id: req.params.meetingId,
+        user_id: a.userId,
+        status: a.status || 'present',
+        joined_at: db.fn.now(),
+      }));
+      await db('meeting_attendance')
+        .insert(attendanceRows)
+        .onConflict(['meeting_id', 'user_id'])
+        .merge(['status']);
 
       res.json({ success: true, message: 'Attendance updated' });
     } catch (err) {

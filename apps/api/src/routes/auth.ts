@@ -203,34 +203,51 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
       .where({ email: email.toLowerCase() })
       .select('*');
 
-    // Process pending invitations — auto-join those orgs
-    for (const invite of pendingInvites) {
-      // Check not already a member
-      const existingMembership = await db('memberships')
-        .where({ user_id: user.id, organization_id: invite.organization_id })
-        .first();
+    // Process pending invitations — auto-join those orgs (batch optimized)
+    if (pendingInvites.length > 0) {
+      const orgIds = pendingInvites.map((inv: any) => inv.organization_id);
 
-      if (!existingMembership) {
-        await db('memberships').insert({
+      // Batch check existing memberships
+      const existingMemberships = await db('memberships')
+        .where({ user_id: user.id })
+        .whereIn('organization_id', orgIds)
+        .select('organization_id');
+      const existingOrgIds = new Set(existingMemberships.map((m: any) => m.organization_id));
+
+      const newInvites = pendingInvites.filter((inv: any) => !existingOrgIds.has(inv.organization_id));
+
+      if (newInvites.length > 0) {
+        // Batch insert memberships
+        const membershipRows = newInvites.map((invite: any) => ({
           user_id: user.id,
           organization_id: invite.organization_id,
           role: invite.role || 'org_admin',
           is_active: true,
           joined_at: db.fn.now(),
-        });
+        }));
+        await db('memberships').insert(membershipRows);
 
-        // Add to general channel if it exists
-        const generalChannel = await db('channels')
-          .where({ organization_id: invite.organization_id, name: 'General' })
-          .first();
-        if (generalChannel) {
-          await db('channel_members').insert({
-            channel_id: generalChannel.id,
+        // Batch lookup general channels for all new orgs
+        const newOrgIds = newInvites.map((inv: any) => inv.organization_id);
+        const generalChannels = await db('channels')
+          .whereIn('organization_id', newOrgIds)
+          .where({ name: 'General' })
+          .select('id', 'organization_id');
+
+        if (generalChannels.length > 0) {
+          const channelMemberRows = generalChannels.map((ch: any) => ({
+            channel_id: ch.id,
             user_id: user.id,
-          }).onConflict(['channel_id', 'user_id']).ignore();
+          }));
+          await db('channel_members')
+            .insert(channelMemberRows)
+            .onConflict(['channel_id', 'user_id'])
+            .ignore();
         }
 
-        logger.info(`User ${email} auto-joined org via pending invitation (role: ${invite.role})`);
+        newInvites.forEach((invite: any) => {
+          logger.info(`User ${email} auto-joined org via pending invitation (role: ${invite.role})`);
+        });
       }
     }
 
@@ -695,35 +712,52 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
         .where({ email: email.toLowerCase() })
         .select('*');
 
-      for (const invite of pendingInvites) {
-        const existingMembership = await db('memberships')
-          .where({ user_id: user.id, organization_id: invite.organization_id })
-          .first();
+      if (pendingInvites.length > 0) {
+        const orgIds = pendingInvites.map((inv: any) => inv.organization_id);
 
-        if (!existingMembership) {
-          await db('memberships').insert({
+        // Batch check existing memberships
+        const existingMemberships = await db('memberships')
+          .where({ user_id: user.id })
+          .whereIn('organization_id', orgIds)
+          .select('organization_id');
+        const existingOrgIds = new Set(existingMemberships.map((m: any) => m.organization_id));
+
+        const newInvites = pendingInvites.filter((inv: any) => !existingOrgIds.has(inv.organization_id));
+
+        if (newInvites.length > 0) {
+          // Batch insert memberships
+          const membershipRows = newInvites.map((invite: any) => ({
             user_id: user.id,
             organization_id: invite.organization_id,
             role: invite.role || 'org_admin',
             is_active: true,
             joined_at: db.fn.now(),
-          });
+          }));
+          await db('memberships').insert(membershipRows);
 
-          const generalChannel = await db('channels')
-            .where({ organization_id: invite.organization_id, name: 'General' })
-            .first();
-          if (generalChannel) {
-            await db('channel_members').insert({
-              channel_id: generalChannel.id,
+          // Batch lookup general channels
+          const newOrgIds = newInvites.map((inv: any) => inv.organization_id);
+          const generalChannels = await db('channels')
+            .whereIn('organization_id', newOrgIds)
+            .where({ name: 'General' })
+            .select('id', 'organization_id');
+
+          if (generalChannels.length > 0) {
+            const channelMemberRows = generalChannels.map((ch: any) => ({
+              channel_id: ch.id,
               user_id: user.id,
-            }).onConflict(['channel_id', 'user_id']).ignore();
+            }));
+            await db('channel_members')
+              .insert(channelMemberRows)
+              .onConflict(['channel_id', 'user_id'])
+              .ignore();
           }
 
-          logger.info(`User ${email} joined org via pending invitation on login (role: ${invite.role})`);
+          newInvites.forEach((invite: any) => {
+            logger.info(`User ${email} joined org via pending invitation on login (role: ${invite.role})`);
+          });
         }
-      }
 
-      if (pendingInvites.length > 0) {
         await db('pending_invitations').where({ email: email.toLowerCase() }).delete();
       }
     } catch (pendingErr) {

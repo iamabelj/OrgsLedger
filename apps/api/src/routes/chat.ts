@@ -602,20 +602,14 @@ router.post(
         return;
       }
 
-      const attachments = await Promise.all(
-        files.map(async (file) => {
-          const [attachment] = await db('attachments')
-            .insert({
-              file_name: file.originalname,
-              file_url: `/uploads/${file.filename}`,
-              mime_type: file.mimetype,
-              size_bytes: file.size,
-              uploaded_by: req.user!.userId,
-            })
-            .returning('*');
-          return attachment;
-        })
-      );
+      const attachmentRows = files.map((file) => ({
+        file_name: file.originalname,
+        file_url: `/uploads/${file.filename}`,
+        mime_type: file.mimetype,
+        size_bytes: file.size,
+        uploaded_by: req.user!.userId,
+      }));
+      const attachments = await db('attachments').insert(attachmentRows).returning('*');
 
       res.status(201).json({ success: true, data: attachments });
     } catch (err) {
