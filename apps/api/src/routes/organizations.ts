@@ -257,7 +257,7 @@ router.put(
         'billingCurrency', 'paymentMethods', 'enablePaystack', 'enableStripe', 'enableFlutterwave',
         'enableBankTransfer', 'bankDetails', 'primaryColor', 'accentColor',
         'currency', 'timezone', 'locale', 'aiEnabled', 'features',
-        'notifications', 'enabledGateways',
+        'notifications', 'enabledGateways', 'description',
       ];
 
       const updates: Record<string, any> = {};
@@ -265,13 +265,11 @@ router.put(
         updates.name = name.trim();
       }
 
-      // Handle slug and description as top-level org columns
+      // Handle slug as top-level org column
       if (settings?.slug && typeof settings.slug === 'string') {
         updates.slug = settings.slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
       }
-      if (typeof settings?.description === 'string') {
-        updates.description = settings.description.trim();
-      }
+      // description is stored inside the JSON settings object (no DB column)
 
       if (settings && typeof settings === 'object' && !Array.isArray(settings)) {
         // Merge with existing settings instead of replacing
@@ -310,6 +308,7 @@ router.put(
 
       res.json({ success: true, message: 'Settings updated' });
     } catch (err) {
+      logger.error('Update settings error', err);
       res.status(500).json({ success: false, error: 'Failed to update settings' });
     }
   }

@@ -84,7 +84,6 @@ export default function SettingsScreen() {
       const org = res.data?.data || res.data;
       setOrgName(org?.name || '');
       setOrgSlug(org?.slug || '');
-      setOrgDescription(org?.description || '');
 
       // Parse settings from JSON string stored in DB
       let settings: any = {};
@@ -93,6 +92,8 @@ export default function SettingsScreen() {
           settings = typeof org.settings === 'string' ? JSON.parse(org.settings) : org.settings;
         } catch { settings = {}; }
       }
+      // description lives inside settings JSON (no top-level DB column)
+      setOrgDescription(org?.description || settings.description || '');
       setCurrency(settings.currency || org?.currency || 'USD');
       setEnabledGateways(settings.enabledGateways || ['stripe']);
       if (settings.notifications) {

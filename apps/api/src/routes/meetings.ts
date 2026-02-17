@@ -99,25 +99,36 @@ router.post(
       }
 
       // Insert meeting first to get ID, then generate deterministic room name
+      // Build insert payload — only include columns confirmed in DB schema
+      const meetingInsert: Record<string, any> = {
+        organization_id: req.params.orgId,
+        title,
+        description: description || null,
+        location: location || null,
+        scheduled_start: scheduledStart,
+        scheduled_end: scheduledEnd || null,
+        created_by: req.user!.userId,
+        ai_enabled: aiEnabled,
+        jitsi_room_id: 'pending', // placeholder, updated below
+      };
+      // Columns from migration 003
+      meetingInsert.recurring_pattern = recurringPattern || 'none';
+      meetingInsert.recurring_end_date = recurringEndDate || null;
+      // Columns from migration 005
+      meetingInsert.translation_enabled = translationEnabled || false;
+      // Columns from migration 020 (may not exist on older DBs)
+      try {
+        const hasMeetingType = await db.schema.hasColumn('meetings', 'meeting_type');
+        if (hasMeetingType) {
+          meetingInsert.meeting_type = meetingType || 'video';
+          meetingInsert.max_participants = maxParticipants || 0;
+          meetingInsert.duration_limit_minutes = durationLimitMinutes || 0;
+          meetingInsert.lobby_enabled = lobbyEnabled || false;
+        }
+      } catch { /* schema check failed — skip optional columns */ }
+
       const [meeting] = await db('meetings')
-        .insert({
-          organization_id: req.params.orgId,
-          title,
-          description: description || null,
-          location: location || null,
-          scheduled_start: scheduledStart,
-          scheduled_end: scheduledEnd || null,
-          created_by: req.user!.userId,
-          meeting_type: meetingType || 'video',
-          ai_enabled: aiEnabled,
-          translation_enabled: translationEnabled || false,
-          jitsi_room_id: 'pending', // placeholder, updated below
-          recurring_pattern: recurringPattern || 'none',
-          recurring_end_date: recurringEndDate || null,
-          max_participants: maxParticipants || 0,
-          duration_limit_minutes: durationLimitMinutes || 0,
-          lobby_enabled: lobbyEnabled || false,
-        })
+        .insert(meetingInsert)
         .returning('*');
 
       // Generate tenant-isolated room name: org_<orgId>_meeting_<meetingId>
