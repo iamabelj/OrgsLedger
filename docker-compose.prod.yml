@@ -55,6 +55,10 @@ services:
       - "443:443"
     depends_on:
       - api
+      - jitsi-web
+    networks:
+      - default
+      - meet.orgsledger.com
 
   certbot:
     image: certbot/certbot
@@ -65,9 +69,146 @@ services:
       - ./apps/mobile/dist:/usr/share/nginx/html
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do sleep 12h & wait $${!}; certbot renew --webroot -w /usr/share/nginx/html --quiet; done'"
 
+  # ── Jitsi Meet Stack ────────────────────────────────────
+  # Self-hosted Jitsi with JWT token authentication.
+  # All participants MUST present a backend-issued JWT.
+  # Meeting creators join as moderators (affiliation=owner).
+
+  jitsi-web:
+    image: jitsi/web:stable-9823
+    container_name: orgsledger_jitsi_web
+    restart: always
+    expose:
+      - "80"
+    volumes:
+      - jitsi_web_config:/config
+      - jitsi_web_crontabs:/var/spool/cron/crontabs
+      - jitsi_transcripts:/usr/share/jitsi-meet/transcripts
+    environment:
+      - XMPP_DOMAIN=meet.orgsledger.com
+      - XMPP_AUTH_DOMAIN=auth.meet.orgsledger.com
+      - XMPP_BOSH_URL_BASE=http://jitsi-xmpp:5280
+      - XMPP_MUC_DOMAIN=conference.meet.orgsledger.com
+      - XMPP_INTERNAL_MUC_DOMAIN=internal-muc.meet.orgsledger.com
+      - TZ=UTC
+      - ENABLE_AUTH=1
+      - AUTH_TYPE=jwt
+      - ENABLE_GUESTS=0
+      - JWT_APP_ID=orgsledger
+      - JWT_APP_SECRET=9d91c6a6631af5ed641488460fb0da7bd1baf731c9c8b540e74777afd7c2c905
+      - JWT_ACCEPTED_ISSUERS=orgsledger
+      - JWT_ACCEPTED_AUDIENCES=jitsi
+      - ENABLE_LOBBY=1
+      - ENABLE_AV_MODERATION=1
+      - ENABLE_PREJOIN_PAGE=0
+      - ENABLE_CLOSE_PAGE=0
+      - DISABLE_DEEP_LINKING=true
+      - ENABLE_NO_AUDIO_DETECTION=0
+      - ENABLE_NOISY_MIC_DETECTION=0
+      - TOKEN_AUTH_URL=true
+    depends_on:
+      - jitsi-xmpp
+    networks:
+      - meet.orgsledger.com
+
+  jitsi-xmpp:
+    image: jitsi/prosody:stable-9823
+    container_name: orgsledger_jitsi_xmpp
+    restart: always
+    expose:
+      - "5222"
+      - "5347"
+      - "5280"
+    volumes:
+      - jitsi_prosody_config:/config
+      - jitsi_prosody_plugins:/prosody-plugins-custom
+    environment:
+      - XMPP_DOMAIN=meet.orgsledger.com
+      - XMPP_AUTH_DOMAIN=auth.meet.orgsledger.com
+      - XMPP_MUC_DOMAIN=conference.meet.orgsledger.com
+      - XMPP_INTERNAL_MUC_DOMAIN=internal-muc.meet.orgsledger.com
+      - XMPP_MODULES=token_verification,token_affiliation
+      - XMPP_MUC_MODULES=token_verification,token_affiliation
+      - XMPP_CROSS_DOMAIN=true
+      - TZ=UTC
+      - ENABLE_AUTH=1
+      - AUTH_TYPE=jwt
+      - ENABLE_GUESTS=0
+      - JWT_APP_ID=orgsledger
+      - JWT_APP_SECRET=9d91c6a6631af5ed641488460fb0da7bd1baf731c9c8b540e74777afd7c2c905
+      - JWT_ACCEPTED_ISSUERS=orgsledger
+      - JWT_ACCEPTED_AUDIENCES=jitsi
+      - JWT_ALLOW_EMPTY=0
+      - JWT_TOKEN_AUTH_MODULE=token_verification
+      - ENABLE_LOBBY=1
+      - JICOFO_AUTH_PASSWORD=jicofo_pass_orgsledger_2026
+      - JVB_AUTH_PASSWORD=jvb_pass_orgsledger_2026
+    networks:
+      - meet.orgsledger.com
+
+  jitsi-jicofo:
+    image: jitsi/jicofo:stable-9823
+    container_name: orgsledger_jitsi_jicofo
+    restart: always
+    volumes:
+      - jitsi_jicofo_config:/config
+    environment:
+      - XMPP_DOMAIN=meet.orgsledger.com
+      - XMPP_AUTH_DOMAIN=auth.meet.orgsledger.com
+      - XMPP_MUC_DOMAIN=conference.meet.orgsledger.com
+      - XMPP_INTERNAL_MUC_DOMAIN=internal-muc.meet.orgsledger.com
+      - XMPP_SERVER=jitsi-xmpp
+      - JICOFO_AUTH_USER=focus
+      - JICOFO_AUTH_PASSWORD=jicofo_pass_orgsledger_2026
+      - AUTH_TYPE=jwt
+      - ENABLE_AUTH=1
+      - ENABLE_GUESTS=0
+      - TZ=UTC
+    depends_on:
+      - jitsi-xmpp
+    networks:
+      - meet.orgsledger.com
+
+  jitsi-jvb:
+    image: jitsi/jvb:stable-9823
+    container_name: orgsledger_jitsi_jvb
+    restart: always
+    ports:
+      - "10000:10000/udp"
+      - "8080:8080"
+    volumes:
+      - jitsi_jvb_config:/config
+    environment:
+      - XMPP_DOMAIN=meet.orgsledger.com
+      - XMPP_AUTH_DOMAIN=auth.meet.orgsledger.com
+      - XMPP_MUC_DOMAIN=conference.meet.orgsledger.com
+      - XMPP_INTERNAL_MUC_DOMAIN=internal-muc.meet.orgsledger.com
+      - XMPP_SERVER=jitsi-xmpp
+      - JVB_AUTH_USER=jvb
+      - JVB_AUTH_PASSWORD=jvb_pass_orgsledger_2026
+      - JVB_PORT=10000
+      - JVB_STUN_SERVERS=meet-jit-si-turnrelay.jitsi.net:443
+      - TZ=UTC
+      - PUBLIC_URL=https://meet.orgsledger.com
+    depends_on:
+      - jitsi-xmpp
+    networks:
+      - meet.orgsledger.com
+
 volumes:
   pgdata:
   redisdata:
   uploads:
   certbot_etc:
   certbot_var:
+  jitsi_web_config:
+  jitsi_web_crontabs:
+  jitsi_transcripts:
+  jitsi_prosody_config:
+  jitsi_prosody_plugins:
+  jitsi_jicofo_config:
+  jitsi_jvb_config:
+
+networks:
+  meet.orgsledger.com:
+    driver: bridge

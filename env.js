@@ -29,11 +29,11 @@ const defaults = {
   // JITSI_APP_SECRET must match app_secret in Prosody's token auth config.
   JITSI_DOMAIN: 'meet.orgsledger.com',
   JITSI_APP_ID: 'orgsledger',
-  JITSI_APP_SECRET: 'orgsledger_jitsi_secret_change_me',
+  JITSI_APP_SECRET: '9d91c6a6631af5ed641488460fb0da7bd1baf731c9c8b540e74777afd7c2c905',
   JITSI_TOKEN_EXPIRY: '7200',
 
   // CORS
-  CORS_ORIGINS: 'https://orgsledger.com,https://app.orgsledger.com',
+  CORS_ORIGINS: 'https://orgsledger.com,https://app.orgsledger.com,https://meet.orgsledger.com',
 
   // Email (SMTP via Hostinger)
   SMTP_HOST: 'smtp.hostinger.com',

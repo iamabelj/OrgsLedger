@@ -79,6 +79,12 @@ CORS_ORIGINS=https://${DOMAIN},https://app.${DOMAIN}
 
 DEFAULT_ADMIN_EMAIL=admin@orgsledger.com
 DEFAULT_ADMIN_PASSWORD=SuperAdmin1234!
+
+# Jitsi Secure-Domain (JWT authentication)
+JITSI_DOMAIN=meet.${DOMAIN}
+JITSI_APP_ID=orgsledger
+JITSI_APP_SECRET=9d91c6a6631af5ed641488460fb0da7bd1baf731c9c8b540e74777afd7c2c905
+JITSI_TOKEN_EXPIRY=7200
 ENVEOF
 echo "  ✓ .env.production created"
 
@@ -134,7 +140,7 @@ echo "  ✓ Database ready"
 echo "▸ [7/7] Getting SSL certificate..."
 docker compose -f docker-compose.prod.yml run --rm certbot certonly \
     --webroot -w /usr/share/nginx/html \
-    -d "$DOMAIN" -d "www.$DOMAIN" -d "api.$DOMAIN" -d "app.$DOMAIN" \
+    -d "$DOMAIN" -d "www.$DOMAIN" -d "api.$DOMAIN" -d "app.$DOMAIN" -d "meet.$DOMAIN" \
     --email "$EMAIL" --agree-tos --no-eff-email --force-renewal
 
 # Switch to full SSL nginx config
