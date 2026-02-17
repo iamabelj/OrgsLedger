@@ -139,62 +139,86 @@ router.post(
     try {
       const { name, description, chairUserId, memberIds } = req.body;
 
-      const [committee] = await db('committees')
-        .insert({
-          organization_id: req.params.orgId,
-          name,
-          description: description || null,
-          chair_user_id: chairUserId || null,
-        })
-        .returning('*');
+      const result = await db.transaction(async (trx) => {
+        // Validate member IDs are actual org members
+        const allMemberIds = new Set<string>(memberIds || []);
+        if (chairUserId) allMemberIds.add(chairUserId);
 
-      // Add initial members
-      const allMemberIds = new Set<string>(memberIds || []);
-      if (chairUserId) allMemberIds.add(chairUserId);
+        if (allMemberIds.size > 0) {
+          const validMembers = await trx('memberships')
+            .where({ organization_id: req.params.orgId })
+            .whereIn('user_id', Array.from(allMemberIds))
+            .select('user_id');
+          const validIds = new Set(validMembers.map((m: any) => m.user_id));
+          const invalidIds = Array.from(allMemberIds).filter((id) => !validIds.has(id));
+          if (invalidIds.length > 0) {
+            throw Object.assign(new Error('Some members are not part of this organization'), { status: 400 });
+          }
+        }
 
-      if (allMemberIds.size > 0) {
-        const memberInserts = Array.from(allMemberIds).map((userId) => ({
-          committee_id: committee.id,
-          user_id: userId,
-        }));
-        await db('committee_members').insert(memberInserts);
-      }
+        const [committee] = await trx('committees')
+          .insert({
+            organization_id: req.params.orgId,
+            name,
+            description: description || null,
+            chair_user_id: chairUserId || null,
+          })
+          .returning('*');
 
-      // Auto-create committee chat channel
-      const [channel] = await db('channels')
-        .insert({
-          organization_id: req.params.orgId,
-          name: `${name} (Committee)`,
-          type: 'committee',
-          description: `Channel for ${name} committee`,
-          committee_id: committee.id,
-        })
-        .returning('*');
+        // Add initial members
+        if (allMemberIds.size > 0) {
+          const memberInserts = Array.from(allMemberIds).map((userId) => ({
+            committee_id: committee.id,
+            user_id: userId,
+          }));
+          await trx('committee_members').insert(memberInserts);
+        }
 
-      // Add members to channel
-      if (allMemberIds.size > 0) {
-        const channelMemberInserts = Array.from(allMemberIds).map((userId) => ({
-          channel_id: channel.id,
-          user_id: userId,
-        }));
-        await db('channel_members').insert(channelMemberInserts);
-      }
+        // Auto-create committee chat channel
+        const channelName = `${name} (Committee)`;
+        const [channel] = await trx('channels')
+          .insert({
+            organization_id: req.params.orgId,
+            name: channelName,
+            type: 'committee',
+            description: `Channel for ${name} committee`,
+            committee_id: committee.id,
+          })
+          .returning('*');
+
+        // Add members to channel
+        if (allMemberIds.size > 0) {
+          const channelMemberInserts = Array.from(allMemberIds).map((userId) => ({
+            channel_id: channel.id,
+            user_id: userId,
+          }));
+          await trx('channel_members').insert(channelMemberInserts);
+        }
+
+        return { committee, channel, memberCount: allMemberIds.size };
+      });
 
       await (req as any).audit?.({
         organizationId: req.params.orgId,
         action: 'create',
         entityType: 'committee',
-        entityId: committee.id,
-        newValue: { name, memberCount: allMemberIds.size },
+        entityId: result.committee.id,
+        newValue: { name, memberCount: result.memberCount },
       });
 
       res.status(201).json({
         success: true,
-        data: { ...committee, channel },
+        data: { ...result.committee, channel: result.channel },
       });
-    } catch (err) {
+    } catch (err: any) {
       logger.error('Create committee error', err);
-      res.status(500).json({ success: false, error: 'Failed to create committee' });
+      if (err.status === 400) {
+        res.status(400).json({ success: false, error: err.message });
+      } else if (err.code === '23505') {
+        res.status(409).json({ success: false, error: 'A committee with this name already exists' });
+      } else {
+        res.status(500).json({ success: false, error: 'Failed to create committee' });
+      }
     }
   }
 );

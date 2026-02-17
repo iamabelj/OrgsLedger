@@ -82,7 +82,10 @@ export default function CreateMeetingScreen() {
       showAlert('Error', 'Please select date and time');
       return;
     }
-    if (!currentOrgId) return;
+    if (!currentOrgId) {
+      showAlert('Error', 'Please select an organization first');
+      return;
+    }
 
     setLoading(true);
     try {

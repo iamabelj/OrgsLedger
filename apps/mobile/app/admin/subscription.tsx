@@ -147,7 +147,7 @@ export default function SubscriptionScreen() {
         {sub && (
           <Card style={styles.featuresCard}>
             <SectionHeader title="Plan Features" />
-            {(PLAN_FEATURES[sub.plan?.toLowerCase()] || PLAN_FEATURES.standard).map((f, i) => (
+            {(PLAN_FEATURES[(typeof sub.plan === 'string' ? sub.plan : sub.plan_name || sub.plan?.name || 'standard').toLowerCase()] || PLAN_FEATURES.standard).map((f, i) => (
               <View key={i} style={styles.featureRow}>
                 <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
                 <Text style={styles.featureText}>{f}</Text>

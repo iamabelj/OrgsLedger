@@ -93,7 +93,8 @@ export default function PlansScreen() {
     if (!hours || hours < 1) return showAlert('Invalid', 'Enter at least 1 hour.');
     const pricePerHour = aiWallet?.price_per_hour_usd || 10;
     const cost = hours * pricePerHour;
-    showAlert('Top Up AI Wallet', `Add ${hours} hour(s) for $${cost.toFixed(2)}?`, [
+    const nairaCost = hours * (aiWallet?.price_per_hour_ngn || 18000);
+    showAlert('Top Up AI Wallet', `Add ${hours} hour(s) for $${cost.toFixed(2)} (₦${nairaCost.toLocaleString()})?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Confirm',
@@ -116,7 +117,8 @@ export default function PlansScreen() {
     if (!hours || hours < 1) return showAlert('Invalid', 'Enter at least 1 hour.');
     const pricePerHour = translationWallet?.price_per_hour_usd || 25;
     const cost = hours * pricePerHour;
-    showAlert('Top Up Translation Wallet', `Add ${hours} hour(s) for $${cost.toFixed(2)}?`, [
+    const nairaCost = hours * (translationWallet?.price_per_hour_ngn || 45000);
+    showAlert('Top Up Translation Wallet', `Add ${hours} hour(s) for $${cost.toFixed(2)} (₦${nairaCost.toLocaleString()})?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Confirm',
@@ -217,7 +219,7 @@ export default function PlansScreen() {
                   <Text style={styles.priceInterval}>/year</Text>
                 </View>
                 <Text style={styles.priceNgn}>
-                  or ₦{parseFloat(plan.price_ngn_annual).toLocaleString()}/year
+                  or ₦{(parseFloat(plan.price_ngn_annual) || 0).toLocaleString()}/year
                 </Text>
                 <View style={styles.features}>
                   <FeatureRow icon="people" text={`Up to ${plan.max_members} members`} />

@@ -6,7 +6,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { Platform, Dimensions } from 'react-native';
 
-export const DRAWER_WIDTH = 260;
+export const DRAWER_WIDTH = 220;
 export const DRAWER_COLLAPSED_WIDTH = 72;
 
 interface DrawerContextValue {
@@ -36,9 +36,9 @@ export function DrawerProvider({ children }: { children: React.ReactNode }) {
   const isDesktop = windowWidth >= 1024;
   const isTablet = windowWidth >= 768 && windowWidth < 1024;
 
-  // Desktop starts open, mobile/tablet starts closed
+  // Desktop starts collapsed, mobile/tablet starts closed
   const [isOpen, setIsOpen] = useState(() => isDesktop);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => isDesktop);
 
   // Listen to window resize on web
   useEffect(() => {
@@ -52,7 +52,7 @@ export function DrawerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isDesktop) {
       setIsOpen(true);
-      setIsCollapsed(false);
+      setIsCollapsed(true);
     } else {
       setIsOpen(false);
       setIsCollapsed(false);

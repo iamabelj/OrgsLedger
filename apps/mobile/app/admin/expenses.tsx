@@ -130,7 +130,7 @@ export default function ExpensesScreen() {
           <Text style={styles.expenseDescription}>{item.description}</Text>
           <Text style={styles.expenseCategory}>{item.category}</Text>
         </View>
-        <Text style={styles.expenseAmount}>-${item.amount.toFixed(2)}</Text>
+        <Text style={styles.expenseAmount}>-${Number(item.amount || 0).toFixed(2)}</Text>
       </View>
       <View style={styles.expenseMeta}>
         <View style={styles.metaItem}>

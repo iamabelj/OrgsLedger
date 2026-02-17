@@ -165,19 +165,38 @@ router.get(
       const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 50));
       const offset = (page - 1) * limit;
 
-      const dues = await db('dues')
+      let query = db('dues')
         .where({ organization_id: req.params.orgId })
         .orderBy('due_date', 'desc')
         .limit(limit)
         .offset(offset);
 
+      // Non-admins only see org-wide dues or dues targeting them
+      if (req.membership?.role === 'member' || req.membership?.role === 'guest') {
+        const userId = req.user!.userId;
+        query = query.where(function () {
+          this.whereNull('target_member_ids')
+            .orWhere('target_member_ids', '[]')
+            .orWhereRaw("target_member_ids::text LIKE ?", [`%${userId}%`]);
+        });
+      }
+
+      const dues = await query;
+
       // Batch: payment stats for all dues in one query (GROUP BY)
       let enriched = dues;
       if (dues.length) {
         const dueIds = dues.map((d: any) => d.id);
-        const allStats = await db('transactions')
+        let statsQuery = db('transactions')
           .whereIn('reference_id', dueIds)
-          .where({ reference_type: 'due' })
+          .where({ reference_type: 'due' });
+
+        // Non-admins only see their own payment stats
+        if (req.membership?.role === 'member' || req.membership?.role === 'guest') {
+          statsQuery = statsQuery.where({ user_id: req.user!.userId });
+        }
+
+        const allStats = await statsQuery
           .select(
             'reference_id',
             db.raw("count(*) filter (where status = 'completed') as paid_count"),
@@ -485,6 +504,11 @@ router.get(
           'users.email'
         );
 
+      // Non-admins only see their own transactions
+      if (req.membership?.role === 'member' || req.membership?.role === 'guest') {
+        query = query.where({ 'transactions.user_id': req.user!.userId });
+      }
+
       if (type) query = query.where({ 'transactions.type': type });
       if (status) query = query.where({ 'transactions.status': status });
       if (userId) query = query.where({ 'transactions.user_id': userId });
@@ -498,9 +522,15 @@ router.get(
         .offset((page - 1) * limit)
         .limit(limit);
 
-      // Summary totals
-      const summary = await db('transactions')
-        .where({ organization_id: req.params.orgId, status: 'completed' })
+      // Summary totals (scoped to user for non-admins)
+      let summaryQuery = db('transactions')
+        .where({ organization_id: req.params.orgId, status: 'completed' });
+
+      if (req.membership?.role === 'member' || req.membership?.role === 'guest') {
+        summaryQuery = summaryQuery.where({ user_id: req.user!.userId });
+      }
+
+      const summary = await summaryQuery
         .select(
           db.raw("coalesce(sum(amount) filter (where type = 'due'), 0) as total_dues_collected"),
           db.raw("coalesce(sum(amount) filter (where type in ('fine', 'misconduct_fine', 'late_fee')), 0) as total_fines_collected"),

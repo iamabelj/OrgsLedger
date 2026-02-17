@@ -102,7 +102,7 @@ export default function DonateScreen() {
               </View>
               <View style={styles.progressRow}>
                 <Text style={styles.progressRaised}>${(campaign.total_raised || 0).toFixed(2)} raised</Text>
-                <Text style={styles.progressGoal}>of ${campaign.goal_amount.toFixed(2)}</Text>
+                <Text style={styles.progressGoal}>of ${Number(campaign.goal_amount || 0).toFixed(2)}</Text>
               </View>
               <Text style={styles.progressPct}>{progressPct.toFixed(0)}% funded</Text>
             </>

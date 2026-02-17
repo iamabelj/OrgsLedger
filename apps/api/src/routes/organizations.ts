@@ -256,20 +256,45 @@ router.put(
         'allowPublicJoin', 'requireApproval', 'defaultRole',
         'billingCurrency', 'paymentMethods', 'enablePaystack', 'enableStripe', 'enableFlutterwave',
         'enableBankTransfer', 'bankDetails', 'primaryColor', 'accentColor',
+        'currency', 'timezone', 'locale', 'aiEnabled', 'features',
+        'notifications', 'enabledGateways',
       ];
 
       const updates: Record<string, any> = {};
       if (name && typeof name === 'string' && name.trim().length > 0 && name.length <= 200) {
         updates.name = name.trim();
       }
+
+      // Handle slug and description as top-level org columns
+      if (settings?.slug && typeof settings.slug === 'string') {
+        updates.slug = settings.slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
+      }
+      if (typeof settings?.description === 'string') {
+        updates.description = settings.description.trim();
+      }
+
       if (settings && typeof settings === 'object' && !Array.isArray(settings)) {
-        const filtered: Record<string, any> = {};
+        // Merge with existing settings instead of replacing
+        let existingSettings: Record<string, any> = {};
+        try {
+          const org = await db('organizations').where({ id: req.params.orgId }).select('settings').first();
+          if (org?.settings) {
+            existingSettings = typeof org.settings === 'string' ? JSON.parse(org.settings) : org.settings;
+          }
+        } catch {}
+
+        const filtered: Record<string, any> = { ...existingSettings };
         for (const key of Object.keys(settings)) {
           if (ALLOWED_SETTINGS_KEYS.includes(key)) {
             filtered[key] = settings[key];
           }
         }
         updates.settings = JSON.stringify(filtered);
+
+        // Update billing_currency column when currency changes
+        if (settings.currency && typeof settings.currency === 'string') {
+          updates.billing_currency = settings.currency.toUpperCase();
+        }
       }
 
       await db('organizations').where({ id: req.params.orgId }).update(updates);
