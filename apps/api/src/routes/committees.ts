@@ -6,7 +6,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import db from '../db';
-import { authenticate, loadMembershipAndSub as loadMembership, requireRole, validate } from '../middleware';
+import { authenticate, loadMembership, requireRole, validate } from '../middleware';
 import { logger } from '../logger';
 
 const router = Router();

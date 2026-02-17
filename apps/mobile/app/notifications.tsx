@@ -111,7 +111,8 @@ export default function NotificationsScreen() {
     setError(null);
     try {
       const res = await api.notifications.list();
-      setNotifications(res.data || []);
+      const items = res.data?.data || res.data;
+      setNotifications(Array.isArray(items) ? items : []);
     } catch (err) {
       setError('Failed to load notifications');
     } finally {
@@ -124,7 +125,8 @@ export default function NotificationsScreen() {
     setError(null);
     try {
       const res = await api.notifications.list();
-      setNotifications(res.data || []);
+      const items = res.data?.data || res.data;
+      setNotifications(Array.isArray(items) ? items : []);
     } catch (err) {
       setError('Failed to refresh notifications');
     } finally {

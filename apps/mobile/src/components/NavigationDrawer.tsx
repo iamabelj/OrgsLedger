@@ -367,14 +367,16 @@ const styles = StyleSheet.create({
     height: '100%',
     width: DRAWER_WIDTH,
     maxWidth: '85%',
+    flex: 1,
   },
 
   // ── Drawer container ──────────────────────────────────
   drawer: {
-    flex: 1,
+    height: '100%',
     backgroundColor: Colors.surface,
     borderRightWidth: 1,
     borderRightColor: Colors.borderLight,
+    flexShrink: 0,
     ...(Platform.OS === 'web' ? {
       transition: 'width 0.2s ease',
     } : {}),
