@@ -160,6 +160,11 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const status = req.body.status || 'attending'; // attending, declined, maybe
+      const validStatuses = ['attending', 'declined', 'maybe'];
+      if (!validStatuses.includes(status)) {
+        res.status(400).json({ success: false, error: `Invalid RSVP status. Must be one of: ${validStatuses.join(', ')}` });
+        return;
+      }
 
       const event = await db('events')
         .where({ id: req.params.eventId, organization_id: req.params.orgId })

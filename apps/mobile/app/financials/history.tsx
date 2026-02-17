@@ -73,7 +73,7 @@ export default function PaymentHistoryScreen() {
         keyExtractor={(item: any) => item.id}
         contentContainerStyle={[{ padding: Spacing.md }, contentStyle]}
         ListEmptyComponent={
-          <EmptyState icon="wallet-outline" title="No Payment History" message="Your transaction history will appear here." />
+          <EmptyState icon="wallet-outline" title="No Payment History" subtitle="Your transaction history will appear here." />
         }
         renderItem={({ item }: { item: any }) => {
           const tc = TXN_ICON[item.type] || TXN_ICON.due_payment;
@@ -91,7 +91,7 @@ export default function PaymentHistoryScreen() {
               <View style={styles.txnRight}>
                 <Text style={styles.txnAmount}>${parseFloat(item.amount).toFixed(2)}</Text>
                 <Badge
-                  variant={item.status === 'completed' ? 'success' : item.status === 'pending' ? 'warning' : item.status === 'overdue' ? 'danger' : 'default'}
+                  variant={item.status === 'completed' ? 'success' : item.status === 'pending' ? 'warning' : item.status === 'overdue' ? 'danger' : 'neutral'}
                   label={item.status}
                 />
               </View>

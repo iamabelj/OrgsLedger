@@ -609,6 +609,18 @@ router.put(
       if (role) updates.role = role;
       if (isActive !== undefined) updates.is_active = isActive;
 
+      // Prevent demoting the last org_admin
+      if (role && membership.role === 'org_admin' && role !== 'org_admin') {
+        const adminCount = await db('memberships')
+          .where({ organization_id: req.params.orgId, role: 'org_admin', is_active: true })
+          .count('id as count')
+          .first();
+        if ((parseInt(adminCount?.count as string) || 0) <= 1) {
+          res.status(400).json({ success: false, error: 'Cannot demote the last admin. Promote another member first.' });
+          return;
+        }
+      }
+
       const previousValue = { role: membership.role, is_active: membership.is_active };
       await db('memberships').where({ id: membership.id }).update(updates);
 
@@ -636,6 +648,27 @@ router.delete(
   requireRole('org_admin'),
   async (req: Request, res: Response) => {
     try {
+      // Prevent removing yourself
+      if (req.params.userId === req.user!.userId) {
+        res.status(400).json({ success: false, error: 'You cannot remove yourself. Transfer ownership first.' });
+        return;
+      }
+
+      // Prevent removing last org_admin
+      const target = await db('memberships')
+        .where({ user_id: req.params.userId, organization_id: req.params.orgId, is_active: true })
+        .first();
+      if (target?.role === 'org_admin') {
+        const adminCount = await db('memberships')
+          .where({ organization_id: req.params.orgId, role: 'org_admin', is_active: true })
+          .count('id as count')
+          .first();
+        if ((parseInt(adminCount?.count as string) || 0) <= 1) {
+          res.status(400).json({ success: false, error: 'Cannot remove the last admin. Promote another member first.' });
+          return;
+        }
+      }
+
       await db('memberships')
         .where({ user_id: req.params.userId, organization_id: req.params.orgId })
         .update({ is_active: false });

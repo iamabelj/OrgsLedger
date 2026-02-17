@@ -595,6 +595,18 @@ router.post(
         return;
       }
 
+      const validStatuses = ['present', 'absent', 'late', 'excused'];
+      for (const a of attendees) {
+        if (!a.userId || typeof a.userId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(a.userId)) {
+          res.status(400).json({ success: false, error: 'Invalid userId in attendees' });
+          return;
+        }
+        if (a.status && !validStatuses.includes(a.status)) {
+          res.status(400).json({ success: false, error: `Invalid status: ${a.status}` });
+          return;
+        }
+      }
+
       for (const a of attendees) {
         await db('meeting_attendance')
           .insert({
@@ -624,6 +636,14 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { title, description, options } = req.body;
+
+      // Verify meeting belongs to this org
+      const meeting = await db('meetings')
+        .where({ id: req.params.meetingId, organization_id: req.params.orgId })
+        .first();
+      if (!meeting) {
+        return res.status(404).json({ success: false, error: 'Meeting not found' });
+      }
 
       const [vote] = await db('votes')
         .insert({
@@ -776,10 +796,19 @@ router.post(
   authenticate,
   async (req: Request, res: Response) => {
     try {
-      const { text, targetLang, sourceLang } = req.body;
+      const { text, targetLang, sourceLang, organizationId } = req.body;
       if (!text || !targetLang) {
         return res.status(400).json({ success: false, error: 'text and targetLang are required' });
       }
+
+      // Check translation wallet if org context is provided
+      if (organizationId) {
+        const wallet = await db('translation_wallet').where({ organization_id: organizationId }).first();
+        if (wallet && parseFloat(wallet.balance_minutes) <= 0) {
+          return res.status(402).json({ success: false, error: 'Translation wallet balance is zero. Please contact your administrator.' });
+        }
+      }
+
       const result = await translateText(text, targetLang, sourceLang);
       res.json({ success: true, data: result });
     } catch (err: any) {

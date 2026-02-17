@@ -149,7 +149,7 @@ router.put(
   '/:orgId/:expenseId',
   authenticate,
   loadMembership,
-  requireRole('org_admin', 'executive', 'treasurer'),
+  requireRole('org_admin', 'executive', 'member'),
   validate(updateExpenseSchema),
   async (req: Request, res: Response) => {
     try {
@@ -201,7 +201,7 @@ router.delete(
   '/:orgId/:expenseId',
   authenticate,
   loadMembership,
-  requireRole('org_admin', 'executive', 'treasurer'),
+  requireRole('org_admin', 'executive', 'member'),
   async (req: Request, res: Response) => {
     try {
       const expense = await db('expenses')

@@ -292,13 +292,11 @@ export default function ChannelMessagesScreen() {
       ) : (
         <FlatList
           ref={flatListRef}
-          data={messages}
+          data={[...messages].reverse()}
+          inverted
           keyExtractor={(item) => item.id}
           renderItem={renderMessage}
           contentContainerStyle={[styles.messagesList, contentStyle]}
-          onContentSizeChange={() =>
-            flatListRef.current?.scrollToEnd({ animated: false })
-          }
           ListEmptyComponent={
             <View style={styles.emptyChat}>
               <Ionicons name="chatbubble-outline" size={40} color={Colors.textLight} />

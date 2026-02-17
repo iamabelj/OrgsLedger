@@ -101,6 +101,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: async () => {
     socketClient.disconnect();
     await api.clearAuth();
+    await storage.deleteItemAsync('currentOrgId');
     set({
       user: null,
       memberships: [],

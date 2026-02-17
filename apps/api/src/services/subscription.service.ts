@@ -71,7 +71,7 @@ export async function getOrgSubscription(orgId: string) {
   const plan = await getPlanById(sub.plan_id);
   const now = new Date();
   const periodEnd = new Date(sub.current_period_end);
-  const graceEnd = new Date(sub.grace_period_end);
+  const graceEnd = sub.grace_period_end ? new Date(sub.grace_period_end) : new Date(periodEnd);
 
   // Auto-transition status
   if (sub.status === 'active' && now > periodEnd) {
@@ -556,44 +556,70 @@ export async function validateInviteLink(code: string) {
 }
 
 export async function useInviteLink(code: string, userId: string) {
-  const validation = await validateInviteLink(code);
-  if (!validation.valid) return validation;
+  return db.transaction(async (trx) => {
+    // Lock the invite link row to prevent concurrent use_count bypass
+    const link = await trx('invite_links')
+      .where({ code, is_active: true })
+      .forUpdate()
+      .first();
 
-  const { link, organization } = validation;
-
-  // Check if already member
-  const existing = await db('memberships').where({
-    user_id: userId,
-    organization_id: link.organization_id,
-  }).first();
-
-  if (existing) {
-    if (existing.is_active) return { valid: false, error: 'Already a member of this organization' };
-    await db('memberships').where({ id: existing.id }).update({ is_active: true, role: link.role });
-  } else {
-    // Check member limit
-    const { allowed, current, max } = await checkMemberLimit(link.organization_id);
-    if (!allowed) {
-      return { valid: false, error: `Organization has reached its member limit (${current}/${max}). Upgrade the plan.` };
+    if (!link) return { valid: false, error: 'Invalid or expired invite link' };
+    if (link.max_uses && link.use_count >= link.max_uses) {
+      return { valid: false, error: 'This invite link has reached its maximum uses' };
+    }
+    if (link.expires_at && new Date(link.expires_at) < new Date()) {
+      return { valid: false, error: 'This invite link has expired' };
     }
 
-    await db('memberships').insert({
+    const organization = await trx('organizations').where({ id: link.organization_id }).first();
+    if (!organization) return { valid: false, error: 'Organization not found' };
+
+    // Check if already member
+    const existing = await trx('memberships').where({
       user_id: userId,
       organization_id: link.organization_id,
-      role: link.role,
-    });
-  }
+    }).first();
 
-  // Add to General channel
-  const general = await db('channels').where({ organization_id: link.organization_id, type: 'general' }).first();
-  if (general) {
-    await db('channel_members').insert({ channel_id: general.id, user_id: userId }).onConflict(['channel_id', 'user_id']).ignore();
-  }
+    if (existing) {
+      if (existing.is_active) return { valid: false, error: 'Already a member of this organization' };
+      await trx('memberships').where({ id: existing.id }).update({ is_active: true, role: link.role });
+    } else {
+      // Check member limit
+      const memberCount = await trx('memberships')
+        .where({ organization_id: link.organization_id, is_active: true })
+        .count('* as count')
+        .first();
+      const sub = await trx('subscriptions')
+        .where({ organization_id: link.organization_id, status: 'active' })
+        .first();
+      let maxMembers = 15; // free tier default
+      if (sub) {
+        const plan = await trx('plans').where({ id: sub.plan_id }).first();
+        maxMembers = plan?.max_members || 100;
+      }
+      const current = parseInt(String(memberCount?.count || 0));
+      if (current >= maxMembers) {
+        return { valid: false, error: `Organization has reached its member limit (${current}/${maxMembers}). Upgrade the plan.` };
+      }
 
-  // Increment use count
-  await db('invite_links').where({ id: link.id }).update({ use_count: db.raw('use_count + 1') });
+      await trx('memberships').insert({
+        user_id: userId,
+        organization_id: link.organization_id,
+        role: link.role,
+      });
+    }
 
-  return { valid: true, organization };
+    // Add to General channel
+    const general = await trx('channels').where({ organization_id: link.organization_id, type: 'general' }).first();
+    if (general) {
+      await trx('channel_members').insert({ channel_id: general.id, user_id: userId }).onConflict(['channel_id', 'user_id']).ignore();
+    }
+
+    // Increment use count
+    await trx('invite_links').where({ id: link.id }).update({ use_count: trx.raw('use_count + 1') });
+
+    return { valid: true, organization };
+  });
 }
 
 // ── Usage Records (Metering) ──────────────────────────────
@@ -623,7 +649,7 @@ export async function completeUsageRecord(recordId: string, durationMinutes: num
 // ── Admin Adjustments ─────────────────────────────────────
 export async function adminAdjustAiWallet(orgId: string, minutes: number, description: string) {
   await db.transaction(async (trx) => {
-    const wallet = await trx('ai_wallet').where({ organization_id: orgId }).first();
+    const wallet = await trx('ai_wallet').where({ organization_id: orgId }).forUpdate().first();
     const balanceBefore = parseFloat(wallet.balance_minutes);
     const balanceAfter = Math.max(balanceBefore + minutes, 0);
     await trx('ai_wallet')
@@ -648,7 +674,7 @@ export async function adminAdjustAiWallet(orgId: string, minutes: number, descri
 
 export async function adminAdjustTranslationWallet(orgId: string, minutes: number, description: string) {
   await db.transaction(async (trx) => {
-    const wallet = await trx('translation_wallet').where({ organization_id: orgId }).first();
+    const wallet = await trx('translation_wallet').where({ organization_id: orgId }).forUpdate().first();
     const balanceBefore = parseFloat(wallet.balance_minutes);
     const balanceAfter = Math.max(balanceBefore + minutes, 0);
     await trx('translation_wallet')

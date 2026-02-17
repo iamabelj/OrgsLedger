@@ -176,7 +176,7 @@ export default function ChatScreen() {
                     {item.type === 'direct' ? '' : '# '}
                     {item.name}
                   </Text>
-                  <Badge label={item.type} variant="default" size="sm" />
+                  <Badge label={item.type} variant="neutral" size="sm" />
                 </View>
                 {item.description ? (
                   <Text style={styles.channelDesc} numberOfLines={1}>

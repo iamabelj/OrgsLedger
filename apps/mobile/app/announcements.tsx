@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../src/stores/auth.store';
 import { api } from '../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../src/theme';
-import { Card, Button, Input, Badge } from '../src/components/ui';
+import { Card, Button, Input, Badge, LoadingScreen } from '../src/components/ui';
 import { useResponsive } from '../src/hooks/useResponsive';
 
 const PRIORITY_CONFIG: Record<string, { color: string; icon: string }> = {
@@ -61,6 +61,8 @@ export default function AnnouncementsScreen() {
   }, [currentOrgId]);
 
   useEffect(() => { loadAnnouncements(); }, [loadAnnouncements]);
+
+  if (loading && !refreshing) return <LoadingScreen />;
 
   const handleCreate = async () => {
     if (!title.trim() || !body.trim()) {

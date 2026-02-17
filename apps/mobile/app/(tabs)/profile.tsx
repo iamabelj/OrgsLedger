@@ -74,7 +74,7 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (!currentOrgId) return;
     api.notifications.getPreferences().then((res: any) => {
-      if (res.data?.preferences) setNotifPrefs((prev) => ({ ...prev, ...res.data.preferences }));
+      if (res.data?.data) setNotifPrefs((prev) => ({ ...prev, ...res.data.data }));
     }).catch(() => {});
   }, [currentOrgId]);
 
@@ -290,7 +290,7 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statCard}>
-            <Text style={[styles.statValue, { textTransform: 'capitalize' }]}>{currentMembership?.role?.replace('_', ' ') || 'N/A'}</Text>
+            <Text style={[styles.statValue, { textTransform: 'capitalize' }]}>{currentMembership?.role?.replace(/_/g, ' ') || 'N/A'}</Text>
             <Text style={styles.statLabel}>Current Role</Text>
           </View>
           <View style={styles.statDivider} />
@@ -328,7 +328,7 @@ export default function ProfileScreen() {
                     <View style={[styles.orgDot, active && styles.orgDotActive]} />
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.orgName, active && styles.orgNameActive]}>{m.organizationName || m.organization_id}</Text>
-                      <Text style={styles.orgRole}>{m.role.replace('_', ' ')}</Text>
+                      <Text style={styles.orgRole}>{m.role.replace(/_/g, ' ')}</Text>
                     </View>
                     {active && <Ionicons name="checkmark-circle" size={20} color={Colors.highlight} />}
                   </TouchableOpacity>

@@ -87,7 +87,7 @@ export const CURRENCIES = {
   NGN: 'NGN',
 } as const;
 
-export const RATE_NGN_PER_USD = 1500;
+export const RATE_NGN_PER_USD = parseInt(process.env.RATE_NGN_PER_USD || '1600', 10);
 
 // ── Pagination Defaults ─────────────────────────────────────
 export const PAGINATION = {

@@ -378,6 +378,14 @@ router.delete(
         })
         .del();
 
+      // Also remove from the committee's linked chat channel
+      const channel = await db('channels').where({ committee_id: req.params.committeeId }).first();
+      if (channel) {
+        await db('channel_members')
+          .where({ channel_id: channel.id, user_id: req.params.userId })
+          .del();
+      }
+
       // Update chair if removed user was the chair
       await db('committees')
         .where({ id: req.params.committeeId, chair_user_id: req.params.userId })

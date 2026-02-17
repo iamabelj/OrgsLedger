@@ -66,54 +66,59 @@ router.post(
     try {
       const data = req.body;
 
-      const [due] = await db('dues')
-        .insert({
+      // Wrap due + transactions + notifications in a single transaction
+      const due = await db.transaction(async (trx) => {
+        const [due] = await trx('dues')
+          .insert({
+            organization_id: req.params.orgId,
+            title: data.title,
+            description: data.description || null,
+            amount: data.amount,
+            currency: data.currency,
+            due_date: data.dueDate,
+            late_fee_amount: data.lateFeeAmount || null,
+            late_fee_grace_days: data.lateFeeGraceDays || null,
+            is_recurring: data.isRecurring,
+            recurrence_rule: data.recurrenceRule || null,
+            target_member_ids: JSON.stringify(data.targetMemberIds),
+            created_by: req.user!.userId,
+          })
+          .returning('*');
+
+        // Create pending transactions for targeted members
+        let targetUserIds = data.targetMemberIds;
+        if (!targetUserIds.length) {
+          targetUserIds = await trx('memberships')
+            .where({ organization_id: req.params.orgId, is_active: true })
+            .pluck('user_id');
+        }
+
+        const transactions = targetUserIds.map((userId: string) => ({
           organization_id: req.params.orgId,
-          title: data.title,
-          description: data.description || null,
+          user_id: userId,
+          type: 'due',
           amount: data.amount,
           currency: data.currency,
-          due_date: data.dueDate,
-          late_fee_amount: data.lateFeeAmount || null,
-          late_fee_grace_days: data.lateFeeGraceDays || null,
-          is_recurring: data.isRecurring,
-          recurrence_rule: data.recurrenceRule || null,
-          target_member_ids: JSON.stringify(data.targetMemberIds),
-          created_by: req.user!.userId,
-        })
-        .returning('*');
+          status: 'pending',
+          description: data.title,
+          reference_id: due.id,
+          reference_type: 'due',
+        }));
+        await trx('transactions').insert(transactions);
 
-      // Create pending transactions for targeted members
-      let targetUserIds = data.targetMemberIds;
-      if (!targetUserIds.length) {
-        targetUserIds = await db('memberships')
-          .where({ organization_id: req.params.orgId, is_active: true })
-          .pluck('user_id');
-      }
+        // Notify members
+        const notifications = targetUserIds.map((userId: string) => ({
+          user_id: userId,
+          organization_id: req.params.orgId,
+          type: 'due_reminder',
+          title: 'New Due Created',
+          body: `${data.title} — ${data.currency} ${data.amount} due by ${new Date(data.dueDate).toLocaleDateString()}`,
+          data: JSON.stringify({ dueId: due.id }),
+        }));
+        await trx('notifications').insert(notifications);
 
-      const transactions = targetUserIds.map((userId: string) => ({
-        organization_id: req.params.orgId,
-        user_id: userId,
-        type: 'due',
-        amount: data.amount,
-        currency: data.currency,
-        status: 'pending',
-        description: data.title,
-        reference_id: due.id,
-        reference_type: 'due',
-      }));
-      await db('transactions').insert(transactions);
-
-      // Notify members
-      const notifications = targetUserIds.map((userId: string) => ({
-        user_id: userId,
-        organization_id: req.params.orgId,
-        type: 'due_reminder',
-        title: 'New Due Created',
-        body: `${data.title} — ${data.currency} ${data.amount} due by ${new Date(data.dueDate).toLocaleDateString()}`,
-        data: JSON.stringify({ dueId: due.id }),
-      }));
-      await db('notifications').insert(notifications);
+        return due;
+      });
 
       // Push notification for new due
       sendPushToOrg(req.params.orgId, {
@@ -205,40 +210,45 @@ router.post(
         return;
       }
 
-      const [fine] = await db('fines')
-        .insert({
+      // Wrap fine + transaction + notification in a single transaction
+      const fine = await db.transaction(async (trx) => {
+        const [fine] = await trx('fines')
+          .insert({
+            organization_id: req.params.orgId,
+            user_id: data.userId,
+            type: data.type,
+            amount: data.amount,
+            currency: data.currency,
+            reason: data.reason,
+            issued_by: req.user!.userId,
+            status: 'unpaid',
+          })
+          .returning('*');
+
+        // Create pending transaction
+        await trx('transactions').insert({
           organization_id: req.params.orgId,
           user_id: data.userId,
-          type: data.type,
+          type: data.type === 'misconduct' ? 'misconduct_fine' : 'fine',
           amount: data.amount,
           currency: data.currency,
-          reason: data.reason,
-          issued_by: req.user!.userId,
-          status: 'unpaid',
-        })
-        .returning('*');
+          status: 'pending',
+          description: `Fine: ${data.reason}`,
+          reference_id: fine.id,
+          reference_type: 'fine',
+        });
 
-      // Create pending transaction
-      await db('transactions').insert({
-        organization_id: req.params.orgId,
-        user_id: data.userId,
-        type: data.type === 'misconduct' ? 'misconduct_fine' : 'fine',
-        amount: data.amount,
-        currency: data.currency,
-        status: 'pending',
-        description: `Fine: ${data.reason}`,
-        reference_id: fine.id,
-        reference_type: 'fine',
-      });
+        // Notify the fined member
+        await trx('notifications').insert({
+          user_id: data.userId,
+          organization_id: req.params.orgId,
+          type: 'fine',
+          title: 'Fine Issued',
+          body: `You have been fined ${data.currency} ${data.amount}: ${data.reason}`,
+          data: JSON.stringify({ fineId: fine.id }),
+        });
 
-      // Notify the fined member
-      await db('notifications').insert({
-        user_id: data.userId,
-        organization_id: req.params.orgId,
-        type: 'fine',
-        title: 'Fine Issued',
-        body: `You have been fined ${data.currency} ${data.amount}: ${data.reason}`,
-        data: JSON.stringify({ fineId: fine.id }),
+        return fine;
       });
 
       // Push notification for fine
@@ -395,7 +405,7 @@ router.post(
       // Create transaction
       await db('transactions').insert({
         organization_id: req.params.orgId,
-        user_id: req.user!.userId,
+        user_id: data.isAnonymous ? null : req.user!.userId,
         type: 'donation',
         amount: data.amount,
         currency: data.currency,
@@ -431,7 +441,7 @@ router.get(
       const toDate = req.query.to as string;
 
       let query = db('transactions')
-        .join('users', 'transactions.user_id', 'users.id')
+        .leftJoin('users', 'transactions.user_id', 'users.id')
         .where({ 'transactions.organization_id': req.params.orgId })
         .select(
           'transactions.*',
@@ -461,7 +471,7 @@ router.get(
           db.raw("coalesce(sum(amount) filter (where type in ('fine', 'misconduct_fine', 'late_fee')), 0) as total_fines_collected"),
           db.raw("coalesce(sum(amount) filter (where type = 'donation'), 0) as total_donations"),
           db.raw("coalesce(sum(amount) filter (where type = 'refund'), 0) as total_refunds"),
-          db.raw('coalesce(sum(amount), 0) as grand_total')
+          db.raw("coalesce(sum(amount), 0) as grand_total")
         )
         .first();
 
@@ -551,7 +561,7 @@ router.get(
       const toDate = req.query.to as string;
 
       let query = db('transactions')
-        .join('users', 'transactions.user_id', 'users.id')
+        .leftJoin('users', 'transactions.user_id', 'users.id')
         .where({ 'transactions.organization_id': req.params.orgId })
         .select(
           'transactions.id',

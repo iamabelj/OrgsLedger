@@ -2,7 +2,7 @@
 // OrgsLedger Mobile — Root Layout (Expo Router)
 // ============================================================
 
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { Platform, View, ActivityIndicator } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -104,9 +104,9 @@ export default function RootLayout() {
     loadUser().catch(() => {});
   }, []);
 
-  const onLayoutRootView = useCallback(async () => {
+  useEffect(() => {
     if (fontsLoaded) {
-      await SplashScreen.hideAsync();
+      SplashScreen.hideAsync();
     }
   }, [fontsLoaded]);
 

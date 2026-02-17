@@ -146,7 +146,7 @@ export default function CreateFineScreen() {
         </View>
         <Badge
           label={item.role}
-          variant={item.role === 'admin' ? 'info' : 'default'}
+          variant={item.role === 'admin' ? 'info' : 'neutral'}
           size="sm"
         />
       </TouchableOpacity>

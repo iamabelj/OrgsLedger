@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
-import { Card, Button, Input } from '../../src/components/ui';
+import { Card, Button, Input, LoadingScreen } from '../../src/components/ui';
 import { useResponsive } from '../../src/hooks/useResponsive';
 
 export default function PollsScreen() {
@@ -54,6 +54,8 @@ export default function PollsScreen() {
   }, [currentOrgId]);
 
   useEffect(() => { loadPolls(); }, [loadPolls]);
+
+  if (loading && !refreshing) return <LoadingScreen />;
 
   const handleCreate = async () => {
     const validOptions = options.filter((o) => o.trim());
@@ -119,11 +121,20 @@ export default function PollsScreen() {
             </Text>
           </View>
           {isAdmin && isActive && (
-            <TouchableOpacity onPress={async () => {
-              try {
-                await api.polls.close(currentOrgId!, item.id);
-                loadPolls();
-              } catch {}
+            <TouchableOpacity onPress={() => {
+              showAlert('Close Poll', 'This will permanently close the poll and no more votes can be cast. Continue?', [
+                { text: 'Cancel' },
+                {
+                  text: 'Close',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      await api.polls.close(currentOrgId!, item.id);
+                      loadPolls();
+                    } catch {}
+                  },
+                },
+              ]);
             }}>
               <Ionicons name="close-circle-outline" size={20} color={Colors.textLight} />
             </TouchableOpacity>

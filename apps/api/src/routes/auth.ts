@@ -159,7 +159,11 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
             .where({ organization_id: inviteOrg.id })
             .orderBy('created_at', 'desc')
             .first();
-          const maxMembers = sub ? 100 : 100; // Default limit
+          let maxMembers = 100; // Default limit
+          if (sub?.plan_id) {
+            const planRecord = await trx('plans').where({ id: sub.plan_id }).first();
+            maxMembers = planRecord?.max_members || 100;
+          }
           if (memberCount < maxMembers) {
             await trx('memberships').insert({
               user_id: user.id,

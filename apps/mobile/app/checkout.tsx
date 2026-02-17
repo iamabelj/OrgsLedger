@@ -5,13 +5,13 @@
 // to the super-admin registration page.
 // ============================================================
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Platform, ActivityIndicator, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Stack, router } from 'expo-router';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { api } from '../src/api/client';
 import {
   Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow,
@@ -70,15 +70,10 @@ const REGION_OPTIONS = [
 
 export default function CheckoutScreen() {
   const responsive = useResponsive();
+  const params = useLocalSearchParams<{ plan?: string }>();
 
-  // Read plan from URL params
-  const selectedPlan = useMemo(() => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      return urlParams.get('plan') || 'standard';
-    }
-    return 'standard';
-  }, []);
+  // Read plan from URL/route params
+  const selectedPlan = params.plan || 'standard';
 
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -136,6 +131,8 @@ export default function CheckoutScreen() {
       currency: currentRegion.currency,
     });
     router.push(`/(auth)/admin-register?${params.toString()}`);
+    // Reset in case user navigates back
+    setTimeout(() => setProcessing(false), 1000);
   };
 
   const formatPrice = (amount: number) => {
@@ -189,7 +186,7 @@ export default function CheckoutScreen() {
             <Card style={styles.planCard}>
               <View style={styles.planHeader}>
                 <View style={styles.planBadge}>
-                  <Ionicons name="diamond" size={16} color={Colors.highlight} />
+                  <Ionicons name="diamond-outline" size={16} color={Colors.highlight} />
                   <Text style={styles.planName}>
                     {selectedPlan.charAt(0).toUpperCase() + selectedPlan.slice(1)} Plan
                   </Text>

@@ -99,8 +99,13 @@ export async function sendPushToOrg(
 
     const users = await query.select('users.id', 'users.fcm_token');
 
-    for (const user of users) {
-      await sendFCM(user.fcm_token, payload);
+    // Send in parallel batches of 10
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < users.length; i += BATCH_SIZE) {
+      const batch = users.slice(i, i + BATCH_SIZE);
+      await Promise.allSettled(
+        batch.map((user) => sendFCM(user.fcm_token, payload))
+      );
     }
   } catch (err) {
     logger.error('Org push notification failed', { organizationId, err });

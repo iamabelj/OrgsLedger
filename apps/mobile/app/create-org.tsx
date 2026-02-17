@@ -109,7 +109,7 @@ export default function CreateOrgScreen() {
               label="URL Slug *"
               placeholder="e.g. lagos-alumni"
               value={slug}
-              onChangeText={setSlug}
+              onChangeText={(val) => setSlug(generateSlug(val))}
               icon="link-outline"
               autoCapitalize="none"
             />

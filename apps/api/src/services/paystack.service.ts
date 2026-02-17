@@ -7,6 +7,7 @@ import axios, { AxiosInstance } from 'axios';
 import { config } from '../config';
 import { logger } from '../logger';
 import crypto from 'crypto';
+import { timingSafeCompare } from '../utils/validators';
 
 const PAYSTACK_BASE = 'https://api.paystack.co';
 
@@ -121,7 +122,7 @@ class PaystackService {
       .createHmac('sha512', config.paystack.secretKey)
       .update(body)
       .digest('hex');
-    return hash === signature;
+    return timingSafeCompare(hash, signature);
   }
 }
 

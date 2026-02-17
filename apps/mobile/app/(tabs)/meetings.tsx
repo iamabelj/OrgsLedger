@@ -216,7 +216,7 @@ export default function MeetingsScreen() {
         }
         renderItem={({ item }) => {
           const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.scheduled;
-          const meetDate = new Date(item.scheduled_start);
+          const meetDate = item.scheduled_start ? new Date(item.scheduled_start) : new Date();
           const isLive = item.status === 'live';
 
           return (

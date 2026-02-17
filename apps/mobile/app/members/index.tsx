@@ -21,7 +21,7 @@ import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { showAlert } from '../../src/utils/alert';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
-import { Card, Input } from '../../src/components/ui';
+import { Card, Input, LoadingScreen } from '../../src/components/ui';
 import { useResponsive } from '../../src/hooks/useResponsive';
 
 const ROLE_BADGES: Record<string, { label: string; color: string }> = {
@@ -79,6 +79,8 @@ export default function MemberDirectoryScreen() {
 
   useEffect(() => { loadMembers(); }, [loadMembers]);
 
+  if (loading && !refreshing) return <LoadingScreen />;
+
   const loadInvites = async () => {
     if (!currentOrgId) return;
     setLoadingInvites(true);
@@ -109,14 +111,22 @@ export default function MemberDirectoryScreen() {
 
   const handleDeleteInvite = async (inviteId: string) => {
     if (!currentOrgId) return;
-    try {
-      await api.subscriptions.deleteInvite(currentOrgId, inviteId);
-      setInvites((prev) => prev.filter((i) => i.id !== inviteId));
-    } catch (err: any) {
-      const msg = err?.response?.data?.error || 'Failed to delete invite';
-      if (Platform.OS === 'web') window.alert(msg);
-      else Alert.alert('Error', msg);
-    }
+    showAlert('Delete Invite', 'This invite link will be permanently deleted. Continue?', [
+      { text: 'Cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await api.subscriptions.deleteInvite(currentOrgId, inviteId);
+            setInvites((prev) => prev.filter((i) => i.id !== inviteId));
+          } catch (err: any) {
+            const msg = err?.response?.data?.error || 'Failed to delete invite';
+            showAlert('Error', msg);
+          }
+        },
+      },
+    ]);
   };
 
   const getInviteUrl = (code: string) => `https://app.orgsledger.com/invite/${code}`;

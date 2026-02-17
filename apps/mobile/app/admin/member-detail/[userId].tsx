@@ -223,7 +223,7 @@ export default function MemberDetailScreen() {
           <Badge label={member.role} variant={roleBadgeVariant} size="lg" />
           <Badge
             label={`Joined ${format(new Date(member.joinedAt), 'MMM yyyy')}`}
-            variant="default"
+            variant="neutral"
             size="md"
           />
         </View>

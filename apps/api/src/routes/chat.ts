@@ -321,7 +321,7 @@ router.post(
   loadMembership,
   async (req: Request, res: Response) => {
     try {
-      if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res))) return;
+      if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user!.userId, res, req))) return;
       await db('channel_members')
         .where({ channel_id: req.params.channelId, user_id: req.user!.userId })
         .update({ last_read_at: db.fn.now() });
@@ -409,7 +409,7 @@ router.get(
   loadMembership,
   async (req: Request, res: Response) => {
     try {
-      if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res))) return;
+      if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user!.userId, res, req))) return;
       const replies = await db('messages')
         .join('users', 'messages.sender_id', 'users.id')
         .where({
@@ -483,7 +483,7 @@ router.put(
   loadMembership,
   async (req: Request, res: Response) => {
     try {
-      if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res))) return;
+      if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user!.userId, res, req))) return;
       const message = await db('messages')
         .where({ id: req.params.messageId, sender_id: req.user!.userId })
         .first();
@@ -494,13 +494,13 @@ router.put(
 
       await db('messages')
         .where({ id: req.params.messageId })
-        .update({ content: req.body.content, is_edited: true });
+        .update({ content: content.trim(), is_edited: true });
 
       const io = req.app.get('io');
       if (io) {
         io.to(`channel:${req.params.channelId}`).emit('message:edited', {
           id: req.params.messageId,
-          content: req.body.content,
+          content: content.trim(),
         });
       }
 
@@ -518,7 +518,7 @@ router.delete(
   loadMembership,
   async (req: Request, res: Response) => {
     try {
-      if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res))) return;
+      if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user!.userId, res, req))) return;
       const message = await db('messages')
         .where({ id: req.params.messageId })
         .first();
@@ -562,7 +562,7 @@ router.post(
   upload.array('files', 5),
   async (req: Request, res: Response) => {
     try {
-      if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res))) return;
+      if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user!.userId, res, req))) return;
       const files = req.files as Express.Multer.File[];
       if (!files || !files.length) {
         res.status(400).json({ success: false, error: 'No files uploaded' });

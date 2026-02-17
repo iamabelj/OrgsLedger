@@ -10,6 +10,7 @@ import path from 'path';
 import fs from 'fs';
 import cors from 'cors';
 import helmet from 'helmet';
+import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
 import { config } from './config';
 import { logger } from './logger';
@@ -74,7 +75,7 @@ app.use(helmet());
 app.use(cors({
   origin: config.env === 'production'
     ? (process.env.CORS_ORIGINS || 'https://orgsledger.com,https://app.orgsledger.com').split(',')
-    : '*',
+    : true,
   credentials: true,
 }));
 
@@ -124,7 +125,6 @@ app.use('/uploads', (req, res, next) => {
     return;
   }
   try {
-    const jwt = require('jsonwebtoken');
     jwt.verify(token, config.jwt.secret);
     next();
   } catch {

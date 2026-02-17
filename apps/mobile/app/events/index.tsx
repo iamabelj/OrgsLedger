@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
-import { Card, Button, Input } from '../../src/components/ui';
+import { Card, Button, Input, LoadingScreen } from '../../src/components/ui';
 import CrossPlatformDateTimePicker from '../../src/components/ui/CrossPlatformDateTimePicker';
 import { useResponsive } from '../../src/hooks/useResponsive';
 
@@ -67,9 +67,15 @@ export default function EventsScreen() {
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
 
+  if (loading && !refreshing) return <LoadingScreen />;
+
   const handleCreate = async () => {
     if (!title.trim()) {
       showAlert('Error', 'Title is required');
+      return;
+    }
+    if (endDate < startDate) {
+      showAlert('Error', 'End date must be after start date');
       return;
     }
     setCreating(true);

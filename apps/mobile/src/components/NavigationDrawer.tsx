@@ -22,6 +22,7 @@ import { useAuthStore } from '../stores/auth.store';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../theme';
 import { useDrawer, DRAWER_WIDTH, DRAWER_COLLAPSED_WIDTH } from '../contexts/DrawerContext';
 import { LOGO } from '../logo';
+import { showAlert } from '../utils/alert';
 
 interface NavItem {
   label: string;
@@ -144,8 +145,17 @@ export function NavigationDrawer() {
   };
 
   const handleLogout = async () => {
-    await logout();
-    router.replace('/(auth)/login');
+    showAlert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          router.replace('/(auth)/login');
+        },
+      },
+    ]);
   };
 
   if (!shouldShow) return null;
@@ -334,7 +344,10 @@ export function NavigationDrawer() {
       >
         <Pressable
           onPress={(e) => e.stopPropagation()}
-          style={Platform.OS === 'web' ? ({ animation: 'drawerSlideIn 0.25s ease-out' } as any) : undefined}
+          style={[
+            styles.mobileDrawerWrap,
+            Platform.OS === 'web' ? ({ animation: 'drawerSlideIn 0.25s ease-out' } as any) : undefined,
+          ]}
         >
           {drawer}
         </Pressable>
@@ -356,19 +369,19 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.55)',
     zIndex: 1000,
+    flexDirection: 'row',
+  },
+  mobileDrawerWrap: {
+    height: '100%',
   },
 
   // ── Drawer container ──────────────────────────────────
   drawer: {
-    height: '100%',
+    flex: 1,
     backgroundColor: Colors.surface,
     borderRightWidth: 1,
     borderRightColor: Colors.borderLight,
     ...(Platform.OS === 'web' ? {
-      position: 'absolute' as any,
-      left: 0,
-      top: 0,
-      bottom: 0,
       transition: 'width 0.2s ease',
     } : {}),
   },

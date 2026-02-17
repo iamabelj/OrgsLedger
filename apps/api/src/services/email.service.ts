@@ -6,6 +6,16 @@ import nodemailer from 'nodemailer';
 import { config } from '../config';
 import { logger } from '../logger';
 
+/** Escape user input before interpolating into HTML */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 let transporter: nodemailer.Transporter | null = null;
 
 function getTransporter(): nodemailer.Transporter {
@@ -78,7 +88,7 @@ export async function sendMeetingMinutesEmail(
         <h1 style="color: #C9A84C; margin: 0; font-size: 24px;">OrgsLedger</h1>
       </div>
       <div style="background: #f8f9fa; padding: 32px; border-radius: 0 0 8px 8px;">
-        <h2 style="color: #0B1426; margin-top: 0;">Meeting Minutes: ${meetingTitle}</h2>
+        <h2 style="color: #0B1426; margin-top: 0;">Meeting Minutes: ${escapeHtml(meetingTitle)}</h2>
         <div style="background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 16px 0;">
           ${minutesSummary.replace(/\n/g, '<br/>')}
         </div>
@@ -92,7 +102,7 @@ export async function sendMeetingMinutesEmail(
 
   await sendEmail({
     to: recipientEmails,
-    subject: `Meeting Minutes: ${meetingTitle}`,
+    subject: `Meeting Minutes: ${escapeHtml(meetingTitle)}`,
     html,
     text: minutesSummary,
   });

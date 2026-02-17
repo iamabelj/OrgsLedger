@@ -35,13 +35,13 @@ router.get('/preferences', authenticate, async (req: Request, res: Response) => 
       .first();
 
     const defaults = {
-      email_enabled: true,
-      push_enabled: true,
-      dues_reminders: true,
-      meeting_reminders: true,
-      fine_notifications: true,
-      announcement_notifications: true,
-      chat_notifications: true,
+      email_meetings: true,
+      email_finances: true,
+      email_announcements: true,
+      push_meetings: true,
+      push_finances: true,
+      push_announcements: true,
+      push_chat: true,
     };
 
     res.json({
@@ -56,7 +56,21 @@ router.get('/preferences', authenticate, async (req: Request, res: Response) => 
 // ── Update Notification Preferences ─────────────────────────
 router.put('/preferences', authenticate, async (req: Request, res: Response) => {
   try {
-    const prefs = req.body;
+    const ALLOWED_KEYS = [
+      'email_meetings', 'email_finances', 'email_announcements',
+      'push_meetings', 'push_finances', 'push_announcements', 'push_chat',
+    ];
+    const raw = req.body;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return res.status(400).json({ success: false, error: 'Invalid preferences format' });
+    }
+    // Only allow known keys with boolean values
+    const prefs: Record<string, boolean> = {};
+    for (const key of ALLOWED_KEYS) {
+      if (key in raw) {
+        prefs[key] = !!raw[key];
+      }
+    }
     await db('users')
       .where({ id: req.user!.userId })
       .update({ notification_preferences: JSON.stringify(prefs) });

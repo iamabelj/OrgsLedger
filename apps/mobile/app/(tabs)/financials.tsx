@@ -13,6 +13,7 @@ import {
   Linking,
   Platform,
   ActionSheetIOS,
+  AppState,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -45,11 +46,11 @@ const TXN_CONFIG: Record<string, {
   default:  { icon: 'cash', color: Colors.textLight, bg: Colors.accent },
 };
 
-const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'default'> = {
+const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'neutral'> = {
   completed: 'success',
   pending: 'warning',
   overdue: 'danger',
-  refunded: 'default',
+  refunded: 'neutral',
 };
 
 export default function FinancialsScreen() {
@@ -169,26 +170,68 @@ export default function FinancialsScreen() {
           }
         } else if (data.authorizationUrl) {
           await Linking.openURL(data.authorizationUrl).catch(() => {});
-          setTimeout(async () => {
-            try {
-              const verify = await api.payments.verify(currentOrgId, transactionId);
-              if (verify.data.data?.status === 'completed') {
-                showAlert('Success', 'Payment completed!');
-                await loadAll();
+          // Wait for user to return from payment page, then verify
+          const verifyOnReturn = () => {
+            const sub = AppState.addEventListener('change', async (state) => {
+              if (state === 'active') {
+                sub.remove();
+                try {
+                  const verify = await api.payments.verify(currentOrgId, transactionId);
+                  if (verify.data.data?.status === 'completed') {
+                    showAlert('Success', 'Payment completed!');
+                    await loadAll();
+                  } else {
+                    showAlert('Pending', 'Payment is still processing. Pull down to refresh.');
+                  }
+                } catch {}
               }
-            } catch {}
-          }, 5000);
+            });
+            // Fallback timeout in case AppState doesn't fire
+            setTimeout(() => sub.remove(), 300000);
+          };
+          if (Platform.OS === 'web') {
+            // On web, verify after a delay since there's no AppState
+            setTimeout(async () => {
+              try {
+                const verify = await api.payments.verify(currentOrgId, transactionId);
+                if (verify.data.data?.status === 'completed') {
+                  showAlert('Success', 'Payment completed!');
+                  await loadAll();
+                }
+              } catch {}
+            }, 5000);
+          } else {
+            verifyOnReturn();
+          }
         } else if (data.paymentLink) {
           await Linking.openURL(data.paymentLink).catch(() => {});
-          setTimeout(async () => {
-            try {
-              const verify = await api.payments.verify(currentOrgId, transactionId);
-              if (verify.data.data?.status === 'completed') {
-                showAlert('Success', 'Payment completed!');
-                await loadAll();
+          if (Platform.OS === 'web') {
+            setTimeout(async () => {
+              try {
+                const verify = await api.payments.verify(currentOrgId, transactionId);
+                if (verify.data.data?.status === 'completed') {
+                  showAlert('Success', 'Payment completed!');
+                  await loadAll();
+                }
+              } catch {}
+            }, 5000);
+          } else {
+            const sub = AppState.addEventListener('change', async (state) => {
+              if (state === 'active') {
+                sub.remove();
+                try {
+                  const verify = await api.payments.verify(currentOrgId, transactionId);
+                  if (verify.data.data?.status === 'completed') {
+                    showAlert('Success', 'Payment completed!');
+                    await loadAll();
+                  } else {
+                    showAlert('Pending', 'Payment is still processing. Pull down to refresh.');
+                  }
+                } catch {}
               }
-            } catch {}
-          }, 5000);
+            });
+            setTimeout(() => sub.remove(), 300000);
+          }
         } else if (data.note) {
           showAlert('Success', data.note);
           await loadAll();
@@ -496,10 +539,20 @@ export default function FinancialsScreen() {
         <TouchableOpacity
           style={styles.fab}
           onPress={() => {
-            const pending = transactions.find(
+            const pending = transactions.filter(
               (t: any) => t.status === 'pending' && t.user_id === userId
             );
-            if (pending) handlePay(pending.id, pending.amount);
+            if (pending.length === 1) {
+              handlePay(pending[0].id, pending[0].amount);
+            } else if (pending.length > 1) {
+              // Show picker for multiple pending transactions
+              const buttons = pending.slice(0, 5).map((t: any) => ({
+                text: `${t.description || t.type} — ${t.currency} ${t.amount}`,
+                onPress: () => handlePay(t.id, t.amount),
+              }));
+              buttons.push({ text: 'Cancel', onPress: () => {}, style: 'cancel' });
+              showAlert('Select Payment', 'Choose which transaction to pay:', buttons);
+            }
           }}
           activeOpacity={0.8}
         >

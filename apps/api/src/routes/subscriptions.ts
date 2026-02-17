@@ -5,10 +5,12 @@
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import crypto from 'crypto';
 import db from '../db';
 import { authenticate, loadMembership, requireRole, requireDeveloper, validate } from '../middleware';
 import { logger } from '../logger';
 import * as subSvc from '../services/subscription.service';
+import { sendEmail } from '../services/email.service';
 import { writeAuditLog } from '../middleware/audit';
 
 const router = Router();
@@ -160,17 +162,17 @@ router.post('/:orgId/subscribe', authenticate, loadMembership, requireRole('org_
     const currency = subSvc.getCurrency(billingCountry);
     const price = subSvc.getPlanPrice(plan, currency, billingCycle);
 
-    // If plan has a cost but no payment reference, create as pending (needs webhook confirmation)
-    const isPaid = price <= 0 || !!paymentReference;
+    // Free plans activate immediately; paid plans start as pending until webhook confirms
+    const isFree = price <= 0;
     const sub = await subSvc.createSubscription({
       organizationId: req.params.orgId,
       planId: plan.id,
       billingCycle,
       currency,
-      amountPaid: isPaid ? price : 0,
+      amountPaid: isFree ? 0 : price,
       paymentGateway,
       gatewaySubscriptionId: paymentReference,
-      status: isPaid ? 'active' : 'pending',
+      status: isFree ? 'active' : 'pending',
     });
     res.json({ success: true, data: sub });
   } catch (err: any) {
@@ -569,95 +571,102 @@ router.post('/admin/organizations', authenticate, requireDeveloper(), validate(a
     // Check if user exists
     const owner = await db('users').where({ email: normalizedEmail }).first();
 
-    // Create organization
-    const [org] = await db('organizations')
-      .insert({
-        name,
-        slug,
-        status: 'active',
-        subscription_status: 'active',
-        billing_currency: currency,
-        settings: JSON.stringify({
-          currency,
-          timezone: 'UTC',
-          locale: 'en',
-          aiEnabled: true,
-          features: {
-            chat: true, meetings: true, financials: true, polls: true,
-            events: true, announcements: true, documents: true, committees: true,
-          },
-        }),
-      })
-      .returning('*');
-
-    let membershipCreated = false;
-    let pendingInviteCreated = false;
-
-    if (owner) {
-      // User exists — create membership immediately
-      await db('memberships').insert({
-        user_id: owner.id,
-        organization_id: org.id,
-        role: 'org_admin',
-      });
-      membershipCreated = true;
-
-      // Create default General channel and add user
-      const [channel] = await db('channels')
+    // Wrap all creation in a transaction for atomicity
+    const result = await db.transaction(async (trx) => {
+      // Create organization
+      const [org] = await trx('organizations')
         .insert({
+          name,
+          slug,
+          status: 'active',
+          subscription_status: 'active',
+          billing_currency: currency,
+          settings: JSON.stringify({
+            currency,
+            timezone: 'UTC',
+            locale: 'en',
+            aiEnabled: true,
+            features: {
+              chat: true, meetings: true, financials: true, polls: true,
+              events: true, announcements: true, documents: true, committees: true,
+            },
+          }),
+        })
+        .returning('*');
+
+      let membershipCreated = false;
+      let pendingInviteCreated = false;
+
+      if (owner) {
+        // User exists — create membership immediately
+        await trx('memberships').insert({
+          user_id: owner.id,
+          organization_id: org.id,
+          role: 'org_admin',
+        });
+        membershipCreated = true;
+
+        // Create default General channel and add user
+        const [channel] = await trx('channels')
+          .insert({
+            organization_id: org.id,
+            name: 'General',
+            type: 'general',
+            description: 'General discussion',
+          })
+          .returning('*');
+
+        await trx('channel_members').insert({
+          channel_id: channel.id,
+          user_id: owner.id,
+        });
+      } else {
+        // User doesn't exist — create pending invitation
+        await trx('pending_invitations').insert({
+          email: normalizedEmail,
+          organization_id: org.id,
+          role: 'org_admin',
+          invited_by: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(req.user!.userId)
+            ? req.user!.userId
+            : null,
+        });
+        pendingInviteCreated = true;
+
+        // Still create the General channel (without members for now)
+        await trx('channels').insert({
           organization_id: org.id,
           name: 'General',
           type: 'general',
           description: 'General discussion',
-        })
-        .returning('*');
+        });
+      }
 
-      await db('channel_members').insert({
-        channel_id: channel.id,
-        user_id: owner.id,
-      });
-    } else {
-      // User doesn't exist — create pending invitation
-      await db('pending_invitations').insert({
-        email: normalizedEmail,
-        organization_id: org.id,
-        role: 'org_admin',
-        invited_by: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(req.user!.userId)
-          ? req.user!.userId
-          : null,
-      });
-      pendingInviteCreated = true;
+      // Provision subscription
+      const selectedPlan = await subSvc.getPlanBySlug(plan);
+      if (selectedPlan) {
+        await subSvc.createSubscription({
+          organizationId: org.id,
+          planId: selectedPlan.id,
+          billingCycle: 'annual',
+          currency,
+          amountPaid: 0,
+          createdBy: owner?.id || req.user!.userId,
+        });
+      } else {
+        logger.warn(`Plan slug "${plan}" not found — organization created without subscription. Available plans should be created first.`);
+      }
 
-      // Still create the General channel (without members for now)
-      await db('channels').insert({
-        organization_id: org.id,
-        name: 'General',
-        type: 'general',
-        description: 'General discussion',
-      });
-    }
+      // Provision wallets
+      await subSvc.getAiWallet(org.id);
+      await subSvc.getTranslationWallet(org.id);
 
-    // Provision subscription
-    const selectedPlan = await subSvc.getPlanBySlug(plan);
-    if (selectedPlan) {
-      await subSvc.createSubscription({
-        organizationId: org.id,
-        planId: selectedPlan.id,
-        billingCycle: 'annual',
-        currency,
-        amountPaid: 0,
-        createdBy: owner?.id || req.user!.userId,
-      });
-    } else {
-      logger.warn(`Plan slug "${plan}" not found — organization created without subscription. Available plans should be created first.`);
-    }
+      // Generate invite link for additional members
+      const invite = await subSvc.createInviteLink(org.id, owner?.id || req.user!.userId, 'member');
 
-    // Provision wallets
-    await subSvc.getAiWallet(org.id);
-    await subSvc.getTranslationWallet(org.id);
+      return { org, membershipCreated, pendingInviteCreated, invite };
+    });
 
-    // Generate invite link for additional members
-    const invite = await subSvc.createInviteLink(org.id, owner?.id || req.user!.userId, 'member');
+    const { org, membershipCreated, pendingInviteCreated, invite } = result;
 
     await writeAuditLog({
       organizationId: org.id,
@@ -1840,7 +1849,7 @@ const createSignupInviteSchema = z.object({
 router.post('/admin/signup-invites', authenticate, requireDeveloper(), validate(createSignupInviteSchema), async (req: Request, res: Response) => {
   try {
     const { email, role, organizationId, maxUses, expiresInDays, note } = req.body;
-    const code = require('crypto').randomBytes(8).toString('hex').toUpperCase();
+    const code = crypto.randomBytes(8).toString('hex').toUpperCase();
     const expiresAt = expiresInDays
       ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
       : null;
@@ -1866,7 +1875,6 @@ router.post('/admin/signup-invites', authenticate, requireDeveloper(), validate(
     // If email is provided, send the invite email
     if (email) {
       try {
-        const { sendEmail } = require('../services/email.service');
         await sendEmail({
           to: email.toLowerCase(),
           subject: 'You\'re Invited to Join OrgsLedger',

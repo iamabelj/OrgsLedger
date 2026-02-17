@@ -122,7 +122,7 @@ export default function AdminRegisterScreen() {
     setLoading(true);
     try {
       // Step 1: Register the admin account (uses the admin-register API)
-      await api.auth.adminRegister({
+      const response = await api.auth.adminRegister({
         email: email.trim().toLowerCase(),
         password,
         firstName: firstName.trim(),
@@ -136,13 +136,32 @@ export default function AdminRegisterScreen() {
         currency: planDetails.currency,
       });
 
-      // Step 2: Login with the new credentials
-      await useAuthStore.getState().login(email.trim().toLowerCase(), password);
+      // Step 2: Use the response tokens directly (no redundant login call)
+      const result = response.data?.data;
+      if (result?.accessToken && result?.refreshToken) {
+        const storage = require('../src/utils/storage').default;
+        await storage.setItemAsync('accessToken', result.accessToken);
+        await storage.setItemAsync('refreshToken', result.refreshToken);
+
+        const { socketClient } = require('../src/api/socket');
+        const memberships = (result.memberships || []).map((m: any) => ({
+          ...m,
+          organization_id: m.organization_id || m.organizationId,
+          organizationId: m.organizationId || m.organization_id,
+        }));
+
+        useAuthStore.setState({
+          user: result.user,
+          memberships,
+          isAuthenticated: true,
+          currentOrgId: memberships[0]?.organization_id || null,
+        });
+
+        socketClient.connect().catch(() => {});
+      }
 
       // Navigate to dashboard
-      setTimeout(() => {
-        router.replace('/(tabs)/home');
-      }, 100);
+      router.replace('/(tabs)/home');
     } catch (err: any) {
       const data = err.response?.data;
       let message = data?.error || 'Something went wrong';
@@ -194,7 +213,7 @@ export default function AdminRegisterScreen() {
 
           {/* Plan Badge */}
           <View style={styles.planBadge}>
-            <Ionicons name="diamond" size={14} color={Colors.highlight} />
+            <Ionicons name="diamond-outline" size={14} color={Colors.highlight} />
             <Text style={styles.planBadgeText}>
               {planDetails.plan.charAt(0).toUpperCase() + planDetails.plan.slice(1)} Plan
               {planDetails.price > 0 ? ` · ${formatPrice()}/${planDetails.billing === 'annual' ? 'yr' : 'mo'}` : ''}

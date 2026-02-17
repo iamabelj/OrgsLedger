@@ -60,6 +60,7 @@ router.post(
   '/:orgId',
   authenticate,
   loadMembership,
+  requireRole('org_admin', 'executive', 'member'),
   upload.single('file'),
   async (req: Request, res: Response) => {
     try {

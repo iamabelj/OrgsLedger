@@ -214,6 +214,12 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { optionId } = req.body;
+
+      if (!optionId || typeof optionId !== 'string') {
+        res.status(400).json({ success: false, error: 'optionId is required' });
+        return;
+      }
+
       const poll = await db('polls')
         .where({ id: req.params.pollId, organization_id: req.params.orgId })
         .first();
@@ -304,11 +310,18 @@ router.delete(
   requireRole('org_admin'),
   async (req: Request, res: Response) => {
     try {
+      // Verify poll belongs to this org before deleting related data
+      const poll = await db('polls')
+        .where({ id: req.params.pollId, organization_id: req.params.orgId })
+        .first();
+      if (!poll) {
+        res.status(404).json({ success: false, error: 'Poll not found' });
+        return;
+      }
+
       await db('poll_votes').where({ poll_id: req.params.pollId }).delete();
       await db('poll_options').where({ poll_id: req.params.pollId }).delete();
-      await db('polls')
-        .where({ id: req.params.pollId, organization_id: req.params.orgId })
-        .delete();
+      await db('polls').where({ id: req.params.pollId }).delete();
       res.json({ success: true, message: 'Poll deleted' });
     } catch (err) {
       res.status(500).json({ success: false, error: 'Failed to delete poll' });

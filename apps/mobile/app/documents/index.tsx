@@ -12,13 +12,15 @@ import {
   RefreshControl,
   Linking,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
 import { showAlert } from '../../src/utils/alert';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
-import { Card, Button, Input } from '../../src/components/ui';
+import { Card, Button, Input, LoadingScreen } from '../../src/components/ui';
 import { useResponsive } from '../../src/hooks/useResponsive';
 
 const FILE_ICONS: Record<string, { icon: string; color: string }> = {
@@ -48,6 +50,7 @@ export default function DocumentsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const memberships = useAuthStore((s) => s.memberships);
@@ -73,6 +76,8 @@ export default function DocumentsScreen() {
   }, [currentOrgId, searchQuery]);
 
   useEffect(() => { loadDocuments(); }, [loadDocuments]);
+
+  if (loading && !refreshing) return <LoadingScreen />;
 
   const handleOpenDocument = (doc: any) => {
     const url = `${__DEV__ ? 'http://localhost:3000' : 'https://app.orgsledger.com'}${doc.file_path}`;
@@ -124,6 +129,35 @@ export default function DocumentsScreen() {
     );
   };
 
+  const handleUpload = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.length) return;
+
+      const file = result.assets[0];
+      setUploading(true);
+      const formData = new FormData();
+      formData.append('file', {
+        uri: file.uri,
+        name: file.name,
+        type: file.mimeType || 'application/octet-stream',
+      } as any);
+      formData.append('title', file.name);
+      formData.append('category', 'general');
+
+      await api.documents.upload(currentOrgId!, formData);
+      loadDocuments();
+      showAlert('Success', 'Document uploaded successfully');
+    } catch (err) {
+      showAlert('Upload Failed', 'Could not upload the document. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={[styles.header, { maxWidth: responsive.contentMaxWidth, alignSelf: 'center', width: '100%' }]}>
@@ -159,6 +193,25 @@ export default function DocumentsScreen() {
           </View>
         }
       />
+
+      {/* Upload FAB */}
+      {isAdmin && (
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={handleUpload}
+          activeOpacity={0.8}
+          disabled={uploading}
+        >
+          {uploading ? (
+            <ActivityIndicator color={Colors.textWhite} size="small" />
+          ) : (
+            <>
+              <Ionicons name="cloud-upload-outline" size={22} color={Colors.textWhite} />
+              <Text style={styles.fabText}>Upload</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -181,4 +234,22 @@ const styles = StyleSheet.create({
   deleteBtn: { padding: Spacing.xs },
   empty: { alignItems: 'center', padding: Spacing.xxl },
   emptyText: { fontSize: FontSize.md, color: Colors.textLight, marginTop: Spacing.md },
+  fab: {
+    position: 'absolute',
+    bottom: Spacing.xl,
+    right: Spacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    backgroundColor: Colors.gold,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.full,
+    ...Shadow.gold,
+  },
+  fabText: {
+    color: Colors.textWhite,
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.bold as any,
+  },
 });

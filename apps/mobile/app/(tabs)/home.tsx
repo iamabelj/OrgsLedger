@@ -207,8 +207,7 @@ export default function HomeScreen() {
   const selectOrg = (orgId: string) => {
     setCurrentOrg(orgId);
     setShowOrgSwitcher(false);
-    // Reload dashboard for the new org
-    loadDashboard();
+    // useEffect on loadDashboard will re-trigger when currentOrgId changes
   };
 
   const getGreeting = () => {
@@ -264,7 +263,7 @@ export default function HomeScreen() {
             {currentMembership && (
               <View style={styles.rolePill}>
                 <Text style={styles.rolePillText}>
-                  {isOrgAdmin ? 'Admin' : isExecutive ? 'Executive' : userRole.replace('_', ' ')}
+                  {isOrgAdmin ? 'Admin' : isExecutive ? 'Executive' : userRole.replace(/_/g, ' ')}
                 </Text>
               </View>
             )}
@@ -892,7 +891,7 @@ export default function HomeScreen() {
                   <Text style={[styles.orgOptionName, isActive && { color: Colors.highlight }]}>
                     {m.organizationName || m.organization_id}
                   </Text>
-                  <Text style={styles.orgOptionRole}>{m.role?.replace('_', ' ')}</Text>
+                  <Text style={styles.orgOptionRole}>{m.role?.replace(/_/g, ' ')}</Text>
                 </View>
                 {isActive && (
                   <Ionicons name="checkmark-circle" size={22} color={Colors.highlight} />

@@ -425,7 +425,10 @@ router.post(
       let gatewayRefundId = null;
       const paymentMethod = transaction.payment_method || '';
 
-      if (paymentMethod.startsWith('stripe') || (!paymentMethod.startsWith('paystack') && !paymentMethod.startsWith('flutterwave'))) {
+      if (paymentMethod.includes('bank_transfer') || paymentMethod === 'dev_mode' || paymentMethod === 'manual') {
+        // Manual/bank transfer refund — record only, no gateway call
+        gatewayRefundId = null;
+      } else if (paymentMethod.startsWith('stripe') || (!paymentMethod.startsWith('paystack') && !paymentMethod.startsWith('flutterwave'))) {
         // Stripe refund
         const stripeClient = await getStripe();
         if (stripeClient && transaction.payment_gateway_id) {

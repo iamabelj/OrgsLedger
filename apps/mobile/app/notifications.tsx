@@ -103,7 +103,7 @@ export default function NotificationsScreen() {
 
   useEffect(() => {
     loadNotifications();
-  }, []);
+  }, [currentOrgId]);
 
   const loadNotifications = async () => {
     if (!currentOrgId) return;
