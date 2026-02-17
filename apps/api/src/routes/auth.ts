@@ -587,9 +587,10 @@ router.post('/register-with-invite', validate(registerWithInviteSchema), async (
         use_count: trx.raw('use_count + 1'),
       });
 
-      logger.info(`User ${email} registered + joined org ${org.slug} via invite (role: ${invite.role})`);
+      const assignedRole = invite.role || 'member';
+      logger.info(`User ${email} registered + joined org ${org.slug} via invite (role: ${assignedRole})`);
 
-      return { success: true, user, org };
+      return { success: true, user, org, assignedRole };
     });
 
     if ('error' in result) {
@@ -599,10 +600,11 @@ router.post('/register-with-invite', validate(registerWithInviteSchema), async (
 
     const user = result.user;
     const org = (result as any).org;
+    const assignedRole = (result as any).assignedRole;
     const tokens = generateTokens(user.id, user.email, user.global_role);
 
     const memberships = [{
-      role: 'member',
+      role: assignedRole,
       organizationId: org.id,
       organization_id: org.id,
       organizationName: org.name,
