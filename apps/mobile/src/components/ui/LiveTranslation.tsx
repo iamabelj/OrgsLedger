@@ -86,9 +86,52 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
   const [isExpanded, setIsExpanded] = useState(true);
   const [ttsVolume, setTtsVolume] = useState(0.8); // Voice-to-voice volume control
   const [langSearch, setLangSearch] = useState(''); // Searchable language picker
+  const [ttsWarmedUp, setTtsWarmedUp] = useState(false); // Chrome TTS warm-up state
 
   // Sync autoTTS prop from parent (e.g., Voice-to-Voice toggle in control bar)
   useEffect(() => { setSpeakEnabled(autoTTS); }, [autoTTS]);
+
+  // ── Chrome TTS warm-up ─────────────────────────────────
+  // Chrome loads voices asynchronously and requires a user gesture
+  // to unlock speechSynthesis. Warm up on first user interaction.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+
+    // Load voices (Chrome fires this event asynchronously)
+    const loadVoices = () => {
+      const voices = synth.getVoices();
+      if (voices.length > 0) {
+        console.debug(`[TTS] ${voices.length} voices loaded`);
+      }
+    };
+    loadVoices();
+    synth.addEventListener('voiceschanged', loadVoices);
+
+    // Warm up TTS with a silent utterance on first user click
+    // This unlocks Chrome's autoplay restriction for speechSynthesis
+    const warmUp = () => {
+      if (ttsWarmedUp) return;
+      try {
+        const silent = new SpeechSynthesisUtterance('');
+        silent.volume = 0;
+        synth.speak(silent);
+        setTtsWarmedUp(true);
+        console.debug('[TTS] Warmed up — audio unlocked');
+      } catch { /* non-critical */ }
+      document.removeEventListener('click', warmUp);
+      document.removeEventListener('touchstart', warmUp);
+    };
+    document.addEventListener('click', warmUp, { once: true });
+    document.addEventListener('touchstart', warmUp, { once: true });
+
+    return () => {
+      synth.removeEventListener('voiceschanged', loadVoices);
+      document.removeEventListener('click', warmUp);
+      document.removeEventListener('touchstart', warmUp);
+    };
+  }, [ttsWarmedUp]);
 
   // Zustand store sync — keep centralized state updated
   const storeSetMyLanguage = useMeetingStore((s) => s.setMyLanguage);
@@ -174,6 +217,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
       // Voice-to-voice: only when server says TTS is available for this user's language
       if (data.speakerId !== userId) {
         const shouldSpeak = speakEnabledRef.current && data.ttsAvailable;
+        console.debug(`[TTS] Received translation — speakEnabled=${speakEnabledRef.current}, ttsAvailable=${data.ttsAvailable}, shouldSpeak=${shouldSpeak}, text="${translated?.slice(0, 40)}"`);
         if (shouldSpeak && translated) {
           speak(translated, myLang);
         }
@@ -219,9 +263,13 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
     storeSetMyLanguage(lang);
   }, [meetingId]);
 
-  // Initialize: set default language on mount
+  // Initialize: set default language on mount (include receiveVoice preference)
   useEffect(() => {
-    socketClient.setTranslationLanguage(meetingId, myLanguage);
+    socketClient.emit('translation:set-language', {
+      meetingId,
+      language: myLanguage,
+      receiveVoice: speakEnabledRef.current,
+    });
   }, [meetingId]);
 
   // ── Web Speech Recognition ─────────────────────────────
@@ -322,21 +370,44 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
     // Check TTS support before attempting
     if (!isTtsSupported(lang)) {
       // Language has no TTS voice — text-only translation, skip voice
-      console.debug(`[TRANSLATION] TTS not available for ${lang}, text-only fallback`);
+      console.debug(`[TTS] TTS not available for ${lang}, text-only fallback`);
       return;
     }
 
     const langCode = getBcp47(lang) || 'en-US';
     try {
       if (Platform.OS === 'web') {
-        // Cancel any queued speech to avoid overlap
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = langCode;
-        utterance.rate = 1.0; // Normal speed for voice-to-voice
-        utterance.volume = ttsVolume;
-        utterance.pitch = 1.0;
-        window.speechSynthesis.speak(utterance);
+        const synth = window.speechSynthesis;
+        if (!synth) {
+          console.warn('[TTS] speechSynthesis not available');
+          return;
+        }
+        // Cancel queued speech first
+        synth.cancel();
+        // Chrome quirk: after cancel(), must wait a tick before speak()
+        // otherwise the engine can get stuck in a "paused" state
+        setTimeout(() => {
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = langCode;
+          utterance.rate = 1.0;
+          utterance.volume = ttsVolume;
+          utterance.pitch = 1.0;
+
+          // Try to find a matching voice (Chrome doesn't auto-match well)
+          const voices = synth.getVoices();
+          const match = voices.find((v) => v.lang.startsWith(langCode.split('-')[0]));
+          if (match) utterance.voice = match;
+
+          utterance.onerror = (e: any) => {
+            console.warn('[TTS] Utterance error:', e.error || e);
+          };
+          utterance.onend = () => {
+            console.debug('[TTS] Utterance complete');
+          };
+
+          synth.speak(utterance);
+          console.debug(`[TTS] Speaking: "${text.slice(0, 40)}..." lang=${langCode}`);
+        }, 50);
       } else {
         // Cancel previous speech on native for cleaner voice-to-voice
         Speech.stop();

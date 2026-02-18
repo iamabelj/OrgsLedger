@@ -88,6 +88,8 @@ export async function translateText(
   const targetName = getLanguageName(targetLang);
   const sourceName = sourceLang ? getLanguageName(sourceLang) : null;
 
+  logger.debug(`[TRANSLATION] Translating: "${text.slice(0, 60)}" from ${sourceName || 'auto'} (${sourceLang || 'auto'}) → ${targetName} (${targetLang})`);
+
   // ── Try AI Proxy first ────────────────────────────────
   if (config.aiProxy.url && config.aiProxy.apiKey) {
     try {

@@ -693,6 +693,18 @@ export default function MeetingDetailScreen() {
       const config = res.data?.data;
       if (!config) throw new Error('No join config returned');
       if (!config.jwt) throw new Error('Meeting token not received. Please contact your administrator.');
+
+      // Quick check — verify Jitsi domain is reachable before opening
+      if (Platform.OS === 'web' && config.domain) {
+        try {
+          const probe = await fetch(`https://${config.domain}/`, { method: 'HEAD', mode: 'no-cors' });
+          // mode 'no-cors' always returns opaque response, but fetch itself throws on DNS failure
+        } catch {
+          throw new Error(
+            `Video server (${config.domain}) is not reachable. Please check that the DNS record for ${config.domain} points to your server, or contact your administrator.`
+          );
+        }
+      }
       setJoinConfig(config);
 
       if (Platform.OS === 'web') {
@@ -1979,7 +1991,7 @@ const z = StyleSheet.create({
   langSearchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.cardDark,
+    backgroundColor: Colors.surface,
     borderRadius: BorderRadius.sm,
     paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.xs,

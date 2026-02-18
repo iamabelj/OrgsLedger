@@ -121,9 +121,13 @@ export default function CreateMeetingScreen() {
       });
 
       const createdMeeting = res.data?.data || res.data;
-      showAlert('Success', 'Meeting created successfully!', [
-        { text: 'View Meeting', onPress: () => router.replace(`/meetings/${createdMeeting?.id}` as any) },
-      ]);
+      if (createdMeeting?.id) {
+        // Navigate directly to the meeting page
+        router.replace(`/meetings/${createdMeeting.id}` as any);
+      } else {
+        showAlert('Success', 'Meeting created successfully!');
+        router.back();
+      }
     } catch (err: any) {
       const msg = err.response?.data?.error || err.response?.data?.details?.[0]?.message || 'Failed to create meeting';
       showAlert('Error', msg);
