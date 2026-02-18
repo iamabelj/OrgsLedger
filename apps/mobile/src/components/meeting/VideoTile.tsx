@@ -154,12 +154,14 @@ function VideoTileInner({
   // Active speaker glow animation
   useEffect(() => {
     if (isActiveSpeaker) {
-      Animated.loop(
+      const loop = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: false }),
           Animated.timing(pulseAnim, { toValue: 0.4, duration: 800, useNativeDriver: false }),
         ])
-      ).start();
+      );
+      loop.start();
+      return () => loop.stop(); // Stop animation on cleanup to prevent leaks
     } else {
       pulseAnim.setValue(0);
     }

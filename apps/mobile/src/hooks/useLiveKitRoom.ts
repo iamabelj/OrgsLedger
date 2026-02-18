@@ -7,7 +7,7 @@
 // permission denial, per-track audio attach/detach, reconnection.
 // ============================================================
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Platform } from 'react-native';
 
 // ── Types ─────────────────────────────────────────────────
@@ -130,9 +130,11 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
   const roomRef = useRef<any>(null);
   const audioElementsRef = useRef<Map<string, HTMLElement>>(new Map());
   const connectingRef = useRef(false); // guard against double-connect
+  const rebuildTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Rebuild all participants from room state ────────────
-  const rebuildParticipants = useCallback(() => {
+  // Actual rebuild logic (called by debounced wrapper)
+  const doRebuild = useCallback(() => {
     const room = roomRef.current;
     if (!room) {
       setParticipants([]);
@@ -160,6 +162,16 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
       setIsScreenSharing(room.localParticipant.isScreenShareEnabled ?? false);
     }
   }, []);
+
+  // Debounced wrapper — coalesces rapid-fire events (e.g., ParticipantConnected +
+  // TrackSubscribed × 2 → one rebuild instead of three)
+  const rebuildParticipants = useCallback(() => {
+    if (rebuildTimerRef.current) clearTimeout(rebuildTimerRef.current);
+    rebuildTimerRef.current = setTimeout(() => {
+      rebuildTimerRef.current = null;
+      doRebuild();
+    }, 50); // 50ms debounce — fast enough to feel instant, prevents burst rebuilds
+  }, [doRebuild]);
 
   // ── Attach audio track for playback ─────────────────────
   const attachAudio = useCallback((track: any, participantSid: string) => {
@@ -357,11 +369,12 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
         } else {
           setDominantSpeaker(null);
         }
-        rebuildParticipants();
+        // No rebuildParticipants() — active speakers don't change track/mute state,
+        // only the speaker highlight, which is handled via activeSpeakerIds
       });
 
       room.on(RE.ConnectionQualityChanged, () => {
-        rebuildParticipants();
+        // Connection quality is cosmetic — don't rebuild particles for it
       });
 
       room.on(RE.MediaDevicesError, (e: any) => {
@@ -503,6 +516,11 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
         roomRef.current = null;
       }
       connectingRef.current = false;
+      // Cancel pending rebuild timer
+      if (rebuildTimerRef.current) {
+        clearTimeout(rebuildTimerRef.current);
+        rebuildTimerRef.current = null;
+      }
       // Clean up audio elements
       for (const [, el] of audioElementsRef.current) {
         try { el.remove(); } catch (_) {}
@@ -511,9 +529,13 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
     };
   }, []);
 
-  const localParticipant = participants.find((p) => p.isLocal) || null;
+  const localParticipant = useMemo(
+    () => participants.find((p) => p.isLocal) || null,
+    [participants]
+  );
 
-  return {
+  // Memoize return value so consumers don't see a new object every render
+  return useMemo(() => ({
     isConnected,
     isConnecting,
     isReconnecting,
@@ -531,5 +553,11 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
     toggleCamera,
     toggleScreenShare,
     room: roomRef.current,
-  };
+  }), [
+    isConnected, isConnecting, isReconnecting, error,
+    participants, activeSpeakerIds, localParticipant,
+    isMicEnabled, isCameraEnabled, isScreenSharing,
+    dominantSpeaker, connect, disconnect,
+    toggleMic, toggleCamera, toggleScreenShare,
+  ]);
 }
