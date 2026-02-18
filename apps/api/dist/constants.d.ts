@@ -49,7 +49,7 @@ export declare const CURRENCIES: {
     readonly USD: "USD";
     readonly NGN: "NGN";
 };
-export declare const RATE_NGN_PER_USD = 1500;
+export declare const RATE_NGN_PER_USD: number;
 export declare const PAGINATION: {
     readonly DEFAULT_LIMIT: 50;
     readonly MAX_LIMIT: 200;

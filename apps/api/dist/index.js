@@ -15,6 +15,7 @@ const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
+const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const config_1 = require("./config");
 const logger_1 = require("./logger");
@@ -48,6 +49,7 @@ const expenses_1 = __importDefault(require("./routes/expenses"));
 const subscriptions_1 = __importDefault(require("./routes/subscriptions"));
 const observability_1 = __importDefault(require("./routes/observability"));
 const scheduler_service_1 = require("./services/scheduler.service");
+const seed_service_1 = require("./services/seed.service");
 const app = (0, express_1.default)();
 exports.app = app;
 const server = http_1.default.createServer(app);
@@ -73,7 +75,7 @@ app.use((0, helmet_1.default)());
 app.use((0, cors_1.default)({
     origin: config_1.config.env === 'production'
         ? (process.env.CORS_ORIGINS || 'https://orgsledger.com,https://app.orgsledger.com').split(',')
-        : '*',
+        : true,
     credentials: true,
 }));
 // Raw body for Stripe webhooks
@@ -116,8 +118,7 @@ app.use('/uploads', (req, res, next) => {
         return;
     }
     try {
-        const jwt = require('jsonwebtoken');
-        jwt.verify(token, config_1.config.jwt.secret);
+        jsonwebtoken_1.default.verify(token, config_1.config.jwt.secret);
         next();
     }
     catch {
@@ -200,6 +201,8 @@ app.use(error_monitor_service_1.errorMonitorMiddleware); // Capture errors befor
 app.use(error_handler_1.globalErrorHandler); // Structured JSON error responses
 // ── Start Server ──────────────────────────────────────────
 (async () => {
+    // Ensure super admin account exists on startup
+    await (0, seed_service_1.ensureSuperAdmin)();
     server.listen(config_1.config.port, '0.0.0.0', () => {
         logger_1.logger.info(`OrgsLedger API running on port ${config_1.config.port}`);
         logger_1.logger.info(`Environment: ${config_1.config.env}`);

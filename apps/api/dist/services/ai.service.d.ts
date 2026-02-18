@@ -23,6 +23,11 @@ export declare class AIService {
     private generateMinutes;
     private formatTime;
     private getMockTranscript;
+    /**
+     * Get transcripts from the meeting_transcripts table (live translation data).
+     * Falls back to mock if table doesn't exist or is empty.
+     */
+    private getTranscriptsFromDB;
     private getMockMinutes;
 }
 //# sourceMappingURL=ai.service.d.ts.map

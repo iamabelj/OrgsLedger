@@ -154,8 +154,12 @@ router.get('/', middleware_1.authenticate, async (req, res) => {
                 .pluck('organization_id');
             query = query.whereIn('id', orgIds);
         }
-        const orgs = await query.select('*').orderBy('name');
-        res.json({ success: true, data: orgs });
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 100));
+        const offset = (page - 1) * limit;
+        const total = await query.clone().clear('select').count('id as count').first();
+        const orgs = await query.select('*').orderBy('name').limit(limit).offset(offset);
+        res.json({ success: true, data: orgs, meta: { page, limit, total: parseInt(total?.count) || 0 } });
     }
     catch (err) {
         res.status(500).json({ success: false, error: 'Failed to list organizations' });
@@ -195,15 +199,49 @@ router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, as
     }
 });
 // ── Update Organization Settings ────────────────────────────
-router.put('/:orgId/settings', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
+router.put('/:orgId/settings', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
         const previous = await (0, db_1.default)('organizations').where({ id: req.params.orgId }).first();
         const { name, settings } = req.body;
+        // Validate settings shape if provided
+        const ALLOWED_SETTINGS_KEYS = [
+            'allowPublicJoin', 'requireApproval', 'defaultRole',
+            'billingCurrency', 'paymentMethods', 'enablePaystack', 'enableStripe', 'enableFlutterwave',
+            'enableBankTransfer', 'bankDetails', 'primaryColor', 'accentColor',
+            'currency', 'timezone', 'locale', 'aiEnabled', 'features',
+            'notifications', 'enabledGateways', 'description',
+        ];
         const updates = {};
-        if (name)
-            updates.name = name;
-        if (settings)
-            updates.settings = JSON.stringify(settings);
+        if (name && typeof name === 'string' && name.trim().length > 0 && name.length <= 200) {
+            updates.name = name.trim();
+        }
+        // Handle slug as top-level org column
+        if (settings?.slug && typeof settings.slug === 'string') {
+            updates.slug = settings.slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
+        }
+        // description is stored inside the JSON settings object (no DB column)
+        if (settings && typeof settings === 'object' && !Array.isArray(settings)) {
+            // Merge with existing settings instead of replacing
+            let existingSettings = {};
+            try {
+                const org = await (0, db_1.default)('organizations').where({ id: req.params.orgId }).select('settings').first();
+                if (org?.settings) {
+                    existingSettings = typeof org.settings === 'string' ? JSON.parse(org.settings) : org.settings;
+                }
+            }
+            catch { }
+            const filtered = { ...existingSettings };
+            for (const key of Object.keys(settings)) {
+                if (ALLOWED_SETTINGS_KEYS.includes(key)) {
+                    filtered[key] = settings[key];
+                }
+            }
+            updates.settings = JSON.stringify(filtered);
+            // Update billing_currency column when currency changes
+            if (settings.currency && typeof settings.currency === 'string') {
+                updates.billing_currency = settings.currency.toUpperCase();
+            }
+        }
         await (0, db_1.default)('organizations').where({ id: req.params.orgId }).update(updates);
         await req.audit?.({
             organizationId: req.params.orgId,
@@ -216,6 +254,7 @@ router.put('/:orgId/settings', middleware_1.authenticate, middleware_1.loadMembe
         res.json({ success: true, message: 'Settings updated' });
     }
     catch (err) {
+        logger_1.logger.error('Update settings error', err);
         res.status(500).json({ success: false, error: 'Failed to update settings' });
     }
 });
@@ -353,36 +392,37 @@ router.get('/:orgId/members/:userId', middleware_1.authenticate, middleware_1.lo
             res.status(404).json({ success: false, error: 'Member not found' });
             return;
         }
-        // Get committees
-        const committees = await (0, db_1.default)('committee_members')
-            .join('committees', 'committee_members.committee_id', 'committees.id')
-            .where({ 'committee_members.user_id': req.params.userId, 'committees.organization_id': req.params.orgId })
-            .select('committees.id', 'committees.name');
-        // Get financial info
-        const dues = await (0, db_1.default)('transactions')
-            .where({ user_id: req.params.userId, organization_id: req.params.orgId, type: 'due' })
-            .select('id', 'description as title', 'amount', 'status', 'created_at as dueDate')
-            .orderBy('created_at', 'desc')
-            .limit(20);
-        const fines = await (0, db_1.default)('transactions')
-            .where({ user_id: req.params.userId, organization_id: req.params.orgId, type: 'fine' })
-            .select('id', 'description as reason', 'amount', 'status', 'created_at')
-            .orderBy('created_at', 'desc')
-            .limit(20);
-        const donations = await (0, db_1.default)('donations')
-            .join('donation_campaigns', 'donations.campaign_id', 'donation_campaigns.id')
-            .where({ 'donations.user_id': req.params.userId, 'donation_campaigns.organization_id': req.params.orgId })
-            .select('donations.id', 'donation_campaigns.title as campaignTitle', 'donations.amount', 'donations.created_at')
-            .orderBy('donations.created_at', 'desc')
-            .limit(20);
-        const totalPaid = await (0, db_1.default)('transactions')
-            .where({ user_id: req.params.userId, organization_id: req.params.orgId, status: 'completed' })
-            .sum('amount as total')
-            .first();
-        const totalOwed = await (0, db_1.default)('transactions')
-            .where({ user_id: req.params.userId, organization_id: req.params.orgId, status: 'pending' })
-            .sum('amount as total')
-            .first();
+        // Parallelize independent member-detail queries (was sequential N+1)
+        const [committees, dues, fines, donations, totalPaid, totalOwed] = await Promise.all([
+            (0, db_1.default)('committee_members')
+                .join('committees', 'committee_members.committee_id', 'committees.id')
+                .where({ 'committee_members.user_id': req.params.userId, 'committees.organization_id': req.params.orgId })
+                .select('committees.id', 'committees.name'),
+            (0, db_1.default)('transactions')
+                .where({ user_id: req.params.userId, organization_id: req.params.orgId, type: 'due' })
+                .select('id', 'description as title', 'amount', 'status', 'created_at as dueDate')
+                .orderBy('created_at', 'desc')
+                .limit(20),
+            (0, db_1.default)('transactions')
+                .where({ user_id: req.params.userId, organization_id: req.params.orgId, type: 'fine' })
+                .select('id', 'description as reason', 'amount', 'status', 'created_at')
+                .orderBy('created_at', 'desc')
+                .limit(20),
+            (0, db_1.default)('donations')
+                .join('donation_campaigns', 'donations.campaign_id', 'donation_campaigns.id')
+                .where({ 'donations.user_id': req.params.userId, 'donation_campaigns.organization_id': req.params.orgId })
+                .select('donations.id', 'donation_campaigns.title as campaignTitle', 'donations.amount', 'donations.created_at')
+                .orderBy('donations.created_at', 'desc')
+                .limit(20),
+            (0, db_1.default)('transactions')
+                .where({ user_id: req.params.userId, organization_id: req.params.orgId, status: 'completed' })
+                .sum('amount as total')
+                .first(),
+            (0, db_1.default)('transactions')
+                .where({ user_id: req.params.userId, organization_id: req.params.orgId, status: 'pending' })
+                .sum('amount as total')
+                .first(),
+        ]);
         res.json({
             success: true,
             data: {
@@ -486,6 +526,17 @@ router.put('/:orgId/members/:userId', middleware_1.authenticate, middleware_1.lo
             updates.role = role;
         if (isActive !== undefined)
             updates.is_active = isActive;
+        // Prevent demoting the last org_admin
+        if (role && membership.role === 'org_admin' && role !== 'org_admin') {
+            const adminCount = await (0, db_1.default)('memberships')
+                .where({ organization_id: req.params.orgId, role: 'org_admin', is_active: true })
+                .count('id as count')
+                .first();
+            if ((parseInt(adminCount?.count) || 0) <= 1) {
+                res.status(400).json({ success: false, error: 'Cannot demote the last admin. Promote another member first.' });
+                return;
+            }
+        }
         const previousValue = { role: membership.role, is_active: membership.is_active };
         await (0, db_1.default)('memberships').where({ id: membership.id }).update(updates);
         await req.audit?.({
@@ -505,6 +556,25 @@ router.put('/:orgId/members/:userId', middleware_1.authenticate, middleware_1.lo
 // ── Remove Member ───────────────────────────────────────────
 router.delete('/:orgId/members/:userId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
+        // Prevent removing yourself
+        if (req.params.userId === req.user.userId) {
+            res.status(400).json({ success: false, error: 'You cannot remove yourself. Transfer ownership first.' });
+            return;
+        }
+        // Prevent removing last org_admin
+        const target = await (0, db_1.default)('memberships')
+            .where({ user_id: req.params.userId, organization_id: req.params.orgId, is_active: true })
+            .first();
+        if (target?.role === 'org_admin') {
+            const adminCount = await (0, db_1.default)('memberships')
+                .where({ organization_id: req.params.orgId, role: 'org_admin', is_active: true })
+                .count('id as count')
+                .first();
+            if ((parseInt(adminCount?.count) || 0) <= 1) {
+                res.status(400).json({ success: false, error: 'Cannot remove the last admin. Promote another member first.' });
+                return;
+            }
+        }
         await (0, db_1.default)('memberships')
             .where({ user_id: req.params.userId, organization_id: req.params.orgId })
             .update({ is_active: false });

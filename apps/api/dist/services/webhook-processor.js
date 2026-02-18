@@ -45,14 +45,22 @@ class WebhookProcessor {
                 res.json({ received: true });
                 return;
             }
-            // 3. Complete the transaction
-            const tx = await (0, db_1.default)('transactions').where({ id: data.transactionId }).first();
-            if (!tx || tx.status !== constants_1.TX_STATUS.PENDING) {
+            // 3. Atomically claim the transaction (prevents double-processing)
+            const claimed = await (0, db_1.default)('transactions')
+                .where({ id: data.transactionId, status: constants_1.TX_STATUS.PENDING })
+                .update({
+                status: constants_1.TX_STATUS.COMPLETED,
+                payment_gateway_id: data.gatewayReference || null,
+                payment_method: data.paymentMethod
+                    ? `${this.gatewayName}_${data.paymentMethod}`
+                    : this.gatewayName,
+            });
+            if (claimed === 0) {
                 // Already processed or not found — still acknowledge
                 res.json({ received: true });
                 return;
             }
-            await this.markCompleted(tx, data);
+            const tx = await (0, db_1.default)('transactions').where({ id: data.transactionId }).first();
             // 4. Update related records
             await this.updateRelatedRecords(tx);
             // 5. Notifications

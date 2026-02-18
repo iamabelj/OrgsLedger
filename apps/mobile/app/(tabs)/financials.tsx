@@ -550,9 +550,9 @@ export default function FinancialsScreen() {
               handlePay(pending[0].id, pending[0].amount);
             } else if (pending.length > 1) {
               // Show picker for multiple pending transactions
-              const buttons = pending.slice(0, 5).map((t: any) => ({
+              const buttons: Array<{ text: string; onPress?: () => void; style?: string }> = pending.slice(0, 5).map((t: any) => ({
                 text: `${t.description || t.type} — ${formatCurrency(t.amount, orgCurrency)}`,
-                onPress: () => handlePay(t.id, t.amount),
+                onPress: () => { handlePay(t.id, t.amount); },
               }));
               buttons.push({ text: 'Cancel', onPress: () => {}, style: 'cancel' });
               showAlert('Select Payment', 'Choose which transaction to pay:', buttons);

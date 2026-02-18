@@ -8,6 +8,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.setupSocketIO = setupSocketIO;
+exports.forceDisconnectMeeting = forceDisconnectMeeting;
 exports.emitFinancialUpdate = emitFinancialUpdate;
 const socket_io_1 = require("socket.io");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
@@ -18,8 +19,33 @@ const translation_service_1 = require("./services/translation.service");
 const subscription_service_1 = require("./services/subscription.service");
 const audit_1 = require("./middleware/audit");
 // In-memory store for meeting translation sessions
-// meetingId -> Map<userId, { language, name }>
+// meetingId -> Map<userId, { language, name, receiveVoice }>
 const meetingLanguages = new Map();
+// ── Helper: Persist transcript segment to DB ────────────
+// Always stores transcript even when org_id is missing
+async function this_persistTranscript(meetingId, organizationId, speakerId, speakerName, originalText, sourceLang, translations) {
+    try {
+        const hasTable = await db_1.default.schema.hasTable('meeting_transcripts');
+        if (!hasTable) {
+            logger_1.logger.warn('[TRANSLATION] meeting_transcripts table does not exist, skipping persist');
+            return;
+        }
+        await (0, db_1.default)('meeting_transcripts').insert({
+            meeting_id: meetingId,
+            organization_id: organizationId,
+            speaker_id: speakerId,
+            speaker_name: speakerName,
+            original_text: originalText,
+            source_lang: sourceLang,
+            translations: JSON.stringify(translations),
+            spoken_at: Date.now(),
+        });
+        logger_1.logger.debug(`[TRANSLATION] Transcript persisted: meeting=${meetingId}, speaker=${speakerName}, lang=${sourceLang}`);
+    }
+    catch (dbErr) {
+        logger_1.logger.warn('[TRANSLATION] Failed to persist transcript segment', dbErr);
+    }
+}
 function setupSocketIO(httpServer) {
     const allowedOrigins = config_1.config.env === 'production'
         ? ['https://app.orgsledger.com', 'https://orgsledger.com']
@@ -144,9 +170,14 @@ function setupSocketIO(httpServer) {
         socket.on('meeting:join', async (meetingId) => {
             try {
                 // Verify user is a member of the meeting's organization
-                const meeting = await (0, db_1.default)('meetings').where({ id: meetingId }).select('organization_id').first();
+                const meeting = await (0, db_1.default)('meetings').where({ id: meetingId }).select('organization_id', 'status').first();
                 if (!meeting) {
                     socket.emit('error', { message: 'Meeting not found' });
+                    return;
+                }
+                // Prevent joining ended meetings
+                if (meeting.status === 'ended') {
+                    socket.emit('meeting:join-rejected', { meetingId, reason: 'Meeting has ended' });
                     return;
                 }
                 const membership = await (0, db_1.default)('memberships')
@@ -156,15 +187,97 @@ function setupSocketIO(httpServer) {
                     socket.emit('error', { message: 'Not a member of this organization' });
                     return;
                 }
+                // Get user name for participant payload
+                const user = await (0, db_1.default)('users').where({ id: userId }).select('first_name', 'last_name').first();
+                const name = user ? `${user.first_name} ${user.last_name}`.trim() : 'Unknown';
+                const isModerator = ['org_admin', 'executive'].includes(membership.role);
                 socket.join(`meeting:${meetingId}`);
+                // Store meeting association on socket for cleanup
+                socket._meetingId = meetingId;
                 socket.to(`meeting:${meetingId}`).emit('meeting:participant-joined', {
                     userId,
+                    name,
+                    isModerator,
+                    meetingId,
                 });
-                logger_1.logger.debug(`User ${userId} joined meeting ${meetingId}`);
+                // ── Auto-load saved language preference for this user ──
+                // If user previously set a language in this org, auto-apply it
+                try {
+                    const hasTable = await db_1.default.schema.hasTable('user_language_preferences');
+                    if (hasTable) {
+                        const pref = await (0, db_1.default)('user_language_preferences')
+                            .where({ user_id: userId, organization_id: meeting.organization_id })
+                            .first();
+                        if (pref?.preferred_language) {
+                            // Set in memory map so translation routing works immediately
+                            if (!meetingLanguages.has(meetingId)) {
+                                meetingLanguages.set(meetingId, new Map());
+                            }
+                            meetingLanguages.get(meetingId).set(userId, {
+                                language: pref.preferred_language,
+                                name,
+                                receiveVoice: pref.receive_voice !== false,
+                            });
+                            // Notify the user of their auto-loaded language
+                            socket.emit('translation:language-restored', {
+                                meetingId,
+                                language: pref.preferred_language,
+                                receiveVoice: pref.receive_voice !== false,
+                            });
+                            // Broadcast updated participant languages
+                            const participants = [];
+                            meetingLanguages.get(meetingId).forEach((val, uid) => {
+                                participants.push({ userId: uid, name: val.name, language: val.language });
+                            });
+                            io.to(`meeting:${meetingId}`).emit('translation:participants', { meetingId, participants });
+                            logger_1.logger.debug(`[TRANSLATION] Auto-loaded language ${pref.preferred_language} for user ${userId} in meeting ${meetingId}`);
+                        }
+                    }
+                }
+                catch (prefErr) {
+                    logger_1.logger.warn('[TRANSLATION] Failed to auto-load language preference', prefErr);
+                }
+                logger_1.logger.debug(`User ${userId} (${name}) joined meeting ${meetingId}`);
             }
             catch (err) {
                 logger_1.logger.error('meeting:join authorization error', err);
             }
+        });
+        // ── Raise Hand ──────────────────────────────────────
+        socket.on('meeting:raise-hand', (data) => {
+            if (!data.meetingId)
+                return;
+            socket.to(`meeting:${data.meetingId}`).emit('meeting:hand-raised', {
+                userId: data.userId,
+                name: data.name,
+                raised: data.raised,
+            });
+        });
+        // ── Moderator Controls ──────────────────────────────
+        socket.on('meeting:recording-started', (data) => {
+            if (!data.meetingId)
+                return;
+            io.to(`meeting:${data.meetingId}`).emit('meeting:recording-started', {
+                meetingId: data.meetingId,
+                startedBy: userId,
+            });
+        });
+        socket.on('meeting:recording-stopped', (data) => {
+            if (!data.meetingId)
+                return;
+            io.to(`meeting:${data.meetingId}`).emit('meeting:recording-stopped', {
+                meetingId: data.meetingId,
+                stoppedBy: userId,
+            });
+        });
+        socket.on('meeting:lock', (data) => {
+            if (!data.meetingId)
+                return;
+            io.to(`meeting:${data.meetingId}`).emit('meeting:lock-changed', {
+                meetingId: data.meetingId,
+                locked: data.locked,
+                changedBy: userId,
+            });
         });
         // ── Audio Streaming for AI ──────────────────────────
         socket.on('meeting:audio-chunk', (data) => {
@@ -177,17 +290,41 @@ function setupSocketIO(httpServer) {
         // ── Live Translation System ─────────────────────────
         // User sets their preferred language for a meeting
         socket.on('translation:set-language', async (data) => {
-            const { meetingId, language } = data;
+            const { meetingId, language, receiveVoice = true } = data;
             if (!meetingId || !language)
                 return;
+            logger_1.logger.debug(`[TRANSLATION] User ${userId} setting language to ${language} for meeting ${meetingId} (receiveVoice: ${receiveVoice})`);
             // Get user's name
             const user = await (0, db_1.default)('users').where({ id: userId }).select('first_name', 'last_name').first();
             const name = user ? `${user.first_name} ${user.last_name}` : 'Unknown';
-            // Store in memory
+            // Store in memory (per-user preference including voice toggle)
             if (!meetingLanguages.has(meetingId)) {
                 meetingLanguages.set(meetingId, new Map());
             }
-            meetingLanguages.get(meetingId).set(userId, { language, name });
+            meetingLanguages.get(meetingId).set(userId, { language, name, receiveVoice });
+            // Persist to DB for future meetings
+            try {
+                const meeting = await (0, db_1.default)('meetings').where({ id: meetingId }).select('organization_id').first();
+                if (meeting?.organization_id) {
+                    const hasTable = await db_1.default.schema.hasTable('user_language_preferences');
+                    if (hasTable) {
+                        await (0, db_1.default)('user_language_preferences')
+                            .insert({
+                            user_id: userId,
+                            organization_id: meeting.organization_id,
+                            preferred_language: language,
+                            receive_voice: receiveVoice,
+                            receive_text: true,
+                        })
+                            .onConflict(['user_id', 'organization_id'])
+                            .merge({ preferred_language: language, receive_voice: receiveVoice });
+                        logger_1.logger.debug(`[TRANSLATION] Persisted language preference for user ${userId}: ${language}`);
+                    }
+                }
+            }
+            catch (prefErr) {
+                logger_1.logger.warn('[TRANSLATION] Failed to persist user language preference', prefErr);
+            }
             // Broadcast updated participant languages to everyone in the meeting
             const participants = [];
             meetingLanguages.get(meetingId).forEach((val, uid) => {
@@ -217,11 +354,21 @@ function setupSocketIO(httpServer) {
             if (!meetingId || !text?.trim())
                 return;
             const langMap = meetingLanguages.get(meetingId);
-            if (!langMap || langMap.size === 0)
-                return;
-            // Get speaker name
-            const speaker = langMap.get(userId);
-            const speakerName = speaker?.name || 'Unknown';
+            // Get speaker name — from in-memory map or fall back to DB lookup
+            let speakerName = 'Unknown';
+            const speaker = langMap?.get(userId);
+            if (speaker?.name) {
+                speakerName = speaker.name;
+            }
+            else {
+                try {
+                    const user = await (0, db_1.default)('users').where({ id: userId }).select('first_name', 'last_name').first();
+                    if (user)
+                        speakerName = `${user.first_name} ${user.last_name}`.trim();
+                }
+                catch (_) { /* non-critical */ }
+            }
+            logger_1.logger.debug(`[TRANSCRIPT] Speech: speaker=${speakerName}, isFinal=${isFinal}, lang=${sourceLang}, len=${text.length}`);
             // For interim results, just broadcast the original text to others
             // (so they see the speaker is talking)
             if (!isFinal) {
@@ -236,19 +383,29 @@ function setupSocketIO(httpServer) {
             }
             // For final results, translate to all unique languages needed
             const targetLangs = new Set();
-            langMap.forEach((val) => {
-                if (val.language !== sourceLang) {
-                    targetLangs.add(val.language);
-                }
-            });
+            if (langMap) {
+                langMap.forEach((val) => {
+                    if (val.language !== sourceLang) {
+                        targetLangs.add(val.language);
+                    }
+                });
+            }
+            // Always look up organization_id early for transcript storage
+            let organizationId = null;
+            try {
+                const meeting = await (0, db_1.default)('meetings').where({ id: meetingId }).select('organization_id').first();
+                organizationId = meeting?.organization_id || null;
+            }
+            catch (lookupErr) {
+                logger_1.logger.warn('[TRANSLATION] Failed to look up meeting org', lookupErr);
+            }
             try {
                 let translations = {};
                 if (targetLangs.size > 0) {
-                    // Check translation wallet before making API calls
-                    // Find the org for this meeting
-                    const meeting = await (0, db_1.default)('meetings').where({ id: meetingId }).select('organization_id').first();
-                    if (meeting?.organization_id) {
-                        const wallet = await (0, subscription_service_1.getTranslationWallet)(meeting.organization_id);
+                    logger_1.logger.debug(`[TRANSLATION] Translating to ${targetLangs.size} languages: ${[...targetLangs].join(', ')}`);
+                    if (organizationId) {
+                        // Check translation wallet before making API calls
+                        const wallet = await (0, subscription_service_1.getTranslationWallet)(organizationId);
                         const balance = parseFloat(wallet.balance_minutes);
                         if (balance <= 0) {
                             socket.emit('translation:error', {
@@ -256,39 +413,96 @@ function setupSocketIO(httpServer) {
                                 error: 'Translation wallet empty. Please top up to continue translations.',
                                 code: 'WALLET_EMPTY',
                             });
+                            // Still persist the original transcript even if wallet empty
+                            await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, {});
+                            logger_1.logger.info(`[TRANSCRIPT] ✓ Stored (wallet empty): meeting=${meetingId}, speaker=${speakerName}`);
+                            io.to(`meeting:${meetingId}`).emit('transcript:stored', {
+                                meetingId, speakerId: userId, speakerName, originalText: text,
+                                sourceLang, translations: {}, timestamp: Date.now(),
+                            });
                             return;
                         }
                         translations = await (0, translation_service_1.translateToMultiple)(text, [...targetLangs], sourceLang);
+                        logger_1.logger.debug(`[TRANSLATION] Translation complete: ${Object.keys(translations).length} languages`);
                         // Deduct translation wallet — estimate ~0.5 minutes per translation batch
                         const deductMinutes = 0.5;
-                        const deduction = await (0, subscription_service_1.deductTranslationWallet)(meeting.organization_id, deductMinutes, `Live translation: ${targetLangs.size} language(s) in meeting`);
+                        const deduction = await (0, subscription_service_1.deductTranslationWallet)(organizationId, deductMinutes, `Live translation: ${targetLangs.size} language(s) in meeting`);
                         if (!deduction.success) {
                             logger_1.logger.warn('[TRANSLATION] Wallet deduction failed but translation was served', {
-                                meetingId, orgId: meeting.organization_id,
+                                meetingId, orgId: organizationId,
                             });
                         }
                     }
                     else {
+                        // No org found but still translate
                         translations = await (0, translation_service_1.translateToMultiple)(text, [...targetLangs], sourceLang);
+                        logger_1.logger.warn('[TRANSLATION] No organization_id found for meeting, skipping wallet deduction', { meetingId });
                     }
                 }
+                // ── Always persist transcript segment to DB ──────────
+                await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, translations);
+                logger_1.logger.info(`[TRANSCRIPT] ✓ Stored: meeting=${meetingId}, speaker=${speakerName}, translations=${Object.keys(translations).length}`);
                 // Always include the original language
                 translations[sourceLang] = text;
-                // Broadcast to all meeting participants
-                io.to(`meeting:${meetingId}`).emit('translation:result', {
+                const now = Date.now();
+                // ── Emit transcript:stored for real-time transcript tab updates ──
+                io.to(`meeting:${meetingId}`).emit('transcript:stored', {
+                    meetingId, speakerId: userId, speakerName, originalText: text,
+                    sourceLang, translations, timestamp: now,
+                });
+                // ── Per-user routing: emit individually with TTS availability ──
+                // Each user gets their translation + a ttsAvailable flag based on:
+                //   1. Whether TTS engine supports their target language
+                //   2. Whether the user has opted in to receive voice
+                const langMapForEmit = meetingLanguages.get(meetingId);
+                if (langMapForEmit) {
+                    for (const [targetUserId, prefs] of langMapForEmit.entries()) {
+                        if (targetUserId === userId)
+                            continue; // Don't send to speaker
+                        const targetSocketIds = await io.in(`meeting:${meetingId}`).fetchSockets();
+                        const targetSocket = targetSocketIds.find((s) => s.userId === targetUserId || s.data?.userId === targetUserId);
+                        if (targetSocket) {
+                            const ttsAvailable = (0, translation_service_1.isTtsSupported)(prefs.language) && prefs.receiveVoice;
+                            targetSocket.emit('translation:result', {
+                                meetingId,
+                                speakerId: userId,
+                                speakerName,
+                                originalText: text,
+                                sourceLang,
+                                translations,
+                                timestamp: now,
+                                ttsEnabled: ttsAvailable,
+                                ttsAvailable,
+                                userLang: prefs.language,
+                            });
+                            logger_1.logger.debug(`[TRANSLATION] Emitted to user ${targetUserId} (lang=${prefs.language}, tts=${ttsAvailable})`);
+                        }
+                    }
+                }
+                // Also emit to the speaker (no TTS for own speech)
+                socket.emit('translation:result', {
                     meetingId,
                     speakerId: userId,
                     speakerName,
                     originalText: text,
                     sourceLang,
-                    translations, // { en: "Hello", fr: "Bonjour", es: "Hola" }
-                    timestamp: Date.now(),
+                    translations,
+                    timestamp: now,
+                    ttsEnabled: false,
+                    ttsAvailable: false,
                 });
             }
             catch (err) {
-                logger_1.logger.error('Translation failed', err);
+                logger_1.logger.error('[TRANSCRIPT] Translation pipeline failed', err);
+                // Still persist the original text even if translation fails
+                await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, { [sourceLang]: text });
+                logger_1.logger.info(`[TRANSCRIPT] ✓ Stored (error fallback): meeting=${meetingId}, speaker=${speakerName}`);
+                io.to(`meeting:${meetingId}`).emit('transcript:stored', {
+                    meetingId, speakerId: userId, speakerName, originalText: text,
+                    sourceLang, translations: { [sourceLang]: text }, timestamp: Date.now(),
+                });
                 // Still send the original text even if translation fails
-                io.to(`meeting:${meetingId}`).emit('translation:result', {
+                socket.emit('translation:result', {
                     meetingId,
                     speakerId: userId,
                     speakerName,
@@ -296,15 +510,19 @@ function setupSocketIO(httpServer) {
                     sourceLang,
                     translations: { [sourceLang]: text },
                     timestamp: Date.now(),
+                    ttsEnabled: false,
+                    ttsAvailable: false,
                     error: 'Translation temporarily unavailable',
                 });
             }
         });
-        // Clean up translation data when meeting ends
+        // Clean up translation data when user leaves
         socket.on('meeting:leave', (meetingId) => {
             socket.leave(`meeting:${meetingId}`);
+            socket._meetingId = null;
             socket.to(`meeting:${meetingId}`).emit('meeting:participant-left', {
                 userId,
+                meetingId,
             });
             // Remove from translation map
             const langMap = meetingLanguages.get(meetingId);
@@ -362,6 +580,27 @@ function setupSocketIO(httpServer) {
         });
     });
     return io;
+}
+/**
+ * Force-disconnect all sockets from a meeting room.
+ * Called when moderator ends meeting.
+ * Emits meeting:force-disconnect before disconnecting.
+ */
+async function forceDisconnectMeeting(io, meetingId) {
+    const roomName = `meeting:${meetingId}`;
+    // Emit force-disconnect event BEFORE removing sockets
+    io.to(roomName).emit('meeting:force-disconnect', {
+        meetingId,
+        reason: 'Meeting ended by moderator',
+    });
+    // Get all sockets in the meeting room and force them out
+    const sockets = await io.in(roomName).fetchSockets();
+    for (const s of sockets) {
+        s.leave(roomName);
+    }
+    // Clean up translation session data for this meeting
+    meetingLanguages.delete(meetingId);
+    logger_1.logger.info(`Force-disconnected ${sockets.length} sockets from meeting ${meetingId}`);
 }
 /**
  * Emit a financial update to all connected org members.

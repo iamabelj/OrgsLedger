@@ -1,5 +1,5 @@
 // ============================================================
-// Migration 020 — Meeting System: JWT-based Jitsi Integration
+// Migration 020 — Meeting System: JWT-based Video Integration
 // Adds meeting_type, moderator tracking, join logs, and
 // security columns for enterprise-grade meeting infrastructure.
 // ============================================================

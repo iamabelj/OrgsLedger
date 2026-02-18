@@ -42,10 +42,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const zod_1 = require("zod");
+const crypto_1 = __importDefault(require("crypto"));
 const db_1 = __importDefault(require("../db"));
 const middleware_1 = require("../middleware");
 const logger_1 = require("../logger");
 const subSvc = __importStar(require("../services/subscription.service"));
+const email_service_1 = require("../services/email.service");
 const audit_1 = require("../middleware/audit");
 const router = (0, express_1.Router)();
 // ── Schemas ─────────────────────────────────────────────────
@@ -185,17 +187,17 @@ router.post('/:orgId/subscribe', middleware_1.authenticate, middleware_1.loadMem
         }
         const currency = subSvc.getCurrency(billingCountry);
         const price = subSvc.getPlanPrice(plan, currency, billingCycle);
-        // If plan has a cost but no payment reference, create as pending (needs webhook confirmation)
-        const isPaid = price <= 0 || !!paymentReference;
+        // Free plans activate immediately; paid plans start as pending until webhook confirms
+        const isFree = price <= 0;
         const sub = await subSvc.createSubscription({
             organizationId: req.params.orgId,
             planId: plan.id,
             billingCycle,
             currency,
-            amountPaid: isPaid ? price : 0,
+            amountPaid: isFree ? 0 : price,
             paymentGateway,
             gatewaySubscriptionId: paymentReference,
-            status: isPaid ? 'active' : 'pending',
+            status: isFree ? 'active' : 'pending',
         });
         res.json({ success: true, data: sub });
     }
@@ -354,20 +356,42 @@ router.post('/:orgId/invite', middleware_1.authenticate, middleware_1.loadMember
         res.json({ success: true, data: invite });
     }
     catch (err) {
-        logger_1.logger.error('Create invite error', err);
-        res.status(500).json({ success: false, error: 'Failed to create invite' });
+        logger_1.logger.error('Create invite error', { orgId: req.params.orgId, error: err.message, stack: err.stack });
+        // Check for common DB errors
+        const msg = err.message || '';
+        if (msg.includes('relation') && msg.includes('does not exist')) {
+            res.status(500).json({ success: false, error: 'Database not fully migrated. Please run migrations.' });
+        }
+        else if (msg.includes('column') && msg.includes('does not exist')) {
+            res.status(500).json({ success: false, error: 'Database schema outdated. Please run migrations.' });
+        }
+        else {
+            res.status(500).json({ success: false, error: 'Failed to create invite link' });
+        }
     }
 });
 // GET /:orgId/invites
 router.get('/:orgId/invites', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
     try {
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+        const offset = (page - 1) * limit;
         const invites = await (0, db_1.default)('invite_links')
             .where({ organization_id: req.params.orgId })
-            .orderBy('created_at', 'desc');
-        res.json({ success: true, data: invites });
+            .orderBy('created_at', 'desc')
+            .limit(limit)
+            .offset(offset);
+        res.json({ success: true, data: invites, meta: { page, limit } });
     }
     catch (err) {
-        res.status(500).json({ success: false, error: 'Failed to get invites' });
+        logger_1.logger.error('Get invites error', { orgId: req.params.orgId, error: err.message });
+        // If table doesn't exist, return empty array instead of error
+        if (err.message?.includes('does not exist')) {
+            res.json({ success: true, data: [] });
+        }
+        else {
+            res.status(500).json({ success: false, error: 'Failed to get invites' });
+        }
     }
 });
 // DELETE /:orgId/invite/:inviteId
@@ -454,12 +478,15 @@ router.get('/admin/subscriptions', middleware_1.authenticate, (0, middleware_1.r
     }
 });
 // GET /admin/organizations — list all orgs with subscription + wallet info
-router.get('/admin/organizations', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (_req, res) => {
+router.get('/admin/organizations', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (req, res) => {
     try {
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+        const offset = (page - 1) * limit;
         // Use a subquery for the LATEST subscription per org to prevent duplicate
         // rows when an org has multiple non-cancelled subscriptions (e.g. an expired
         // one that was never cleaned up plus a newly-assigned active one).
-        const orgs = await (0, db_1.default)('organizations')
+        const baseQuery = (0, db_1.default)('organizations')
             .leftJoin(db_1.default.raw(`(
           SELECT DISTINCT ON (organization_id) *
           FROM subscriptions
@@ -468,9 +495,13 @@ router.get('/admin/organizations', middleware_1.authenticate, (0, middleware_1.r
         ) AS latest_sub`), 'organizations.id', 'latest_sub.organization_id')
             .leftJoin('subscription_plans', 'latest_sub.plan_id', 'subscription_plans.id')
             .leftJoin('ai_wallet', 'organizations.id', 'ai_wallet.organization_id')
-            .leftJoin('translation_wallet', 'organizations.id', 'translation_wallet.organization_id')
+            .leftJoin('translation_wallet', 'organizations.id', 'translation_wallet.organization_id');
+        const [{ count: totalCount }] = await (0, db_1.default)('organizations').count('* as count');
+        const orgs = await baseQuery
             .select('organizations.id', 'organizations.name', 'organizations.slug', 'organizations.status', 'organizations.subscription_status', 'organizations.billing_currency', 'organizations.billing_country', 'organizations.created_at', 'subscription_plans.name as plan_name', 'subscription_plans.slug as plan_slug', 'latest_sub.status as sub_status', 'latest_sub.current_period_end', 'ai_wallet.balance_minutes as ai_balance_minutes', 'translation_wallet.balance_minutes as translation_balance_minutes')
-            .orderBy('organizations.created_at', 'desc');
+            .orderBy('organizations.created_at', 'desc')
+            .limit(limit)
+            .offset(offset);
         // Add member count
         const orgIds = orgs.map((o) => o.id);
         const counts = orgIds.length > 0
@@ -483,7 +514,7 @@ router.get('/admin/organizations', middleware_1.authenticate, (0, middleware_1.r
         const countMap = {};
         counts.forEach((c) => { countMap[c.organization_id] = parseInt(c.member_count); });
         const result = orgs.map((o) => ({ ...o, member_count: countMap[o.id] || 0 }));
-        res.json({ success: true, organizations: result });
+        res.json({ success: true, organizations: result, pagination: { page, limit, total: parseInt(totalCount) } });
     }
     catch (err) {
         logger_1.logger.error('Admin orgs error', err);
@@ -510,89 +541,94 @@ router.post('/admin/organizations', middleware_1.authenticate, (0, middleware_1.
         }
         // Check if user exists
         const owner = await (0, db_1.default)('users').where({ email: normalizedEmail }).first();
-        // Create organization
-        const [org] = await (0, db_1.default)('organizations')
-            .insert({
-            name,
-            slug,
-            status: 'active',
-            subscription_status: 'active',
-            billing_currency: currency,
-            settings: JSON.stringify({
-                currency,
-                timezone: 'UTC',
-                locale: 'en',
-                aiEnabled: true,
-                features: {
-                    chat: true, meetings: true, financials: true, polls: true,
-                    events: true, announcements: true, documents: true, committees: true,
-                },
-            }),
-        })
-            .returning('*');
-        let membershipCreated = false;
-        let pendingInviteCreated = false;
-        if (owner) {
-            // User exists — create membership immediately
-            await (0, db_1.default)('memberships').insert({
-                user_id: owner.id,
-                organization_id: org.id,
-                role: 'org_admin',
-            });
-            membershipCreated = true;
-            // Create default General channel and add user
-            const [channel] = await (0, db_1.default)('channels')
+        // Wrap all creation in a transaction for atomicity
+        const result = await db_1.default.transaction(async (trx) => {
+            // Create organization
+            const [org] = await trx('organizations')
                 .insert({
-                organization_id: org.id,
-                name: 'General',
-                type: 'general',
-                description: 'General discussion',
+                name,
+                slug,
+                status: 'active',
+                subscription_status: 'active',
+                billing_currency: currency,
+                settings: JSON.stringify({
+                    currency,
+                    timezone: 'UTC',
+                    locale: 'en',
+                    aiEnabled: true,
+                    features: {
+                        chat: true, meetings: true, financials: true, polls: true,
+                        events: true, announcements: true, documents: true, committees: true,
+                    },
+                }),
             })
                 .returning('*');
-            await (0, db_1.default)('channel_members').insert({
-                channel_id: channel.id,
-                user_id: owner.id,
-            });
-        }
-        else {
-            // User doesn't exist — create pending invitation
-            await (0, db_1.default)('pending_invitations').insert({
-                email: normalizedEmail,
-                organization_id: org.id,
-                role: 'org_admin',
-                invited_by: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(req.user.userId)
-                    ? req.user.userId
-                    : null,
-            });
-            pendingInviteCreated = true;
-            // Still create the General channel (without members for now)
-            await (0, db_1.default)('channels').insert({
-                organization_id: org.id,
-                name: 'General',
-                type: 'general',
-                description: 'General discussion',
-            });
-        }
-        // Provision subscription
-        const selectedPlan = await subSvc.getPlanBySlug(plan);
-        if (selectedPlan) {
-            await subSvc.createSubscription({
-                organizationId: org.id,
-                planId: selectedPlan.id,
-                billingCycle: 'annual',
-                currency,
-                amountPaid: 0,
-                createdBy: owner?.id || req.user.userId,
-            });
-        }
-        else {
-            logger_1.logger.warn(`Plan slug "${plan}" not found — organization created without subscription. Available plans should be created first.`);
-        }
-        // Provision wallets
-        await subSvc.getAiWallet(org.id);
-        await subSvc.getTranslationWallet(org.id);
-        // Generate invite link for additional members
-        const invite = await subSvc.createInviteLink(org.id, owner?.id || req.user.userId, 'member');
+            let membershipCreated = false;
+            let pendingInviteCreated = false;
+            if (owner) {
+                // User exists — create membership immediately
+                await trx('memberships').insert({
+                    user_id: owner.id,
+                    organization_id: org.id,
+                    role: 'org_admin',
+                });
+                membershipCreated = true;
+                // Create default General channel and add user
+                const [channel] = await trx('channels')
+                    .insert({
+                    organization_id: org.id,
+                    name: 'General',
+                    type: 'general',
+                    description: 'General discussion',
+                })
+                    .returning('*');
+                await trx('channel_members').insert({
+                    channel_id: channel.id,
+                    user_id: owner.id,
+                });
+            }
+            else {
+                // User doesn't exist — create pending invitation
+                await trx('pending_invitations').insert({
+                    email: normalizedEmail,
+                    organization_id: org.id,
+                    role: 'org_admin',
+                    invited_by: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(req.user.userId)
+                        ? req.user.userId
+                        : null,
+                });
+                pendingInviteCreated = true;
+                // Still create the General channel (without members for now)
+                await trx('channels').insert({
+                    organization_id: org.id,
+                    name: 'General',
+                    type: 'general',
+                    description: 'General discussion',
+                });
+            }
+            // Provision subscription
+            const selectedPlan = await subSvc.getPlanBySlug(plan);
+            if (selectedPlan) {
+                await subSvc.createSubscription({
+                    organizationId: org.id,
+                    planId: selectedPlan.id,
+                    billingCycle: 'annual',
+                    currency,
+                    amountPaid: 0,
+                    createdBy: owner?.id || req.user.userId,
+                });
+            }
+            else {
+                logger_1.logger.warn(`Plan slug "${plan}" not found — organization created without subscription. Available plans should be created first.`);
+            }
+            // Provision wallets
+            await subSvc.getAiWallet(org.id);
+            await subSvc.getTranslationWallet(org.id);
+            // Generate invite link for additional members
+            const invite = await subSvc.createInviteLink(org.id, owner?.id || req.user.userId, 'member');
+            return { org, membershipCreated, pendingInviteCreated, invite };
+        });
+        const { org, membershipCreated, pendingInviteCreated, invite } = result;
         await (0, audit_1.writeAuditLog)({
             organizationId: org.id,
             userId: req.user.userId,
@@ -1630,7 +1666,7 @@ const createSignupInviteSchema = zod_1.z.object({
 router.post('/admin/signup-invites', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), (0, middleware_1.validate)(createSignupInviteSchema), async (req, res) => {
     try {
         const { email, role, organizationId, maxUses, expiresInDays, note } = req.body;
-        const code = require('crypto').randomBytes(8).toString('hex').toUpperCase();
+        const code = crypto_1.default.randomBytes(8).toString('hex').toUpperCase();
         const expiresAt = expiresInDays
             ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
             : null;
@@ -1653,8 +1689,7 @@ router.post('/admin/signup-invites', middleware_1.authenticate, (0, middleware_1
         // If email is provided, send the invite email
         if (email) {
             try {
-                const { sendEmail } = require('../services/email.service');
-                await sendEmail({
+                await (0, email_service_1.sendEmail)({
                     to: email.toLowerCase(),
                     subject: 'You\'re Invited to Join OrgsLedger',
                     html: `

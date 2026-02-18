@@ -110,7 +110,7 @@ router.post(
         scheduled_end: scheduledEnd || null,
         created_by: req.user!.userId,
         ai_enabled: aiEnabled,
-        jitsi_room_id: 'pending', // placeholder, updated below
+        room_id: 'pending', // placeholder, updated below
       };
       // Columns from migration 003
       meetingInsert.recurring_pattern = recurringPattern || 'none';
@@ -134,8 +134,8 @@ router.post(
 
       // Generate tenant-isolated room name: org_<orgId>_meeting_<meetingId>
       const roomId = generateRoomName(req.params.orgId, meeting.id);
-      await db('meetings').where({ id: meeting.id }).update({ jitsi_room_id: roomId });
-      meeting.jitsi_room_id = roomId;
+      await db('meetings').where({ id: meeting.id }).update({ room_id: roomId });
+      meeting.room_id = roomId;
 
       // Create agenda items
       if (agendaItems?.length) {
@@ -580,7 +580,7 @@ router.post(
       const meetingType = joinType === 'audio' ? 'audio' : (meeting.meeting_type || 'video');
 
       // 10. Generate room name (deterministic, tenant-isolated)
-      const roomName = meeting.jitsi_room_id || generateRoomName(orgId, meetingId);
+      const roomName = meeting.room_id || generateRoomName(orgId, meetingId);
 
       // 11. Generate LiveKit access token (REQUIRED — no public fallback)
       //     Every participant receives a backend-issued token.

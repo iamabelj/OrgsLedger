@@ -34,9 +34,10 @@ router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAnd
             created_by: req.user.userId,
         })
             .returning('*');
-        // Notify all org members
+        // Notify all org members (except the creator)
         const members = await (0, db_1.default)('memberships')
             .where({ organization_id: req.params.orgId, is_active: true })
+            .whereNot({ user_id: req.user.userId })
             .pluck('user_id');
         if (members.length) {
             const notifications = members.map((userId) => ({
@@ -107,9 +108,13 @@ router.get('/:orgId/:announcementId', middleware_1.authenticate, middleware_1.lo
 // ── Delete Announcement ─────────────────────────────────────
 router.delete('/:orgId/:announcementId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
-        await (0, db_1.default)('announcements')
+        const deleted = await (0, db_1.default)('announcements')
             .where({ id: req.params.announcementId, organization_id: req.params.orgId })
             .delete();
+        if (!deleted) {
+            res.status(404).json({ success: false, error: 'Announcement not found' });
+            return;
+        }
         res.json({ success: true, message: 'Announcement deleted' });
     }
     catch (err) {
@@ -129,7 +134,7 @@ router.put('/:orgId/:announcementId/pin', middleware_1.authenticate, middleware_
         await (0, db_1.default)('announcements')
             .where({ id: req.params.announcementId })
             .update({ pinned: !announcement.pinned });
-        res.json({ success: true, pinned: !announcement.pinned });
+        res.json({ success: true, data: { pinned: !announcement.pinned } });
     }
     catch (err) {
         res.status(500).json({ success: false, error: 'Failed to toggle pin' });

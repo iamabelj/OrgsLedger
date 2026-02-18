@@ -73,6 +73,19 @@ exports.config = {
     fcm: {
         projectId: process.env.FIREBASE_PROJECT_ID || '',
     },
+    // ── LiveKit Configuration ───────────────────────────────
+    // Self-hosted or cloud LiveKit for video/audio conferencing.
+    // All participants receive backend-issued tokens — no external login.
+    livekit: {
+        // LiveKit server WebSocket URL (wss://livekit.yourdomain.com)
+        url: process.env.LIVEKIT_URL || 'ws://localhost:7880',
+        // API key for token signing (from LiveKit server config)
+        apiKey: process.env.LIVEKIT_API_KEY || '',
+        // API secret for token signing (from LiveKit server config)
+        apiSecret: process.env.LIVEKIT_API_SECRET || '',
+        // Token expiry in seconds (default 2 hours)
+        tokenExpirySeconds: parseInt(process.env.LIVEKIT_TOKEN_EXPIRY || '7200', 10),
+    },
 };
 // Warn about critical config in production/staging environments
 if (exports.config.env !== 'development' && exports.config.env !== 'test') {

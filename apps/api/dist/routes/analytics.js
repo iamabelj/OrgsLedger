@@ -11,7 +11,7 @@ const db_1 = __importDefault(require("../db"));
 const middleware_1 = require("../middleware");
 const router = (0, express_1.Router)();
 // ── Dashboard Analytics ─────────────────────────────────────
-router.get('/:orgId/dashboard', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive', 'treasurer'), async (req, res) => {
+router.get('/:orgId/dashboard', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
     try {
         const orgId = req.params.orgId;
         const now = new Date();
@@ -125,28 +125,52 @@ router.get('/:orgId/dashboard', middleware_1.authenticate, middleware_1.loadMemb
     }
 });
 // ── Member payment status ───────────────────────────────────
-router.get('/:orgId/member-payments', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive', 'treasurer'), async (req, res) => {
+router.get('/:orgId/member-payments', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
     try {
         const orgId = req.params.orgId;
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
+        const offset = (page - 1) * limit;
+        const totalCount = await (0, db_1.default)('memberships')
+            .where({ organization_id: orgId, is_active: true })
+            .count('id as count')
+            .first();
         const members = await (0, db_1.default)('memberships')
             .join('users', 'memberships.user_id', 'users.id')
             .where({ 'memberships.organization_id': orgId, 'memberships.is_active': true })
-            .select('users.id', 'users.first_name', 'users.last_name', 'users.email', 'memberships.role');
-        const enriched = await Promise.all(members.map(async (m) => {
-            const totalOwed = await (0, db_1.default)('transactions')
-                .where({ organization_id: orgId, user_id: m.id, status: 'pending' })
-                .sum('amount as total').first();
-            const totalPaid = await (0, db_1.default)('transactions')
-                .where({ organization_id: orgId, user_id: m.id, status: 'completed' })
-                .sum('amount as total').first();
+            .select('users.id', 'users.first_name', 'users.last_name', 'users.email', 'memberships.role')
+            .orderBy('users.last_name')
+            .limit(limit)
+            .offset(offset);
+        if (!members.length) {
+            res.json({ success: true, data: [], meta: { page, limit, total: parseInt(totalCount?.count) || 0 } });
+            return;
+        }
+        const memberIds = members.map((m) => m.id);
+        // Batch aggregate: one query for all members' pending + completed totals
+        const paymentStats = await (0, db_1.default)('transactions')
+            .where({ organization_id: orgId })
+            .whereIn('user_id', memberIds)
+            .whereIn('status', ['pending', 'completed'])
+            .select('user_id', db_1.default.raw("coalesce(sum(amount) filter (where status = 'pending'), 0) as total_owed"), db_1.default.raw("coalesce(sum(amount) filter (where status = 'completed'), 0) as total_paid"))
+            .groupBy('user_id');
+        const statsMap = {};
+        paymentStats.forEach((s) => {
+            statsMap[s.user_id] = {
+                totalOwed: parseFloat(s.total_owed),
+                totalPaid: parseFloat(s.total_paid),
+            };
+        });
+        const enriched = members.map((m) => {
+            const stats = statsMap[m.id] || { totalOwed: 0, totalPaid: 0 };
             return {
                 ...m,
-                totalOwed: parseFloat(totalOwed?.total || '0'),
-                totalPaid: parseFloat(totalPaid?.total || '0'),
-                status: parseFloat(totalOwed?.total || '0') > 0 ? 'outstanding' : 'clear',
+                totalOwed: stats.totalOwed,
+                totalPaid: stats.totalPaid,
+                status: stats.totalOwed > 0 ? 'outstanding' : 'clear',
             };
-        }));
-        res.json({ success: true, data: enriched });
+        });
+        res.json({ success: true, data: enriched, meta: { page, limit, total: parseInt(totalCount?.count) || 0 } });
     }
     catch (err) {
         res.status(500).json({ success: false, error: 'Failed to get member payments' });
@@ -164,7 +188,7 @@ router.get('/:orgId/receipt/:recordId', middleware_1.authenticate, middleware_1.
         }
         // Only allow viewing own receipts or admin
         const membership = req.membership;
-        if (record.user_id !== req.user.userId && !['org_admin', 'treasurer', 'executive'].includes(membership?.role)) {
+        if (record.user_id !== req.user.userId && !['org_admin', 'executive'].includes(membership?.role)) {
             res.status(403).json({ success: false, error: 'Forbidden' });
             return;
         }

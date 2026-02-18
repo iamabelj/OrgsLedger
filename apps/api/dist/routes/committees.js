@@ -29,7 +29,7 @@ const addMemberSchema = zod_1.z.object({
     userId: zod_1.z.string().uuid(),
 });
 // ── List Committees ─────────────────────────────────────────
-router.get('/:orgId/committees', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
+router.get('/:orgId/committees', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
     try {
         const rows = await (0, db_1.default)('committees')
             .leftJoin('committee_members as cm', 'committees.id', 'cm.committee_id')
@@ -37,7 +37,8 @@ router.get('/:orgId/committees', middleware_1.authenticate, middleware_1.loadMem
             .where({ 'committees.organization_id': req.params.orgId })
             .select('committees.*', db_1.default.raw('count(cm.id)::int as "memberCount"'), 'chair_user.id as chair_id', 'chair_user.first_name as chair_first_name', 'chair_user.last_name as chair_last_name', 'chair_user.email as chair_email', 'chair_user.avatar_url as chair_avatar_url')
             .groupBy('committees.id', 'chair_user.id', 'chair_user.first_name', 'chair_user.last_name', 'chair_user.email', 'chair_user.avatar_url')
-            .orderBy('committees.name');
+            .orderBy('committees.name')
+            .limit(100);
         const data = rows.map((row) => {
             const { chair_id, chair_first_name, chair_last_name, chair_email, chair_avatar_url, ...committee } = row;
             return {
@@ -55,7 +56,7 @@ router.get('/:orgId/committees', middleware_1.authenticate, middleware_1.loadMem
     }
 });
 // ── Get Committee Detail ────────────────────────────────────
-router.get('/:orgId/committees/:committeeId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
+router.get('/:orgId/committees/:committeeId', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
     try {
         const committee = await (0, db_1.default)('committees')
             .where({ id: req.params.committeeId, organization_id: req.params.orgId })
@@ -95,65 +96,89 @@ router.get('/:orgId/committees/:committeeId', middleware_1.authenticate, middlew
     }
 });
 // ── Create Committee ────────────────────────────────────────
-router.post('/:orgId/committees', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createCommitteeSchema), async (req, res) => {
+router.post('/:orgId/committees', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createCommitteeSchema), async (req, res) => {
     try {
         const { name, description, chairUserId, memberIds } = req.body;
-        const [committee] = await (0, db_1.default)('committees')
-            .insert({
-            organization_id: req.params.orgId,
-            name,
-            description: description || null,
-            chair_user_id: chairUserId || null,
-        })
-            .returning('*');
-        // Add initial members
-        const allMemberIds = new Set(memberIds || []);
-        if (chairUserId)
-            allMemberIds.add(chairUserId);
-        if (allMemberIds.size > 0) {
-            const memberInserts = Array.from(allMemberIds).map((userId) => ({
+        const result = await db_1.default.transaction(async (trx) => {
+            // Validate member IDs are actual org members
+            const allMemberIds = new Set(memberIds || []);
+            if (chairUserId)
+                allMemberIds.add(chairUserId);
+            if (allMemberIds.size > 0) {
+                const validMembers = await trx('memberships')
+                    .where({ organization_id: req.params.orgId })
+                    .whereIn('user_id', Array.from(allMemberIds))
+                    .select('user_id');
+                const validIds = new Set(validMembers.map((m) => m.user_id));
+                const invalidIds = Array.from(allMemberIds).filter((id) => !validIds.has(id));
+                if (invalidIds.length > 0) {
+                    throw Object.assign(new Error('Some members are not part of this organization'), { status: 400 });
+                }
+            }
+            const [committee] = await trx('committees')
+                .insert({
+                organization_id: req.params.orgId,
+                name,
+                description: description || null,
+                chair_user_id: chairUserId || null,
+            })
+                .returning('*');
+            // Add initial members
+            if (allMemberIds.size > 0) {
+                const memberInserts = Array.from(allMemberIds).map((userId) => ({
+                    committee_id: committee.id,
+                    user_id: userId,
+                }));
+                await trx('committee_members').insert(memberInserts);
+            }
+            // Auto-create committee chat channel
+            const channelName = `${name} (Committee)`;
+            const [channel] = await trx('channels')
+                .insert({
+                organization_id: req.params.orgId,
+                name: channelName,
+                type: 'committee',
+                description: `Channel for ${name} committee`,
                 committee_id: committee.id,
-                user_id: userId,
-            }));
-            await (0, db_1.default)('committee_members').insert(memberInserts);
-        }
-        // Auto-create committee chat channel
-        const [channel] = await (0, db_1.default)('channels')
-            .insert({
-            organization_id: req.params.orgId,
-            name: `${name} (Committee)`,
-            type: 'committee',
-            description: `Channel for ${name} committee`,
-            committee_id: committee.id,
-        })
-            .returning('*');
-        // Add members to channel
-        if (allMemberIds.size > 0) {
-            const channelMemberInserts = Array.from(allMemberIds).map((userId) => ({
-                channel_id: channel.id,
-                user_id: userId,
-            }));
-            await (0, db_1.default)('channel_members').insert(channelMemberInserts);
-        }
+            })
+                .returning('*');
+            // Add members to channel
+            if (allMemberIds.size > 0) {
+                const channelMemberInserts = Array.from(allMemberIds).map((userId) => ({
+                    channel_id: channel.id,
+                    user_id: userId,
+                }));
+                await trx('channel_members').insert(channelMemberInserts);
+            }
+            return { committee, channel, memberCount: allMemberIds.size };
+        });
         await req.audit?.({
             organizationId: req.params.orgId,
             action: 'create',
             entityType: 'committee',
-            entityId: committee.id,
-            newValue: { name, memberCount: allMemberIds.size },
+            entityId: result.committee.id,
+            newValue: { name, memberCount: result.memberCount },
         });
         res.status(201).json({
             success: true,
-            data: { ...committee, channel },
+            data: { ...result.committee, channel: result.channel },
         });
     }
     catch (err) {
         logger_1.logger.error('Create committee error', err);
-        res.status(500).json({ success: false, error: 'Failed to create committee' });
+        if (err.status === 400) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+        else if (err.code === '23505') {
+            res.status(409).json({ success: false, error: 'A committee with this name already exists' });
+        }
+        else {
+            res.status(500).json({ success: false, error: 'Failed to create committee' });
+        }
     }
 });
 // ── Update Committee ────────────────────────────────────────
-router.put('/:orgId/committees/:committeeId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(updateCommitteeSchema), async (req, res) => {
+router.put('/:orgId/committees/:committeeId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(updateCommitteeSchema), async (req, res) => {
     try {
         const { name, description, chairUserId } = req.body;
         const previous = await (0, db_1.default)('committees')
@@ -200,7 +225,7 @@ router.put('/:orgId/committees/:committeeId', middleware_1.authenticate, middlew
     }
 });
 // ── Delete Committee ────────────────────────────────────────
-router.delete('/:orgId/committees/:committeeId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
+router.delete('/:orgId/committees/:committeeId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
         const committee = await (0, db_1.default)('committees')
             .where({ id: req.params.committeeId, organization_id: req.params.orgId })
@@ -230,9 +255,17 @@ router.delete('/:orgId/committees/:committeeId', middleware_1.authenticate, midd
     }
 });
 // ── Add Member to Committee ─────────────────────────────────
-router.post('/:orgId/committees/:committeeId/members', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(addMemberSchema), async (req, res) => {
+router.post('/:orgId/committees/:committeeId/members', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(addMemberSchema), async (req, res) => {
     try {
         const { userId } = req.body;
+        // Verify committee belongs to this org
+        const committee = await (0, db_1.default)('committees')
+            .where({ id: req.params.committeeId, organization_id: req.params.orgId })
+            .first();
+        if (!committee) {
+            res.status(404).json({ success: false, error: 'Committee not found' });
+            return;
+        }
         // Verify user is an org member
         const membership = await (0, db_1.default)('memberships')
             .where({ user_id: userId, organization_id: req.params.orgId, is_active: true })
@@ -282,14 +315,29 @@ router.post('/:orgId/committees/:committeeId/members', middleware_1.authenticate
     }
 });
 // ── Remove Member from Committee ────────────────────────────
-router.delete('/:orgId/committees/:committeeId/members/:userId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
+router.delete('/:orgId/committees/:committeeId/members/:userId', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
     try {
+        // Verify committee belongs to this org
+        const committee = await (0, db_1.default)('committees')
+            .where({ id: req.params.committeeId, organization_id: req.params.orgId })
+            .first();
+        if (!committee) {
+            res.status(404).json({ success: false, error: 'Committee not found' });
+            return;
+        }
         await (0, db_1.default)('committee_members')
             .where({
             committee_id: req.params.committeeId,
             user_id: req.params.userId,
         })
             .del();
+        // Also remove from the committee's linked chat channel
+        const channel = await (0, db_1.default)('channels').where({ committee_id: req.params.committeeId }).first();
+        if (channel) {
+            await (0, db_1.default)('channel_members')
+                .where({ channel_id: channel.id, user_id: req.params.userId })
+                .del();
+        }
         // Update chair if removed user was the chair
         await (0, db_1.default)('committees')
             .where({ id: req.params.committeeId, chair_user_id: req.params.userId })

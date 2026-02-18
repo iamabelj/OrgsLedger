@@ -56,5 +56,11 @@ export declare const config: {
     fcm: {
         projectId: string;
     };
+    livekit: {
+        url: string;
+        apiKey: string;
+        apiSecret: string;
+        tokenExpirySeconds: number;
+    };
 };
 //# sourceMappingURL=config.d.ts.map

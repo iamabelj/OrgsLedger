@@ -76,7 +76,7 @@ exports.CURRENCIES = {
     USD: 'USD',
     NGN: 'NGN',
 };
-exports.RATE_NGN_PER_USD = 1500;
+exports.RATE_NGN_PER_USD = parseInt(process.env.RATE_NGN_PER_USD || '1600', 10);
 // ── Pagination Defaults ─────────────────────────────────────
 exports.PAGINATION = {
     DEFAULT_LIMIT: 50,

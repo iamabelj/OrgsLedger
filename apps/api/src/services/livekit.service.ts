@@ -2,7 +2,6 @@
 // OrgsLedger API — LiveKit Meeting Service
 // Token generation, room naming, and configuration for
 // LiveKit-based video/audio conferencing.
-// Replaces the previous Jitsi integration entirely.
 // ============================================================
 
 import jwt from 'jsonwebtoken';

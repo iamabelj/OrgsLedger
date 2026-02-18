@@ -32,7 +32,7 @@ OrgsLedger is a **multi-tenant organization management platform** with real-time
 ### Core Feature Domains
 
 | Domain | Description |
-|--------|-------------|
+| -------- | ------------- |
 | **Organizations** | Multi-org support, member roles, invitations, committees, executive boards |
 | **Meetings** | Video/audio conferencing (LiveKit), live transcription, real-time translation (100+ languages), AI-generated minutes |
 | **Financials** | Dues collection, fines, donations, expense tracking, multi-currency (USD/NGN), multi-gateway payments |
@@ -69,7 +69,7 @@ OrgsLedger is a **multi-tenant organization management platform** with real-time
 ### Frontend (`apps/mobile/`)
 
 | Layer | Technology | Version | Notes |
-|-------|-----------|---------|-------|
+| ------- | ----------- | --------- | ------- |
 | Framework | React Native | 0.73.6 | Cross-platform (iOS, Android, Web) |
 | Platform | Expo | ~50.0.0 | Managed workflow with EAS |
 | Router | Expo Router | ~3.4.0 | File-based routing (`app/` directory) |
@@ -90,7 +90,7 @@ OrgsLedger is a **multi-tenant organization management platform** with real-time
 ### Backend (`apps/api/`)
 
 | Layer | Technology | Version | Notes |
-|-------|-----------|---------|-------|
+| ------- | ----------- | --------- | ------- |
 | Runtime | Node.js | 18+ | TypeScript 5.4 |
 | Framework | Express | 4.18.2 | REST API |
 | Real-time | Socket.IO | 4.7.4 | Bi-directional event system |
@@ -111,7 +111,7 @@ OrgsLedger is a **multi-tenant organization management platform** with real-time
 ### Database
 
 | Component | Technology | Notes |
-|-----------|-----------|-------|
+| ----------- | ----------- | ------- |
 | Primary DB | PostgreSQL | via `pg` driver 8.12 |
 | Cache/Queue | Redis | ioredis 5.3.2 (configured, minimal current usage) |
 | Migrations | Knex migrations | 22 migration files, 39 active tables |
@@ -120,16 +120,16 @@ OrgsLedger is a **multi-tenant organization management platform** with real-time
 ### Deployment
 
 | Component | Technology | Notes |
-|-----------|-----------|-------|
+| ----------- | ----------- | ------- |
 | Containers | Docker Compose | Separate dev and prod compose files |
 | Reverse Proxy | Nginx | SSL termination, SPA routing, LiveKit proxy |
 | SSL | Let's Encrypt + Certbot | Auto-renewal via certbot container |
 | CI/CD | Shell scripts | `deploy/build-production.sh`, `deploy/deploy.sh` |
-| Domains | orgsledger.com (landing), app.orgsledger.com (API+SPA), livekit.orgsledger.com (LiveKit) |
+| Domains | Docker + Nginx | orgsledger.com (landing), app.orgsledger.com (API+SPA), livekit.orgsledger.com (LiveKit) |
 
 ### Monorepo Structure
 
-```
+```text
 Workspaces (package.json):
   - apps/api
   - packages/database
@@ -146,9 +146,10 @@ Non-workspace (separate install):
 
 ### Architecture Overview
 
-LiveKit is the real-time media transport layer, replacing the previous Jitsi integration. On web, a LiveKit room is embedded via iframe pointing to the LiveKit room URL. On native, the room URL is opened via expo-web-browser. The backend generates JWT tokens (HS256) for authenticated room access.
+LiveKit is the real-time media transport layer for video/audio conferencing. On web, a LiveKit room is embedded via iframe pointing to the LiveKit room URL. On native, the room URL is opened via expo-web-browser. The backend generates JWT tokens (HS256) for authenticated room access.
 
 **Key files:**
+
 - `apps/api/src/services/livekit.service.ts` — JWT token generation, room naming, join config
 - `apps/api/src/routes/meetings.ts` — Meeting CRUD, join endpoint, lifecycle management
 - `apps/mobile/app/meetings/[meetingId].tsx` — Client-side LiveKit embed and meeting UI
@@ -294,7 +295,7 @@ The LiveKit room is rendered via an `<iframe>` with `allow="camera;microphone;di
 
 ### Meeting Lifecycle
 
-```
+```text
 scheduled → live → ended
     │          │        │
     │          │        └─ POST /:orgId/:meetingId/end
@@ -352,7 +353,7 @@ server {
 ### LiveKit Integration Points
 
 | Integration Point | File | What It Does |
-|---|---|---|
+| --- | --- | --- |
 | `LiveKitService.generateRoomName()` | `services/livekit.service.ts` | Creates deterministic room names |
 | `LiveKitService.generateLiveKitToken()` | `services/livekit.service.ts` | Signs JWT for LiveKit auth |
 | `LiveKitService.buildJoinConfig()` | `services/livekit.service.ts` | Assembles url/token/roomName config |
@@ -363,9 +364,10 @@ server {
 | Docker service | `docker-compose.prod.yml` | 1 LiveKit container |
 | Nginx proxy | `deploy/nginx.conf` | livekit.orgsledger.com proxy |
 | Config env vars | `config.ts` | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` |
-| `meetings.jitsi_room_id` column | `migrations/001_initial.ts` | Stores room ID in DB (column name kept for compatibility) |
+| `meetings.room_id` column | `migrations/024_rename_room_id.ts` | Stores LiveKit room ID in DB |
 
 **LiveKit does NOT touch:**
+
 - The transcription pipeline (uses Web Speech API, independent of LiveKit)
 - The translation pipeline (uses Socket.IO, independent of LiveKit)
 - The AI minutes pipeline (uses DB transcripts or server-side Google STT)
@@ -379,7 +381,7 @@ server {
 
 OrgsLedger uses **two completely independent audio paths** that do not interact:
 
-```
+```text
 Path 1: LiveKit (WebRTC) ─── Handles audio/video conferencing
   • Managed by LiveKit server + embedded room
   • Audio goes: Mic → LiveKit → WebRTC → Other participants' speakers
@@ -391,6 +393,7 @@ Path 2: Web Speech API ─── Handles transcription & translation
 ```
 
 **This dual-path architecture means:**
+
 1. The transcription/translation pipeline is independent of LiveKit
 2. The browser microphone is shared between LiveKit and Web Speech API (both request `getUserMedia`)
 3. There is no server-side audio routing — all audio is client-side
@@ -431,6 +434,7 @@ Speech.speak(text, { language: getBcp47(lang), rate: 1.0 });
 ```
 
 **Chrome TTS warm-up** (required because Chrome suspends SpeechSynthesis until user gesture):
+
 ```typescript
 // On first user click/tap, fire a silent utterance to unlock TTS
 const warmUp = new SpeechSynthesisUtterance('');
@@ -446,7 +450,7 @@ window.speechSynthesis.speak(warmUp);
 
 Transcription is **always client-side during live meetings** using the Web Speech API. Transcripts are sent to the server via Socket.IO, persisted to PostgreSQL, and then optionally reprocessed by the AI minutes pipeline after the meeting ends.
 
-```
+```text
 [Browser Mic]
     │
     ▼
@@ -487,6 +491,7 @@ recognition.onresult = (event) => {
 ```
 
 **Limitations:**
+
 - Web Speech API is **web-only** — no native iOS/Android STT
 - Requires HTTPS or localhost
 - Browser may throttle or stop recognition after extended periods
@@ -562,11 +567,11 @@ const transcripts = await api.meetings.getTranscripts(orgId, meetingId);
 
 ## 6. Translation Pipeline
 
-### Overview
+### Translation Overview
 
 The translation system is a **per-user routing system** where each participant's speech is translated into every other participant's preferred language simultaneously.
 
-```
+```text
 [Speaker A: English]
     │
     ▼  translation:speech → server
@@ -664,6 +669,7 @@ const meetingLanguages = new Map<number, Map<number, {
 ```
 
 This map tracks which language each user in each meeting wants to receive. It is populated by:
+
 1. `meeting:join` — restores preferences from `user_language_preferences` table
 2. `translation:set-language` — user changes language during meeting
 
@@ -757,7 +763,8 @@ class TranslationService {
 ```
 
 **GPT prompt for translation:**
-```
+
+```text
 System: You are a professional translator. Translate the following text from {sourceName} to {targetName}. Output ONLY the translated text, no explanations.
 User: {text}
 Model: gpt-4o-mini, temperature: 0
@@ -782,6 +789,7 @@ export function isTtsSupported(languageCode: string): boolean {
 ```
 
 The `ttsAvailable` flag in `translation:result` is `true` only when:
+
 1. The target language is in the `TTS_SUPPORTED` set, AND
 2. The receiving user has `receiveVoice: true` in their preferences
 
@@ -811,11 +819,11 @@ socketService.on('translation:result', (data) => {
 
 ## 7. Minutes Generation (AI)
 
-### Overview
+### Minutes Overview
 
 AI minutes are generated **after a meeting ends** (not during). The pipeline:
 
-```
+```text
 Meeting ends (POST /:orgId/:meetingId/end)
     │
     ▼
@@ -934,6 +942,7 @@ class AIService {
 ### Transcription Methods
 
 **Server-side audio transcription** (Google Cloud Speech-to-Text):
+
 ```typescript
 async transcribeAudio(audioPath: string): Promise<TranscriptSegment[]> {
   // Fallback chain: AI Proxy → Google Cloud STT → Mock
@@ -951,9 +960,11 @@ async transcribeAudio(audioPath: string): Promise<TranscriptSegment[]> {
     },
   };
 }
+
 ```
 
 **DB transcript retrieval** (used when no audio file):
+
 ```typescript
 async getTranscriptsFromDB(meetingId: number): Promise<TranscriptSegment[]> {
   const rows = await db('meeting_transcripts')
@@ -1043,7 +1054,7 @@ io.use(async (socket, next) => {
 ### Room Structure
 
 | Room Pattern | Purpose | Joined When |
-|---|---|---|
+| --- | --- | --- |
 | `user:{userId}` | Per-user events (translation results, direct notifications) | On connect |
 | `org:{orgId}` | Org-wide events (financial updates, announcements) | On connect (for each membership) |
 | `channel:{channelId}` | Chat channel messages | Client calls `joinChannel()` |
@@ -1055,7 +1066,7 @@ io.use(async (socket, next) => {
 #### Chat Events
 
 | Event | Direction | Payload | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `chat:message` | Client→Server | `{ channelId, content, type?, replyTo? }` | Send a chat message |
 | `chat:message` | Server→Client | `{ id, channelId, content, sender, timestamp }` | Receive a message |
 | `chat:typing` | Client→Server | `{ channelId }` | User is typing |
@@ -1065,7 +1076,7 @@ io.use(async (socket, next) => {
 #### Meeting Events
 
 | Event | Direction | Payload | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `meeting:join` | Client→Server | `{ meetingId }` | Join meeting socket room |
 | `meeting:join` | Server→Client | `{ meetingId, userId, userName }` | Participant joined notification |
 | `meeting:leave` | Client→Server | `{ meetingId }` | Leave meeting socket room |
@@ -1088,7 +1099,7 @@ io.use(async (socket, next) => {
 #### Translation Events
 
 | Event | Direction | Payload | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `translation:set-language` | Client→Server | `{ meetingId, language, receiveVoice }` | Set user's preferred language |
 | `translation:speech` | Client→Server | `{ meetingId, text, language }` | Send speech text for translation |
 | `translation:result` | Server→Client | `{ meetingId, speakerName, originalText, translatedText, sourceLang, targetLang, ttsAvailable }` | Translated text for this user |
@@ -1097,7 +1108,7 @@ io.use(async (socket, next) => {
 #### Minutes Events
 
 | Event | Direction | Payload | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `meeting:minutes:processing` | Server→Client | `{ meetingId }` | Minutes generation started |
 | `meeting:minutes:ready` | Server→Client | `{ meetingId, summary }` | Minutes generation complete |
 | `meeting:minutes:failed` | Server→Client | `{ meetingId, error }` | Minutes generation failed |
@@ -1105,7 +1116,7 @@ io.use(async (socket, next) => {
 #### Financial Events
 
 | Event | Direction | Payload | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `financial_update` | Server→Client | `{ orgId, type, data }` | Financial data changed |
 | `payment_completed` | Server→Client | `{ orgId, paymentId, ... }` | Payment processed |
 | `transcript:stored` | Server→Client | `{ meetingId, speakerName, text, lang }` | Transcript persisted to DB |
@@ -1113,7 +1124,7 @@ io.use(async (socket, next) => {
 #### System Events
 
 | Event | Direction | Payload | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `notification` | Server→Client | `{ id, type, title, body, data }` | Push notification via socket |
 | `disconnect` | Auto | — | Cleanup: remove from meetingLanguages, broadcast leave |
 
@@ -1220,7 +1231,7 @@ CREATE TABLE memberships (
 **Role hierarchy** (defined in `constants.ts`):
 
 | Role | Level | Permissions |
-|---|---|---|
+| --- | --- | --- |
 | `guest` | 0 | Read-only access |
 | `member` | 1 | Standard org member |
 | `executive` | 2 | Board/exec privileges, LiveKit moderator |
@@ -1296,7 +1307,7 @@ Plans are defined in `constants.ts`: `free`, `standard`, `professional`, `enterp
 Three gateways + manual bank transfer:
 
 | Gateway | Config Key | Webhook Route |
-|---|---|---|
+| --- | --- | --- |
 | Stripe | `config.stripe.secretKey` | `POST /api/payments/webhook/stripe` |
 | Paystack | `config.paystack.secretKey` | `POST /api/payments/webhook/paystack` |
 | Flutterwave | `config.flutterwave.secretKey` | `POST /api/payments/webhook/flutterwave` |
@@ -1387,6 +1398,7 @@ const meetingLanguages = new Map<number, Map<number, { language, name, receiveVo
 ### 3. Database Lookups Per Speech Event
 
 **Problem**: Each `translation:speech` event does at minimum:
+
 - `db('users').where({ id: userId }).first()` — get speaker name
 - `db('meetings').where({ id: meetingId }).first()` — get org_id
 - `db('meeting_transcripts').insert(...)` — persist transcript
@@ -1490,6 +1502,7 @@ export function useResponsive() {
 ```
 
 **Key responsive components:**
+
 - `ResponsiveScrollView` — adapts scroll behavior per platform
 - `DrawerContext` — sidebar navigation for desktop, bottom tabs for mobile
 - `ResponsiveContainer` — max-width wrapper for desktop
@@ -1498,7 +1511,7 @@ export function useResponsive() {
 
 File-based routing via Expo Router (`apps/mobile/app/`):
 
-```
+```text
 app/
 ├── _layout.tsx          → Root layout (auth provider, theme, socket init)
 ├── index.tsx            → Landing / login redirect
@@ -1547,7 +1560,7 @@ All environment variables are defined in `apps/api/src/config.ts`:
 ### Database (PostgreSQL)
 
 | Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `DB_HOST` | `localhost` | PostgreSQL host |
 | `DB_PORT` | `5432` | PostgreSQL port |
 | `DB_USER` | `postgres` | Database user |
@@ -1557,7 +1570,7 @@ All environment variables are defined in `apps/api/src/config.ts`:
 ### Redis
 
 | Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `REDIS_HOST` | `localhost` | Redis host |
 | `REDIS_PORT` | `6379` | Redis port |
 | `REDIS_PASSWORD` | — | Redis password (optional) |
@@ -1565,16 +1578,16 @@ All environment variables are defined in `apps/api/src/config.ts`:
 ### JWT Authentication
 
 | Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `JWT_SECRET` | `dev-secret-...` | Access token signing key (**fatal in prod if default**) |
 | `JWT_REFRESH_SECRET` | `dev-refresh-...` | Refresh token signing key (**fatal in prod if default**) |
 | `JWT_EXPIRES_IN` | `24h` | Access token TTL |
 | `JWT_REFRESH_EXPIRES_IN` | `7d` | Refresh token TTL |
 
-### Payment Gateways
+### Payment Gateway Variables
 
 | Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `STRIPE_SECRET_KEY` | — | Stripe API secret |
 | `STRIPE_WEBHOOK_SECRET` | — | Stripe webhook signing secret |
 | `PAYSTACK_SECRET_KEY` | — | Paystack API secret |
@@ -1583,28 +1596,28 @@ All environment variables are defined in `apps/api/src/config.ts`:
 ### AI / Translation
 
 | Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `OPENAI_API_KEY` | — | OpenAI API key (GPT-4o, GPT-4o-mini) |
 | `GOOGLE_APPLICATION_CREDENTIALS` | — | Path to Google Cloud credentials JSON |
 
 ### AI Proxy (Optional)
 
 | Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `AI_PROXY_URL` | — | Centralized AI proxy endpoint URL |
 | `AI_PROXY_API_KEY` | — | AI proxy authentication key |
 
 ### AI Gateway (Optional)
 
 | Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `AI_GATEWAY_URL` | — | AI gateway base URL |
 | `AI_GATEWAY_API_KEY` | — | AI gateway API key |
 
 ### LiveKit Video Conferencing
 
 | Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `LIVEKIT_URL` | — | LiveKit server WebSocket URL |
 | `LIVEKIT_API_KEY` | `orgsledger` | API key for LiveKit token signing |
 | `LIVEKIT_API_SECRET` | — | JWT signing secret |
@@ -1613,7 +1626,7 @@ All environment variables are defined in `apps/api/src/config.ts`:
 ### Email (SMTP)
 
 | Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `SMTP_HOST` | — | SMTP server host |
 | `SMTP_PORT` | `587` | SMTP port |
 | `SMTP_USER` | — | SMTP username |
@@ -1623,13 +1636,13 @@ All environment variables are defined in `apps/api/src/config.ts`:
 ### Push Notifications
 
 | Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | Firebase credentials | — | Via `GOOGLE_APPLICATION_CREDENTIALS` (shared with STT) |
 
 ### Server
 
 | Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `NODE_ENV` | `development` | Environment mode |
 | `PORT` | `3000` | API server port |
 | `UPLOAD_DIR` | `uploads` | File upload directory |
@@ -1639,7 +1652,7 @@ All environment variables are defined in `apps/api/src/config.ts`:
 
 ## 13. File Structure
 
-```
+```text
 OrgsLedger/
 ├── app.js                          # Legacy entry point (redirects to apps/api)
 ├── server.js                       # Legacy entry point
@@ -1893,6 +1906,7 @@ AI minutes processing, email sending, and push notifications all run as fire-and
 ### 4. In-Memory Translation State
 
 The `meetingLanguages` Map exists only in the API process memory. This means:
+
 - Server restart during a live meeting drops all translation routing
 - Cannot scale to multiple API instances without sticky sessions
 - No persistence of active meeting state
@@ -1928,7 +1942,7 @@ When native users open LiveKit via `expo-web-browser`, the OrgsLedger app may be
 **39 active tables** across 22 migrations:
 
 | Table | Migration | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | `users` | 001 | User accounts |
 | `organizations` | 001 | Organizations |
 | `memberships` | 001 | User↔Org role mapping |
@@ -1974,8 +1988,9 @@ When native users open LiveKit via `expo-web-browser`, the OrgsLedger app may be
 ## Appendix B: API Route Map
 
 ### Auth (`/api/auth`)
+
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | POST | `/register` | Create account |
 | POST | `/login` | Login, returns JWT pair |
 | POST | `/refresh` | Refresh access token |
@@ -1989,8 +2004,9 @@ When native users open LiveKit via `expo-web-browser`, the OrgsLedger app may be
 | POST | `/me/fcm-token` | Register FCM push token |
 
 ### Organizations (`/api/organizations`)
+
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | POST | `/` | Create organization |
 | GET | `/` | List user's organizations |
 | GET | `/:orgId` | Get organization details |
@@ -2002,8 +2018,9 @@ When native users open LiveKit via `expo-web-browser`, the OrgsLedger app may be
 | DELETE | `/:orgId/members/:userId` | Remove member |
 
 ### Meetings (`/api/meetings`)
+
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | POST | `/:orgId` | Create meeting |
 | GET | `/:orgId` | List org meetings |
 | GET | `/:orgId/:meetingId` | Get meeting details |
@@ -2018,8 +2035,9 @@ When native users open LiveKit via `expo-web-browser`, the OrgsLedger app may be
 | GET | `/:orgId/:meetingId/attendance` | Get attendance records |
 
 ### Financials (`/api/financials`)
+
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | POST | `/:orgId/dues` | Create dues definition |
 | GET | `/:orgId/dues` | List dues |
 | POST | `/:orgId/dues/:dueId/pay` | Pay dues |
@@ -2029,8 +2047,9 @@ When native users open LiveKit via `expo-web-browser`, the OrgsLedger app may be
 | POST | `/:orgId/donations` | Record donation |
 
 ### Payments (`/api/payments`)
+
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | POST | `/initialize` | Initialize payment flow |
 | POST | `/verify` | Verify payment completion |
 | POST | `/webhook/stripe` | Stripe webhook handler |
@@ -2038,8 +2057,9 @@ When native users open LiveKit via `expo-web-browser`, the OrgsLedger app may be
 | POST | `/webhook/flutterwave` | Flutterwave webhook handler |
 
 ### Other Routes
+
 | Base Path | Resource |
-|---|---|
+| --- | --- |
 | `/api/chat` | Channels, messages |
 | `/api/committees` | Committees, members |
 | `/api/notifications` | User notifications |
@@ -2055,40 +2075,32 @@ When native users open LiveKit via `expo-web-browser`, the OrgsLedger app may be
 
 ---
 
-## Appendix C: LiveKit Migration — Completed
+## Appendix C: LiveKit Infrastructure
 
-The following migration from Jitsi to LiveKit has been completed:
+LiveKit is the sole video/audio conferencing provider. Key infrastructure:
 
-### Backend Changes (Done)
+### Backend
 
-- [x] Replaced `jitsi.service.ts` with `livekit.service.ts` — JWT token generation using HS256
-- [x] Updated `routes/meetings.ts` join endpoint to return LiveKit connection details
-- [x] Updated `config.ts` — `config.livekit.{url, apiKey, apiSecret, tokenExpirySeconds}`
-- [x] Updated `docker-compose.prod.yml` — removed 4 Jitsi containers, added single LiveKit container
-- [x] Updated `deploy/nginx.conf` — replaced `meet.orgsledger.com` with `livekit.orgsledger.com` proxy
-- [x] Created `deploy/livekit.yaml` server configuration
-- [x] Created `deploy/livekit-setup.md` deployment guide
-- [x] Updated `env.js` and `deploy/deploy.sh` — LiveKit env vars
+- `livekit.service.ts` — JWT token generation (HS256), room naming, join config
+- `routes/meetings.ts` — Join endpoint returns LiveKit connection details
+- `config.ts` — `config.livekit.{url, apiKey, apiSecret, tokenExpirySeconds}`
 
-### Frontend Changes (Done)
+### Infrastructure
 
-- [x] Replaced Jitsi iframe in `meetings/[meetingId].tsx` with LiveKit room embed
-- [x] Updated `handleJoinMeeting()` — simplified flow, no domain reachability check needed
-- [x] Added audio/video toggle buttons to toolbar
-- [x] Created dedicated meeting report page at `/meetings/[meetingId]/report`
-- [x] Fixed `Colors.cardDark` bug in `LiveTranslation.tsx` (was `undefined`)
-- [x] Added responsive `aspectRatio: 16/9` video container (was hardcoded 320px)
-- [x] Added `flexWrap` to control bar, `numberOfLines={1}` to tabs
+- `docker-compose.prod.yml` — Single LiveKit container (`livekit/livekit-server:latest`)
+- `deploy/nginx.conf` — `livekit.orgsledger.com` WebSocket proxy
+- `deploy/livekit.yaml` — LiveKit server configuration
+- `deploy/livekit-setup.md` — Deployment guide
 
-### Performance Improvements (Done)
+### Frontend
 
-- [x] Created migration 023 with 7 missing database indexes
-- [x] Parallelized 5 sequential queries in member detail endpoint
-- [x] Added pagination to admin organizations endpoint
+- `meetings/[meetingId].tsx` — LiveKit room embed (iframe on web, browser on native)
+- `src/hooks/useLiveKitRoom.ts` — React hook wrapping `livekit-client` SDK
+- `src/components/meeting/` — MeetingRoom, VideoGrid, VideoTile, ControlBar, etc.
 
-### Pipeline Preservation (Verified)
+### Independent Pipelines (Not Coupled to LiveKit)
 
-- [x] Transcription pipeline: Socket.IO based — unaffected
-- [x] Translation pipeline: Socket.IO based — unaffected
-- [x] Minutes pipeline: DB transcript path — unaffected
-- [x] Socket events: All meeting events independent of video provider — unaffected
+- Transcription pipeline — Socket.IO based
+- Translation pipeline — Socket.IO based
+- AI minutes pipeline — DB transcript path
+- All socket events — independent of video provider

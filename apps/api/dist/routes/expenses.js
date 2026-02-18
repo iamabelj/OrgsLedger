@@ -123,7 +123,7 @@ router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAnd
     }
 });
 // ── Update Expense ──────────────────────────────────────────
-router.put('/:orgId/:expenseId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive', 'treasurer'), (0, middleware_1.validate)(updateExpenseSchema), async (req, res) => {
+router.put('/:orgId/:expenseId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive', 'member'), (0, middleware_1.validate)(updateExpenseSchema), async (req, res) => {
     try {
         const { title, description, amount, category, date, status, receipt_url } = req.body;
         const existing = await (0, db_1.default)('expenses')
@@ -131,6 +131,11 @@ router.put('/:orgId/:expenseId', middleware_1.authenticate, middleware_1.loadMem
             .first();
         if (!existing) {
             res.status(404).json({ success: false, error: 'Expense not found' });
+            return;
+        }
+        // Members can only update their own expenses
+        if (req.membership.role === 'member' && existing.created_by !== req.user.userId) {
+            res.status(403).json({ success: false, error: 'You can only edit your own expenses' });
             return;
         }
         const updates = {};
@@ -169,13 +174,18 @@ router.put('/:orgId/:expenseId', middleware_1.authenticate, middleware_1.loadMem
     }
 });
 // ── Delete Expense ──────────────────────────────────────────
-router.delete('/:orgId/:expenseId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive', 'treasurer'), async (req, res) => {
+router.delete('/:orgId/:expenseId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive', 'member'), async (req, res) => {
     try {
         const expense = await (0, db_1.default)('expenses')
             .where({ id: req.params.expenseId, organization_id: req.params.orgId })
             .first();
         if (!expense) {
             res.status(404).json({ success: false, error: 'Expense not found' });
+            return;
+        }
+        // Members can only delete their own expenses
+        if (req.membership.role === 'member' && expense.created_by !== req.user.userId) {
+            res.status(403).json({ success: false, error: 'You can only delete your own expenses' });
             return;
         }
         await (0, db_1.default)('expenses').where({ id: req.params.expenseId }).delete();

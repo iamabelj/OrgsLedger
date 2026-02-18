@@ -91,10 +91,19 @@ class AIService {
             if (!deduction.success) {
                 throw new Error(deduction.error || 'Wallet deduction failed');
             }
-            // Step 1: Transcribe audio
+            // Step 1: Transcribe audio OR use live transcripts
             const transcriptStart = Date.now();
-            const transcript = await this.transcribeAudio(meeting.audio_storage_url);
-            logger_1.logger.info('[AI] Transcription complete', { meetingId, durationMs: Date.now() - transcriptStart, segments: transcript.length });
+            let transcript;
+            if (meeting.audio_storage_url) {
+                // Prefer uploaded audio for transcription
+                transcript = await this.transcribeAudio(meeting.audio_storage_url);
+                logger_1.logger.info('[AI] Audio transcription complete', { meetingId, durationMs: Date.now() - transcriptStart, segments: transcript.length });
+            }
+            else {
+                // Fall back to live translation transcripts stored in DB
+                transcript = await this.getTranscriptsFromDB(meetingId);
+                logger_1.logger.info('[AI] Using live transcripts from DB', { meetingId, segments: transcript.length });
+            }
             // Step 2: Generate structured minutes
             const summarizeStart = Date.now();
             const minutes = await this.generateMinutes(transcript, meeting);
@@ -234,12 +243,15 @@ class AIService {
                 config: {
                     encoding: 'LINEAR16',
                     sampleRateHertz: 16000,
-                    languageCode: 'en-US',
+                    // Do NOT force languageCode — let Speech-to-Text auto-detect.
+                    // This enables 100+ language support including African,
+                    // Asian, European, Arabic dialects, and mixed speech.
+                    languageCode: 'auto',
                     enableAutomaticPunctuation: true,
                     enableSpeakerDiarization: true,
                     diarizationSpeakerCount: 10,
                     model: 'latest_long',
-                    alternativeLanguageCodes: ['es-ES', 'fr-FR', 'pt-BR', 'sw-KE'],
+                    // Whisper-style: no alternative language codes needed with auto-detect
                 },
                 audio: {
                     uri: audioUrl, // GCS URI like gs://bucket/file.wav
@@ -410,6 +422,47 @@ Be thorough and accurate. Identify all decisions, motions, and action items.`;
                 language: 'en-US',
             },
         ];
+    }
+    /**
+     * Get transcripts from the meeting_transcripts table (live translation data).
+     * Falls back to mock if table doesn't exist or is empty.
+     */
+    async getTranscriptsFromDB(meetingId) {
+        try {
+            const hasTable = await db_1.default.schema.hasTable('meeting_transcripts');
+            if (!hasTable) {
+                logger_1.logger.warn('[AI] meeting_transcripts table does not exist');
+                return this.getMockTranscript();
+            }
+            const rows = await (0, db_1.default)('meeting_transcripts')
+                .where({ meeting_id: meetingId })
+                .orderBy('spoken_at', 'asc')
+                .select('*');
+            if (rows.length === 0) {
+                logger_1.logger.warn('[AI] No live transcripts found for meeting', { meetingId });
+                return this.getMockTranscript();
+            }
+            // Convert to TranscriptSegment format
+            let prevEndTime = 0;
+            return rows.map((row) => {
+                const startTime = prevEndTime;
+                const estimatedDuration = Math.max(3, Math.ceil(row.original_text.length / 15)); // ~15 chars/sec speech
+                const endTime = startTime + estimatedDuration;
+                prevEndTime = endTime;
+                return {
+                    speakerId: row.speaker_id,
+                    speakerName: row.speaker_name,
+                    text: row.original_text,
+                    startTime,
+                    endTime,
+                    language: row.source_lang || 'en',
+                };
+            });
+        }
+        catch (err) {
+            logger_1.logger.error('[AI] Failed to get transcripts from DB', err);
+            return this.getMockTranscript();
+        }
     }
     getMockMinutes(transcript) {
         return {

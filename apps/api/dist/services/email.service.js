@@ -11,6 +11,15 @@ exports.sendMeetingMinutesEmail = sendMeetingMinutesEmail;
 const nodemailer_1 = __importDefault(require("nodemailer"));
 const config_1 = require("../config");
 const logger_1 = require("../logger");
+/** Escape user input before interpolating into HTML */
+function escapeHtml(s) {
+    return s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 let transporter = null;
 function getTransporter() {
     if (!transporter) {
@@ -63,7 +72,7 @@ async function sendMeetingMinutesEmail(meetingTitle, minutesSummary, recipientEm
         <h1 style="color: #C9A84C; margin: 0; font-size: 24px;">OrgsLedger</h1>
       </div>
       <div style="background: #f8f9fa; padding: 32px; border-radius: 0 0 8px 8px;">
-        <h2 style="color: #0B1426; margin-top: 0;">Meeting Minutes: ${meetingTitle}</h2>
+        <h2 style="color: #0B1426; margin-top: 0;">Meeting Minutes: ${escapeHtml(meetingTitle)}</h2>
         <div style="background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 16px 0;">
           ${minutesSummary.replace(/\n/g, '<br/>')}
         </div>
@@ -76,7 +85,7 @@ async function sendMeetingMinutesEmail(meetingTitle, minutesSummary, recipientEm
   `;
     await sendEmail({
         to: recipientEmails,
-        subject: `Meeting Minutes: ${meetingTitle}`,
+        subject: `Meeting Minutes: ${escapeHtml(meetingTitle)}`,
         html,
         text: minutesSummary,
     });

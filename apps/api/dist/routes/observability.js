@@ -12,7 +12,7 @@ const analytics_service_1 = require("../services/analytics.service");
 const middleware_1 = require("../middleware");
 const router = (0, express_1.Router)();
 // All observability routes require super admin
-router.use(middleware_1.authenticate, middleware_1.requireDeveloper);
+router.use(middleware_1.authenticate, (0, middleware_1.requireDeveloper)());
 // ── Metrics Dashboard ─────────────────────────────────────
 router.get('/metrics', (_req, res) => {
     res.json({ success: true, data: (0, metrics_service_1.getMetricsSnapshot)() });

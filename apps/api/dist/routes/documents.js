@@ -56,7 +56,7 @@ const upload = (0, multer_1.default)({
     },
 });
 // ── Upload Document ─────────────────────────────────────────
-router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, upload.single('file'), async (req, res) => {
+router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive', 'member'), upload.single('file'), async (req, res) => {
     try {
         if (!req.file) {
             res.status(400).json({ success: false, error: 'No file provided' });
@@ -126,6 +126,11 @@ router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAndS
 router.post('/:orgId/folders', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
     try {
         const { name, parentId } = req.body;
+        // Validate folder name
+        if (!name || typeof name !== 'string' || !name.trim() || name.length > 200) {
+            res.status(400).json({ success: false, error: 'Folder name is required and must be 1-200 characters' });
+            return;
+        }
         const [folder] = await (0, db_1.default)('document_folders')
             .insert({
             organization_id: req.params.orgId,
@@ -182,8 +187,12 @@ router.delete('/:orgId/:docId', middleware_1.authenticate, middleware_1.loadMemb
         }
         // Delete file from disk
         const filePath = path_1.default.resolve(config_1.config.upload.dir, 'documents', path_1.default.basename(doc.file_path));
-        if (fs_1.default.existsSync(filePath)) {
-            fs_1.default.unlinkSync(filePath);
+        try {
+            await fs_1.default.promises.access(filePath);
+            await fs_1.default.promises.unlink(filePath);
+        }
+        catch {
+            // File may not exist on disk — continue with DB deletion
         }
         await (0, db_1.default)('documents').where({ id: doc.id }).delete();
         res.json({ success: true, message: 'Document deleted' });

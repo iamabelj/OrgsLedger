@@ -108,7 +108,8 @@ router.get('/:orgId/channels', middleware_1.authenticate, middleware_1.loadMembe
         })
             .select('channels.*', db_1.default.raw(`count(case when messages.created_at > coalesce(cm.last_read_at, '1970-01-01') then 1 end)::int as "unreadCount"`))
             .groupBy('channels.id', 'cm.last_read_at')
-            .orderBy('channels.name');
+            .orderBy('channels.name')
+            .limit(200);
         res.json({ success: true, data: channelData });
     }
     catch (err) {
@@ -233,20 +234,31 @@ router.get('/:orgId/channels/:channelId/messages', middleware_1.authenticate, mi
         const messages = await query
             .orderBy('messages.created_at', 'desc')
             .limit(limit);
-        // Attach thread counts + attachments
-        const enriched = await Promise.all(messages.map(async (msg) => {
-            const threadCount = await (0, db_1.default)('messages')
-                .where({ thread_id: msg.id, is_deleted: false })
+        // Batch: thread counts for all messages in one query (GROUP BY)
+        let threadCountMap = {};
+        let attachmentMap = {};
+        if (messages.length) {
+            const msgIds = messages.map((m) => m.id);
+            const threadCounts = await (0, db_1.default)('messages')
+                .whereIn('thread_id', msgIds)
+                .where({ is_deleted: false })
+                .select('thread_id')
                 .count('id as count')
-                .first();
-            const attachments = await (0, db_1.default)('attachments')
-                .where({ message_id: msg.id })
-                .select('*');
-            return {
-                ...msg,
-                threadCount: parseInt(threadCount?.count) || 0,
-                attachments,
-            };
+                .groupBy('thread_id');
+            threadCounts.forEach((tc) => { threadCountMap[tc.thread_id] = parseInt(tc.count) || 0; });
+            // Batch: all attachments for all messages in one query
+            const allAttachments = await (0, db_1.default)('attachments')
+                .whereIn('message_id', msgIds);
+            allAttachments.forEach((a) => {
+                if (!attachmentMap[a.message_id])
+                    attachmentMap[a.message_id] = [];
+                attachmentMap[a.message_id].push(a);
+            });
+        }
+        const enriched = messages.map((msg) => ({
+            ...msg,
+            threadCount: threadCountMap[msg.id] || 0,
+            attachments: attachmentMap[msg.id] || [],
         }));
         // Update last read
         await (0, db_1.default)('channel_members')
@@ -262,7 +274,7 @@ router.get('/:orgId/channels/:channelId/messages', middleware_1.authenticate, mi
 // ── Mark Channel as Read (explicit) ─────────────────────────
 router.post('/:orgId/channels/:channelId/mark-read', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
-        if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res)))
+        if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user.userId, res, req)))
             return;
         await (0, db_1.default)('channel_members')
             .where({ channel_id: req.params.channelId, user_id: req.user.userId })
@@ -334,16 +346,23 @@ router.post('/:orgId/channels/:channelId/messages', middleware_1.authenticate, m
 // ── Get Thread Replies ──────────────────────────────────────
 router.get('/:orgId/channels/:channelId/messages/:messageId/thread', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
-        if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res)))
+        if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user.userId, res, req)))
             return;
-        const replies = await (0, db_1.default)('messages')
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+        const before = req.query.before; // cursor-based pagination
+        let query = (0, db_1.default)('messages')
             .join('users', 'messages.sender_id', 'users.id')
             .where({
             'messages.thread_id': req.params.messageId,
             'messages.is_deleted': false,
         })
-            .select('messages.*', 'users.first_name as senderFirstName', 'users.last_name as senderLastName', 'users.avatar_url as senderAvatar')
-            .orderBy('messages.created_at', 'asc');
+            .select('messages.*', 'users.first_name as senderFirstName', 'users.last_name as senderLastName', 'users.avatar_url as senderAvatar');
+        if (before) {
+            query = query.where('messages.created_at', '<', before);
+        }
+        const replies = await query
+            .orderBy('messages.created_at', 'asc')
+            .limit(limit);
         res.json({ success: true, data: replies });
     }
     catch (err) {
@@ -385,7 +404,16 @@ router.get('/:orgId/messages/search', middleware_1.authenticate, middleware_1.lo
 // ── Edit Message ────────────────────────────────────────────
 router.put('/:orgId/channels/:channelId/messages/:messageId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
-        if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res)))
+        const { content } = req.body;
+        if (!content || typeof content !== 'string' || !content.trim()) {
+            res.status(400).json({ success: false, error: 'content is required' });
+            return;
+        }
+        if (content.length > 10000) {
+            res.status(400).json({ success: false, error: 'content must be at most 10000 characters' });
+            return;
+        }
+        if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user.userId, res, req)))
             return;
         const message = await (0, db_1.default)('messages')
             .where({ id: req.params.messageId, sender_id: req.user.userId })
@@ -396,12 +424,12 @@ router.put('/:orgId/channels/:channelId/messages/:messageId', middleware_1.authe
         }
         await (0, db_1.default)('messages')
             .where({ id: req.params.messageId })
-            .update({ content: req.body.content, is_edited: true });
+            .update({ content: content.trim(), is_edited: true });
         const io = req.app.get('io');
         if (io) {
             io.to(`channel:${req.params.channelId}`).emit('message:edited', {
                 id: req.params.messageId,
-                content: req.body.content,
+                content: content.trim(),
             });
         }
         res.json({ success: true, message: 'Message updated' });
@@ -413,7 +441,7 @@ router.put('/:orgId/channels/:channelId/messages/:messageId', middleware_1.authe
 // ── Delete Message ──────────────────────────────────────────
 router.delete('/:orgId/channels/:channelId/messages/:messageId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
-        if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res)))
+        if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user.userId, res, req)))
             return;
         const message = await (0, db_1.default)('messages')
             .where({ id: req.params.messageId })
@@ -446,25 +474,21 @@ router.delete('/:orgId/channels/:channelId/messages/:messageId', middleware_1.au
 // ── Upload Attachment ───────────────────────────────────────
 router.post('/:orgId/channels/:channelId/upload', middleware_1.authenticate, middleware_1.loadMembershipAndSub, upload.array('files', 5), async (req, res) => {
     try {
-        if (!(await verifyChannelOwnership(req.params.channelId, req.params.orgId, res)))
+        if (!(await verifyChannelAccess(req.params.channelId, req.params.orgId, req.user.userId, res, req)))
             return;
         const files = req.files;
         if (!files || !files.length) {
             res.status(400).json({ success: false, error: 'No files uploaded' });
             return;
         }
-        const attachments = await Promise.all(files.map(async (file) => {
-            const [attachment] = await (0, db_1.default)('attachments')
-                .insert({
-                file_name: file.originalname,
-                file_url: `/uploads/${file.filename}`,
-                mime_type: file.mimetype,
-                size_bytes: file.size,
-                uploaded_by: req.user.userId,
-            })
-                .returning('*');
-            return attachment;
+        const attachmentRows = files.map((file) => ({
+            file_name: file.originalname,
+            file_url: `/uploads/${file.filename}`,
+            mime_type: file.mimetype,
+            size_bytes: file.size,
+            uploaded_by: req.user.userId,
         }));
+        const attachments = await (0, db_1.default)('attachments').insert(attachmentRows).returning('*');
         res.status(201).json({ success: true, data: attachments });
     }
     catch (err) {

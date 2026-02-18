@@ -321,7 +321,7 @@ export default function HomeScreen() {
           <Card variant="elevated" style={styles.aiCard}>
             <View style={styles.finCardHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name="sparkles" size={18} color={Colors.highlight} />
+                <Ionicons name={"sparkles" as any} size={18} color={Colors.highlight} />
                 <Text style={styles.finCardTitle}>AI Hours</Text>
               </View>
               {isAdmin && (
@@ -442,7 +442,7 @@ export default function HomeScreen() {
               onPress={() => router.push('/admin/reports')}
             />
             <AdminActionCard
-              icon="sparkles"
+              icon={"sparkles" as any}
               label="AI Plans"
               color={Colors.highlight}
               onPress={() => router.push('/admin/plans')}

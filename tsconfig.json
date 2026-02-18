@@ -1,4 +1,12 @@
 {
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {},
-  "extends": "./tsconfig.base.json"
+  "include": [],
+  "exclude": ["*"],
+  "references": [
+    { "path": "apps/api" },
+    { "path": "apps/mobile" },
+    { "path": "packages/shared" },
+    { "path": "packages/database" }
+  ]
 }

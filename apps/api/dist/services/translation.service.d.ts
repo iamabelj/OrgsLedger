@@ -1,18 +1,18 @@
-export declare const SUPPORTED_LANGUAGES: Record<string, string>;
-export declare const SPEECH_RECOGNITION_CODES: Record<string, string>;
+export { LANGUAGES, LANG_FLAGS, SPEECH_CODES, TTS_SUPPORTED, isTtsSupported, ALL_LANGUAGES, getLanguage, getLanguageName, getLanguageFlag, getBcp47, isRtl, getAllCodes, } from '@orgsledger/shared';
+export type { Language, UserLanguagePreference } from '@orgsledger/shared';
 interface TranslationResult {
     translatedText: string;
     detectedSourceLanguage?: string;
 }
 /**
- * Translate text using Google Cloud Translation API v2.
- * Falls back to the AI proxy if configured, then to Google directly.
+ * Translate text using GPT-4o-mini (primary) or fallback chain.
+ * Accepts ANY ISO language code — no pre-defined list required.
  */
 export declare function translateText(text: string, targetLang: string, sourceLang?: string): Promise<TranslationResult>;
 /**
  * Translate text to multiple target languages in one batch.
+ * Routes each language through translateText (with cache).
  * Returns a map of langCode → translatedText.
  */
 export declare function translateToMultiple(text: string, targetLangs: string[], sourceLang?: string): Promise<Record<string, string>>;
-export {};
 //# sourceMappingURL=translation.service.d.ts.map

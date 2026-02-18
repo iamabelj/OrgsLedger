@@ -7,7 +7,7 @@ All participants receive backend-issued tokens — no external login is required
 
 ## Architecture
 
-```
+```text
 Client → API (POST /meetings/:orgId/:meetingId/join)
        → API validates JWT, membership, meeting status
        → API generates LiveKit access token

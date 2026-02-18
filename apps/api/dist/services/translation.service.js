@@ -1,7 +1,8 @@
 "use strict";
 // ============================================================
-// OrgsLedger API — Translation Service
-// Google Cloud Translation API for real-time meeting translation
+// OrgsLedger API — Translation Service (GPT-powered)
+// Supports 100+ languages via OpenAI GPT-4o-mini.
+// Falls back to AI proxy → Google Translate → passthrough.
 // ============================================================
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -37,81 +38,73 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SPEECH_RECOGNITION_CODES = exports.SUPPORTED_LANGUAGES = void 0;
+exports.getAllCodes = exports.isRtl = exports.getBcp47 = exports.getLanguageFlag = exports.getLanguageName = exports.getLanguage = exports.ALL_LANGUAGES = exports.isTtsSupported = exports.TTS_SUPPORTED = exports.SPEECH_CODES = exports.LANG_FLAGS = exports.LANGUAGES = void 0;
 exports.translateText = translateText;
 exports.translateToMultiple = translateToMultiple;
 const config_1 = require("../config");
 const logger_1 = require("../logger");
-// Supported languages with display names
-exports.SUPPORTED_LANGUAGES = {
-    en: 'English',
-    es: 'Spanish',
-    fr: 'French',
-    pt: 'Portuguese',
-    ar: 'Arabic',
-    zh: 'Chinese (Simplified)',
-    hi: 'Hindi',
-    sw: 'Swahili',
-    yo: 'Yoruba',
-    ha: 'Hausa',
-    ig: 'Igbo',
-    am: 'Amharic',
-    de: 'German',
-    it: 'Italian',
-    ja: 'Japanese',
-    ko: 'Korean',
-    ru: 'Russian',
-    tr: 'Turkish',
-    id: 'Indonesian',
-    ms: 'Malay',
-    th: 'Thai',
-    vi: 'Vietnamese',
-    nl: 'Dutch',
-    pl: 'Polish',
-    uk: 'Ukrainian',
-    tw: 'Twi (Akan)',
-};
-// BCP-47 codes for Web Speech API recognition (more specific)
-exports.SPEECH_RECOGNITION_CODES = {
-    en: 'en-US',
-    es: 'es-ES',
-    fr: 'fr-FR',
-    pt: 'pt-BR',
-    ar: 'ar-SA',
-    zh: 'zh-CN',
-    hi: 'hi-IN',
-    sw: 'sw-KE',
-    yo: 'yo-NG',
-    ha: 'ha-NG',
-    ig: 'ig-NG',
-    am: 'am-ET',
-    de: 'de-DE',
-    it: 'it-IT',
-    ja: 'ja-JP',
-    ko: 'ko-KR',
-    ru: 'ru-RU',
-    tr: 'tr-TR',
-    id: 'id-ID',
-    ms: 'ms-MY',
-    th: 'th-TH',
-    vi: 'vi-VN',
-    nl: 'nl-NL',
-    pl: 'pl-PL',
-    uk: 'uk-UA',
-    tw: 'ak-GH',
-};
+const shared_1 = require("@orgsledger/shared");
+// Re-export the shared language registry so existing imports still work
+var shared_2 = require("@orgsledger/shared");
+Object.defineProperty(exports, "LANGUAGES", { enumerable: true, get: function () { return shared_2.LANGUAGES; } });
+Object.defineProperty(exports, "LANG_FLAGS", { enumerable: true, get: function () { return shared_2.LANG_FLAGS; } });
+Object.defineProperty(exports, "SPEECH_CODES", { enumerable: true, get: function () { return shared_2.SPEECH_CODES; } });
+Object.defineProperty(exports, "TTS_SUPPORTED", { enumerable: true, get: function () { return shared_2.TTS_SUPPORTED; } });
+Object.defineProperty(exports, "isTtsSupported", { enumerable: true, get: function () { return shared_2.isTtsSupported; } });
+Object.defineProperty(exports, "ALL_LANGUAGES", { enumerable: true, get: function () { return shared_2.ALL_LANGUAGES; } });
+Object.defineProperty(exports, "getLanguage", { enumerable: true, get: function () { return shared_2.getLanguage; } });
+Object.defineProperty(exports, "getLanguageName", { enumerable: true, get: function () { return shared_2.getLanguageName; } });
+Object.defineProperty(exports, "getLanguageFlag", { enumerable: true, get: function () { return shared_2.getLanguageFlag; } });
+Object.defineProperty(exports, "getBcp47", { enumerable: true, get: function () { return shared_2.getBcp47; } });
+Object.defineProperty(exports, "isRtl", { enumerable: true, get: function () { return shared_2.isRtl; } });
+Object.defineProperty(exports, "getAllCodes", { enumerable: true, get: function () { return shared_2.getAllCodes; } });
+// ── Simple translation cache (per-process, auto-evicts) ────
+const translationCache = new Map();
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const CACHE_MAX = 2000;
+function getCached(key) {
+    const entry = translationCache.get(key);
+    if (!entry)
+        return null;
+    if (Date.now() - entry.ts > CACHE_TTL_MS) {
+        translationCache.delete(key);
+        return null;
+    }
+    return entry.text;
+}
+function setCache(key, text) {
+    if (translationCache.size >= CACHE_MAX) {
+        // Evict oldest 25%
+        const entries = [...translationCache.entries()].sort((a, b) => a[1].ts - b[1].ts);
+        for (let i = 0; i < CACHE_MAX / 4; i++) {
+            translationCache.delete(entries[i][0]);
+        }
+    }
+    translationCache.set(key, { text, ts: Date.now() });
+}
 /**
- * Translate text using Google Cloud Translation API v2.
- * Falls back to the AI proxy if configured, then to Google directly.
+ * Translate text using GPT-4o-mini (primary) or fallback chain.
+ * Accepts ANY ISO language code — no pre-defined list required.
  */
 async function translateText(text, targetLang, sourceLang) {
     if (!text.trim()) {
         return { translatedText: '' };
     }
-    // If source and target are the same, return as-is
+    // Same language → passthrough
     if (sourceLang && sourceLang === targetLang) {
         return { translatedText: text, detectedSourceLanguage: sourceLang };
     }
+    // ── Check cache ─────────────────────────────────────────
+    const cacheKey = `${sourceLang || 'auto'}:${targetLang}:${text.slice(0, 200)}`;
+    const cached = getCached(cacheKey);
+    if (cached) {
+        logger_1.logger.debug(`[TRANSLATION] Cache hit: ${sourceLang || 'auto'} → ${targetLang}`);
+        return { translatedText: cached, detectedSourceLanguage: sourceLang };
+    }
+    // Resolve human-readable language name for the GPT prompt
+    const targetName = (0, shared_1.getLanguageName)(targetLang);
+    const sourceName = sourceLang ? (0, shared_1.getLanguageName)(sourceLang) : null;
+    logger_1.logger.debug(`[TRANSLATION] Translating: "${text.slice(0, 60)}" from ${sourceName || 'auto'} (${sourceLang || 'auto'}) → ${targetName} (${targetLang})`);
     // ── Try AI Proxy first ────────────────────────────────
     if (config_1.config.aiProxy.url && config_1.config.aiProxy.apiKey) {
         try {
@@ -125,24 +118,51 @@ async function translateText(text, targetLang, sourceLang) {
             });
             if (res.ok) {
                 const data = (await res.json());
+                const translated = data.translatedText || text;
+                setCache(cacheKey, translated);
                 return {
-                    translatedText: data.translatedText || text,
+                    translatedText: translated,
                     detectedSourceLanguage: data.detectedSourceLanguage || sourceLang,
                 };
             }
         }
         catch (err) {
-            logger_1.logger.warn('AI proxy translation failed, falling back to Google direct', err);
+            logger_1.logger.warn('AI proxy translation failed, falling back to GPT', err);
         }
     }
-    // ── Google Cloud Translation API v2 (REST, no SDK needed) ──
+    // ── GPT-4o-mini translation (100+ languages) ──────────
+    if (config_1.config.ai.openaiApiKey) {
+        try {
+            const OpenAI = (await Promise.resolve().then(() => __importStar(require('openai')))).default;
+            const openai = new OpenAI({ apiKey: config_1.config.ai.openaiApiKey });
+            const systemPrompt = sourceName
+                ? `You are a professional translator. Translate the following text from ${sourceName} to ${targetName}. Output ONLY the translated text, nothing else. Translate exactly. Do not summarize. Do not paraphrase. Do not add commentary. Preserve tone, formality, and meaning strictly.`
+                : `You are a professional translator. Detect the source language and translate the following text to ${targetName}. Output ONLY the translated text, nothing else. Translate exactly. Do not summarize. Do not paraphrase. Do not add commentary. Preserve tone, formality, and meaning strictly.`;
+            const response = await openai.chat.completions.create({
+                model: 'gpt-4o-mini',
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: text },
+                ],
+                temperature: 0,
+                max_tokens: Math.max(256, text.length * 3),
+            });
+            const translated = response.choices[0]?.message?.content?.trim() || text;
+            logger_1.logger.debug(`[TRANSLATION] GPT result: "${text.slice(0, 60)}" → "${translated.slice(0, 60)}" (${sourceLang || 'auto'} → ${targetLang})`);
+            setCache(cacheKey, translated);
+            return { translatedText: translated, detectedSourceLanguage: sourceLang };
+        }
+        catch (err) {
+            logger_1.logger.warn('GPT translation failed, falling back to Google Translate', err);
+        }
+    }
+    // ── Google Cloud Translation API v2 (fallback) ────────
     try {
         const credentialsPath = config_1.config.ai.googleCredentials;
         if (!credentialsPath) {
             logger_1.logger.warn('No Google credentials configured for translation');
             return { translatedText: text };
         }
-        // Use the Google Auth Library to get an access token
         const { GoogleAuth } = await Promise.resolve().then(() => __importStar(require('google-auth-library')));
         const auth = new GoogleAuth({
             keyFilename: credentialsPath,
@@ -173,18 +193,21 @@ async function translateText(text, targetLang, sourceLang) {
         }
         const data = (await res.json());
         const translation = data.data?.translations?.[0];
+        const translated = translation?.translatedText || text;
+        setCache(cacheKey, translated);
         return {
-            translatedText: translation?.translatedText || text,
+            translatedText: translated,
             detectedSourceLanguage: translation?.detectedSourceLanguage || sourceLang,
         };
     }
     catch (err) {
-        logger_1.logger.error('Google Translate API failed', err);
+        logger_1.logger.error('Google Translate API also failed', err);
         return { translatedText: text };
     }
 }
 /**
  * Translate text to multiple target languages in one batch.
+ * Routes each language through translateText (with cache).
  * Returns a map of langCode → translatedText.
  */
 async function translateToMultiple(text, targetLangs, sourceLang) {

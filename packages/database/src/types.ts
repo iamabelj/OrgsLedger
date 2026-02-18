@@ -157,7 +157,7 @@ export interface MeetingRow {
   ai_enabled: boolean;
   translation_enabled: boolean;
   audio_storage_url: string | null;
-  jitsi_room_id: string | null;
+  room_id: string | null;
   recurring_pattern: string;
   recurring_end_date: string | null;
   parent_meeting_id: string | null;

@@ -72,16 +72,11 @@ export declare function validateInviteLink(code: string): Promise<{
 export declare function useInviteLink(code: string, userId: string): Promise<{
     valid: boolean;
     error: string;
-    link?: undefined;
     organization?: undefined;
 } | {
     valid: boolean;
-    link: any;
     organization: any;
     error?: undefined;
-} | {
-    valid: boolean;
-    organization: any;
 }>;
 export declare function startUsageRecord(orgId: string, serviceType: 'ai' | 'translation', meetingId?: string, userId?: string): Promise<any>;
 export declare function completeUsageRecord(recordId: string, durationMinutes: number, cost: number, currency?: string): Promise<void>;

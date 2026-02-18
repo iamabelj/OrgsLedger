@@ -2,12 +2,16 @@
 // ============================================================
 // OrgsLedger — Subscription Enforcement Middleware
 // ============================================================
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.requireActiveSubscription = requireActiveSubscription;
 exports.checkAiWallet = checkAiWallet;
 exports.checkTranslationWallet = checkTranslationWallet;
 const subscription_service_1 = require("../services/subscription.service");
 const logger_1 = require("../logger");
+const db_1 = __importDefault(require("../db"));
 /**
  * Block request if organization has no active subscription.
  * Super admins always bypass.
@@ -52,7 +56,7 @@ async function requireActiveSubscription(req, res, next) {
                 newEnd.setFullYear(newEnd.getFullYear() + 1);
                 const newGrace = new Date(newEnd);
                 newGrace.setDate(newGrace.getDate() + 7);
-                const subDb = require('../db').default;
+                const subDb = db_1.default;
                 await subDb('subscriptions').where({ id: sub.id }).update({
                     status: 'active',
                     current_period_start: now.toISOString(),

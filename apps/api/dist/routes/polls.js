@@ -76,33 +76,53 @@ router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAndS
             .orderBy('created_at', 'desc')
             .offset((page - 1) * limit)
             .limit(limit);
-        // Enrich with options and vote counts
-        const enriched = await Promise.all(polls.map(async (poll) => {
-            const options = await (0, db_1.default)('poll_options')
-                .where({ poll_id: poll.id })
-                .orderBy('order');
-            const optionsWithVotes = await Promise.all(options.map(async (opt) => {
-                const voteCount = await (0, db_1.default)('poll_votes')
-                    .where({ option_id: opt.id })
-                    .count('id as count')
-                    .first();
-                return {
-                    ...opt,
-                    voteCount: parseInt(voteCount?.count) || 0,
-                };
-            }));
-            const totalVotes = optionsWithVotes.reduce((sum, o) => sum + o.voteCount, 0);
-            // Check if current user voted
-            const userVote = await (0, db_1.default)('poll_votes')
-                .where({ poll_id: poll.id, user_id: req.user.userId })
-                .first();
+        if (!polls.length) {
+            res.json({
+                success: true,
+                data: [],
+                meta: { page, limit, total: parseInt(total?.count) || 0 },
+            });
+            return;
+        }
+        const pollIds = polls.map((p) => p.id);
+        // Batch: all options for all polls in one query
+        const allOptions = await (0, db_1.default)('poll_options')
+            .whereIn('poll_id', pollIds)
+            .orderBy('order');
+        // Batch: vote counts per option in one query (GROUP BY)
+        const optionIds = allOptions.map((o) => o.id);
+        const voteCounts = await (0, db_1.default)('poll_votes')
+            .whereIn('option_id', optionIds)
+            .select('option_id')
+            .count('id as count')
+            .groupBy('option_id');
+        const voteCountMap = {};
+        voteCounts.forEach((vc) => { voteCountMap[vc.option_id] = parseInt(vc.count) || 0; });
+        // Batch: current user's votes across all listed polls
+        const userVotes = await (0, db_1.default)('poll_votes')
+            .whereIn('poll_id', pollIds)
+            .where({ user_id: req.user.userId });
+        const userVotedSet = new Set(userVotes.map((v) => v.poll_id));
+        // Assemble in memory
+        const optionsByPoll = {};
+        allOptions.forEach((opt) => {
+            if (!optionsByPoll[opt.poll_id])
+                optionsByPoll[opt.poll_id] = [];
+            optionsByPoll[opt.poll_id].push({
+                ...opt,
+                voteCount: voteCountMap[opt.id] || 0,
+            });
+        });
+        const enriched = polls.map((poll) => {
+            const options = optionsByPoll[poll.id] || [];
+            const totalVotes = options.reduce((sum, o) => sum + o.voteCount, 0);
             return {
                 ...poll,
-                options: optionsWithVotes,
+                options,
                 totalVotes,
-                userVoted: !!userVote,
+                userVoted: userVotedSet.has(poll.id),
             };
-        }));
+        });
         res.json({
             success: true,
             data: enriched,
@@ -126,24 +146,32 @@ router.get('/:orgId/:pollId', middleware_1.authenticate, middleware_1.loadMember
         const options = await (0, db_1.default)('poll_options')
             .where({ poll_id: poll.id })
             .orderBy('order');
-        const optionsWithVotes = await Promise.all(options.map(async (opt) => {
-            const voteCount = await (0, db_1.default)('poll_votes')
-                .where({ option_id: opt.id })
-                .count('id as count')
-                .first();
-            // Include voter info if not anonymous
-            let voters = [];
-            if (!poll.anonymous) {
-                voters = await (0, db_1.default)('poll_votes')
-                    .join('users', 'poll_votes.user_id', 'users.id')
-                    .where({ option_id: opt.id })
-                    .select('users.first_name', 'users.last_name', 'users.id as userId');
-            }
-            return {
-                ...opt,
-                voteCount: parseInt(voteCount?.count) || 0,
-                voters,
-            };
+        // Batch: vote counts per option
+        const optionIds = options.map((o) => o.id);
+        const voteCounts = await (0, db_1.default)('poll_votes')
+            .whereIn('option_id', optionIds)
+            .select('option_id')
+            .count('id as count')
+            .groupBy('option_id');
+        const voteCountMap = {};
+        voteCounts.forEach((vc) => { voteCountMap[vc.option_id] = parseInt(vc.count) || 0; });
+        // Batch: voter info if not anonymous
+        let votersByOption = {};
+        if (!poll.anonymous && optionIds.length) {
+            const allVoters = await (0, db_1.default)('poll_votes')
+                .join('users', 'poll_votes.user_id', 'users.id')
+                .whereIn('option_id', optionIds)
+                .select('poll_votes.option_id', 'users.first_name', 'users.last_name', 'users.id as userId');
+            allVoters.forEach((v) => {
+                if (!votersByOption[v.option_id])
+                    votersByOption[v.option_id] = [];
+                votersByOption[v.option_id].push({ first_name: v.first_name, last_name: v.last_name, userId: v.userId });
+            });
+        }
+        const optionsWithVotes = options.map((opt) => ({
+            ...opt,
+            voteCount: voteCountMap[opt.id] || 0,
+            voters: votersByOption[opt.id] || [],
         }));
         const userVote = await (0, db_1.default)('poll_votes')
             .where({ poll_id: poll.id, user_id: req.user.userId })
@@ -166,6 +194,10 @@ router.get('/:orgId/:pollId', middleware_1.authenticate, middleware_1.loadMember
 router.post('/:orgId/:pollId/vote', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const { optionId } = req.body;
+        if (!optionId || typeof optionId !== 'string') {
+            res.status(400).json({ success: false, error: 'optionId is required' });
+            return;
+        }
         const poll = await (0, db_1.default)('polls')
             .where({ id: req.params.pollId, organization_id: req.params.orgId })
             .first();
@@ -233,11 +265,17 @@ router.put('/:orgId/:pollId/close', middleware_1.authenticate, middleware_1.load
 // ── Delete Poll ─────────────────────────────────────────────
 router.delete('/:orgId/:pollId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
+        // Verify poll belongs to this org before deleting related data
+        const poll = await (0, db_1.default)('polls')
+            .where({ id: req.params.pollId, organization_id: req.params.orgId })
+            .first();
+        if (!poll) {
+            res.status(404).json({ success: false, error: 'Poll not found' });
+            return;
+        }
         await (0, db_1.default)('poll_votes').where({ poll_id: req.params.pollId }).delete();
         await (0, db_1.default)('poll_options').where({ poll_id: req.params.pollId }).delete();
-        await (0, db_1.default)('polls')
-            .where({ id: req.params.pollId, organization_id: req.params.orgId })
-            .delete();
+        await (0, db_1.default)('polls').where({ id: req.params.pollId }).delete();
         res.json({ success: true, message: 'Poll deleted' });
     }
     catch (err) {

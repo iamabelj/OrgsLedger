@@ -239,20 +239,25 @@ router.post('/:orgId/payments/pay', middleware_1.authenticate, middleware_1.load
             const admins = await (0, db_1.default)('memberships')
                 .where({ organization_id: req.params.orgId, role: 'org_admin', is_active: true })
                 .pluck('user_id');
-            for (const adminId of admins) {
-                await (0, db_1.default)('notifications').insert({
+            // Batch insert notifications (single query instead of N)
+            if (admins.length > 0) {
+                const notificationRows = admins.map((adminId) => ({
                     user_id: adminId,
                     organization_id: req.params.orgId,
                     type: 'payment',
                     title: 'Bank Transfer Pending Approval',
                     body: `${user?.first_name || 'A member'} submitted bank transfer of ${transaction.currency} ${transaction.amount}. Proof: ${proofOfPayment || 'Not provided'}`,
                     data: JSON.stringify({ transactionId, type: 'bank_transfer_approval' }),
-                });
-                (0, push_service_1.sendPushToUser)(adminId, {
-                    title: 'Bank Transfer Pending',
-                    body: `${user?.first_name || 'A member'} submitted a bank transfer for ${transaction.currency} ${transaction.amount}. Awaiting your approval.`,
-                    data: { transactionId, type: 'bank_transfer_approval' },
-                }).catch(err => logger_1.logger.warn('Push notification failed (bank transfer pending)', err));
+                }));
+                await (0, db_1.default)('notifications').insert(notificationRows);
+                // Push notifications are external API calls — fire in parallel
+                for (const adminId of admins) {
+                    (0, push_service_1.sendPushToUser)(adminId, {
+                        title: 'Bank Transfer Pending',
+                        body: `${user?.first_name || 'A member'} submitted a bank transfer for ${transaction.currency} ${transaction.amount}. Awaiting your approval.`,
+                        data: { transactionId, type: 'bank_transfer_approval' },
+                    }).catch(err => logger_1.logger.warn('Push notification failed (bank transfer pending)', err));
+                }
             }
             res.json({
                 success: true,
@@ -396,7 +401,11 @@ router.post('/:orgId/payments/refund', middleware_1.authenticate, middleware_1.l
         }
         let gatewayRefundId = null;
         const paymentMethod = transaction.payment_method || '';
-        if (paymentMethod.startsWith('stripe') || (!paymentMethod.startsWith('paystack') && !paymentMethod.startsWith('flutterwave'))) {
+        if (paymentMethod.includes('bank_transfer') || paymentMethod === 'dev_mode' || paymentMethod === 'manual') {
+            // Manual/bank transfer refund — record only, no gateway call
+            gatewayRefundId = null;
+        }
+        else if (paymentMethod.startsWith('stripe') || (!paymentMethod.startsWith('paystack') && !paymentMethod.startsWith('flutterwave'))) {
             // Stripe refund
             const stripeClient = await getStripe();
             if (stripeClient && transaction.payment_gateway_id) {
@@ -668,7 +677,7 @@ router.get('/paystack/callback', async (req, res) => {
                 const expectedAmount = Math.round(tx.amount * 100);
                 if (paidAmount < expectedAmount) {
                     logger_1.logger.error('[PAYSTACK-CB] Amount mismatch', { txId: tx.id, paid: paidAmount, expected: expectedAmount, reference });
-                    res.redirect(`orgsledger://payment-complete?reference=${reference}&status=amount_mismatch`);
+                    res.redirect(`orgsledger://payment-complete?reference=${encodeURIComponent(reference)}&status=amount_mismatch`);
                     return;
                 }
                 await (0, db_1.default)('transactions')
@@ -686,7 +695,7 @@ router.get('/paystack/callback', async (req, res) => {
             }
         }
         // Redirect to mobile deep link
-        res.redirect(`orgsledger://payment-complete?reference=${reference}&status=${result.status}`);
+        res.redirect(`orgsledger://payment-complete?reference=${encodeURIComponent(reference)}&status=${result.status}`);
     }
     catch (err) {
         logger_1.logger.error('Paystack callback error', err);
@@ -784,7 +793,7 @@ router.get('/flutterwave/callback', async (req, res) => {
                 const expectedAmount = parseFloat(tx.amount) || 0;
                 if (paidAmount < expectedAmount) {
                     logger_1.logger.error('[FLUTTERWAVE-CB] Amount mismatch', { txId: tx.id, paid: paidAmount, expected: expectedAmount, txRef });
-                    res.redirect(`orgsledger://payment-complete?tx_ref=${txRef}&status=amount_mismatch`);
+                    res.redirect(`orgsledger://payment-complete?tx_ref=${encodeURIComponent(txRef)}&status=amount_mismatch`);
                     return;
                 }
                 await (0, db_1.default)('transactions')
@@ -801,7 +810,7 @@ router.get('/flutterwave/callback', async (req, res) => {
                 }
             }
         }
-        res.redirect(`orgsledger://payment-complete?tx_ref=${txRef}&status=${result.status}`);
+        res.redirect(`orgsledger://payment-complete?tx_ref=${encodeURIComponent(txRef)}&status=${result.status}`);
     }
     catch (err) {
         logger_1.logger.error('Flutterwave callback error', err);
@@ -818,7 +827,9 @@ router.get('/:orgId/payments/gateways', middleware_1.authenticate, middleware_1.
             : {};
         orgMethods = settings.payment_methods;
     }
-    catch { }
+    catch (err) {
+        logger_1.logger.warn('Failed to parse org payment settings', err);
+    }
     const gateways = [];
     if (orgMethods) {
         if (orgMethods.paystack?.enabled) {
@@ -980,6 +991,9 @@ router.post('/:orgId/ai-credits/purchase', middleware_1.authenticate, middleware
 // List pending bank transfers
 router.get('/:orgId/payments/pending-transfers', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+        const offset = (page - 1) * limit;
         const transfers = await (0, db_1.default)('transactions')
             .leftJoin('users', 'transactions.user_id', 'users.id')
             .where({
@@ -988,8 +1002,10 @@ router.get('/:orgId/payments/pending-transfers', middleware_1.authenticate, midd
             'transactions.status': 'awaiting_approval',
         })
             .select('transactions.*', 'users.first_name', 'users.last_name', 'users.email')
-            .orderBy('transactions.created_at', 'desc');
-        res.json({ success: true, data: transfers });
+            .orderBy('transactions.created_at', 'desc')
+            .limit(limit)
+            .offset(offset);
+        res.json({ success: true, data: transfers, meta: { page, limit } });
     }
     catch (err) {
         res.status(500).json({ success: false, error: 'Failed to load pending transfers' });

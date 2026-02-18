@@ -78,17 +78,23 @@ router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAndS
             .orderBy('start_date', 'asc')
             .offset((page - 1) * limit)
             .limit(limit);
-        // Attach RSVP counts
-        const enriched = await Promise.all(events.map(async (evt) => {
-            const rsvpCount = await (0, db_1.default)('event_rsvps')
-                .where({ event_id: evt.id, status: 'attending' })
+        // Batch: RSVP counts for all events in one query (GROUP BY)
+        let enriched = events;
+        if (events.length) {
+            const eventIds = events.map((e) => e.id);
+            const rsvpCounts = await (0, db_1.default)('event_rsvps')
+                .whereIn('event_id', eventIds)
+                .where({ status: 'attending' })
+                .select('event_id')
                 .count('id as count')
-                .first();
-            return {
+                .groupBy('event_id');
+            const rsvpMap = {};
+            rsvpCounts.forEach((rc) => { rsvpMap[rc.event_id] = parseInt(rc.count) || 0; });
+            enriched = events.map((evt) => ({
                 ...evt,
-                rsvpCount: parseInt(rsvpCount?.count) || 0,
-            };
-        }));
+                rsvpCount: rsvpMap[evt.id] || 0,
+            }));
+        }
         res.json({
             success: true,
             data: enriched,
@@ -112,7 +118,8 @@ router.get('/:orgId/:eventId', middleware_1.authenticate, middleware_1.loadMembe
         const rsvps = await (0, db_1.default)('event_rsvps')
             .join('users', 'event_rsvps.user_id', 'users.id')
             .where({ event_id: event.id })
-            .select('event_rsvps.*', 'users.first_name', 'users.last_name');
+            .select('event_rsvps.*', 'users.first_name', 'users.last_name')
+            .limit(500);
         res.json({
             success: true,
             data: { ...event, rsvps },
@@ -126,6 +133,11 @@ router.get('/:orgId/:eventId', middleware_1.authenticate, middleware_1.loadMembe
 router.post('/:orgId/:eventId/rsvp', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
         const status = req.body.status || 'attending'; // attending, declined, maybe
+        const validStatuses = ['attending', 'declined', 'maybe'];
+        if (!validStatuses.includes(status)) {
+            res.status(400).json({ success: false, error: `Invalid RSVP status. Must be one of: ${validStatuses.join(', ')}` });
+            return;
+        }
         const event = await (0, db_1.default)('events')
             .where({ id: req.params.eventId, organization_id: req.params.orgId })
             .first();
@@ -169,10 +181,15 @@ router.post('/:orgId/:eventId/rsvp', middleware_1.authenticate, middleware_1.loa
 // ── Delete Event ────────────────────────────────────────────
 router.delete('/:orgId/:eventId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), async (req, res) => {
     try {
-        await (0, db_1.default)('event_rsvps').where({ event_id: req.params.eventId }).delete();
-        await (0, db_1.default)('events')
+        const event = await (0, db_1.default)('events')
             .where({ id: req.params.eventId, organization_id: req.params.orgId })
-            .delete();
+            .first();
+        if (!event) {
+            res.status(404).json({ success: false, error: 'Event not found' });
+            return;
+        }
+        await (0, db_1.default)('event_rsvps').where({ event_id: event.id }).delete();
+        await (0, db_1.default)('events').where({ id: event.id }).delete();
         res.json({ success: true, message: 'Event deleted' });
     }
     catch (err) {

@@ -46,26 +46,64 @@ async function processRecurringDues() {
         if (!recurringDues.length)
             return;
         const now = new Date();
+        const dueIds = recurringDues.map((d) => d.id);
+        // Batch fetch latest transaction per due (eliminates N queries)
+        const latestTransactions = await (0, db_1.default)('transactions')
+            .whereIn('reference_id', dueIds)
+            .where({ reference_type: 'due' })
+            .select('reference_id', db_1.default.raw('MAX(created_at) as latest_created_at'))
+            .groupBy('reference_id');
+        const latestTxMap = new Map(latestTransactions.map((t) => [t.reference_id, new Date(t.latest_created_at)]));
+        // Collect all dues that need processing and their next occurrence dates
+        const duesToProcess = [];
         for (const due of recurringDues) {
-            // Find the most recent transaction created for this due
-            const lastTransaction = await (0, db_1.default)('transactions')
-                .where({ reference_id: due.id, reference_type: 'due' })
-                .orderBy('created_at', 'desc')
-                .first();
-            const lastDate = lastTransaction
-                ? new Date(lastTransaction.created_at)
-                : new Date(due.due_date);
+            const lastDate = latestTxMap.get(due.id) || new Date(due.due_date);
             const next = nextOccurrence(lastDate, due.recurrence_rule);
             if (!next || next > now)
-                continue; // not yet time
-            // Check if we already generated transactions for this period
-            const existingForPeriod = await (0, db_1.default)('transactions')
-                .where({ reference_id: due.id, reference_type: 'due' })
-                .andWhere('created_at', '>=', new Date(next.getTime() - 24 * 60 * 60 * 1000).toISOString())
-                .first();
-            if (existingForPeriod)
-                continue; // already processed
-            // Determine target members
+                continue;
+            duesToProcess.push({ due, next });
+        }
+        if (!duesToProcess.length)
+            return;
+        // Batch check for existing transactions in the period (eliminates N queries)
+        const periodCheckPromises = duesToProcess.map(({ due, next }) => (0, db_1.default)('transactions')
+            .where({ reference_id: due.id, reference_type: 'due' })
+            .andWhere('created_at', '>=', new Date(next.getTime() - 24 * 60 * 60 * 1000).toISOString())
+            .select('reference_id')
+            .first());
+        const periodResults = await Promise.all(periodCheckPromises);
+        const readyDues = duesToProcess.filter((_, i) => !periodResults[i]);
+        if (!readyDues.length)
+            return;
+        // Gather all org IDs for membership lookups
+        const orgIdsNeedingMembers = readyDues
+            .filter(({ due }) => {
+            if (due.target_member_ids) {
+                const parsed = typeof due.target_member_ids === 'string'
+                    ? JSON.parse(due.target_member_ids)
+                    : due.target_member_ids;
+                return !Array.isArray(parsed) || parsed.length === 0;
+            }
+            return true;
+        })
+            .map(({ due }) => due.organization_id);
+        // Batch fetch memberships for all orgs that need them
+        let membersByOrg = new Map();
+        if (orgIdsNeedingMembers.length > 0) {
+            const allMembers = await (0, db_1.default)('memberships')
+                .whereIn('organization_id', [...new Set(orgIdsNeedingMembers)])
+                .where({ is_active: true })
+                .select('organization_id', 'user_id');
+            for (const m of allMembers) {
+                if (!membersByOrg.has(m.organization_id))
+                    membersByOrg.set(m.organization_id, []);
+                membersByOrg.get(m.organization_id).push(m.user_id);
+            }
+        }
+        // Build all transaction and notification rows
+        const allTransactions = [];
+        const allNotifications = [];
+        for (const { due } of readyDues) {
             let targetUserIds = [];
             if (due.target_member_ids) {
                 const parsed = typeof due.target_member_ids === 'string'
@@ -76,38 +114,38 @@ async function processRecurringDues() {
                 }
             }
             if (!targetUserIds.length) {
-                targetUserIds = await (0, db_1.default)('memberships')
-                    .where({ organization_id: due.organization_id, is_active: true })
-                    .pluck('user_id');
+                targetUserIds = membersByOrg.get(due.organization_id) || [];
             }
             if (!targetUserIds.length)
                 continue;
-            // Create new pending transactions
-            const newDueDate = next.toISOString();
-            const transactions = targetUserIds.map((userId) => ({
-                organization_id: due.organization_id,
-                user_id: userId,
-                type: 'due',
-                amount: due.amount,
-                currency: due.currency,
-                status: 'pending',
-                description: `${due.title} (recurring)`,
-                reference_id: due.id,
-                reference_type: 'due',
-            }));
-            await (0, db_1.default)('transactions').insert(transactions);
-            // Send notifications
-            const notifications = targetUserIds.map((userId) => ({
-                user_id: userId,
-                organization_id: due.organization_id,
-                type: 'due_reminder',
-                title: 'Recurring Due',
-                body: `${due.title} — ${due.currency} ${due.amount} is due.`,
-                data: JSON.stringify({ dueId: due.id }),
-            }));
-            await (0, db_1.default)('notifications').insert(notifications);
+            for (const userId of targetUserIds) {
+                allTransactions.push({
+                    organization_id: due.organization_id,
+                    user_id: userId,
+                    type: 'due',
+                    amount: due.amount,
+                    currency: due.currency,
+                    status: 'pending',
+                    description: `${due.title} (recurring)`,
+                    reference_id: due.id,
+                    reference_type: 'due',
+                });
+                allNotifications.push({
+                    user_id: userId,
+                    organization_id: due.organization_id,
+                    type: 'due_reminder',
+                    title: 'Recurring Due',
+                    body: `${due.title} — ${due.currency} ${due.amount} is due.`,
+                    data: JSON.stringify({ dueId: due.id }),
+                });
+            }
             logger_1.logger.info(`Recurring due ${due.id} processed: ${targetUserIds.length} transactions created`);
         }
+        // Batch insert all transactions and notifications
+        if (allTransactions.length > 0)
+            await (0, db_1.default)('transactions').insert(allTransactions);
+        if (allNotifications.length > 0)
+            await (0, db_1.default)('notifications').insert(allNotifications);
     }
     catch (err) {
         logger_1.logger.error('Recurring dues scheduler error', err);
@@ -122,48 +160,67 @@ async function processLateFees() {
             .where('late_fee_amount', '>', 0)
             .whereNotNull('due_date')
             .select('*');
-        for (const due of overdueDues) {
+        if (!overdueDues.length)
+            return;
+        // Filter to dues past their grace period
+        const eligibleDues = overdueDues.filter((due) => {
             const dueDate = new Date(due.due_date);
             const graceDays = due.late_fee_grace_days || 0;
             const lateDate = new Date(dueDate.getTime() + graceDays * 24 * 60 * 60 * 1000);
-            if (now <= lateDate)
+            return now > lateDate;
+        });
+        if (!eligibleDues.length)
+            return;
+        const dueIds = eligibleDues.map((d) => d.id);
+        // Batch fetch all unpaid transactions for eligible dues
+        const allUnpaid = await (0, db_1.default)('transactions')
+            .whereIn('reference_id', dueIds)
+            .where({ reference_type: 'due', status: 'pending' })
+            .select('*');
+        if (!allUnpaid.length)
+            return;
+        // Batch fetch all existing late fees for these dues (eliminates inner-loop query)
+        const existingLateFees = await (0, db_1.default)('transactions')
+            .whereIn('reference_id', dueIds)
+            .where({ type: 'late_fee' })
+            .select('user_id', 'reference_id');
+        const lateFeeSet = new Set(existingLateFees.map((lf) => `${lf.user_id}:${lf.reference_id}`));
+        // Build batch inserts
+        const dueMap = new Map(eligibleDues.map((d) => [d.id, d]));
+        const newLateFees = [];
+        const newNotifications = [];
+        for (const tx of allUnpaid) {
+            const key = `${tx.user_id}:${tx.reference_id}`;
+            if (lateFeeSet.has(key))
+                continue; // already has late fee
+            lateFeeSet.add(key); // prevent duplicate within same batch
+            const due = dueMap.get(tx.reference_id);
+            if (!due)
                 continue;
-            // Find pending (unpaid) transactions for this due
-            const unpaid = await (0, db_1.default)('transactions')
-                .where({ reference_id: due.id, reference_type: 'due', status: 'pending' })
-                .select('*');
-            for (const tx of unpaid) {
-                // Check if late fee already applied
-                const existingLateFee = await (0, db_1.default)('transactions')
-                    .where({
-                    user_id: tx.user_id,
-                    reference_id: due.id,
-                    type: 'late_fee',
-                })
-                    .first();
-                if (existingLateFee)
-                    continue;
-                await (0, db_1.default)('transactions').insert({
-                    organization_id: tx.organization_id,
-                    user_id: tx.user_id,
-                    type: 'late_fee',
-                    amount: due.late_fee_amount,
-                    currency: due.currency,
-                    status: 'pending',
-                    description: `Late fee for: ${due.title}`,
-                    reference_id: due.id,
-                    reference_type: 'due',
-                });
-                await (0, db_1.default)('notifications').insert({
-                    user_id: tx.user_id,
-                    organization_id: tx.organization_id,
-                    type: 'due_reminder',
-                    title: 'Late Fee Applied',
-                    body: `A late fee of ${due.currency} ${due.late_fee_amount} has been applied for ${due.title}.`,
-                    data: JSON.stringify({ dueId: due.id }),
-                });
-            }
+            newLateFees.push({
+                organization_id: tx.organization_id,
+                user_id: tx.user_id,
+                type: 'late_fee',
+                amount: due.late_fee_amount,
+                currency: due.currency,
+                status: 'pending',
+                description: `Late fee for: ${due.title}`,
+                reference_id: due.id,
+                reference_type: 'due',
+            });
+            newNotifications.push({
+                user_id: tx.user_id,
+                organization_id: tx.organization_id,
+                type: 'due_reminder',
+                title: 'Late Fee Applied',
+                body: `A late fee of ${due.currency} ${due.late_fee_amount} has been applied for ${due.title}.`,
+                data: JSON.stringify({ dueId: due.id }),
+            });
         }
+        if (newLateFees.length > 0)
+            await (0, db_1.default)('transactions').insert(newLateFees);
+        if (newNotifications.length > 0)
+            await (0, db_1.default)('notifications').insert(newNotifications);
     }
     catch (err) {
         logger_1.logger.error('Late-fee processor error', err);

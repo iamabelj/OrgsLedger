@@ -1,5 +1,5 @@
 // ============================================================
-// Migration 003 — New Features: Jitsi, Password Reset, Email
+// Migration 003 — New Features: Video Conferencing, Password Reset, Email
 // Verification, Announcements, Events, Polls, Documents,
 // Notification Prefs, Recurring Meetings, Analytics
 // ============================================================

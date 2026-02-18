@@ -56,51 +56,55 @@ const makeDonationSchema = zod_1.z.object({
 router.post('/:orgId/dues', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createDueSchema), async (req, res) => {
     try {
         const data = req.body;
-        const [due] = await (0, db_1.default)('dues')
-            .insert({
-            organization_id: req.params.orgId,
-            title: data.title,
-            description: data.description || null,
-            amount: data.amount,
-            currency: data.currency,
-            due_date: data.dueDate,
-            late_fee_amount: data.lateFeeAmount || null,
-            late_fee_grace_days: data.lateFeeGraceDays || null,
-            is_recurring: data.isRecurring,
-            recurrence_rule: data.recurrenceRule || null,
-            target_member_ids: JSON.stringify(data.targetMemberIds),
-            created_by: req.user.userId,
-        })
-            .returning('*');
-        // Create pending transactions for targeted members
-        let targetUserIds = data.targetMemberIds;
-        if (!targetUserIds.length) {
-            targetUserIds = await (0, db_1.default)('memberships')
-                .where({ organization_id: req.params.orgId, is_active: true })
-                .pluck('user_id');
-        }
-        const transactions = targetUserIds.map((userId) => ({
-            organization_id: req.params.orgId,
-            user_id: userId,
-            type: 'due',
-            amount: data.amount,
-            currency: data.currency,
-            status: 'pending',
-            description: data.title,
-            reference_id: due.id,
-            reference_type: 'due',
-        }));
-        await (0, db_1.default)('transactions').insert(transactions);
-        // Notify members
-        const notifications = targetUserIds.map((userId) => ({
-            user_id: userId,
-            organization_id: req.params.orgId,
-            type: 'due_reminder',
-            title: 'New Due Created',
-            body: `${data.title} — ${data.currency} ${data.amount} due by ${new Date(data.dueDate).toLocaleDateString()}`,
-            data: JSON.stringify({ dueId: due.id }),
-        }));
-        await (0, db_1.default)('notifications').insert(notifications);
+        // Wrap due + transactions + notifications in a single transaction
+        const due = await db_1.default.transaction(async (trx) => {
+            const [due] = await trx('dues')
+                .insert({
+                organization_id: req.params.orgId,
+                title: data.title,
+                description: data.description || null,
+                amount: data.amount,
+                currency: data.currency,
+                due_date: data.dueDate,
+                late_fee_amount: data.lateFeeAmount || null,
+                late_fee_grace_days: data.lateFeeGraceDays || null,
+                is_recurring: data.isRecurring,
+                recurrence_rule: data.recurrenceRule || null,
+                target_member_ids: JSON.stringify(data.targetMemberIds),
+                created_by: req.user.userId,
+            })
+                .returning('*');
+            // Create pending transactions for targeted members
+            let targetUserIds = data.targetMemberIds;
+            if (!targetUserIds.length) {
+                targetUserIds = await trx('memberships')
+                    .where({ organization_id: req.params.orgId, is_active: true })
+                    .pluck('user_id');
+            }
+            const transactions = targetUserIds.map((userId) => ({
+                organization_id: req.params.orgId,
+                user_id: userId,
+                type: 'due',
+                amount: data.amount,
+                currency: data.currency,
+                status: 'pending',
+                description: data.title,
+                reference_id: due.id,
+                reference_type: 'due',
+            }));
+            await trx('transactions').insert(transactions);
+            // Notify members
+            const notifications = targetUserIds.map((userId) => ({
+                user_id: userId,
+                organization_id: req.params.orgId,
+                type: 'due_reminder',
+                title: 'New Due Created',
+                body: `${data.title} — ${data.currency} ${data.amount} due by ${new Date(data.dueDate).toLocaleDateString()}`,
+                data: JSON.stringify({ dueId: due.id }),
+            }));
+            await trx('notifications').insert(notifications);
+            return due;
+        });
         // Push notification for new due
         (0, push_service_1.sendPushToOrg)(req.params.orgId, {
             title: 'New Due Created',
@@ -134,17 +138,45 @@ router.post('/:orgId/dues', middleware_1.authenticate, middleware_1.loadMembersh
 });
 router.get('/:orgId/dues', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
-        const dues = await (0, db_1.default)('dues')
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
+        const offset = (page - 1) * limit;
+        let query = (0, db_1.default)('dues')
             .where({ organization_id: req.params.orgId })
-            .orderBy('due_date', 'desc');
-        // Attach payment stats per due
-        const enriched = await Promise.all(dues.map(async (d) => {
-            const stats = await (0, db_1.default)('transactions')
-                .where({ reference_id: d.id, reference_type: 'due' })
-                .select(db_1.default.raw("count(*) filter (where status = 'completed') as paid_count"), db_1.default.raw("count(*) filter (where status = 'pending') as pending_count"), db_1.default.raw("coalesce(sum(amount) filter (where status = 'completed'), 0) as total_collected"))
-                .first();
-            return { ...d, ...stats };
-        }));
+            .orderBy('due_date', 'desc')
+            .limit(limit)
+            .offset(offset);
+        // Non-admins only see org-wide dues or dues targeting them
+        if (req.membership?.role === 'member' || req.membership?.role === 'guest') {
+            const userId = req.user.userId;
+            query = query.where(function () {
+                this.whereNull('target_member_ids')
+                    .orWhere('target_member_ids', '[]')
+                    .orWhereRaw("target_member_ids::text LIKE ?", [`%${userId}%`]);
+            });
+        }
+        const dues = await query;
+        // Batch: payment stats for all dues in one query (GROUP BY)
+        let enriched = dues;
+        if (dues.length) {
+            const dueIds = dues.map((d) => d.id);
+            let statsQuery = (0, db_1.default)('transactions')
+                .whereIn('reference_id', dueIds)
+                .where({ reference_type: 'due' });
+            // Non-admins only see their own payment stats
+            if (req.membership?.role === 'member' || req.membership?.role === 'guest') {
+                statsQuery = statsQuery.where({ user_id: req.user.userId });
+            }
+            const allStats = await statsQuery
+                .select('reference_id', db_1.default.raw("count(*) filter (where status = 'completed') as paid_count"), db_1.default.raw("count(*) filter (where status = 'pending') as pending_count"), db_1.default.raw("coalesce(sum(amount) filter (where status = 'completed'), 0) as total_collected"))
+                .groupBy('reference_id');
+            const statsMap = {};
+            allStats.forEach((s) => { statsMap[s.reference_id] = s; });
+            enriched = dues.map((d) => {
+                const stats = statsMap[d.id] || { paid_count: 0, pending_count: 0, total_collected: 0 };
+                return { ...d, ...stats };
+            });
+        }
         res.json({ success: true, data: enriched });
     }
     catch (err) {
@@ -165,38 +197,42 @@ router.post('/:orgId/fines', middleware_1.authenticate, middleware_1.loadMembers
             res.status(404).json({ success: false, error: 'User is not an active member' });
             return;
         }
-        const [fine] = await (0, db_1.default)('fines')
-            .insert({
-            organization_id: req.params.orgId,
-            user_id: data.userId,
-            type: data.type,
-            amount: data.amount,
-            currency: data.currency,
-            reason: data.reason,
-            issued_by: req.user.userId,
-            status: 'unpaid',
-        })
-            .returning('*');
-        // Create pending transaction
-        await (0, db_1.default)('transactions').insert({
-            organization_id: req.params.orgId,
-            user_id: data.userId,
-            type: data.type === 'misconduct' ? 'misconduct_fine' : 'fine',
-            amount: data.amount,
-            currency: data.currency,
-            status: 'pending',
-            description: `Fine: ${data.reason}`,
-            reference_id: fine.id,
-            reference_type: 'fine',
-        });
-        // Notify the fined member
-        await (0, db_1.default)('notifications').insert({
-            user_id: data.userId,
-            organization_id: req.params.orgId,
-            type: 'fine',
-            title: 'Fine Issued',
-            body: `You have been fined ${data.currency} ${data.amount}: ${data.reason}`,
-            data: JSON.stringify({ fineId: fine.id }),
+        // Wrap fine + transaction + notification in a single transaction
+        const fine = await db_1.default.transaction(async (trx) => {
+            const [fine] = await trx('fines')
+                .insert({
+                organization_id: req.params.orgId,
+                user_id: data.userId,
+                type: data.type,
+                amount: data.amount,
+                currency: data.currency,
+                reason: data.reason,
+                issued_by: req.user.userId,
+                status: 'unpaid',
+            })
+                .returning('*');
+            // Create pending transaction
+            await trx('transactions').insert({
+                organization_id: req.params.orgId,
+                user_id: data.userId,
+                type: data.type === 'misconduct' ? 'misconduct_fine' : 'fine',
+                amount: data.amount,
+                currency: data.currency,
+                status: 'pending',
+                description: `Fine: ${data.reason}`,
+                reference_id: fine.id,
+                reference_type: 'fine',
+            });
+            // Notify the fined member
+            await trx('notifications').insert({
+                user_id: data.userId,
+                organization_id: req.params.orgId,
+                type: 'fine',
+                title: 'Fine Issued',
+                body: `You have been fined ${data.currency} ${data.amount}: ${data.reason}`,
+                data: JSON.stringify({ fineId: fine.id }),
+            });
+            return fine;
         });
         // Push notification for fine
         (0, push_service_1.sendPushToUser)(data.userId, {
@@ -240,8 +276,11 @@ router.get('/:orgId/fines', middleware_1.authenticate, middleware_1.loadMembersh
         if (req.membership?.role === 'member' || req.membership?.role === 'guest') {
             query = query.where({ 'fines.user_id': req.user.userId });
         }
-        const fines = await query.orderBy('fines.created_at', 'desc');
-        res.json({ success: true, data: fines });
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
+        const offset = (page - 1) * limit;
+        const fines = await query.orderBy('fines.created_at', 'desc').limit(limit).offset(offset);
+        res.json({ success: true, data: fines, meta: { page, limit } });
     }
     catch (err) {
         res.status(500).json({ success: false, error: 'Failed to list fines' });
@@ -273,17 +312,31 @@ router.post('/:orgId/donation-campaigns', middleware_1.authenticate, middleware_
 });
 router.get('/:orgId/donation-campaigns', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+        const offset = (page - 1) * limit;
         const campaigns = await (0, db_1.default)('donation_campaigns')
             .where({ organization_id: req.params.orgId })
-            .orderBy('created_at', 'desc');
-        const enriched = await Promise.all(campaigns.map(async (c) => {
-            const stats = await (0, db_1.default)('donations')
-                .where({ campaign_id: c.id, status: 'completed' })
-                .select(db_1.default.raw('count(*) as donation_count'), db_1.default.raw('coalesce(sum(amount), 0) as total_raised'))
-                .first();
-            return { ...c, ...stats };
-        }));
-        res.json({ success: true, data: enriched });
+            .orderBy('created_at', 'desc')
+            .limit(limit)
+            .offset(offset);
+        // Batch: donation stats for all campaigns in one query (GROUP BY)
+        let enriched = campaigns;
+        if (campaigns.length) {
+            const campaignIds = campaigns.map((c) => c.id);
+            const allStats = await (0, db_1.default)('donations')
+                .whereIn('campaign_id', campaignIds)
+                .where({ status: 'completed' })
+                .select('campaign_id', db_1.default.raw('count(*) as donation_count'), db_1.default.raw('coalesce(sum(amount), 0) as total_raised'))
+                .groupBy('campaign_id');
+            const statsMap = {};
+            allStats.forEach((s) => { statsMap[s.campaign_id] = s; });
+            enriched = campaigns.map((c) => {
+                const stats = statsMap[c.id] || { donation_count: 0, total_raised: 0 };
+                return { ...c, ...stats };
+            });
+        }
+        res.json({ success: true, data: enriched, meta: { page, limit } });
     }
     catch (err) {
         res.status(500).json({ success: false, error: 'Failed to list campaigns' });
@@ -307,7 +360,7 @@ router.post('/:orgId/donations', middleware_1.authenticate, middleware_1.loadMem
         // Create transaction
         await (0, db_1.default)('transactions').insert({
             organization_id: req.params.orgId,
-            user_id: req.user.userId,
+            user_id: data.isAnonymous ? null : req.user.userId,
             type: 'donation',
             amount: data.amount,
             currency: data.currency,
@@ -335,9 +388,13 @@ router.get('/:orgId/ledger', middleware_1.authenticate, middleware_1.loadMembers
         const fromDate = req.query.from;
         const toDate = req.query.to;
         let query = (0, db_1.default)('transactions')
-            .join('users', 'transactions.user_id', 'users.id')
+            .leftJoin('users', 'transactions.user_id', 'users.id')
             .where({ 'transactions.organization_id': req.params.orgId })
             .select('transactions.*', 'users.first_name', 'users.last_name', 'users.email');
+        // Non-admins only see their own transactions
+        if (req.membership?.role === 'member' || req.membership?.role === 'guest') {
+            query = query.where({ 'transactions.user_id': req.user.userId });
+        }
         if (type)
             query = query.where({ 'transactions.type': type });
         if (status)
@@ -353,10 +410,14 @@ router.get('/:orgId/ledger', middleware_1.authenticate, middleware_1.loadMembers
             .orderBy('transactions.created_at', 'desc')
             .offset((page - 1) * limit)
             .limit(limit);
-        // Summary totals
-        const summary = await (0, db_1.default)('transactions')
-            .where({ organization_id: req.params.orgId, status: 'completed' })
-            .select(db_1.default.raw("coalesce(sum(amount) filter (where type = 'due'), 0) as total_dues_collected"), db_1.default.raw("coalesce(sum(amount) filter (where type in ('fine', 'misconduct_fine', 'late_fee')), 0) as total_fines_collected"), db_1.default.raw("coalesce(sum(amount) filter (where type = 'donation'), 0) as total_donations"), db_1.default.raw("coalesce(sum(amount) filter (where type = 'refund'), 0) as total_refunds"), db_1.default.raw('coalesce(sum(amount), 0) as grand_total'))
+        // Summary totals (scoped to user for non-admins)
+        let summaryQuery = (0, db_1.default)('transactions')
+            .where({ organization_id: req.params.orgId, status: 'completed' });
+        if (req.membership?.role === 'member' || req.membership?.role === 'guest') {
+            summaryQuery = summaryQuery.where({ user_id: req.user.userId });
+        }
+        const summary = await summaryQuery
+            .select(db_1.default.raw("coalesce(sum(amount) filter (where type = 'due'), 0) as total_dues_collected"), db_1.default.raw("coalesce(sum(amount) filter (where type in ('fine', 'misconduct_fine', 'late_fee')), 0) as total_fines_collected"), db_1.default.raw("coalesce(sum(amount) filter (where type = 'donation'), 0) as total_donations"), db_1.default.raw("coalesce(sum(amount) filter (where type = 'refund'), 0) as total_refunds"), db_1.default.raw("coalesce(sum(amount), 0) as grand_total"))
             .first();
         res.json({
             success: true,
@@ -385,12 +446,17 @@ router.get('/:orgId/ledger/user/:userId', middleware_1.authenticate, middleware_
             res.status(403).json({ success: false, error: 'Can only view your own payment history' });
             return;
         }
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
+        const offset = (page - 1) * limit;
         const transactions = await (0, db_1.default)('transactions')
             .where({
             organization_id: req.params.orgId,
             user_id: req.params.userId,
         })
-            .orderBy('created_at', 'desc');
+            .orderBy('created_at', 'desc')
+            .limit(limit)
+            .offset(offset);
         const outstanding = await (0, db_1.default)('transactions')
             .where({
             organization_id: req.params.orgId,
@@ -426,7 +492,7 @@ router.get('/:orgId/ledger/export', middleware_1.authenticate, middleware_1.load
         const fromDate = req.query.from;
         const toDate = req.query.to;
         let query = (0, db_1.default)('transactions')
-            .join('users', 'transactions.user_id', 'users.id')
+            .leftJoin('users', 'transactions.user_id', 'users.id')
             .where({ 'transactions.organization_id': req.params.orgId })
             .select('transactions.id', 'transactions.type', 'transactions.amount', 'transactions.currency', 'transactions.status', 'transactions.description', 'transactions.created_at', 'users.first_name', 'users.last_name', 'users.email')
             .orderBy('transactions.created_at', 'asc');
@@ -434,7 +500,7 @@ router.get('/:orgId/ledger/export', middleware_1.authenticate, middleware_1.load
             query = query.where('transactions.created_at', '>=', fromDate);
         if (toDate)
             query = query.where('transactions.created_at', '<=', toDate);
-        const transactions = await query;
+        const transactions = await query.limit(50000);
         // Generate CSV — properly escape fields
         const escapeCSV = (val) => {
             if (val === null || val === undefined)

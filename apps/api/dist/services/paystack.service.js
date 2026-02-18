@@ -11,6 +11,7 @@ exports.paystackService = void 0;
 const axios_1 = __importDefault(require("axios"));
 const config_1 = require("../config");
 const crypto_1 = __importDefault(require("crypto"));
+const validators_1 = require("../utils/validators");
 const PAYSTACK_BASE = 'https://api.paystack.co';
 class PaystackService {
     client = null;
@@ -104,7 +105,7 @@ class PaystackService {
             .createHmac('sha512', config_1.config.paystack.secretKey)
             .update(body)
             .digest('hex');
-        return hash === signature;
+        return (0, validators_1.timingSafeCompare)(hash, signature);
     }
 }
 exports.paystackService = new PaystackService();

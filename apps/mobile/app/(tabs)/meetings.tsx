@@ -147,19 +147,19 @@ export default function MeetingsScreen() {
           label="Total"
           value={String(stats.total)}
           icon="calendar"
-          color={Colors.highlight}
+          iconColor={Colors.highlight}
         />
         <StatCard
           label="Upcoming"
           value={String(stats.upcoming)}
           icon="time"
-          color={Colors.info}
+          iconColor={Colors.info}
         />
         <StatCard
           label="Live"
           value={String(stats.live)}
           icon="radio-button-on"
-          color={Colors.success}
+          iconColor={Colors.success}
         />
       </View>
 
@@ -278,7 +278,7 @@ export default function MeetingsScreen() {
                         ? 'info'
                         : item.status === 'cancelled'
                         ? 'danger'
-                        : 'default'
+                        : 'neutral'
                     }
                   />
                 </View>
