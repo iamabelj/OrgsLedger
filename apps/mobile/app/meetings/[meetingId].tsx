@@ -448,15 +448,13 @@ export default function MeetingDetailScreen() {
         setShowVideo(false);
         setJoinConfig(null);
         setHandRaised(false);
-        // Stop translation mic if active
-        if (translationListening) {
-          translationRef.current?.stopListening();
-          setTranslationListening(false);
-        }
+        // Always stop translation mic (avoid stale closure check)
+        translationRef.current?.stopListening();
+        setTranslationListening(false);
         // Stop recording if active
-        if (isRecording && recordingRef.current) {
-          stopRecording();
-        }
+        try { stopRecording(); } catch (_) {}
+        // Reload transcripts so transcript tab shows final data
+        loadTranscripts();
       }
     };
 
@@ -468,17 +466,15 @@ export default function MeetingDetailScreen() {
         setJoinConfig(null);
         setHandRaised(false);
         setLiveParticipants([]);
-        if (translationListening) {
-          translationRef.current?.stopListening();
-          setTranslationListening(false);
-        }
-        if (isRecording && recordingRef.current) {
-          stopRecording();
-        }
+        // Always stop translation mic (avoid stale closure check)
+        translationRef.current?.stopListening();
+        setTranslationListening(false);
+        try { stopRecording(); } catch (_) {}
         meetingStore.setMeetingEndedByModerator(true);
         meetingStore.setStatus('ended');
         // Reload to get final meeting state (AI minutes etc.)
         loadMeeting();
+        loadTranscripts();
       }
     };
 
@@ -533,10 +529,32 @@ export default function MeetingDetailScreen() {
     const unsub12 = socketClient.on('meeting:minutes:processing', handleMinutesProcessing);
     const unsub13 = socketClient.on('meeting:minutes:failed', handleMinutesFailed);
 
+    // -- Real-time transcript updates (server persists -> UI updates) --
+    const handleTranscriptStored = (data: any) => {
+      if (data.meetingId === meetingId) {
+        setTranscripts((prev) => {
+          // Deduplicate by speakerId+timestamp
+          const key = `${data.speakerId}-${data.timestamp}`;
+          if (prev.find((t: any) => t.id === key || (t.speaker_id === data.speakerId && t.spoken_at === String(data.timestamp)))) return prev;
+          return [...prev, {
+            id: key,
+            meeting_id: data.meetingId,
+            speaker_id: data.speakerId,
+            speaker_name: data.speakerName,
+            original_text: data.originalText,
+            source_lang: data.sourceLang,
+            translations: data.translations,
+            spoken_at: String(data.timestamp),
+          }];
+        });
+      }
+    };
+    const unsub14 = socketClient.on('transcript:stored', handleTranscriptStored);
+
     return () => {
       unsub1(); unsub2(); unsub3(); unsub4(); unsub5();
       unsub6(); unsub7(); unsub8(); unsub9(); unsub10();
-      unsub11(); unsub12(); unsub13();
+      unsub11(); unsub12(); unsub13(); unsub14();
       socketClient.leaveMeeting(meetingId);
     };
   }, [meetingId]);
@@ -1607,7 +1625,7 @@ export default function MeetingDetailScreen() {
 
       {/* ═══ LIVE TRANSLATION ════════════════════════════════ */}
       {meeting.status === 'live' && meeting.translation_enabled && userId && (
-        <LiveTranslation ref={translationRef} meetingId={meetingId!} userId={userId} hideControls />
+        <LiveTranslation ref={translationRef} meetingId={meetingId!} userId={userId} hideControls autoTTS={voiceToVoice} />
       )}
 
       {/* ═══ MEETING SERVICES ════════════════════════════════ */}

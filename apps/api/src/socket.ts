@@ -408,13 +408,20 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       if (!meetingId || !text?.trim()) return;
 
       const langMap = meetingLanguages.get(meetingId);
-      if (!langMap || langMap.size === 0) return;
 
-      // Get speaker name
-      const speaker = langMap.get(userId);
-      const speakerName = speaker?.name || 'Unknown';
+      // Get speaker name — from in-memory map or fall back to DB lookup
+      let speakerName = 'Unknown';
+      const speaker = langMap?.get(userId);
+      if (speaker?.name) {
+        speakerName = speaker.name;
+      } else {
+        try {
+          const user = await db('users').where({ id: userId }).select('first_name', 'last_name').first();
+          if (user) speakerName = `${user.first_name} ${user.last_name}`.trim();
+        } catch (_) { /* non-critical */ }
+      }
 
-      logger.debug(`[TRANSLATION] Speech from ${speakerName} (${userId}): isFinal=${isFinal}, lang=${sourceLang}, length=${text.length}`);
+      logger.debug(`[TRANSCRIPT] Speech: speaker=${speakerName}, isFinal=${isFinal}, lang=${sourceLang}, len=${text.length}`);
 
       // For interim results, just broadcast the original text to others
       // (so they see the speaker is talking)
@@ -431,11 +438,13 @@ export function setupSocketIO(httpServer: HttpServer): Server {
 
       // For final results, translate to all unique languages needed
       const targetLangs = new Set<string>();
-      langMap.forEach((val) => {
-        if (val.language !== sourceLang) {
-          targetLangs.add(val.language);
-        }
-      });
+      if (langMap) {
+        langMap.forEach((val) => {
+          if (val.language !== sourceLang) {
+            targetLangs.add(val.language);
+          }
+        });
+      }
 
       // Always look up organization_id early for transcript storage
       let organizationId: string | null = null;
@@ -464,6 +473,11 @@ export function setupSocketIO(httpServer: HttpServer): Server {
               });
               // Still persist the original transcript even if wallet empty
               await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, {});
+              logger.info(`[TRANSCRIPT] ✓ Stored (wallet empty): meeting=${meetingId}, speaker=${speakerName}`);
+              io.to(`meeting:${meetingId}`).emit('transcript:stored', {
+                meetingId, speakerId: userId, speakerName, originalText: text,
+                sourceLang, translations: {}, timestamp: Date.now(),
+              });
               return;
             }
 
@@ -492,10 +506,17 @@ export function setupSocketIO(httpServer: HttpServer): Server {
 
         // ── Always persist transcript segment to DB ──────────
         await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, translations);
+        logger.info(`[TRANSCRIPT] ✓ Stored: meeting=${meetingId}, speaker=${speakerName}, translations=${Object.keys(translations).length}`);
         // Always include the original language
         translations[sourceLang] = text;
 
         const now = Date.now();
+
+        // ── Emit transcript:stored for real-time transcript tab updates ──
+        io.to(`meeting:${meetingId}`).emit('transcript:stored', {
+          meetingId, speakerId: userId, speakerName, originalText: text,
+          sourceLang, translations, timestamp: now,
+        });
 
         // ── Per-user routing: emit individually with TTS availability ──
         // Each user gets their translation + a ttsAvailable flag based on:
@@ -539,9 +560,14 @@ export function setupSocketIO(httpServer: HttpServer): Server {
           ttsAvailable: false,
         });
       } catch (err) {
-        logger.error('[TRANSLATION] Translation pipeline failed', err);
+        logger.error('[TRANSCRIPT] Translation pipeline failed', err);
         // Still persist the original text even if translation fails
         await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, { [sourceLang]: text });
+        logger.info(`[TRANSCRIPT] ✓ Stored (error fallback): meeting=${meetingId}, speaker=${speakerName}`);
+        io.to(`meeting:${meetingId}`).emit('transcript:stored', {
+          meetingId, speakerId: userId, speakerName, originalText: text,
+          sourceLang, translations: { [sourceLang]: text }, timestamp: Date.now(),
+        });
 
         // Still send the original text even if translation fails
         socket.emit('translation:result', {

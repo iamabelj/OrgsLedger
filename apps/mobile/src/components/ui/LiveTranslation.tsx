@@ -87,6 +87,9 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
   const [ttsVolume, setTtsVolume] = useState(0.8); // Voice-to-voice volume control
   const [langSearch, setLangSearch] = useState(''); // Searchable language picker
 
+  // Sync autoTTS prop from parent (e.g., Voice-to-Voice toggle in control bar)
+  useEffect(() => { setSpeakEnabled(autoTTS); }, [autoTTS]);
+
   // Zustand store sync — keep centralized state updated
   const storeSetMyLanguage = useMeetingStore((s) => s.setMyLanguage);
   const storeAddTranslation = useMeetingStore((s) => s.addTranslation);
