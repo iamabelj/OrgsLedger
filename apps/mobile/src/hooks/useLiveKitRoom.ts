@@ -2,6 +2,9 @@
 // OrgsLedger — LiveKit Room Hook
 // Manages room connection, tracks, participants, active speakers.
 // Web-only: uses livekit-client SDK. Native: returns no-op state.
+//
+// Handles: AudioContext resume for autoplay policy, graceful
+// permission denial, per-track audio attach/detach, reconnection.
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -28,6 +31,7 @@ export interface LKParticipant {
 export interface UseLiveKitRoomReturn {
   isConnected: boolean;
   isConnecting: boolean;
+  isReconnecting: boolean;
   error: string | null;
   participants: LKParticipant[];
   activeSpeakerIds: string[];
@@ -53,6 +57,24 @@ if (Platform.OS === 'web') {
   } catch (e) {
     console.warn('[LiveKit] Failed to load livekit-client:', e);
   }
+}
+
+// ── Helper: Resume AudioContext for browser autoplay policy ──
+
+function ensureAudioContextResumed(): void {
+  if (Platform.OS !== 'web') return;
+  try {
+    // Access the global AudioContext (most browsers)
+    const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AC) return;
+    // livekit-client creates an internal AudioContext — also try to resume it
+    // by creating a short-lived one if none exists
+    const ctx = new AC();
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+    ctx.close().catch(() => {});
+  } catch (_) { /* ignore */ }
 }
 
 // ── Helper: Build participant object from LiveKit participant ──
@@ -96,6 +118,7 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
 
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [participants, setParticipants] = useState<LKParticipant[]>([]);
   const [activeSpeakerIds, setActiveSpeakerIds] = useState<string[]>([]);
@@ -106,6 +129,7 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
 
   const roomRef = useRef<any>(null);
   const audioElementsRef = useRef<Map<string, HTMLElement>>(new Map());
+  const connectingRef = useRef(false); // guard against double-connect
 
   // ── Rebuild all participants from room state ────────────
   const rebuildParticipants = useCallback(() => {
@@ -146,11 +170,25 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
     if (audioElementsRef.current.has(key)) return;
 
     try {
+      // Resume AudioContext before attaching (browser autoplay policy)
+      ensureAudioContextResumed();
+
       const el = track.attach();
       el.id = `lk-audio-${key}`;
       el.style.display = 'none';
+      // Set attributes to help with autoplay
+      el.setAttribute('autoplay', 'true');
+      el.setAttribute('playsinline', 'true');
       document.body.appendChild(el);
       audioElementsRef.current.set(key, el);
+
+      // Attempt play in case autoplay was blocked
+      const playPromise = el.play?.();
+      if (playPromise?.catch) {
+        playPromise.catch((e: any) => {
+          console.warn('[LiveKit] Audio autoplay blocked — will retry on user interaction:', e.message);
+        });
+      }
     } catch (e) {
       console.warn('[LiveKit] Failed to attach audio track:', e);
     }
@@ -180,10 +218,26 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
       return;
     }
 
+    // Prevent duplicate connect calls
+    if (connectingRef.current) {
+      console.warn('[LiveKit] Connect already in progress, skipping');
+      return;
+    }
+
+    // Disconnect existing room first
+    if (roomRef.current) {
+      try { roomRef.current.disconnect(true); } catch (_) {}
+      roomRef.current = null;
+    }
+
+    connectingRef.current = true;
     setIsConnecting(true);
     setError(null);
 
     try {
+      // Resume AudioContext early (user gesture context)
+      ensureAudioContextResumed();
+
       // Create room with adaptive streaming
       const room = new LK.Room({
         adaptiveStream: true,
@@ -196,6 +250,14 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
           noiseSuppression: true,
           autoGainControl: true,
         },
+        // Reconnect settings
+        reconnectPolicy: {
+          maxRetries: 10,
+          nextRetryDelayInMs: (context: any) => {
+            // Exponential back-off: 300ms, 600ms, 1200ms ... capped at 10s
+            return Math.min(300 * Math.pow(2, context?.retryCount ?? 0), 10000);
+          },
+        },
       });
 
       roomRef.current = room;
@@ -204,9 +266,10 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
       const RE = LK.RoomEvent;
 
       room.on(RE.Connected, () => {
-        console.debug('[LiveKit] Connected');
+        console.debug('[LiveKit] Connected to room');
         setIsConnected(true);
         setIsConnecting(false);
+        setIsReconnecting(false);
         rebuildParticipants();
       });
 
@@ -214,34 +277,44 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
         console.debug('[LiveKit] Disconnected:', reason);
         setIsConnected(false);
         setIsConnecting(false);
+        setIsReconnecting(false);
         setParticipants([]);
         setActiveSpeakerIds([]);
         // Clean up audio elements
-        for (const [key, el] of audioElementsRef.current) {
-          el.remove();
-          audioElementsRef.current.delete(key);
+        for (const [, el] of audioElementsRef.current) {
+          try { el.remove(); } catch (_) {}
         }
+        audioElementsRef.current.clear();
       });
 
       room.on(RE.Reconnecting, () => {
         console.debug('[LiveKit] Reconnecting...');
+        setIsReconnecting(true);
       });
 
       room.on(RE.Reconnected, () => {
-        console.debug('[LiveKit] Reconnected');
+        console.debug('[LiveKit] Reconnected successfully');
+        setIsReconnecting(false);
+        setIsConnected(true);
         rebuildParticipants();
       });
 
-      room.on(RE.ParticipantConnected, () => {
+      room.on(RE.SignalReconnecting, () => {
+        console.debug('[LiveKit] Signal reconnecting...');
+      });
+
+      room.on(RE.ParticipantConnected, (participant: any) => {
+        console.debug(`[LiveKit] Participant connected: ${participant.identity}`);
         rebuildParticipants();
       });
 
-      room.on(RE.ParticipantDisconnected, () => {
+      room.on(RE.ParticipantDisconnected, (participant: any) => {
+        console.debug(`[LiveKit] Participant disconnected: ${participant.identity}`);
         rebuildParticipants();
       });
 
       room.on(RE.TrackSubscribed, (track: any, publication: any, participant: any) => {
-        console.debug(`[LiveKit] Track subscribed: ${track.kind} from ${participant.identity}`);
+        console.debug(`[LiveKit] Track subscribed: ${track.kind} (${track.source}) from ${participant.identity}`);
         if (track.kind === 'audio') {
           attachAudio(track, participant.sid);
         }
@@ -256,11 +329,25 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
         rebuildParticipants();
       });
 
-      room.on(RE.TrackMuted, () => rebuildParticipants());
-      room.on(RE.TrackUnmuted, () => rebuildParticipants());
+      room.on(RE.TrackMuted, (_pub: any, participant: any) => {
+        console.debug(`[LiveKit] Track muted by ${participant?.identity}`);
+        rebuildParticipants();
+      });
 
-      room.on(RE.LocalTrackPublished, () => rebuildParticipants());
-      room.on(RE.LocalTrackUnpublished, () => rebuildParticipants());
+      room.on(RE.TrackUnmuted, (_pub: any, participant: any) => {
+        console.debug(`[LiveKit] Track unmuted by ${participant?.identity}`);
+        rebuildParticipants();
+      });
+
+      room.on(RE.LocalTrackPublished, (pub: any) => {
+        console.debug(`[LiveKit] Local track published: ${pub.source}`);
+        rebuildParticipants();
+      });
+
+      room.on(RE.LocalTrackUnpublished, (pub: any) => {
+        console.debug(`[LiveKit] Local track unpublished: ${pub.source}`);
+        rebuildParticipants();
+      });
 
       room.on(RE.ActiveSpeakersChanged, (speakers: any[]) => {
         const ids = speakers.map((s: any) => s.sid);
@@ -279,35 +366,57 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
 
       room.on(RE.MediaDevicesError, (e: any) => {
         console.error('[LiveKit] Media devices error:', e);
-        setError(`Device error: ${e.message || 'Unknown'}`);
+        // Show error but don't break the connection
+        setError(`Device error: ${e.message || 'Unknown'}. You may need to grant permissions.`);
+      });
+
+      room.on(RE.MediaDevicesChanged, () => {
+        console.debug('[LiveKit] Media devices changed (hot-plug)');
+        rebuildParticipants();
       });
 
       // ── Connect ──────────────────────────────────────
+      console.debug(`[LiveKit] Connecting to ${url}...`);
       await room.connect(url, token);
+      console.debug('[LiveKit] Room connected, enabling media...');
 
-      // Enable mic/camera based on options
+      // Enable mic/camera SEPARATELY to avoid requesting unneeded permissions
+      // and to handle denial gracefully (connection stays alive)
       const enableAudio = options?.audio !== false;
       const enableVideo = options?.video !== false;
 
-      if (enableAudio || enableVideo) {
-        await room.localParticipant.enableCameraAndMicrophone();
+      try {
+        if (enableAudio) {
+          await room.localParticipant.setMicrophoneEnabled(true);
+          console.debug('[LiveKit] Microphone enabled');
+        }
+      } catch (micErr: any) {
+        console.warn('[LiveKit] Microphone enable failed (permission denied?):', micErr.message);
+        // Don't set global error — just log, user can try again via toggle
       }
 
-      if (!enableVideo && room.localParticipant.isCameraEnabled) {
-        await room.localParticipant.setCameraEnabled(false);
-      }
-
-      if (!enableAudio && room.localParticipant.isMicrophoneEnabled) {
-        await room.localParticipant.setMicrophoneEnabled(false);
+      try {
+        if (enableVideo) {
+          await room.localParticipant.setCameraEnabled(true);
+          console.debug('[LiveKit] Camera enabled');
+        }
+      } catch (camErr: any) {
+        console.warn('[LiveKit] Camera enable failed (permission denied?):', camErr.message);
       }
 
       rebuildParticipants();
 
     } catch (e: any) {
       console.error('[LiveKit] Connection failed:', e);
-      setError(e.message || 'Failed to connect');
+      setError(e.message || 'Failed to connect to meeting');
       setIsConnecting(false);
+      // Clean up the room on connection failure
+      if (roomRef.current) {
+        try { roomRef.current.disconnect(true); } catch (_) {}
+      }
       roomRef.current = null;
+    } finally {
+      connectingRef.current = false;
     }
   }, [isWeb, rebuildParticipants, attachAudio, detachAudio]);
 
@@ -315,11 +424,13 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
   const disconnect = useCallback(() => {
     const room = roomRef.current;
     if (room) {
-      room.disconnect(true);
+      try { room.disconnect(true); } catch (_) {}
       roomRef.current = null;
     }
+    connectingRef.current = false;
     setIsConnected(false);
     setIsConnecting(false);
+    setIsReconnecting(false);
     setParticipants([]);
     setActiveSpeakerIds([]);
     setIsMicEnabled(false);
@@ -329,7 +440,7 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
 
     // Clean up audio elements
     for (const [, el] of audioElementsRef.current) {
-      el.remove();
+      try { el.remove(); } catch (_) {}
     }
     audioElementsRef.current.clear();
   }, []);
@@ -338,44 +449,74 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
   const toggleMic = useCallback(async () => {
     const room = roomRef.current;
     if (!room?.localParticipant) return;
-    const next = !room.localParticipant.isMicrophoneEnabled;
-    await room.localParticipant.setMicrophoneEnabled(next);
-    setIsMicEnabled(next);
-    rebuildParticipants();
+    try {
+      const next = !room.localParticipant.isMicrophoneEnabled;
+      await room.localParticipant.setMicrophoneEnabled(next);
+      setIsMicEnabled(next);
+      rebuildParticipants();
+    } catch (e: any) {
+      console.error('[LiveKit] Toggle mic failed:', e);
+      setError(`Microphone error: ${e.message}`);
+    }
   }, [rebuildParticipants]);
 
   // ── Toggle Camera ───────────────────────────────────────
   const toggleCamera = useCallback(async () => {
     const room = roomRef.current;
     if (!room?.localParticipant) return;
-    const next = !room.localParticipant.isCameraEnabled;
-    await room.localParticipant.setCameraEnabled(next);
-    setIsCameraEnabled(next);
-    rebuildParticipants();
+    try {
+      const next = !room.localParticipant.isCameraEnabled;
+      await room.localParticipant.setCameraEnabled(next);
+      setIsCameraEnabled(next);
+      rebuildParticipants();
+    } catch (e: any) {
+      console.error('[LiveKit] Toggle camera failed:', e);
+      setError(`Camera error: ${e.message}`);
+    }
   }, [rebuildParticipants]);
 
   // ── Toggle Screen Share ─────────────────────────────────
   const toggleScreenShare = useCallback(async () => {
     const room = roomRef.current;
     if (!room?.localParticipant) return;
-    const next = !room.localParticipant.isScreenShareEnabled;
-    await room.localParticipant.setScreenShareEnabled(next);
-    setIsScreenSharing(next);
-    rebuildParticipants();
+    try {
+      const next = !room.localParticipant.isScreenShareEnabled;
+      await room.localParticipant.setScreenShareEnabled(next);
+      setIsScreenSharing(next);
+      rebuildParticipants();
+    } catch (e: any) {
+      console.error('[LiveKit] Toggle screen share failed:', e);
+      // User cancellation of screen share picker is not an error
+      if (!e.message?.includes('cancel') && !e.message?.includes('denied')) {
+        setError(`Screen share error: ${e.message}`);
+      }
+    }
   }, [rebuildParticipants]);
 
   // ── Cleanup on unmount ──────────────────────────────────
   useEffect(() => {
     return () => {
-      disconnect();
+      // Use ref to ensure we disconnect the correct room
+      const room = roomRef.current;
+      if (room) {
+        try { room.disconnect(true); } catch (_) {}
+        roomRef.current = null;
+      }
+      connectingRef.current = false;
+      // Clean up audio elements
+      for (const [, el] of audioElementsRef.current) {
+        try { el.remove(); } catch (_) {}
+      }
+      audioElementsRef.current.clear();
     };
-  }, [disconnect]);
+  }, []);
 
   const localParticipant = participants.find((p) => p.isLocal) || null;
 
   return {
     isConnected,
     isConnecting,
+    isReconnecting,
     error,
     participants,
     activeSpeakerIds,

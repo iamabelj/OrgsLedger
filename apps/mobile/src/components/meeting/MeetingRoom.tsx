@@ -287,6 +287,11 @@ export function MeetingRoom(props: MeetingRoomProps) {
         </View>
 
         <View style={styles.headerRight}>
+          {lk.isReconnecting && (
+            <View style={[styles.errorBadge, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+              <Ionicons name="reload" size={12} color="#F59E0B" />
+            </View>
+          )}
           {(isRecording || isRecordingFromSocket) && <RecordingIndicator />}
           {lk.error && (
             <View style={styles.errorBadge}>

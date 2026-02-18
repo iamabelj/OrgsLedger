@@ -5,11 +5,18 @@
 // ============================================================
 
 import { io, Socket } from 'socket.io-client';
+import { Platform } from 'react-native';
 import storage from '../utils/storage';
 
-const SOCKET_URL = __DEV__
-  ? 'http://localhost:3000'
-  : 'https://app.orgsledger.com';
+function getSocketUrl(): string {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
+    return window.location.origin; // same-origin — works for localhost AND production
+  }
+  if (__DEV__) return 'http://localhost:3000';
+  return 'https://app.orgsledger.com';
+}
+
+const SOCKET_URL = getSocketUrl();
 
 class SocketClient {
   private socket: Socket | null = null;

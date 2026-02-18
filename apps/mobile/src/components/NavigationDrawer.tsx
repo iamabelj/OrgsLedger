@@ -86,7 +86,9 @@ const legalItems: NavItem[] = [
   { label: 'Acceptable Use', icon: 'hand-left-outline', path: '/legal/acceptable-use' },
 ];
 
-const API_BASE = __DEV__ ? 'http://localhost:3000' : 'https://app.orgsledger.com';
+const API_BASE = (Platform.OS === 'web' && typeof window !== 'undefined' && window.location)
+  ? window.location.origin
+  : (__DEV__ ? 'http://localhost:3000' : 'https://app.orgsledger.com');
 
 // Inject CSS keyframes on web for smooth animations
 if (Platform.OS === 'web' && typeof document !== 'undefined') {

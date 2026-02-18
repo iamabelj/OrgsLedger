@@ -84,25 +84,56 @@ function AvatarPlaceholder({ name }: { name: string }) {
 
 function WebVideoElement({ track }: { track: any }) {
   const containerRef = useRef<View>(null);
+  const videoElRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     if (!track || Platform.OS !== 'web') return;
     const container = containerRef.current as any;
     if (!container) return;
 
-    const el = track.attach();
-    Object.assign(el.style, {
-      width: '100%',
-      height: '100%',
-      objectFit: 'cover',
-      borderRadius: 'inherit',
-      transform: track.source === 'camera' ? 'scaleX(-1)' : 'none', // Mirror local camera
-    });
-    container.appendChild(el);
+    // Clean up previous element if track changed
+    if (videoElRef.current) {
+      try {
+        track.detach(videoElRef.current);
+        if (container.contains(videoElRef.current)) {
+          container.removeChild(videoElRef.current);
+        }
+      } catch (_) {}
+      videoElRef.current = null;
+    }
+
+    try {
+      const el = track.attach();
+      videoElRef.current = el;
+      Object.assign(el.style, {
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+        borderRadius: 'inherit',
+        transform: track.source === 'camera' ? 'scaleX(-1)' : 'none', // Mirror local camera
+      });
+      el.setAttribute('playsinline', 'true');
+      el.setAttribute('autoplay', 'true');
+      container.appendChild(el);
+
+      // Ensure playback starts (autoplay policy)
+      const playPromise = el.play?.();
+      if (playPromise?.catch) {
+        playPromise.catch(() => {}); // Ignore - will play on interaction
+      }
+    } catch (e) {
+      console.warn('[VideoTile] Failed to attach video track:', e);
+    }
 
     return () => {
-      track.detach(el);
-      if (container.contains(el)) container.removeChild(el);
+      const el = videoElRef.current;
+      if (el) {
+        try {
+          track.detach(el);
+          if (container.contains(el)) container.removeChild(el);
+        } catch (_) {}
+        videoElRef.current = null;
+      }
     };
   }, [track]);
 
