@@ -164,6 +164,7 @@ function ControlBarInner(props: ControlBarProps) {
           active={isMicEnabled}
           activeColor="#10B981"
           onPress={onToggleMic}
+          compact={isNarrow}
         />
 
         <ControlBtn
@@ -172,15 +173,17 @@ function ControlBarInner(props: ControlBarProps) {
           active={isCameraEnabled}
           activeColor="#6366F1"
           onPress={onToggleCamera}
+          compact={isNarrow}
         />
 
-        {Platform.OS === 'web' && (
+        {Platform.OS === 'web' && !isNarrow && (
           <ControlBtn
             icon={isScreenSharing ? 'stop-circle' : 'desktop-outline'}
             label={isScreenSharing ? 'Stop Share' : 'Share'}
             active={isScreenSharing}
             activeColor="#818CF8"
             onPress={onToggleScreenShare}
+            compact={isNarrow}
           />
         )}
 
@@ -193,6 +196,7 @@ function ControlBarInner(props: ControlBarProps) {
           active={handRaised}
           activeColor="#F59E0B"
           onPress={onRaiseHand}
+          compact={isNarrow}
         />
 
         <ControlBtn
@@ -201,6 +205,7 @@ function ControlBarInner(props: ControlBarProps) {
           active={isSidebarOpen && activeSidebarPanel === 'participants'}
           badge={participantCount}
           onPress={() => onToggleSidebar('participants')}
+          compact={isNarrow}
         />
 
         <ControlBtn
@@ -208,6 +213,7 @@ function ControlBarInner(props: ControlBarProps) {
           label="Transcript"
           active={isSidebarOpen && activeSidebarPanel === 'transcript'}
           onPress={() => onToggleSidebar('transcript')}
+          compact={isNarrow}
         />
 
         {/* Language / Translation (single clean button) */}
@@ -218,6 +224,7 @@ function ControlBarInner(props: ControlBarProps) {
             active={isTranslationListening}
             activeColor="#10B981"
             onPress={onOpenLanguagePicker}
+            compact={isNarrow}
           />
         )}
 
@@ -231,6 +238,7 @@ function ControlBarInner(props: ControlBarProps) {
               active={isRecording}
               activeColor={Colors.error}
               onPress={onToggleRecording}
+              compact={isNarrow}
             />
           </>
         )}
@@ -243,6 +251,7 @@ function ControlBarInner(props: ControlBarProps) {
           label="Leave"
           danger
           onPress={onLeave}
+          compact={isNarrow}
         />
 
         {isAdmin && onEnd && (
@@ -251,6 +260,7 @@ function ControlBarInner(props: ControlBarProps) {
             label="End All"
             danger
             onPress={onEnd}
+            compact={isNarrow}
           />
         )}
       </View>

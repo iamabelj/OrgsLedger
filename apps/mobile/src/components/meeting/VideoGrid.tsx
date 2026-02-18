@@ -30,12 +30,21 @@ function getGridLayout(count: number, containerWidth: number, containerHeight: n
   if (count <= 0) return { cols: 1, rows: 1 };
   if (count === 1) return { cols: 1, rows: 1 };
   if (count === 2) return { cols: 2, rows: 1 };
-  if (count <= 4) return { cols: 2, rows: 2 };
-  if (count <= 6) return { cols: 3, rows: 2 };
-  if (count <= 9) return { cols: 3, rows: 3 };
-  if (count <= 12) return { cols: 4, rows: 3 };
-  if (count <= 16) return { cols: 4, rows: 4 };
-  return { cols: 5, rows: Math.ceil(count / 5) };
+
+  // Cap columns based on container width to prevent tiny tiles on phones
+  const minTileWidth = 140; // Minimum usable tile width in px
+  const maxCols = Math.max(1, Math.floor(containerWidth / minTileWidth));
+
+  let cols: number;
+  if (count <= 4) cols = Math.min(2, maxCols);
+  else if (count <= 6) cols = Math.min(3, maxCols);
+  else if (count <= 9) cols = Math.min(3, maxCols);
+  else if (count <= 12) cols = Math.min(4, maxCols);
+  else if (count <= 16) cols = Math.min(4, maxCols);
+  else cols = Math.min(5, maxCols);
+
+  const rows = Math.ceil(count / cols);
+  return { cols, rows };
 }
 
 // ── VideoGrid Component ───────────────────────────────────
