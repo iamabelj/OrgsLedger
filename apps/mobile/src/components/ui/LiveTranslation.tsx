@@ -143,6 +143,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
   const scrollRef = useRef<ScrollView>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const entriesRef = useRef<TranslationEntry[]>([]);
+  const interimDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep entries ref in sync
   useEffect(() => {
@@ -194,8 +195,10 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
       const myLang = myLanguageRef.current;
       const translated = data.translations?.[myLang] || data.originalText;
 
+      const entryId = `${data.speakerId}-${data.timestamp}`;
+
       const entry: TranslationEntry = {
-        id: `${data.speakerId}-${data.timestamp}`,
+        id: entryId,
         speakerName: data.speakerName,
         speakerId: data.speakerId,
         originalText: data.originalText,
@@ -205,6 +208,8 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
       };
 
       setTranslations((prev) => {
+        // Dedup: skip if entry with same id already exists
+        if (prev.some((e) => e.id === entryId)) return prev;
         const next = [...prev, entry].slice(-50); // Keep last 50
         return next;
       });
@@ -308,7 +313,11 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
 
       if (interim) {
         setInterimText(interim);
-        socketClient.sendSpeechForTranslation(meetingId, interim, myLanguageRef.current, false);
+        // Debounce interim emissions to reduce server load (max 1 per 300ms)
+        if (interimDebounceRef.current) clearTimeout(interimDebounceRef.current);
+        interimDebounceRef.current = setTimeout(() => {
+          socketClient.sendSpeechForTranslation(meetingId, interim, myLanguageRef.current, false);
+        }, 300);
       }
 
       if (final.trim()) {
