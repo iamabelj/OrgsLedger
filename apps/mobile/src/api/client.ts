@@ -6,10 +6,21 @@ import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import { Platform } from 'react-native';
 import storage from '../utils/storage';
 
-// Auto-detect API URL: on web, use same origin; on native builds, configure per deployment
+// Auto-detect API URL:
+//   Web  → same origin (API serves the SPA, so /api always works)
+//   Native dev → localhost
+//   Native prod → production domain
 function getApiBaseUrl(): string {
+  if (Platform.OS === 'web') {
+    // On web the Express server serves both the SPA and the API,
+    // so we always use the current origin — works for localhost AND production.
+    if (typeof window !== 'undefined' && window.location) {
+      return `${window.location.origin}/api`;
+    }
+    return '/api'; // SSR / node fallback
+  }
+  // Native
   if (__DEV__) return 'http://localhost:3000/api';
-  // Production — same Express server serves API and web app
   return 'https://app.orgsledger.com/api';
 }
 
