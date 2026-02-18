@@ -26,14 +26,3 @@ room:
   auto_create: true
   empty_timeout: 300      # 5 minutes after last participant leaves
   max_participants: 100
-
-# WebRTC settings
-webrtc:
-  congestion_control:
-    enabled: true
-  min_port: 50000
-  max_port: 60000
-
-# Redis (required for multi-instance deployments)
-# redis:
-#   address: redis:6379
