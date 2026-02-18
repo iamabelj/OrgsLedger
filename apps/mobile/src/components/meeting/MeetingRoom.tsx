@@ -15,7 +15,6 @@ import {
   useWindowDimensions,
   ScrollView,
   TextInput,
-  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../theme';
@@ -26,8 +25,6 @@ import { MeetingSidebar, type SidebarPanel } from './MeetingSidebar';
 import LiveTranslation, { type LiveTranslationRef } from '../ui/LiveTranslation';
 import {
   ALL_LANGUAGES,
-  getLanguageFlag,
-  getLanguageName,
   isTtsSupported,
 } from '../../utils/languages';
 import { socketClient } from '../../api/socket';
@@ -131,7 +128,6 @@ export function MeetingRoom(props: MeetingRoomProps) {
   // ── Translation State ───────────────────────────────────
   const [translationLang, setTranslationLang] = useState('en');
   const [translationListening, setTranslationListening] = useState(false);
-  const [voiceToVoice, setVoiceToVoice] = useState(true);
   const [showLangPicker, setShowLangPicker] = useState(false);
   const [langSearch, setLangSearch] = useState('');
   const translationRef = useRef<LiveTranslationRef>(null);
@@ -196,28 +192,22 @@ export function MeetingRoom(props: MeetingRoomProps) {
   }, [handRaised, meetingId, userId, userName]);
 
   // ── Translation Controls ────────────────────────────────
-  const handleToggleTranslation = useCallback(() => {
-    if (translationListening) {
-      translationRef.current?.stopListening();
-      setTranslationListening(false);
-    } else {
-      translationRef.current?.startListening();
-      setTranslationListening(true);
-    }
-  }, [translationListening]);
-
-  const handleToggleVoiceToVoice = useCallback(() => {
-    const next = !voiceToVoice;
-    setVoiceToVoice(next);
-    translationRef.current?.setAutoTTS(next);
-  }, [voiceToVoice]);
+  // Selecting a language auto-starts STT and enables voice-to-voice.
+  // The Language button in the picker both configures and toggles.
 
   const handleSelectLanguage = useCallback((code: string) => {
     setTranslationLang(code);
     translationRef.current?.selectLanguage(code);
+    // Auto-start listening when a language is picked
+    if (!translationListening) {
+      translationRef.current?.startListening();
+      setTranslationListening(true);
+    }
+    // V2V always on by default (users hear translations spoken)
+    translationRef.current?.setAutoTTS(true);
     setShowLangPicker(false);
     setLangSearch('');
-  }, []);
+  }, [translationListening]);
 
   // ── Recording Controls ──────────────────────────────────
   const handleToggleRecording = useCallback(() => {
@@ -280,6 +270,10 @@ export function MeetingRoom(props: MeetingRoomProps) {
           <Text style={styles.headerTitle} numberOfLines={1}>
             {meeting?.title || 'Meeting'}
           </Text>
+          <View style={styles.participantsBadge}>
+            <Ionicons name="people" size={11} color={Colors.textLight} />
+            <Text style={styles.participantsCount}>{lk.participants.length}</Text>
+          </View>
         </View>
 
         <View style={styles.headerCenter}>
@@ -288,8 +282,9 @@ export function MeetingRoom(props: MeetingRoomProps) {
 
         <View style={styles.headerRight}>
           {lk.isReconnecting && (
-            <View style={[styles.errorBadge, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
-              <Ionicons name="reload" size={12} color="#F59E0B" />
+            <View style={[styles.statusBadge, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+              <Ionicons name="reload" size={11} color="#F59E0B" />
+              <Text style={[styles.statusText, { color: '#F59E0B' }]}>Reconnecting</Text>
             </View>
           )}
           {(isRecording || isRecordingFromSocket) && <RecordingIndicator />}
@@ -441,22 +436,18 @@ export function MeetingRoom(props: MeetingRoomProps) {
         isMicEnabled={lk.isMicEnabled}
         isCameraEnabled={lk.isCameraEnabled}
         isScreenSharing={lk.isScreenSharing}
-        isTranslationListening={translationListening}
-        translationLang={translationLang}
         translationEnabled={translationEnabled}
-        voiceToVoice={voiceToVoice}
+        translationLang={translationLang}
+        isTranslationListening={translationListening}
         isRecording={isRecording || isRecordingFromSocket}
         handRaised={handRaised}
         isSidebarOpen={sidebarOpen}
         activeSidebarPanel={activePanel}
         participantCount={lk.participants.length}
-        elapsedSeconds={elapsedSeconds}
         isAdmin={isAdmin}
         onToggleMic={lk.toggleMic}
         onToggleCamera={lk.toggleCamera}
         onToggleScreenShare={lk.toggleScreenShare}
-        onToggleTranslation={handleToggleTranslation}
-        onToggleVoiceToVoice={handleToggleVoiceToVoice}
         onOpenLanguagePicker={() => setShowLangPicker(true)}
         onToggleRecording={handleToggleRecording}
         onRaiseHand={handleRaiseHand}
@@ -472,7 +463,7 @@ export function MeetingRoom(props: MeetingRoomProps) {
           meetingId={meetingId}
           userId={userId}
           hideControls
-          autoTTS={voiceToVoice}
+          autoTTS
         />
       )}
     </View>
@@ -539,6 +530,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+  },
+  participantsBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: Colors.primaryLight,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.full,
+  },
+  participantsCount: {
+    color: Colors.textLight,
+    fontSize: 10,
+    fontWeight: FontWeight.semibold,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.full,
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: FontWeight.semibold,
+    letterSpacing: 0.5,
   },
   recordingIndicator: {
     flexDirection: 'row',

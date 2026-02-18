@@ -1,16 +1,18 @@
 // ============================================================
 // OrgsLedger — ControlBar Component
 // Zoom-class bottom control bar for meeting rooms.
-// Mic, Camera, Screen Share, Hand, Language, Record, Leave.
+// Clean layout: Mic | Camera | Share || Hand | People | Chat
+//   | Language | Record || Leave | End
 // ============================================================
 
-import React, { useState, memo } from 'react';
+import React, { memo } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../theme';
@@ -23,11 +25,10 @@ interface ControlBarProps {
   isCameraEnabled: boolean;
   isScreenSharing: boolean;
 
-  // Translation states
-  isTranslationListening: boolean;
-  translationLang: string;
+  // Translation
   translationEnabled: boolean;
-  voiceToVoice: boolean;
+  translationLang: string;
+  isTranslationListening: boolean;
 
   // Recording
   isRecording: boolean;
@@ -41,7 +42,6 @@ interface ControlBarProps {
 
   // Counts
   participantCount: number;
-  elapsedSeconds: number;
 
   // Admin
   isAdmin: boolean;
@@ -50,8 +50,6 @@ interface ControlBarProps {
   onToggleMic: () => void;
   onToggleCamera: () => void;
   onToggleScreenShare: () => void;
-  onToggleTranslation: () => void;
-  onToggleVoiceToVoice: () => void;
   onOpenLanguagePicker: () => void;
   onToggleRecording: () => void;
   onRaiseHand: () => void;
@@ -67,11 +65,11 @@ interface ControlBtnProps {
   label: string;
   active?: boolean;
   danger?: boolean;
-  warning?: boolean;
   disabled?: boolean;
   badge?: string | number;
   onPress: () => void;
   activeColor?: string;
+  compact?: boolean;
 }
 
 function ControlBtn({
@@ -79,11 +77,11 @@ function ControlBtn({
   label,
   active = false,
   danger = false,
-  warning = false,
   disabled = false,
   badge,
   onPress,
   activeColor,
+  compact = false,
 }: ControlBtnProps) {
   const bgColor = danger
     ? Colors.error
@@ -100,13 +98,13 @@ function ControlBtn({
 
   return (
     <TouchableOpacity
-      style={styles.controlBtn}
+      style={[styles.controlBtn, compact && styles.controlBtnCompact]}
       onPress={onPress}
       disabled={disabled}
       activeOpacity={0.7}
     >
-      <View style={[styles.controlIcon, { backgroundColor: bgColor }]}>
-        <Ionicons name={icon} size={20} color={iconColor} />
+      <View style={[styles.controlIcon, compact && styles.controlIconCompact, { backgroundColor: bgColor }]}>
+        <Ionicons name={icon} size={compact ? 16 : 20} color={iconColor} />
         {badge !== undefined && (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{badge}</Text>
@@ -126,16 +124,6 @@ function Divider() {
   return <View style={styles.divider} />;
 }
 
-// ── Format Duration ───────────────────────────────────────
-
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
 // ── ControlBar Component ──────────────────────────────────
 
 function ControlBarInner(props: ControlBarProps) {
@@ -143,22 +131,18 @@ function ControlBarInner(props: ControlBarProps) {
     isMicEnabled,
     isCameraEnabled,
     isScreenSharing,
-    isTranslationListening,
-    translationLang,
     translationEnabled,
-    voiceToVoice,
+    translationLang,
+    isTranslationListening,
     isRecording,
     handRaised,
     isSidebarOpen,
     activeSidebarPanel,
     participantCount,
-    elapsedSeconds,
     isAdmin,
     onToggleMic,
     onToggleCamera,
     onToggleScreenShare,
-    onToggleTranslation,
-    onToggleVoiceToVoice,
     onOpenLanguagePicker,
     onToggleRecording,
     onRaiseHand,
@@ -167,17 +151,13 @@ function ControlBarInner(props: ControlBarProps) {
     onEnd,
   } = props;
 
+  const { width } = useWindowDimensions();
+  const isNarrow = width < 640;
+
   return (
     <View style={styles.container}>
-      {/* Timer */}
-      <View style={styles.timerSection}>
-        <View style={styles.timerDot} />
-        <Text style={styles.timerText}>{formatDuration(elapsedSeconds)}</Text>
-      </View>
-
-      {/* Main Controls */}
       <View style={styles.controlsRow}>
-        {/* Microphone */}
+        {/* ── Media Controls ──────────────────────── */}
         <ControlBtn
           icon={isMicEnabled ? 'mic' : 'mic-off'}
           label={isMicEnabled ? 'Mute' : 'Unmute'}
@@ -186,16 +166,14 @@ function ControlBarInner(props: ControlBarProps) {
           onPress={onToggleMic}
         />
 
-        {/* Camera */}
         <ControlBtn
           icon={(isCameraEnabled ? 'videocam' : 'videocam-off') as any}
-          label={isCameraEnabled ? 'Stop' : 'Start'}
+          label={isCameraEnabled ? 'Stop Video' : 'Start Video'}
           active={isCameraEnabled}
           activeColor="#6366F1"
           onPress={onToggleCamera}
         />
 
-        {/* Screen Share */}
         {Platform.OS === 'web' && (
           <ControlBtn
             icon={isScreenSharing ? 'stop-circle' : 'desktop-outline'}
@@ -208,41 +186,7 @@ function ControlBarInner(props: ControlBarProps) {
 
         <Divider />
 
-        {/* Translation Mic */}
-        {translationEnabled && (
-          <ControlBtn
-            icon={isTranslationListening ? 'mic' : 'mic-off'}
-            label={isTranslationListening ? 'STT On' : 'STT'}
-            active={isTranslationListening}
-            activeColor="#10B981"
-            onPress={onToggleTranslation}
-          />
-        )}
-
-        {/* Language Picker */}
-        {translationEnabled && (
-          <ControlBtn
-            icon="language"
-            label={translationLang.toUpperCase()}
-            active={false}
-            onPress={onOpenLanguagePicker}
-          />
-        )}
-
-        {/* Voice-to-Voice */}
-        {translationEnabled && (
-          <ControlBtn
-            icon={voiceToVoice ? 'volume-high' : 'volume-mute'}
-            label={voiceToVoice ? 'V2V On' : 'V2V'}
-            active={voiceToVoice}
-            activeColor="#10B981"
-            onPress={onToggleVoiceToVoice}
-          />
-        )}
-
-        <Divider />
-
-        {/* Raise Hand */}
+        {/* ── Collaboration Controls ──────────────── */}
         <ControlBtn
           icon="hand-left"
           label={handRaised ? 'Lower' : 'Raise'}
@@ -251,7 +195,6 @@ function ControlBarInner(props: ControlBarProps) {
           onPress={onRaiseHand}
         />
 
-        {/* Participants */}
         <ControlBtn
           icon="people"
           label="People"
@@ -260,7 +203,6 @@ function ControlBarInner(props: ControlBarProps) {
           onPress={() => onToggleSidebar('participants')}
         />
 
-        {/* Transcript */}
         <ControlBtn
           icon="chatbubbles"
           label="Transcript"
@@ -268,20 +210,34 @@ function ControlBarInner(props: ControlBarProps) {
           onPress={() => onToggleSidebar('transcript')}
         />
 
-        {/* Record */}
-        {isAdmin && (
+        {/* Language / Translation (single clean button) */}
+        {translationEnabled && (
           <ControlBtn
-            icon={isRecording ? 'stop-circle' : 'radio-button-on'}
-            label={isRecording ? 'Stop Rec' : 'Record'}
-            active={isRecording}
-            activeColor={Colors.error}
-            onPress={onToggleRecording}
+            icon="language"
+            label={isTranslationListening ? translationLang.toUpperCase() : 'Language'}
+            active={isTranslationListening}
+            activeColor="#10B981"
+            onPress={onOpenLanguagePicker}
           />
+        )}
+
+        {/* Record (admin only) */}
+        {isAdmin && (
+          <>
+            <Divider />
+            <ControlBtn
+              icon={isRecording ? 'stop-circle' : 'radio-button-on'}
+              label={isRecording ? 'Stop Rec' : 'Record'}
+              active={isRecording}
+              activeColor={Colors.error}
+              onPress={onToggleRecording}
+            />
+          </>
         )}
 
         <Divider />
 
-        {/* Leave */}
+        {/* ── Session Controls ────────────────────── */}
         <ControlBtn
           icon="call"
           label="Leave"
@@ -289,7 +245,6 @@ function ControlBarInner(props: ControlBarProps) {
           onPress={onLeave}
         />
 
-        {/* End Meeting (admin) */}
         {isAdmin && onEnd && (
           <ControlBtn
             icon="stop-circle"
@@ -316,26 +271,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     ...(Shadow.lg as any),
   },
-  timerSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-    marginBottom: Spacing.xs,
-  },
-  timerDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.success,
-  },
-  timerText: {
-    color: Colors.textSecondary,
-    fontSize: FontSize.xs,
-    fontWeight: FontWeight.medium,
-    fontVariant: ['tabular-nums'] as any,
-    letterSpacing: 1,
-  },
   controlsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -349,6 +284,9 @@ const styles = StyleSheet.create({
     minWidth: 52,
     paddingHorizontal: 2,
   },
+  controlBtnCompact: {
+    minWidth: 40,
+  },
   controlIcon: {
     width: 44,
     height: 44,
@@ -356,6 +294,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+  },
+  controlIconCompact: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
   },
   controlLabel: {
     fontSize: 9,
