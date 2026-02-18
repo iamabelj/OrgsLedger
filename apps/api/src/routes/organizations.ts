@@ -496,41 +496,42 @@ router.get(
         return;
       }
 
-      // Get committees
-      const committees = await db('committee_members')
-        .join('committees', 'committee_members.committee_id', 'committees.id')
-        .where({ 'committee_members.user_id': req.params.userId, 'committees.organization_id': req.params.orgId })
-        .select('committees.id', 'committees.name');
+      // Parallelize independent member-detail queries (was sequential N+1)
+      const [committees, dues, fines, donations, totalPaid, totalOwed] = await Promise.all([
+        db('committee_members')
+          .join('committees', 'committee_members.committee_id', 'committees.id')
+          .where({ 'committee_members.user_id': req.params.userId, 'committees.organization_id': req.params.orgId })
+          .select('committees.id', 'committees.name'),
 
-      // Get financial info
-      const dues = await db('transactions')
-        .where({ user_id: req.params.userId, organization_id: req.params.orgId, type: 'due' })
-        .select('id', 'description as title', 'amount', 'status', 'created_at as dueDate')
-        .orderBy('created_at', 'desc')
-        .limit(20);
+        db('transactions')
+          .where({ user_id: req.params.userId, organization_id: req.params.orgId, type: 'due' })
+          .select('id', 'description as title', 'amount', 'status', 'created_at as dueDate')
+          .orderBy('created_at', 'desc')
+          .limit(20),
 
-      const fines = await db('transactions')
-        .where({ user_id: req.params.userId, organization_id: req.params.orgId, type: 'fine' })
-        .select('id', 'description as reason', 'amount', 'status', 'created_at')
-        .orderBy('created_at', 'desc')
-        .limit(20);
+        db('transactions')
+          .where({ user_id: req.params.userId, organization_id: req.params.orgId, type: 'fine' })
+          .select('id', 'description as reason', 'amount', 'status', 'created_at')
+          .orderBy('created_at', 'desc')
+          .limit(20),
 
-      const donations = await db('donations')
-        .join('donation_campaigns', 'donations.campaign_id', 'donation_campaigns.id')
-        .where({ 'donations.user_id': req.params.userId, 'donation_campaigns.organization_id': req.params.orgId })
-        .select('donations.id', 'donation_campaigns.title as campaignTitle', 'donations.amount', 'donations.created_at')
-        .orderBy('donations.created_at', 'desc')
-        .limit(20);
+        db('donations')
+          .join('donation_campaigns', 'donations.campaign_id', 'donation_campaigns.id')
+          .where({ 'donations.user_id': req.params.userId, 'donation_campaigns.organization_id': req.params.orgId })
+          .select('donations.id', 'donation_campaigns.title as campaignTitle', 'donations.amount', 'donations.created_at')
+          .orderBy('donations.created_at', 'desc')
+          .limit(20),
 
-      const totalPaid = await db('transactions')
-        .where({ user_id: req.params.userId, organization_id: req.params.orgId, status: 'completed' })
-        .sum('amount as total')
-        .first();
+        db('transactions')
+          .where({ user_id: req.params.userId, organization_id: req.params.orgId, status: 'completed' })
+          .sum('amount as total')
+          .first(),
 
-      const totalOwed = await db('transactions')
-        .where({ user_id: req.params.userId, organization_id: req.params.orgId, status: 'pending' })
-        .sum('amount as total')
-        .first();
+        db('transactions')
+          .where({ user_id: req.params.userId, organization_id: req.params.orgId, status: 'pending' })
+          .sum('amount as total')
+          .first(),
+      ]);
 
       res.json({
         success: true,

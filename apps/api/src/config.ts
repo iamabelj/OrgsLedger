@@ -83,18 +83,18 @@ export const config = {
     projectId: process.env.FIREBASE_PROJECT_ID || '',
   },
 
-  // ── Jitsi / JaaS Configuration ──────────────────────────
-  // Supports both self-hosted Jitsi (secure-domain) and JaaS (8x8.vc).
-  // Set JITSI_APP_SECRET to enable JWT-based authentication.
-  jitsi: {
-    // JaaS: '8x8.vc'  |  Self-hosted: 'meet.yourdomain.com'
-    domain: process.env.JITSI_DOMAIN || 'meet.jit.si',
-    // Application ID (JaaS: vpaas-magic-cookie-xxx  |  Self-hosted: your app_id)
-    appId: process.env.JITSI_APP_ID || 'orgsledger',
-    // Shared secret for signing JWTs (REQUIRED for JWT auth)
-    appSecret: process.env.JITSI_APP_SECRET || '',
-    // JWT expiry in seconds (default 2 hours — long enough for any meeting)
-    tokenExpirySeconds: parseInt(process.env.JITSI_TOKEN_EXPIRY || '7200', 10),
+  // ── LiveKit Configuration ───────────────────────────────
+  // Self-hosted or cloud LiveKit for video/audio conferencing.
+  // All participants receive backend-issued tokens — no external login.
+  livekit: {
+    // LiveKit server WebSocket URL (wss://livekit.yourdomain.com)
+    url: process.env.LIVEKIT_URL || 'ws://localhost:7880',
+    // API key for token signing (from LiveKit server config)
+    apiKey: process.env.LIVEKIT_API_KEY || '',
+    // API secret for token signing (from LiveKit server config)
+    apiSecret: process.env.LIVEKIT_API_SECRET || '',
+    // Token expiry in seconds (default 2 hours)
+    tokenExpirySeconds: parseInt(process.env.LIVEKIT_TOKEN_EXPIRY || '7200', 10),
   },
 };
 

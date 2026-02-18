@@ -80,11 +80,11 @@ CORS_ORIGINS=https://${DOMAIN},https://app.${DOMAIN}
 DEFAULT_ADMIN_EMAIL=admin@orgsledger.com
 DEFAULT_ADMIN_PASSWORD=SuperAdmin1234!
 
-# Jitsi Secure-Domain (JWT authentication)
-JITSI_DOMAIN=meet.${DOMAIN}
-JITSI_APP_ID=orgsledger
-JITSI_APP_SECRET=9d91c6a6631af5ed641488460fb0da7bd1baf731c9c8b540e74777afd7c2c905
-JITSI_TOKEN_EXPIRY=7200
+# LiveKit (video/audio transport)
+LIVEKIT_URL=wss://livekit.\${DOMAIN}
+LIVEKIT_API_KEY=orgsledger
+LIVEKIT_API_SECRET=9d91c6a6631af5ed641488460fb0da7bd1baf731c9c8b540e74777afd7c2c905
+LIVEKIT_TOKEN_EXPIRY=7200
 ENVEOF
 echo "  ✓ .env.production created"
 

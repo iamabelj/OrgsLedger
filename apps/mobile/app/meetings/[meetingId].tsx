@@ -207,10 +207,12 @@ export default function MeetingDetailScreen() {
   const recordingRef = useRef<any>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Jitsi Join State (JWT-based) ────────────────────────
+  // ── LiveKit Join State (token-based) ─────────────────────
   const [showVideo, setShowVideo] = useState(false);
   const [joinConfig, setJoinConfig] = useState<any>(null);
   const [joinLoading, setJoinLoading] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(true);
+  const [videoEnabled, setVideoEnabled] = useState(true);
 
   // ── Zoom-like Features State ────────────────────────────
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -444,7 +446,7 @@ export default function MeetingDetailScreen() {
       if (data.meetingId === meetingId) {
         setMeeting((prev: any) => prev ? { ...prev, status: 'ended', actual_end: new Date().toISOString() } : prev);
         meetingStore.onMeetingEnded(data);
-        // Stop any active Jitsi/video session
+        // Stop any active LiveKit video session
         setShowVideo(false);
         setJoinConfig(null);
         setHandRaised(false);
@@ -684,46 +686,26 @@ export default function MeetingDetailScreen() {
     }
   };
 
-  // ── Join Meeting (JWT) ──────────────────────────────────
+  // ── Join Meeting (LiveKit) ──────────────────────────────
   const handleJoinMeeting = async (joinType: 'video' | 'audio') => {
     if (!currentOrgId || !meetingId) return;
     setJoinLoading(true);
     try {
       const res = await api.meetings.join(currentOrgId, meetingId, joinType);
-      const config = res.data?.data;
-      if (!config) throw new Error('No join config returned');
-      if (!config.jwt) throw new Error('Meeting token not received. Please contact your administrator.');
+      const cfg = res.data?.data;
+      if (!cfg) throw new Error('No join config returned');
+      if (!cfg.token) throw new Error('Meeting token not received. Please contact your administrator.');
 
-      // Quick check — verify Jitsi domain is reachable before opening
-      if (Platform.OS === 'web' && config.domain) {
-        try {
-          const probe = await fetch(`https://${config.domain}/`, { method: 'HEAD', mode: 'no-cors' });
-          // mode 'no-cors' always returns opaque response, but fetch itself throws on DNS failure
-        } catch {
-          throw new Error(
-            `Video server (${config.domain}) is not reachable. Please check that the DNS record for ${config.domain} points to your server, or contact your administrator.`
-          );
-        }
-      }
-      setJoinConfig(config);
+      setJoinConfig(cfg);
+      setVideoEnabled(joinType === 'video');
+      setAudioEnabled(true);
 
       if (Platform.OS === 'web') {
         setShowVideo(true);
       } else {
-        // On native, build the Jitsi URL with JWT
-        const configParams = Object.entries(config.configOverwrite || {})
-          .filter(([_, v]) => typeof v !== 'object')
-          .map(([k, v]) => `config.${k}=${encodeURIComponent(String(v))}`)
-          .join('&');
-        const ifaceParams = Object.entries(config.interfaceConfigOverwrite || {})
-          .filter(([_, v]) => typeof v !== 'object')
-          .map(([k, v]) => `interfaceConfig.${k}=${encodeURIComponent(String(v))}`)
-          .join('&');
-        const userParams = `userInfo.displayName=${encodeURIComponent(config.userInfo?.displayName || userName)}`;
-        const hash = [configParams, ifaceParams, userParams].filter(Boolean).join('&');
-        const jwtParam = config.jwt ? `?jwt=${config.jwt}` : '';
-        const jitsiUrl = `https://${config.domain}/${config.roomName}${jwtParam}#${hash}`;
-        await WebBrowser.openBrowserAsync(jitsiUrl, {
+        // On native, open LiveKit room in web browser
+        const livekitWebUrl = `${cfg.url.replace('wss://', 'https://').replace('ws://', 'http://')}/rooms/${cfg.roomName}?token=${cfg.token}`;
+        await WebBrowser.openBrowserAsync(livekitWebUrl, {
           toolbarColor: Colors.surface,
           controlsColor: Colors.highlight,
           dismissButtonStyle: 'close',
@@ -732,7 +714,7 @@ export default function MeetingDetailScreen() {
         handleLeaveMeeting();
       }
     } catch (err: any) {
-      const msg = err.response?.data?.error || 'Failed to join meeting';
+      const msg = err.response?.data?.error || err.message || 'Failed to join meeting';
       showAlert('Cannot Join', msg);
     } finally {
       setJoinLoading(false);
@@ -849,31 +831,11 @@ export default function MeetingDetailScreen() {
   const countdown = formatCountdown(countdownMs);
   const participantCount = liveParticipants.length + (meeting?.attendance?.length || 0);
 
-  // ── Build Jitsi iframe URL ──────────────────────────────
-  const jitsiIframeSrc = useMemo(() => {
+  // ── Build LiveKit connection URL ────────────────────────
+  const livekitConnUrl = useMemo(() => {
     if (!joinConfig) return '';
-    // Flatten config overwrite — stringify nested objects for Jitsi hash params
-    const configParams = Object.entries(joinConfig.configOverwrite || {})
-      .map(([k, v]) => {
-        if (typeof v === 'object' && v !== null) {
-          return `config.${k}=${encodeURIComponent(JSON.stringify(v))}`;
-        }
-        return `config.${k}=${encodeURIComponent(String(v))}`;
-      })
-      .join('&');
-    const ifaceParams = Object.entries(joinConfig.interfaceConfigOverwrite || {})
-      .map(([k, v]) => {
-        if (typeof v === 'object' && v !== null) {
-          return `interfaceConfig.${k}=${encodeURIComponent(JSON.stringify(v))}`;
-        }
-        return `interfaceConfig.${k}=${encodeURIComponent(String(v))}`;
-      })
-      .join('&');
-    const userParams = `userInfo.displayName=${encodeURIComponent(joinConfig.userInfo?.displayName || userName)}`;
-    const hash = [configParams, ifaceParams, userParams].filter(Boolean).join('&');
-    const jwtParam = joinConfig.jwt ? `?jwt=${joinConfig.jwt}` : '';
-    return `https://${joinConfig.domain}/${joinConfig.roomName}${jwtParam}#${hash}`;
-  }, [joinConfig, userName]);
+    return joinConfig.url || '';
+  }, [joinConfig]);
 
   // ── Loading / Error ─────────────────────────────────────
   if (loading) return <LoadingScreen />;
@@ -1036,7 +998,7 @@ export default function MeetingDetailScreen() {
           activeOpacity={0.7}
         >
           <Ionicons name="videocam" size={16} color={activeTab === 'meeting' ? Colors.highlight : Colors.textLight} />
-          <Text style={[z.tabText, activeTab === 'meeting' && z.tabTextActive]}>Meeting</Text>
+          <Text style={[z.tabText, activeTab === 'meeting' && z.tabTextActive]} numberOfLines={1}>Meeting</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[z.tab, activeTab === 'transcript' && z.tabActive]}
@@ -1044,7 +1006,7 @@ export default function MeetingDetailScreen() {
           activeOpacity={0.7}
         >
           <Ionicons name="chatbubbles" size={16} color={activeTab === 'transcript' ? Colors.highlight : Colors.textLight} />
-          <Text style={[z.tabText, activeTab === 'transcript' && z.tabTextActive]}>Transcript</Text>
+          <Text style={[z.tabText, activeTab === 'transcript' && z.tabTextActive]} numberOfLines={1}>Transcript</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[z.tab, activeTab === 'minutes' && z.tabActive]}
@@ -1052,7 +1014,7 @@ export default function MeetingDetailScreen() {
           activeOpacity={0.7}
         >
           <Ionicons name="document-text" size={16} color={activeTab === 'minutes' ? Colors.highlight : Colors.textLight} />
-          <Text style={[z.tabText, activeTab === 'minutes' && z.tabTextActive]}>Minutes</Text>
+          <Text style={[z.tabText, activeTab === 'minutes' && z.tabTextActive]} numberOfLines={1}>Minutes</Text>
           {meeting.minutes && meeting.minutes.status === 'completed' && (
             <View style={z.tabDot} />
           )}
@@ -1264,6 +1226,19 @@ export default function MeetingDetailScreen() {
                     <Text style={z.downloadBtnText}>Download JSON</Text>
                   </TouchableOpacity>
                 </View>
+
+                {/* View Full Report */}
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.xs, marginTop: Spacing.md, paddingVertical: Spacing.sm }}
+                  onPress={() => router.push(`/meetings/${meetingId}/report`)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="reader-outline" size={18} color={Colors.highlight} />
+                  <Text style={{ color: Colors.highlight, fontSize: FontSize.md, fontWeight: FontWeight.semibold }}>
+                    View Full Report
+                  </Text>
+                  <Ionicons name="chevron-forward" size={16} color={Colors.highlight} />
+                </TouchableOpacity>
 
                 {/* Generated timestamp */}
                 {minutes.generated_at && (
@@ -1591,17 +1566,31 @@ export default function MeetingDetailScreen() {
         </>
       )}
 
-      {/* ═══ INLINE VIDEO (Jitsi Embed — Web Only) ═══════════ */}
+      {/* ═══ INLINE VIDEO (LiveKit — Web Only) ════════════════ */}
       {showVideo && joinConfig && Platform.OS === 'web' && (
         <View style={z.videoWrapper}>
           <View style={z.videoStatusBar}>
             <PulseDot color="#34D399" size={8} />
             <Text style={z.videoToolbarText}>In Meeting</Text>
             <Text style={z.videoTimerText}>{formatDuration(elapsedSeconds)}</Text>
+            <View style={{ flex: 1 }} />
+            {/* Video/Audio toggle controls */}
+            <TouchableOpacity
+              style={[z.toolbarBtn, videoEnabled && z.toolbarBtnActive]}
+              onPress={() => setVideoEnabled(!videoEnabled)}
+            >
+              <Ionicons name={(videoEnabled ? 'videocam' : 'videocam-off') as any} size={16} color="#FFF" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[z.toolbarBtn, audioEnabled && z.toolbarBtnActive, { marginLeft: 6 }]}
+              onPress={() => setAudioEnabled(!audioEnabled)}
+            >
+              <Ionicons name={audioEnabled ? 'mic' : 'mic-off'} size={16} color="#FFF" />
+            </TouchableOpacity>
           </View>
           <View style={z.videoContainer}>
             <iframe
-              src={jitsiIframeSrc}
+              src={`${livekitConnUrl.replace('wss://', 'https://').replace('ws://', 'http://')}/rooms/${joinConfig.roomName}?token=${joinConfig.token}&videoEnabled=${videoEnabled}&audioEnabled=${audioEnabled}`}
               style={{ width: '100%', height: '100%', border: 'none', borderRadius: 0 } as any}
               allow="camera; microphone; fullscreen; display-capture; autoplay"
               allowFullScreen
@@ -1877,7 +1866,7 @@ const z = StyleSheet.create({
   toolbarBtnActive: { backgroundColor: Colors.highlight },
   toolbarBadge: { position: 'absolute', top: -4, right: -4, backgroundColor: Colors.error, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   toolbarBadgeText: { color: '#FFF', fontSize: 10, fontWeight: FontWeight.bold },
-  videoContainer: { height: 320, backgroundColor: '#000' },
+  videoContainer: { aspectRatio: 16 / 9, maxHeight: 400, backgroundColor: '#000' },
 
   // ── Join Card ───────────────────────────────────────────
   joinCard: { marginHorizontal: Spacing.md, marginBottom: Spacing.sm, padding: Spacing.lg },
@@ -1967,9 +1956,9 @@ const z = StyleSheet.create({
 
   // ── Unified Control Bar ─────────────────────────────────
   controlBarCard: { marginHorizontal: Spacing.sm, marginBottom: Spacing.xs, paddingHorizontal: Spacing.xs, paddingVertical: Spacing.sm },
-  controlBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly' },
+  controlBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly', flexWrap: 'wrap' },
   controlItem: { alignItems: 'center', gap: 3, flex: 1 },
-  controlIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  controlIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', flexShrink: 1 },
   controlIconActive: { backgroundColor: '#6366F1' },
   controlIconOff: { backgroundColor: Colors.primaryLight, borderWidth: 1, borderColor: Colors.accent },
   controlIconMic: { backgroundColor: '#10B981' },
@@ -2012,7 +2001,7 @@ const z = StyleSheet.create({
   tabBar: { flexDirection: 'row', marginHorizontal: Spacing.sm, marginBottom: Spacing.xs, backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: 3, borderWidth: 0.5, borderColor: Colors.accent },
   tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: Spacing.sm, borderRadius: BorderRadius.md },
   tabActive: { backgroundColor: Colors.primaryLight },
-  tabText: { fontSize: FontSize.sm, color: Colors.textLight, fontWeight: FontWeight.medium as any },
+  tabText: { fontSize: FontSize.sm, color: Colors.textLight, fontWeight: FontWeight.medium as any, flexShrink: 1 },
   tabTextActive: { color: Colors.highlight, fontWeight: FontWeight.semibold as any },
   tabDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.success, marginLeft: 2 },
 

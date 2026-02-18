@@ -1,0 +1,39 @@
+# ============================================================
+# LiveKit Server Configuration for OrgsLedger
+# Self-hosted deployment — all tokens issued by the API server.
+# ============================================================
+
+# Port configuration
+port: 7880
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 60000
+  use_external_ip: true
+
+# API keys — tokens are signed with these
+# Generate your own: livekit-server generate-keys
+keys:
+  orgsledger: ${LIVEKIT_API_SECRET:-CHANGE_ME_IN_PRODUCTION}
+
+# Logging
+logging:
+  level: info
+  pion_level: warn
+
+# Room settings
+room:
+  auto_create: true
+  empty_timeout: 300      # 5 minutes after last participant leaves
+  max_participants: 100
+
+# WebRTC settings
+webrtc:
+  congestion_control:
+    enabled: true
+  min_port: 50000
+  max_port: 60000
+
+# Redis (required for multi-instance deployments)
+# redis:
+#   address: redis:6379

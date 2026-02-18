@@ -275,7 +275,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
   // ── Web Speech Recognition ─────────────────────────────
   const startListening = useCallback(() => {
     if (Platform.OS !== 'web') {
-      showAlert('Web Only', 'Voice recognition is available in web browsers. Use the Jitsi video call for native audio.');
+      showAlert('Web Only', 'Voice recognition is available in web browsers. Use the meeting video call for native audio.');
       return;
     }
 
@@ -787,7 +787,7 @@ const styles = StyleSheet.create({
   langSearchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.cardDark,
+    backgroundColor: Colors.surface,
     borderRadius: BorderRadius.sm,
     paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.xs,

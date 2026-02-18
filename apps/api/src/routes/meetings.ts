@@ -15,7 +15,7 @@ import { sendPushToOrg } from '../services/push.service';
 import { config } from '../config';
 import { translateText, LANGUAGES, SPEECH_CODES, ALL_LANGUAGES } from '../services/translation.service';
 import { getAiWallet, getOrgSubscription } from '../services/subscription.service';
-import { generateRoomName, generateJitsiToken, buildJoinConfig } from '../services/jitsi.service';
+import { generateRoomName, generateLiveKitToken, buildJoinConfig } from '../services/livekit.service';
 import { forceDisconnectMeeting } from '../socket';
 
 const router = Router();
@@ -133,9 +133,9 @@ router.post(
         .returning('*');
 
       // Generate tenant-isolated room name: org_<orgId>_meeting_<meetingId>
-      const jitsiRoomId = generateRoomName(req.params.orgId, meeting.id);
-      await db('meetings').where({ id: meeting.id }).update({ jitsi_room_id: jitsiRoomId });
-      meeting.jitsi_room_id = jitsiRoomId;
+      const roomId = generateRoomName(req.params.orgId, meeting.id);
+      await db('meetings').where({ id: meeting.id }).update({ jitsi_room_id: roomId });
+      meeting.jitsi_room_id = roomId;
 
       // Create agenda items
       if (agendaItems?.length) {
@@ -466,9 +466,9 @@ router.get(
   }
 );
 
-// ── Join Meeting (JWT Token Generation) ─────────────────────
-// This is the ONLY way to get a Jitsi token. Returns a short-lived
-// JWT + full embed configuration for the client.
+// ── Join Meeting (LiveKit Token Generation) ─────────────────
+// Returns a short-lived LiveKit access token + connection config.
+// No external login required — fully backend-controlled.
 //
 // Security checks performed:
 //   1. User is authenticated
@@ -480,7 +480,7 @@ router.get(
 //   7. Meeting duration limit not exceeded
 //
 // Creator gets moderator=true, others get moderator=false.
-// Org admins also receive moderator=true (fallback if creator leaves).
+// Org admins also receive moderator=true (fallback when creator leaves).
 
 router.post(
   '/:orgId/:meetingId/join',
@@ -582,12 +582,11 @@ router.post(
       // 10. Generate room name (deterministic, tenant-isolated)
       const roomName = meeting.jitsi_room_id || generateRoomName(orgId, meetingId);
 
-      // 11. Generate JWT (REQUIRED — no public fallback)
-      //     Jitsi secure-domain requires every participant to present a
-      //     backend-issued JWT. Without it, Prosody rejects the XMPP connection
-      //     and users see a login prompt or "no moderator" error.
-      if (!config.jitsi.appSecret) {
-        logger.error('JITSI_APP_SECRET is not configured — cannot issue meeting tokens');
+      // 11. Generate LiveKit access token (REQUIRED — no public fallback)
+      //     Every participant receives a backend-issued token.
+      //     No external login is required.
+      if (!config.livekit.apiKey || !config.livekit.apiSecret) {
+        logger.error('LIVEKIT_API_KEY / LIVEKIT_API_SECRET not configured — cannot issue meeting tokens');
         res.status(503).json({
           success: false,
           error: 'Meeting service is not configured. Please contact your administrator.',
@@ -595,7 +594,7 @@ router.post(
         return;
       }
 
-      const token = generateJitsiToken({
+      const token = generateLiveKitToken({
         room: roomName,
         moderator: isModerator,
         user: {
@@ -607,7 +606,6 @@ router.post(
         meetingType,
         features: {
           recording: isModerator,
-          livestreaming: false,
           transcription: meeting.ai_enabled || false,
         },
       });
@@ -618,8 +616,7 @@ router.post(
         token,
         userName: `${user.first_name} ${user.last_name}`.trim(),
         userEmail: user.email,
-        orgName: org?.name,
-        lobbyEnabled: meeting.lobby_enabled,
+        isModerator,
       });
 
       // 12. Log join event (defensive — table may not exist if migration 020 not run)

@@ -496,12 +496,16 @@ router.get('/admin/subscriptions', authenticate, requireDeveloper(), async (req:
 });
 
 // GET /admin/organizations — list all orgs with subscription + wallet info
-router.get('/admin/organizations', authenticate, requireDeveloper(), async (_req: Request, res: Response) => {
+router.get('/admin/organizations', authenticate, requireDeveloper(), async (req: Request, res: Response) => {
   try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+    const offset = (page - 1) * limit;
+
     // Use a subquery for the LATEST subscription per org to prevent duplicate
     // rows when an org has multiple non-cancelled subscriptions (e.g. an expired
     // one that was never cleaned up plus a newly-assigned active one).
-    const orgs = await db('organizations')
+    const baseQuery = db('organizations')
       .leftJoin(
         db.raw(`(
           SELECT DISTINCT ON (organization_id) *
@@ -514,7 +518,11 @@ router.get('/admin/organizations', authenticate, requireDeveloper(), async (_req
       )
       .leftJoin('subscription_plans', 'latest_sub.plan_id', 'subscription_plans.id')
       .leftJoin('ai_wallet', 'organizations.id', 'ai_wallet.organization_id')
-      .leftJoin('translation_wallet', 'organizations.id', 'translation_wallet.organization_id')
+      .leftJoin('translation_wallet', 'organizations.id', 'translation_wallet.organization_id');
+
+    const [{ count: totalCount }] = await db('organizations').count('* as count');
+
+    const orgs = await baseQuery
       .select(
         'organizations.id',
         'organizations.name',
@@ -531,7 +539,9 @@ router.get('/admin/organizations', authenticate, requireDeveloper(), async (_req
         'ai_wallet.balance_minutes as ai_balance_minutes',
         'translation_wallet.balance_minutes as translation_balance_minutes',
       )
-      .orderBy('organizations.created_at', 'desc');
+      .orderBy('organizations.created_at', 'desc')
+      .limit(limit)
+      .offset(offset);
 
     // Add member count
     const orgIds = orgs.map((o: any) => o.id);
@@ -546,7 +556,7 @@ router.get('/admin/organizations', authenticate, requireDeveloper(), async (_req
     counts.forEach((c: any) => { countMap[c.organization_id] = parseInt(c.member_count); });
 
     const result = orgs.map((o: any) => ({ ...o, member_count: countMap[o.id] || 0 }));
-    res.json({ success: true, organizations: result });
+    res.json({ success: true, organizations: result, pagination: { page, limit, total: parseInt(totalCount as string) } });
   } catch (err: any) {
     logger.error('Admin orgs error', err);
     res.status(500).json({ success: false, error: 'Failed' });
