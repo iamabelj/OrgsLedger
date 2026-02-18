@@ -831,7 +831,49 @@ export default function MeetingDetailScreen() {
   }
 
   // ════════════════════════════════════════════════════════
-  // RENDER
+  // FULL-SCREEN MEETING ROOM (when joined — hides everything)
+  // ════════════════════════════════════════════════════════
+  if (showVideo && joinConfig) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#000' }}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <MeetingRoom
+          meetingId={meetingId!}
+          meeting={meeting}
+          joinConfig={{
+            url: joinConfig.url,
+            token: joinConfig.token,
+            roomName: joinConfig.roomName,
+            meetingType: joinConfig.meetingType || (meeting.meeting_type === 'audio' ? 'audio' : 'video'),
+          }}
+          userId={userId!}
+          userName={userName}
+          isAdmin={!!isAdmin}
+          joinType={videoEnabled ? 'video' : 'audio'}
+          translationEnabled={!!meeting.translation_enabled}
+          transcripts={transcripts}
+          transcriptsLoading={transcriptsLoading}
+          onRefreshTranscripts={loadTranscripts}
+          minutes={minutes}
+          minutesLoading={minutesLoading}
+          generateLoading={generateLoading}
+          onRefreshMinutes={loadMinutes}
+          onGenerateMinutes={handleGenerateMinutes}
+          elapsedSeconds={elapsedSeconds}
+          socketParticipants={liveParticipants}
+          isRecordingFromSocket={!!meetingStore.isRecording}
+          onLeave={handleLeaveMeeting}
+          onEnd={isAdmin ? handleEnd : undefined}
+        />
+        {meeting.translation_enabled && userId && (
+          <LiveTranslation ref={translationRef} meetingId={meetingId!} userId={userId} hideControls autoTTS={voiceToVoice} />
+        )}
+      </View>
+    );
+  }
+
+  // ════════════════════════════════════════════════════════
+  // RENDER (pre-join / meeting detail view)
   // ════════════════════════════════════════════════════════
   return (
     <ResponsiveScrollView style={z.container}>
@@ -1315,268 +1357,79 @@ export default function MeetingDetailScreen() {
         </Card>
       )}
 
-      {/* ═══ UNIFIED MEETING CONTROL BAR ════════════════════ */}
+      {/* ═══ PRE-JOIN LOBBY (LIVE — not yet joined) ═════════ */}
       {meeting.status === 'live' && (
-        <>
-          <Card style={z.controlBarCard} variant="elevated">
-            <View style={z.controlBar}>
-              {/* Video Toggle */}
+        <Card style={z.lobbyCard} variant="elevated">
+          {/* Lobby Preview Area */}
+          <View style={z.lobbyPreview}>
+            <View style={z.lobbyAvatarCircle}>
+              <Ionicons
+                name={meeting.meeting_type === 'audio' ? 'mic' : 'videocam'}
+                size={48}
+                color="rgba(129, 140, 248, 0.6)"
+              />
+            </View>
+            <Text style={z.lobbyTitle}>Ready to join?</Text>
+            <Text style={z.lobbySubtitle}>
+              {meeting.meeting_type === 'audio' ? 'Audio conference' : 'Video conference'} is in progress
+            </Text>
+          </View>
+
+          {/* Participant Count */}
+          <View style={z.lobbyParticipantRow}>
+            <Ionicons name="people" size={16} color={Colors.textLight} />
+            <Text style={z.lobbyParticipantText}>
+              {participantCount} participant{participantCount !== 1 ? 's' : ''} in meeting
+            </Text>
+            <TouchableOpacity onPress={() => setShowParticipants(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={{ color: Colors.highlight, fontSize: FontSize.sm, fontWeight: FontWeight.medium as any }}>View</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Join Buttons */}
+          <View style={z.lobbyJoinRow}>
+            {meeting.meeting_type !== 'audio' && (
               <TouchableOpacity
-                style={z.controlItem}
-                onPress={() => {
-                  if (showVideo) handleLeaveMeeting();
-                  else handleJoinMeeting(meeting.meeting_type === 'audio' ? 'audio' : 'video');
-                }}
+                style={z.lobbyJoinVideoBtn}
+                onPress={() => handleJoinMeeting('video')}
                 disabled={joinLoading}
                 activeOpacity={0.7}
               >
-                <View style={[z.controlIcon, showVideo ? z.controlIconActive : z.controlIconOff]}>
-                  {joinLoading ? (
-                    <ActivityIndicator size="small" color="#FFF" />
-                  ) : (
-                    <Ionicons name={showVideo ? 'videocam' : 'videocam-off-outline' as any} size={22} color={showVideo ? '#FFF' : Colors.textLight} />
-                  )}
-                </View>
-                <Text style={[z.controlText, showVideo && { color: Colors.highlight }]}>Video</Text>
+                {joinLoading ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <>
+                    <Ionicons name="videocam" size={22} color="#FFF" />
+                    <Text style={z.lobbyJoinBtnText}>Join with Video</Text>
+                  </>
+                )}
               </TouchableOpacity>
-
-              {/* Audio / Translation Mic */}
-              <TouchableOpacity
-                style={z.controlItem}
-                onPress={() => {
-                  if (!meeting.translation_enabled) {
-                    showAlert('Enable Translation', 'Ask an admin to enable Live Translation in Meeting Services to use the microphone.');
-                    return;
-                  }
-                  if (translationListening) {
-                    translationRef.current?.stopListening();
-                    setTranslationListening(false);
-                  } else {
-                    translationRef.current?.startListening();
-                    setTranslationListening(true);
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={[z.controlIcon, translationListening ? z.controlIconMic : z.controlIconOff]}>
-                  <Ionicons name={translationListening ? 'mic' : 'mic-off'} size={22} color={translationListening ? '#FFF' : Colors.textLight} />
-                </View>
-                <Text style={[z.controlText, translationListening && { color: '#10B981' }]}>Audio</Text>
-              </TouchableOpacity>
-
-              {/* Voice Recording */}
-              <TouchableOpacity
-                style={z.controlItem}
-                onPress={() => {
-                  if (!isAdmin || !meeting.ai_enabled) {
-                    showAlert('Recording', 'Voice recording requires AI Minutes to be enabled by an admin.');
-                    return;
-                  }
-                  if (isRecording) stopRecording();
-                  else if (recordingUri) uploadRecording();
-                  else startRecording();
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={[z.controlIcon, isRecording ? z.controlIconRec : recordingUri ? z.controlIconReady : z.controlIconOff]}>
-                  {uploading ? (
-                    <ActivityIndicator size="small" color="#FFF" />
-                  ) : (
-                    <Ionicons
-                      name={isRecording ? 'stop-circle' : recordingUri ? 'cloud-upload' : 'radio-button-on'}
-                      size={22}
-                      color={isRecording ? '#FFF' : recordingUri ? '#FFF' : Colors.textLight}
-                    />
-                  )}
-                </View>
-                <Text style={[z.controlText, isRecording && { color: Colors.error }]}>
-                  {isRecording ? formatDuration(recordingDuration) : recordingUri ? 'Upload' : 'Record'}
-                </Text>
-              </TouchableOpacity>
-
-              {/* Language Selection */}
-              <TouchableOpacity
-                style={z.controlItem}
-                onPress={() => {
-                  if (!meeting.translation_enabled) {
-                    showAlert('Translation Off', 'Ask an admin to enable Live Translation in Meeting Services.');
-                    return;
-                  }
-                  setShowLangPicker(!showLangPicker);
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={[z.controlIcon, showLangPicker ? z.controlIconActive : z.controlIconLang]}>
-                  <Text style={{ fontSize: 20 }}>{getLanguageFlag(translationLang)}</Text>
-                </View>
-                <Text style={z.controlText} numberOfLines={1}>
-                  {getLanguageName(translationLang)?.slice(0, 6) || 'Lang'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Secondary Actions */}
-            <View style={z.controlSecondary}>
-              <TouchableOpacity
-                style={[z.controlSecBtn, voiceToVoice && { backgroundColor: 'rgba(52, 211, 153, 0.15)', borderColor: '#10B981' }]}
-                onPress={() => {
-                  const next = !voiceToVoice;
-                  setVoiceToVoice(next);
-                  translationRef.current?.setAutoTTS(next);
-                }}
-              >
-                <Ionicons name={voiceToVoice ? 'volume-high' : 'volume-mute'} size={14} color={voiceToVoice ? '#10B981' : Colors.textLight} />
-                <Text style={[z.controlSecText, voiceToVoice && { color: '#10B981' }]}>Voice-to-Voice</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={z.controlSecBtn} onPress={handleMarkAttendance} disabled={actionLoading}>
-                <Ionicons name="hand-left" size={14} color={Colors.highlight} />
-                <Text style={z.controlSecText}>Attendance</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={z.controlSecBtn} onPress={() => setShowParticipants(true)}>
-                <Ionicons name="people" size={14} color={Colors.highlight} />
-                <Text style={z.controlSecText}>Participants ({participantCount})</Text>
-              </TouchableOpacity>
-              {showVideo && (
+            )}
+            <TouchableOpacity
+              style={z.lobbyJoinAudioBtn}
+              onPress={() => handleJoinMeeting('audio')}
+              disabled={joinLoading}
+              activeOpacity={0.7}
+            >
+              {joinLoading ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
                 <>
-                  <TouchableOpacity style={[z.controlSecBtn, handRaised && { backgroundColor: Colors.highlightSubtle }]} onPress={handleRaiseHand}>
-                    <Text style={{ fontSize: 14 }}>✋</Text>
-                    <Text style={z.controlSecText}>{handRaised ? 'Lower' : 'Raise'}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[z.controlSecBtn, { borderColor: Colors.error }]} onPress={handleLeaveMeeting}>
-                    <Ionicons name="call" size={14} color={Colors.error} style={{ transform: [{ rotate: '135deg' }] }} />
-                    <Text style={[z.controlSecText, { color: Colors.error }]}>Leave</Text>
-                  </TouchableOpacity>
+                  <Ionicons name="mic" size={22} color="#FFF" />
+                  <Text style={z.lobbyJoinBtnText}>Join with Audio</Text>
                 </>
               )}
-            </View>
-          </Card>
+            </TouchableOpacity>
+          </View>
 
-          {/* Language Picker Dropdown (Searchable, 100+ languages) */}
-          {showLangPicker && (
-            <Card style={z.langPickerCard} variant="elevated">
-              <View style={z.langPickerHeader}>
-                <Ionicons name="language" size={18} color={Colors.highlight} />
-                <Text style={z.langPickerTitle}>Select Language</Text>
-                <TouchableOpacity onPress={() => { setShowLangPicker(false); setLangPickerSearch(''); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Ionicons name="close" size={20} color={Colors.textLight} />
-                </TouchableOpacity>
-              </View>
-
-              {/* Search input */}
-              <View style={z.langSearchWrap}>
-                <Ionicons name="search" size={14} color={Colors.textLight} style={{ marginRight: 6 }} />
-                <TextInput
-                  style={z.langSearchInput}
-                  placeholder="Search language..."
-                  placeholderTextColor={Colors.textLight}
-                  value={langPickerSearch}
-                  onChangeText={setLangPickerSearch}
-                  autoCorrect={false}
-                  autoCapitalize="none"
-                />
-                {langPickerSearch.length > 0 && (
-                  <TouchableOpacity onPress={() => setLangPickerSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Ionicons name="close-circle" size={14} color={Colors.textLight} />
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator keyboardShouldPersistTaps="handled">
-                {filteredPickerLangs.length === 0 && (
-                  <Text style={{ color: Colors.textLight, fontSize: FontSize.xs, textAlign: 'center', paddingVertical: Spacing.md }}>
-                    No languages match "{langPickerSearch}"
-                  </Text>
-                )}
-                {filteredPickerLangs.map((lang) => {
-                  const isActive = translationLang === lang.code;
-                  return (
-                    <TouchableOpacity
-                      key={lang.code}
-                      style={[z.langPickerItem, isActive && z.langPickerItemActive]}
-                      onPress={() => {
-                        setTranslationLang(lang.code);
-                        translationRef.current?.selectLanguage(lang.code);
-                        setShowLangPicker(false);
-                        setLangPickerSearch('');
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={{ fontSize: 18 }}>{lang.flag || '🌐'}</Text>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[z.langPickerName, isActive && { color: Colors.highlight }]}>{lang.name}</Text>
-                        {lang.nativeName !== lang.name && (
-                          <Text style={{ color: Colors.textLight, fontSize: FontSize.xs - 1 }}>{lang.nativeName}</Text>
-                        )}
-                      </View>
-                      {isTtsSupported(lang.code) ? (
-                        <Ionicons name="volume-medium-outline" size={12} color={Colors.textLight} style={{ marginRight: 4 }} />
-                      ) : (
-                        <Ionicons name="document-text-outline" size={12} color={Colors.textLight} style={{ marginRight: 4 }} />
-                      )}
-                      {isActive && <Ionicons name="checkmark-circle" size={16} color={Colors.highlight} />}
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </Card>
-          )}
-
-          {/* Recording Status (ready to upload) */}
-          {recordingUri && !isRecording && (
-            <Card style={z.recordStatusCard} variant="elevated">
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
-                <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
-                <Text style={{ color: Colors.textWhite, fontSize: FontSize.sm, flex: 1 }}>
-                  Recording ready ({formatDuration(recordingDuration)})
-                </Text>
-                <TouchableOpacity style={z.uploadSmBtn} onPress={uploadRecording} disabled={uploading}>
-                  {uploading ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="cloud-upload" size={18} color="#FFF" />}
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => { setRecordingUri(null); setRecordingDuration(0); }}>
-                  <Ionicons name="trash-outline" size={18} color={Colors.error} />
-                </TouchableOpacity>
-              </View>
-              {meeting.audio_storage_url && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, marginTop: Spacing.xs }}>
-                  <Ionicons name="checkmark-done-circle" size={14} color={Colors.success} />
-                  <Text style={{ color: Colors.success, fontSize: FontSize.xs }}>Audio previously uploaded</Text>
-                </View>
-              )}
-            </Card>
-          )}
-        </>
-      )}
-
-      {/* ═══ FULL-SCREEN MEETING ROOM (LiveKit SDK) ═══════ */}
-      {showVideo && joinConfig && (
-        <MeetingRoom
-          meetingId={meetingId!}
-          meeting={meeting}
-          joinConfig={{
-            url: joinConfig.url,
-            token: joinConfig.token,
-            roomName: joinConfig.roomName,
-            meetingType: joinConfig.meetingType || (meeting.meeting_type === 'audio' ? 'audio' : 'video'),
-          }}
-          userId={userId!}
-          userName={userName}
-          isAdmin={!!isAdmin}
-          joinType={videoEnabled ? 'video' : 'audio'}
-          translationEnabled={!!meeting.translation_enabled}
-          transcripts={transcripts}
-          transcriptsLoading={transcriptsLoading}
-          onRefreshTranscripts={loadTranscripts}
-          minutes={minutes}
-          minutesLoading={minutesLoading}
-          generateLoading={generateLoading}
-          onRefreshMinutes={loadMinutes}
-          onGenerateMinutes={handleGenerateMinutes}
-          elapsedSeconds={elapsedSeconds}
-          socketParticipants={liveParticipants}
-          isRecordingFromSocket={!!meetingStore.isRecording}
-          onLeave={handleLeaveMeeting}
-          onEnd={isAdmin ? handleEnd : undefined}
-        />
+          {/* Quick Actions */}
+          <View style={z.lobbyQuickActions}>
+            <TouchableOpacity style={z.lobbyQuickBtn} onPress={handleMarkAttendance} disabled={actionLoading}>
+              <Ionicons name="hand-left" size={16} color={Colors.highlight} />
+              <Text style={z.lobbyQuickText}>Attendance</Text>
+            </TouchableOpacity>
+          </View>
+        </Card>
       )}
 
       {/* ═══ START / CANCEL (SCHEDULED — ADMIN) ══════════════ */}
@@ -1860,6 +1713,104 @@ const z = StyleSheet.create({
   liveActionsRow: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md, paddingTop: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.accent },
   liveActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: Spacing.sm, borderRadius: BorderRadius.md, backgroundColor: Colors.primaryLight },
   liveActionText: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+
+  // ── Pre-Join Lobby ──────────────────────────────────────
+  lobbyCard: { marginHorizontal: Spacing.sm, marginBottom: Spacing.sm, padding: 0, overflow: 'hidden' },
+  lobbyPreview: {
+    alignItems: 'center',
+    paddingVertical: Spacing.xl * 2,
+    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.accent,
+  },
+  lobbyAvatarCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: 'rgba(129, 140, 248, 0.1)',
+    borderWidth: 2,
+    borderColor: 'rgba(129, 140, 248, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  lobbyTitle: {
+    fontSize: FontSize.xl,
+    fontWeight: FontWeight.bold,
+    color: Colors.textWhite,
+    marginBottom: Spacing.xs,
+  },
+  lobbySubtitle: {
+    fontSize: FontSize.md,
+    color: Colors.textLight,
+  },
+  lobbyParticipantRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.accent,
+  },
+  lobbyParticipantText: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    flex: 1,
+  },
+  lobbyJoinRow: {
+    gap: Spacing.sm,
+    padding: Spacing.md,
+  },
+  lobbyJoinVideoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: 16,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: '#6366F1',
+    ...Shadow.md,
+  },
+  lobbyJoinAudioBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: 16,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: '#10B981',
+    ...Shadow.md,
+  },
+  lobbyJoinBtnText: {
+    color: '#FFF',
+    fontSize: FontSize.lg,
+    fontWeight: FontWeight.semibold,
+  },
+  lobbyQuickActions: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    paddingBottom: Spacing.md,
+  },
+  lobbyQuickBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primaryLight,
+    borderWidth: 0.5,
+    borderColor: Colors.accent,
+  },
+  lobbyQuickText: {
+    fontSize: FontSize.sm,
+    color: Colors.textWhite,
+    fontWeight: FontWeight.medium as any,
+  },
 
   // ── Action Area ─────────────────────────────────────────
   actionArea: { marginHorizontal: Spacing.sm, marginBottom: Spacing.xs, gap: Spacing.sm },
