@@ -165,6 +165,18 @@ export function MeetingRoom(props: MeetingRoomProps) {
     };
   }, [joinConfig?.url, joinConfig?.token]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Graceful exit on tab close / page refresh ───────────
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const handleBeforeUnload = () => {
+      // Best-effort cleanup (synchronous only)
+      lk.disconnect();
+      socketClient.leaveMeeting(meetingId);
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [meetingId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Toggle sidebar panel ────────────────────────────────
   const handleToggleSidebar = useCallback((panel?: string) => {
     if (panel) {
