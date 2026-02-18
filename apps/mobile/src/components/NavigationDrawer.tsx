@@ -367,7 +367,6 @@ const styles = StyleSheet.create({
     height: '100%',
     width: DRAWER_WIDTH,
     maxWidth: '85%',
-    flex: 1,
   },
 
   // ── Drawer container ──────────────────────────────────

@@ -12,7 +12,7 @@ import {
   RefreshControl,
   Modal,
   FlatList,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 
 import { showAlert } from '../../src/utils/alert';
@@ -147,7 +147,7 @@ export default function HomeScreen() {
       // Load members count
       try {
         const memberRes = await api.orgs.listMembers(currentOrgId, { limit: 1 });
-        setMemberCount(memberRes.data?.data?.total || memberRes.data?.data?.length || 0);
+        setMemberCount(memberRes.data?.meta?.total || memberRes.data?.data?.length || 0);
       } catch (_) {}
 
       // Load pending bank transfers (admins only)
@@ -693,8 +693,8 @@ export default function HomeScreen() {
             >
               <View style={[styles.activityDot, { backgroundColor: '#8B5CF6' }]} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.activityTitle}>{poll.question || poll.title}</Text>
-                <Text style={styles.activitySub}>
+                <Text style={styles.activityTitle} numberOfLines={1}>{poll.question || poll.title}</Text>
+                <Text style={styles.activitySub} numberOfLines={1}>
                   {poll.totalVotes || 0} votes {String.fromCodePoint(0x00B7)} {poll.options?.length || 0} options
                 </Text>
               </View>
@@ -797,9 +797,9 @@ export default function HomeScreen() {
                     />
                   </View>
                 </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
-                  <Text style={styles.finCardLabel}>${raised.toFixed(0)} raised</Text>
-                  <Text style={styles.finCardLabel}>Goal: ${goal.toFixed(0)}</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, flexWrap: 'wrap' }}>
+                  <Text style={[styles.finCardLabel, { flexShrink: 1 }]}>${raised.toFixed(0)} raised</Text>
+                  <Text style={[styles.finCardLabel, { flexShrink: 1 }]}>Goal: ${goal.toFixed(0)}</Text>
                 </View>
               </Card>
             );
@@ -938,7 +938,7 @@ function AdminActionCard({
   color: string;
   onPress: () => void;
 }) {
-  const screenW = Dimensions.get('window').width;
+  const { width: screenW } = useWindowDimensions();
   const cols = screenW >= 1024 ? 6 : screenW >= 768 ? 5 : 4;
   const cardW = (screenW - Spacing.md * 2 - Spacing.sm * (cols - 1)) / cols;
   return (

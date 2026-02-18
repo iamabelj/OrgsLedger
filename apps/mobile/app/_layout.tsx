@@ -37,7 +37,7 @@ function AppShell() {
   const { drawerWidth, isDesktop } = useDrawer();
 
   return (
-    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: Colors.background }}>
+    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: Colors.background, overflow: 'hidden' }}>
       {/* Sidebar takes fixed width on desktop, or is overlay on mobile */}
       <NavigationDrawer />
 

@@ -607,7 +607,9 @@ const styles = StyleSheet.create({
   },
   heroStats: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
+    gap: Spacing.sm,
   },
   heroStat: {
     flex: 1,
@@ -739,6 +741,7 @@ const styles = StyleSheet.create({
   dueTop: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
   },
   dueTitle: {
     color: Colors.textWhite,
@@ -754,6 +757,7 @@ const styles = StyleSheet.create({
     fontSize: FontSize.lg,
     fontWeight: FontWeight.bold as any,
     color: Colors.highlight,
+    flexShrink: 1,
   },
   recurringBadge: {
     flexDirection: 'row',
