@@ -43,6 +43,16 @@ interface ProcessedMinutes {
   }>;
 }
 
+// Singleton OpenAI client (avoid re-instantiating per call)
+let openaiSingleton: any = null;
+function getOpenAI() {
+  if (!openaiSingleton && config.ai.openaiApiKey) {
+    const OpenAI = require('openai').default;
+    openaiSingleton = new OpenAI({ apiKey: config.ai.openaiApiKey });
+  }
+  return openaiSingleton;
+}
+
 export class AIService {
   private io: any;
 
@@ -59,6 +69,7 @@ export class AIService {
    */
   async processMinutes(meetingId: string, organizationId: string): Promise<void> {
     const startTime = Date.now();
+    let meetingDurationMinutes = 0; // Track for refund on failure
 
     try {
       logger.info(`Starting AI minutes processing for meeting ${meetingId}`);
@@ -75,7 +86,7 @@ export class AIService {
       }
 
       // Calculate meeting duration in minutes (actual, not rounded up to hours)
-      const meetingDurationMinutes = meeting.actual_start && meeting.actual_end
+      meetingDurationMinutes = meeting.actual_start && meeting.actual_end
         ? Math.max(1, Math.ceil(
             (new Date(meeting.actual_end).getTime() - new Date(meeting.actual_start).getTime()) /
               (1000 * 60)
@@ -161,9 +172,13 @@ export class AIService {
       }));
       await db('notifications').insert(notifications);
 
-      // Emit socket event
+      // Emit socket event to both org and meeting rooms
       if (this.io) {
         this.io.to(`org:${organizationId}`).emit('meeting:minutes:ready', {
+          meetingId,
+          title: meeting.title,
+        });
+        this.io.to(`meeting:${meetingId}`).emit('meeting:minutes:ready', {
           meetingId,
           title: meeting.title,
         });
@@ -212,6 +227,23 @@ export class AIService {
     } catch (err: any) {
       logger.error(`AI minutes processing failed for meeting ${meetingId}`, err);
 
+      // Refund wallet on processing failure (credits were deducted upfront)
+      try {
+        const minutesRow = await db('meeting_minutes').where({ meeting_id: meetingId }).select('ai_credits_used').first();
+        const deductedMinutes = minutesRow?.ai_credits_used || meetingDurationMinutes;
+        if (deductedMinutes > 0) {
+          // Negative deduction = refund
+          await deductAiWallet(
+            organizationId,
+            -deductedMinutes,
+            `Refund: AI minutes failed for meeting ${meetingId}`
+          );
+          logger.info(`[AI] Wallet refunded ${deductedMinutes} minutes for failed processing`, { meetingId });
+        }
+      } catch (refundErr) {
+        logger.error('[AI] Failed to refund wallet after processing failure', refundErr);
+      }
+
       await db('meeting_minutes')
         .where({ meeting_id: meetingId })
         .update({
@@ -220,7 +252,12 @@ export class AIService {
         });
 
       if (this.io) {
+        // Emit to both org and meeting rooms for consistency
         this.io.to(`org:${organizationId}`).emit('meeting:minutes:failed', {
+          meetingId,
+          error: err.message,
+        });
+        this.io.to(`meeting:${meetingId}`).emit('meeting:minutes:failed', {
           meetingId,
           error: err.message,
         });
@@ -253,15 +290,15 @@ export class AIService {
         const data = await res.json() as any;
         return data.transcript || [];
       } catch (err) {
-        logger.error('AI Gateway transcription failed, falling back to mock', err);
-        return this.getMockTranscript();
+        logger.error('AI Gateway transcription failed', err);
+        throw new Error('Audio transcription failed via AI Gateway');
       }
     }
 
     // ── Direct mode: call Google API directly ──────────
     if (!config.ai.googleCredentials) {
-      logger.warn('Google credentials not configured, returning mock transcript');
-      return this.getMockTranscript();
+      logger.warn('Google credentials not configured');
+      throw new Error('No transcription service configured (no AI proxy, no Google credentials)');
     }
 
     try {
@@ -273,15 +310,21 @@ export class AIService {
         config: {
           encoding: 'LINEAR16' as any,
           sampleRateHertz: 16000,
-          // Do NOT force languageCode — let Speech-to-Text auto-detect.
-          // This enables 100+ language support including African,
-          // Asian, European, Arabic dialects, and mixed speech.
-          languageCode: 'auto',
+          // Google STT requires a valid BCP-47 code; 'auto' is not valid.
+          // Use 'en-US' as primary with broad alternativeLanguageCodes for
+          // 100+ language auto-detection.
+          languageCode: 'en-US',
+          alternativeLanguageCodes: [
+            'fr-FR', 'es-ES', 'de-DE', 'pt-BR', 'it-IT', 'nl-NL',
+            'ar-SA', 'zh-CN', 'ja-JP', 'ko-KR', 'hi-IN', 'ru-RU',
+            'tr-TR', 'pl-PL', 'sv-SE', 'da-DK', 'fi-FI', 'no-NO',
+            'uk-UA', 'ro-RO', 'cs-CZ', 'el-GR', 'he-IL', 'th-TH',
+            'vi-VN', 'id-ID', 'ms-MY', 'sw-KE', 'af-ZA', 'zu-ZA',
+          ],
           enableAutomaticPunctuation: true,
           enableSpeakerDiarization: true,
           diarizationSpeakerCount: 10,
           model: 'latest_long',
-          // Whisper-style: no alternative language codes needed with auto-detect
         },
         audio: {
           uri: audioUrl, // GCS URI like gs://bucket/file.wav
@@ -322,8 +365,8 @@ export class AIService {
 
       return segments;
     } catch (err) {
-      logger.error('Google Speech-to-Text failed, falling back to mock', err);
-      return this.getMockTranscript();
+      logger.error('Google Speech-to-Text failed', err);
+      throw new Error('Audio transcription failed via Google Speech-to-Text');
     }
   }
 
@@ -381,20 +424,19 @@ export class AIService {
           contributions: data.contributions || [],
         };
       } catch (err) {
-        logger.error('AI Gateway summarization failed, falling back to mock', err);
-        return this.getMockMinutes(transcript);
+        logger.error('AI Gateway summarization failed', err);
+        throw new Error('Minutes generation failed via AI Gateway');
       }
     }
 
     // ── Direct mode: call OpenAI directly ──────────────
-    if (!config.ai.openaiApiKey) {
-      logger.warn('OpenAI API key not configured, returning mock minutes');
-      return this.getMockMinutes(transcript);
+    const openai = getOpenAI();
+    if (!openai) {
+      logger.warn('OpenAI API key not configured');
+      throw new Error('OpenAI API key not configured — cannot generate minutes');
     }
 
     try {
-      const OpenAI = (await import('openai')).default;
-      const openai = new OpenAI({ apiKey: config.ai.openaiApiKey });
 
       const transcriptText = transcript
         .map((s) => `[${s.speakerName}] (${this.formatTime(s.startTime)}): ${s.text}`)
@@ -452,8 +494,8 @@ Be thorough and accurate. Identify all decisions, motions, and action items.`;
         contributions: parsed.contributions || [],
       };
     } catch (err) {
-      logger.error('OpenAI processing failed, falling back to mock', err);
-      return this.getMockMinutes(transcript);
+      logger.error('OpenAI processing failed', err);
+      throw new Error('Minutes generation failed via OpenAI');
     }
   }
 
@@ -498,13 +540,14 @@ Be thorough and accurate. Identify all decisions, motions, and action items.`;
         return this.getMockTranscript();
       }
 
-      // Convert to TranscriptSegment format
-      let prevEndTime = 0;
-      return rows.map((row: any) => {
-        const startTime = prevEndTime;
-        const estimatedDuration = Math.max(3, Math.ceil(row.original_text.length / 15)); // ~15 chars/sec speech
+      // Convert to TranscriptSegment format using real spoken_at timestamps
+      const baseTime = rows[0]?.spoken_at ? Number(rows[0].spoken_at) : 0;
+      return rows.map((row: any, idx: number) => {
+        const spokenAt = row.spoken_at ? Number(row.spoken_at) : 0;
+        // Use real timestamps relative to first segment (convert ms → seconds)
+        const startTime = baseTime ? Math.max(0, (spokenAt - baseTime) / 1000) : idx * 5;
+        const estimatedDuration = Math.max(3, Math.ceil(row.original_text.length / 15));
         const endTime = startTime + estimatedDuration;
-        prevEndTime = endTime;
         return {
           speakerId: row.speaker_id,
           speakerName: row.speaker_name,

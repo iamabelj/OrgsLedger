@@ -816,14 +816,16 @@ router.post(
       // Supports both audio file AND live transcripts
       if (meeting.ai_enabled) {
         const hasAudio = !!meeting.audio_storage_url;
-        const hasTranscriptTable = await db.schema.hasTable('meeting_transcripts').catch(() => false);
         let hasLiveTranscripts = false;
-        if (hasTranscriptTable) {
+        try {
           const transcriptCount = await db('meeting_transcripts')
             .where({ meeting_id: req.params.meetingId })
             .count('id as count')
             .first();
           hasLiveTranscripts = parseInt(transcriptCount?.count as string) > 0;
+        } catch {
+          // Table may not exist yet — that's fine
+          hasLiveTranscripts = false;
         }
 
         logger.info('[MEETING_END] AI minutes check', {
@@ -834,17 +836,15 @@ router.post(
         });
 
         if (hasAudio || hasLiveTranscripts) {
-          // Notify that processing is starting
+          // Notify that processing is starting (org room only —
+          // meeting room was already force-disconnected above)
           if (io) {
             io.to(`org:${req.params.orgId}`).emit('meeting:minutes:processing', {
               meetingId: req.params.meetingId,
             });
-            io.to(`meeting:${req.params.meetingId}`).emit('meeting:minutes:processing', {
-              meetingId: req.params.meetingId,
-            });
           }
 
-          // Create pending minutes record
+          // Create pending minutes record (don't overwrite already-completed minutes)
           const existing = await db('meeting_minutes').where({ meeting_id: req.params.meetingId }).first();
           if (!existing) {
             await db('meeting_minutes').insert({
@@ -852,8 +852,15 @@ router.post(
               organization_id: req.params.orgId,
               status: 'processing',
             });
-          } else {
+          } else if (existing.status !== 'completed') {
+            // Only reset to processing if not already completed (prevent data loss on double-end)
             await db('meeting_minutes').where({ meeting_id: req.params.meetingId }).update({ status: 'processing', error_message: null });
+          } else {
+            logger.info('[MEETING_END] Minutes already completed — skipping re-generation', {
+              meetingId: req.params.meetingId,
+            });
+            // Skip processing — minutes already exist
+            hasLiveTranscripts = false;
           }
 
           // Queue AI processing (handled by AI service)
@@ -1450,6 +1457,23 @@ router.post(
       const existing = await db('meeting_minutes').where({ meeting_id: meetingId }).first();
       if (existing?.status === 'completed') {
         res.status(400).json({ success: false, error: 'Minutes have already been generated' });
+        return;
+      }
+
+      // Verify that transcripts or audio actually exist before triggering
+      const hasAudio = !!meeting.audio_storage_url;
+      let hasTranscripts = false;
+      try {
+        const transcriptCount = await db('meeting_transcripts')
+          .where({ meeting_id: meetingId })
+          .count('id as count')
+          .first();
+        hasTranscripts = parseInt(transcriptCount?.count as string) > 0;
+      } catch {
+        // Table may not exist
+      }
+      if (!hasAudio && !hasTranscripts) {
+        res.status(400).json({ success: false, error: 'No audio recording or transcripts available for this meeting' });
         return;
       }
 
