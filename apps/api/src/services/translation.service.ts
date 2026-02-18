@@ -8,7 +8,7 @@ import { config } from '../config';
 import { logger } from '../logger';
 import {
   getLanguageName,
-} from '../../../../packages/shared/src/languages';
+} from '@orgsledger/shared';
 
 // Re-export the shared language registry so existing imports still work
 export {
@@ -24,8 +24,8 @@ export {
   getBcp47,
   isRtl,
   getAllCodes,
-} from '../../../../packages/shared/src/languages';
-export type { Language, UserLanguagePreference } from '../../../../packages/shared/src/languages';
+} from '@orgsledger/shared';
+export type { Language, UserLanguagePreference } from '@orgsledger/shared';
 
 interface TranslationResult {
   translatedText: string;
