@@ -272,7 +272,7 @@ export default function CreateMeetingScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.aiLabel}>Enable Live Translation</Text>
             <Text style={styles.aiHint}>
-              Let members speak their language and hear others in theirs. Supports 26 languages.
+              Let members speak their language and hear others in theirs. Supports 100+ languages.
             </Text>
           </View>
           <Switch

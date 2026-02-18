@@ -372,4 +372,5 @@ export interface PaginatedRequest {
     sortOrder?: 'asc' | 'desc';
     search?: string;
 }
+export * from './languages';
 //# sourceMappingURL=index.d.ts.map

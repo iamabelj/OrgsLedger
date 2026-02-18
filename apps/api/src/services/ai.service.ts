@@ -273,12 +273,15 @@ export class AIService {
         config: {
           encoding: 'LINEAR16' as any,
           sampleRateHertz: 16000,
-          languageCode: 'en-US',
+          // Do NOT force languageCode — let Speech-to-Text auto-detect.
+          // This enables 100+ language support including African,
+          // Asian, European, Arabic dialects, and mixed speech.
+          languageCode: 'auto',
           enableAutomaticPunctuation: true,
           enableSpeakerDiarization: true,
           diarizationSpeakerCount: 10,
           model: 'latest_long',
-          alternativeLanguageCodes: ['es-ES', 'fr-FR', 'pt-BR', 'sw-KE'],
+          // Whisper-style: no alternative language codes needed with auto-detect
         },
         audio: {
           uri: audioUrl, // GCS URI like gs://bucket/file.wav

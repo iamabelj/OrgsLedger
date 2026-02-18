@@ -13,7 +13,7 @@ import { authenticate, loadMembership, requireRole, validate } from '../middlewa
 import { logger } from '../logger';
 import { sendPushToOrg } from '../services/push.service';
 import { config } from '../config';
-import { SUPPORTED_LANGUAGES, SPEECH_RECOGNITION_CODES, translateText } from '../services/translation.service';
+import { translateText, LANGUAGES, SPEECH_CODES, ALL_LANGUAGES } from '../services/translation.service';
 import { getAiWallet, getOrgSubscription } from '../services/subscription.service';
 import { generateRoomName, generateJitsiToken, buildJoinConfig } from '../services/jitsi.service';
 import { forceDisconnectMeeting } from '../socket';
@@ -1114,8 +1114,9 @@ router.get(
     res.json({
       success: true,
       data: {
-        languages: SUPPORTED_LANGUAGES,
-        speechCodes: SPEECH_RECOGNITION_CODES,
+        languages: LANGUAGES,
+        speechCodes: SPEECH_CODES,
+        allLanguages: ALL_LANGUAGES,
       },
     });
   }

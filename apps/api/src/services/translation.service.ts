@@ -1,79 +1,66 @@
 // ============================================================
-// OrgsLedger API — Translation Service
-// Google Cloud Translation API for real-time meeting translation
+// OrgsLedger API — Translation Service (GPT-powered)
+// Supports 100+ languages via OpenAI GPT-4o-mini.
+// Falls back to AI proxy → Google Translate → passthrough.
 // ============================================================
 
 import { config } from '../config';
 import { logger } from '../logger';
+import {
+  getLanguageName,
+} from '../../../../packages/shared/src/languages';
 
-// Supported languages with display names
-export const SUPPORTED_LANGUAGES: Record<string, string> = {
-  en: 'English',
-  es: 'Spanish',
-  fr: 'French',
-  pt: 'Portuguese',
-  ar: 'Arabic',
-  zh: 'Chinese (Simplified)',
-  hi: 'Hindi',
-  sw: 'Swahili',
-  yo: 'Yoruba',
-  ha: 'Hausa',
-  ig: 'Igbo',
-  am: 'Amharic',
-  de: 'German',
-  it: 'Italian',
-  ja: 'Japanese',
-  ko: 'Korean',
-  ru: 'Russian',
-  tr: 'Turkish',
-  id: 'Indonesian',
-  ms: 'Malay',
-  th: 'Thai',
-  vi: 'Vietnamese',
-  nl: 'Dutch',
-  pl: 'Polish',
-  uk: 'Ukrainian',
-  tw: 'Twi (Akan)',
-};
-
-// BCP-47 codes for Web Speech API recognition (more specific)
-export const SPEECH_RECOGNITION_CODES: Record<string, string> = {
-  en: 'en-US',
-  es: 'es-ES',
-  fr: 'fr-FR',
-  pt: 'pt-BR',
-  ar: 'ar-SA',
-  zh: 'zh-CN',
-  hi: 'hi-IN',
-  sw: 'sw-KE',
-  yo: 'yo-NG',
-  ha: 'ha-NG',
-  ig: 'ig-NG',
-  am: 'am-ET',
-  de: 'de-DE',
-  it: 'it-IT',
-  ja: 'ja-JP',
-  ko: 'ko-KR',
-  ru: 'ru-RU',
-  tr: 'tr-TR',
-  id: 'id-ID',
-  ms: 'ms-MY',
-  th: 'th-TH',
-  vi: 'vi-VN',
-  nl: 'nl-NL',
-  pl: 'pl-PL',
-  uk: 'uk-UA',
-  tw: 'ak-GH',
-};
+// Re-export the shared language registry so existing imports still work
+export {
+  LANGUAGES,
+  LANG_FLAGS,
+  SPEECH_CODES,
+  TTS_SUPPORTED,
+  isTtsSupported,
+  ALL_LANGUAGES,
+  getLanguage,
+  getLanguageName,
+  getLanguageFlag,
+  getBcp47,
+  isRtl,
+  getAllCodes,
+} from '../../../../packages/shared/src/languages';
+export type { Language, UserLanguagePreference } from '../../../../packages/shared/src/languages';
 
 interface TranslationResult {
   translatedText: string;
   detectedSourceLanguage?: string;
 }
 
+// ── Simple translation cache (per-process, auto-evicts) ────
+const translationCache = new Map<string, { text: string; ts: number }>();
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const CACHE_MAX = 2000;
+
+function getCached(key: string): string | null {
+  const entry = translationCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > CACHE_TTL_MS) {
+    translationCache.delete(key);
+    return null;
+  }
+  return entry.text;
+}
+
+function setCache(key: string, text: string) {
+  if (translationCache.size >= CACHE_MAX) {
+    // Evict oldest 25%
+    const entries = [...translationCache.entries()].sort((a, b) => a[1].ts - b[1].ts);
+    for (let i = 0; i < CACHE_MAX / 4; i++) {
+      translationCache.delete(entries[i][0]);
+    }
+  }
+  translationCache.set(key, { text, ts: Date.now() });
+}
+
 /**
- * Translate text using Google Cloud Translation API v2.
- * Falls back to the AI proxy if configured, then to Google directly.
+ * Translate text using GPT-4o-mini (primary) or fallback chain.
+ * Accepts ANY ISO language code — no pre-defined list required.
  */
 export async function translateText(
   text: string,
@@ -84,10 +71,21 @@ export async function translateText(
     return { translatedText: '' };
   }
 
-  // If source and target are the same, return as-is
+  // Same language → passthrough
   if (sourceLang && sourceLang === targetLang) {
     return { translatedText: text, detectedSourceLanguage: sourceLang };
   }
+
+  // ── Check cache ─────────────────────────────────────────
+  const cacheKey = `${sourceLang || 'auto'}:${targetLang}:${text.slice(0, 200)}`;
+  const cached = getCached(cacheKey);
+  if (cached) {
+    return { translatedText: cached, detectedSourceLanguage: sourceLang };
+  }
+
+  // Resolve human-readable language name for the GPT prompt
+  const targetName = getLanguageName(targetLang);
+  const sourceName = sourceLang ? getLanguageName(sourceLang) : null;
 
   // ── Try AI Proxy first ────────────────────────────────
   if (config.aiProxy.url && config.aiProxy.apiKey) {
@@ -103,17 +101,47 @@ export async function translateText(
 
       if (res.ok) {
         const data = (await res.json()) as any;
+        const translated = data.translatedText || text;
+        setCache(cacheKey, translated);
         return {
-          translatedText: data.translatedText || text,
+          translatedText: translated,
           detectedSourceLanguage: data.detectedSourceLanguage || sourceLang,
         };
       }
     } catch (err) {
-      logger.warn('AI proxy translation failed, falling back to Google direct', err);
+      logger.warn('AI proxy translation failed, falling back to GPT', err);
     }
   }
 
-  // ── Google Cloud Translation API v2 (REST, no SDK needed) ──
+  // ── GPT-4o-mini translation (100+ languages) ──────────
+  if (config.ai.openaiApiKey) {
+    try {
+      const OpenAI = (await import('openai')).default;
+      const openai = new OpenAI({ apiKey: config.ai.openaiApiKey });
+
+      const systemPrompt = sourceName
+        ? `You are a professional translator. Translate the following text from ${sourceName} to ${targetName}. Output ONLY the translated text, nothing else. Preserve tone, formality, and meaning exactly.`
+        : `You are a professional translator. Detect the source language and translate the following text to ${targetName}. Output ONLY the translated text, nothing else. Preserve tone, formality, and meaning exactly.`;
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: text },
+        ],
+        temperature: 0,
+        max_tokens: Math.max(256, text.length * 3),
+      });
+
+      const translated = response.choices[0]?.message?.content?.trim() || text;
+      setCache(cacheKey, translated);
+      return { translatedText: translated, detectedSourceLanguage: sourceLang };
+    } catch (err) {
+      logger.warn('GPT translation failed, falling back to Google Translate', err);
+    }
+  }
+
+  // ── Google Cloud Translation API v2 (fallback) ────────
   try {
     const credentialsPath = config.ai.googleCredentials;
     if (!credentialsPath) {
@@ -121,7 +149,6 @@ export async function translateText(
       return { translatedText: text };
     }
 
-    // Use the Google Auth Library to get an access token
     const { GoogleAuth } = await import('google-auth-library');
     const auth = new GoogleAuth({
       keyFilename: credentialsPath,
@@ -157,19 +184,22 @@ export async function translateText(
 
     const data = (await res.json()) as any;
     const translation = data.data?.translations?.[0];
+    const translated = translation?.translatedText || text;
+    setCache(cacheKey, translated);
 
     return {
-      translatedText: translation?.translatedText || text,
+      translatedText: translated,
       detectedSourceLanguage: translation?.detectedSourceLanguage || sourceLang,
     };
   } catch (err) {
-    logger.error('Google Translate API failed', err);
+    logger.error('Google Translate API also failed', err);
     return { translatedText: text };
   }
 }
 
 /**
  * Translate text to multiple target languages in one batch.
+ * Routes each language through translateText (with cache).
  * Returns a map of langCode → translatedText.
  */
 export async function translateToMultiple(

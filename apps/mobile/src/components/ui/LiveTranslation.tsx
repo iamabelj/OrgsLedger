@@ -1,10 +1,10 @@
 // ============================================================
 // OrgsLedger — Live Voice Translation Component
 // Real-time speech recognition + multi-language translation
-// Uses Web Speech API + Socket.IO + Google Translate
+// 100+ languages via dynamic ISO registry + GPT translation
 // ============================================================
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   Platform,
   Animated,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
@@ -22,53 +23,23 @@ import { api } from '../../api/client';
 import { showAlert } from '../../utils/alert';
 import { useMeetingStore } from '../../stores/meeting.store';
 
-// ── Language Configuration ────────────────────────────────
-export const LANGUAGES: Record<string, string> = {
-  en: 'English',
-  es: 'Spanish',
-  fr: 'French',
-  pt: 'Portuguese',
-  ar: 'Arabic',
-  zh: 'Chinese',
-  hi: 'Hindi',
-  sw: 'Swahili',
-  yo: 'Yoruba',
-  ha: 'Hausa',
-  ig: 'Igbo',
-  am: 'Amharic',
-  de: 'German',
-  it: 'Italian',
-  ja: 'Japanese',
-  ko: 'Korean',
-  ru: 'Russian',
-  tr: 'Turkish',
-  id: 'Indonesian',
-  ms: 'Malay',
-  th: 'Thai',
-  vi: 'Vietnamese',
-  nl: 'Dutch',
-  pl: 'Polish',
-  uk: 'Ukrainian',
-  tw: 'Twi',
-};
+// ── Dynamic Language Registry (100+ languages) ────────────
+import {
+  ALL_LANGUAGES,
+  LANGUAGES,
+  LANG_FLAGS,
+  SPEECH_CODES,
+  TTS_SUPPORTED,
+  isTtsSupported,
+  getLanguageFlag,
+  getBcp47,
+  getLanguageName,
+  isRtl,
+} from '../../utils/languages';
+import type { Language } from '../../utils/languages';
 
-const SPEECH_CODES: Record<string, string> = {
-  en: 'en-US', es: 'es-ES', fr: 'fr-FR', pt: 'pt-BR', ar: 'ar-SA',
-  zh: 'zh-CN', hi: 'hi-IN', sw: 'sw-KE', yo: 'yo-NG', ha: 'ha-NG',
-  ig: 'ig-NG', am: 'am-ET', de: 'de-DE', it: 'it-IT', ja: 'ja-JP',
-  ko: 'ko-KR', ru: 'ru-RU', tr: 'tr-TR', id: 'id-ID', ms: 'ms-MY',
-  th: 'th-TH', vi: 'vi-VN', nl: 'nl-NL', pl: 'pl-PL', uk: 'uk-UA',
-  tw: 'ak-GH',
-};
-
-export const LANG_FLAGS: Record<string, string> = {
-  en: '🇬🇧', es: '🇪🇸', fr: '🇫🇷', pt: '🇧🇷', ar: '🇸🇦',
-  zh: '🇨🇳', hi: '🇮🇳', sw: '🇰🇪', yo: '🇳🇬', ha: '🇳🇬',
-  ig: '🇳🇬', am: '🇪🇹', de: '🇩🇪', it: '🇮🇹', ja: '🇯🇵',
-  ko: '🇰🇷', ru: '🇷🇺', tr: '🇹🇷', id: '🇮🇩', ms: '🇲🇾',
-  th: '🇹🇭', vi: '🇻🇳', nl: '🇳🇱', pl: '🇵🇱', uk: '🇺🇦',
-  tw: '🇬🇭',
-};
+// Re-export for backward compat with other files
+export { LANGUAGES, LANG_FLAGS };
 
 interface TranslationEntry {
   id: string;
@@ -114,6 +85,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
   const [speakEnabled, setSpeakEnabled] = useState(autoTTS);
   const [isExpanded, setIsExpanded] = useState(true);
   const [ttsVolume, setTtsVolume] = useState(0.8); // Voice-to-voice volume control
+  const [langSearch, setLangSearch] = useState(''); // Searchable language picker
 
   // Zustand store sync — keep centralized state updated
   const storeSetMyLanguage = useMeetingStore((s) => s.setMyLanguage);
@@ -182,9 +154,9 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
       storeSetInterimText('');
 
       // Text-to-speech for received translations (not own speech)
-      // Voice-to-voice: auto-play TTS when enabled (either per-user or via ttsEnabled flag)
+      // Voice-to-voice: only when server says TTS is available for this user's language
       if (data.speakerId !== userId) {
-        const shouldSpeak = speakEnabledRef.current || data.ttsEnabled;
+        const shouldSpeak = speakEnabledRef.current && data.ttsAvailable;
         if (shouldSpeak && translated) {
           speak(translated, myLang);
         }
@@ -219,7 +191,13 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
     setMyLanguage(lang);
     setShowLanguagePicker(false);
     setHasChosenLanguage(true);
-    socketClient.setTranslationLanguage(meetingId, lang);
+    setLangSearch('');
+    // Send receiveVoice preference along with language
+    socketClient.emit('translation:set-language', {
+      meetingId,
+      language: lang,
+      receiveVoice: speakEnabledRef.current,
+    });
     storeSetMyLanguage(lang);
   }, [meetingId]);
 
@@ -244,7 +222,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = SPEECH_CODES[myLanguage] || 'en-US';
+    recognition.lang = getBcp47(myLanguage) || 'en-US';
     recognition.maxAlternatives = 1;
 
     recognition.onresult = (event: any) => {
@@ -319,7 +297,13 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
 
   // ── Text-to-Speech (Web + Android + iOS) — Voice-to-Voice ──
   const speak = useCallback((text: string, lang: string) => {
-    const langCode = SPEECH_CODES[lang] || 'en-US';
+    // Check TTS support before attempting
+    if (!isTtsSupported(lang)) {
+      // Language has no TTS voice — text-only translation, skip voice
+      return;
+    }
+
+    const langCode = getBcp47(lang) || 'en-US';
     try {
       if (Platform.OS === 'web') {
         // Cancel any queued speech to avoid overlap
@@ -358,8 +342,20 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
     };
   }, []);
 
-  const selectedFlag = LANG_FLAGS[myLanguage] || '🌐';
-  const selectedName = LANGUAGES[myLanguage] || 'English';
+  const selectedFlag = getLanguageFlag(myLanguage);
+  const selectedName = getLanguageName(myLanguage);
+
+  // ── Filtered language list (searchable, memoized) ──────
+  const filteredLanguages = useMemo(() => {
+    if (!langSearch.trim()) return ALL_LANGUAGES;
+    const q = langSearch.toLowerCase().trim();
+    return ALL_LANGUAGES.filter(
+      (l) =>
+        l.name.toLowerCase().includes(q) ||
+        l.nativeName.toLowerCase().includes(q) ||
+        l.code.toLowerCase().includes(q)
+    );
+  }, [langSearch]);
 
   return (
     <View style={styles.container}>
@@ -416,35 +412,76 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
             </View>
           </View>
 
-          {/* ── Language Picker Dropdown ────────────────────── */}
+          {/* ── Language Picker Dropdown (Searchable, 100+ languages) ── */}
           {showLanguagePicker && (
             <View style={styles.langDropdown}>
               {!hasChosenLanguage ? (
-                <>
-                  <View style={styles.welcomeBanner}>
-                    <Ionicons name="language" size={24} color={Colors.highlight} />
-                    <Text style={styles.welcomeTitle}>Choose Your Language</Text>
-                    <Text style={styles.welcomeHint}>
-                      Select the language you speak. You'll hear others translated into your language in real-time.
-                    </Text>
-                  </View>
-                </>
+                <View style={styles.welcomeBanner}>
+                  <Ionicons name="language" size={24} color={Colors.highlight} />
+                  <Text style={styles.welcomeTitle}>Choose Your Language</Text>
+                  <Text style={styles.welcomeHint}>
+                    Select the language you speak. You'll hear others translated into your language in real-time.
+                  </Text>
+                </View>
               ) : (
                 <Text style={styles.dropdownTitle}>Change Language</Text>
               )}
-              <ScrollView style={{ maxHeight: hasChosenLanguage ? 200 : 300 }} showsVerticalScrollIndicator={false}>
-                {Object.entries(LANGUAGES).map(([code, name]) => (
-                  <TouchableOpacity
-                    key={code}
-                    style={[styles.langOption, myLanguage === code && styles.langOptionActive]}
-                    onPress={() => selectLanguage(code)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.langOptionFlag}>{LANG_FLAGS[code] || '🌐'}</Text>
-                    <Text style={[styles.langOptionName, myLanguage === code && { color: Colors.highlight }]}>{name}</Text>
-                    {myLanguage === code && <Ionicons name="checkmark" size={16} color={Colors.highlight} />}
+
+              {/* Search input */}
+              <View style={styles.langSearchWrap}>
+                <Ionicons name="search" size={16} color={Colors.textLight} style={{ marginRight: 6 }} />
+                <TextInput
+                  style={styles.langSearchInput}
+                  placeholder="Search language..."
+                  placeholderTextColor={Colors.textLight}
+                  value={langSearch}
+                  onChangeText={setLangSearch}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                />
+                {langSearch.length > 0 && (
+                  <TouchableOpacity onPress={() => setLangSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={16} color={Colors.textLight} />
                   </TouchableOpacity>
-                ))}
+                )}
+              </View>
+
+              <ScrollView
+                style={{ maxHeight: hasChosenLanguage ? 250 : 340 }}
+                showsVerticalScrollIndicator
+                keyboardShouldPersistTaps="handled"
+              >
+                {filteredLanguages.length === 0 && (
+                  <Text style={styles.noResults}>No languages match "{langSearch}"</Text>
+                )}
+                {filteredLanguages.map((lang) => {
+                  const isSelected = myLanguage === lang.code;
+                  const hasTts = isTtsSupported(lang.code);
+                  return (
+                    <TouchableOpacity
+                      key={lang.code}
+                      style={[styles.langOption, isSelected && styles.langOptionActive]}
+                      onPress={() => selectLanguage(lang.code)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.langOptionFlag}>{lang.flag || '🌐'}</Text>
+                      <View style={{ flex: 1, marginLeft: 4 }}>
+                        <Text style={[styles.langOptionName, isSelected && { color: Colors.highlight }]}>
+                          {lang.name}
+                        </Text>
+                        {lang.nativeName !== lang.name && (
+                          <Text style={styles.langNativeName}>{lang.nativeName}</Text>
+                        )}
+                      </View>
+                      {hasTts ? (
+                        <Ionicons name="volume-medium-outline" size={14} color={Colors.textLight} style={{ marginRight: 4 }} />
+                      ) : (
+                        <Ionicons name="document-text-outline" size={14} color={Colors.textLight} style={{ marginRight: 4 }} />
+                      )}
+                      {isSelected && <Ionicons name="checkmark" size={16} color={Colors.highlight} />}
+                    </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
             </View>
           )}
@@ -455,7 +492,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
             <View style={styles.participantsBar}>
               {participants.map((p) => (
                 <View key={p.userId} style={styles.participantChip}>
-                  <Text style={styles.chipFlag}>{LANG_FLAGS[p.language] || '🌐'}</Text>
+                  <Text style={styles.chipFlag}>{getLanguageFlag(p.language)}</Text>
                   <Text style={styles.chipName} numberOfLines={1}>
                     {p.userId === userId ? 'You' : p.name.split(' ')[0]}
                   </Text>
@@ -487,7 +524,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
                 <View key={entry.id} style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOther]}>
                   <View style={styles.bubbleHeader}>
                     <Text style={styles.bubbleSpeaker}>
-                      {LANG_FLAGS[entry.sourceLang] || '🌐'} {isMe ? 'You' : entry.speakerName}
+                      {getLanguageFlag(entry.sourceLang)} {isMe ? 'You' : entry.speakerName}
                     </Text>
                     <Text style={styles.bubbleTime}>
                       {new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -651,7 +688,31 @@ const styles = StyleSheet.create({
   },
   langOptionActive: { backgroundColor: Colors.highlightSubtle },
   langOptionFlag: { fontSize: 16 },
-  langOptionName: { color: Colors.textWhite, fontSize: FontSize.sm, flex: 1 },
+  langOptionName: { color: Colors.textWhite, fontSize: FontSize.sm },
+  langNativeName: { color: Colors.textLight, fontSize: FontSize.xs, marginTop: 1 },
+  langSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.cardDark,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    marginBottom: Spacing.xs,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  langSearchInput: {
+    flex: 1,
+    color: Colors.textWhite,
+    fontSize: FontSize.sm,
+    padding: 0,
+  },
+  noResults: {
+    color: Colors.textLight,
+    fontSize: FontSize.sm,
+    textAlign: 'center',
+    paddingVertical: Spacing.md,
+  },
 
   participantsBar: {
     flexDirection: 'row',

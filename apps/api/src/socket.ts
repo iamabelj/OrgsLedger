@@ -9,13 +9,13 @@ import jwt from 'jsonwebtoken';
 import { config } from './config';
 import db from './db';
 import { logger } from './logger';
-import { translateToMultiple } from './services/translation.service';
+import { translateToMultiple, isTtsSupported } from './services/translation.service';
 import { getOrgSubscription, getTranslationWallet, deductTranslationWallet } from './services/subscription.service';
 import { writeAuditLog } from './middleware/audit';
 
 // In-memory store for meeting translation sessions
-// meetingId -> Map<userId, { language, name }>
-const meetingLanguages = new Map<string, Map<string, { language: string; name: string }>>();
+// meetingId -> Map<userId, { language, name, receiveVoice }>
+const meetingLanguages = new Map<string, Map<string, { language: string; name: string; receiveVoice: boolean }>>();
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -257,19 +257,41 @@ export function setupSocketIO(httpServer: HttpServer): Server {
 
     // ── Live Translation System ─────────────────────────
     // User sets their preferred language for a meeting
-    socket.on('translation:set-language', async (data: { meetingId: string; language: string }) => {
-      const { meetingId, language } = data;
+    socket.on('translation:set-language', async (data: { meetingId: string; language: string; receiveVoice?: boolean }) => {
+      const { meetingId, language, receiveVoice = true } = data;
       if (!meetingId || !language) return;
 
       // Get user's name
       const user = await db('users').where({ id: userId }).select('first_name', 'last_name').first();
       const name = user ? `${user.first_name} ${user.last_name}` : 'Unknown';
 
-      // Store in memory
+      // Store in memory (per-user preference including voice toggle)
       if (!meetingLanguages.has(meetingId)) {
         meetingLanguages.set(meetingId, new Map());
       }
-      meetingLanguages.get(meetingId)!.set(userId, { language, name });
+      meetingLanguages.get(meetingId)!.set(userId, { language, name, receiveVoice });
+
+      // Persist to DB for future meetings
+      try {
+        const meeting = await db('meetings').where({ id: meetingId }).select('organization_id').first();
+        if (meeting?.organization_id) {
+          const hasTable = await db.schema.hasTable('user_language_preferences');
+          if (hasTable) {
+            await db('user_language_preferences')
+              .insert({
+                user_id: userId,
+                organization_id: meeting.organization_id,
+                preferred_language: language,
+                receive_voice: receiveVoice,
+                receive_text: true,
+              })
+              .onConflict(['user_id', 'organization_id'])
+              .merge({ preferred_language: language, receive_voice: receiveVoice });
+          }
+        }
+      } catch (prefErr) {
+        logger.warn('[TRANSLATION] Failed to persist user language preference', prefErr);
+      }
 
       // Broadcast updated participant languages to everyone in the meeting
       const participants: Array<{ userId: string; name: string; language: string }> = [];
@@ -412,22 +434,52 @@ export function setupSocketIO(httpServer: HttpServer): Server {
         // Always include the original language
         translations[sourceLang] = text;
 
-        // Broadcast to all meeting participants
-        // Include ttsEnabled flag so clients know to auto-play TTS
-        io.to(`meeting:${meetingId}`).emit('translation:result', {
+        const now = Date.now();
+
+        // ── Per-user routing: emit individually with TTS availability ──
+        // Each user gets their translation + a ttsAvailable flag based on:
+        //   1. Whether TTS engine supports their target language
+        //   2. Whether the user has opted in to receive voice
+        const langMap = meetingLanguages.get(meetingId);
+        if (langMap) {
+          for (const [targetUserId, prefs] of langMap.entries()) {
+            if (targetUserId === userId) continue; // Don't send to speaker
+            const targetSocketIds = await io.in(`meeting:${meetingId}`).fetchSockets();
+            const targetSocket = targetSocketIds.find((s) => (s as any).userId === targetUserId || (s as any).data?.userId === targetUserId);
+            if (targetSocket) {
+              const ttsAvailable = isTtsSupported(prefs.language) && prefs.receiveVoice;
+              targetSocket.emit('translation:result', {
+                meetingId,
+                speakerId: userId,
+                speakerName,
+                originalText: text,
+                sourceLang,
+                translations,
+                timestamp: now,
+                ttsEnabled: ttsAvailable,
+                ttsAvailable,
+                userLang: prefs.language,
+              });
+            }
+          }
+        }
+
+        // Also emit to the speaker (no TTS for own speech)
+        socket.emit('translation:result', {
           meetingId,
           speakerId: userId,
           speakerName,
           originalText: text,
           sourceLang,
-          translations, // { en: "Hello", fr: "Bonjour", es: "Hola" }
-          timestamp: Date.now(),
-          ttsEnabled: true, // Signal clients to auto-play TTS for translations
+          translations,
+          timestamp: now,
+          ttsEnabled: false,
+          ttsAvailable: false,
         });
       } catch (err) {
         logger.error('Translation failed', err);
         // Still send the original text even if translation fails
-        io.to(`meeting:${meetingId}`).emit('translation:result', {
+        socket.emit('translation:result', {
           meetingId,
           speakerId: userId,
           speakerName,
@@ -435,6 +487,8 @@ export function setupSocketIO(httpServer: HttpServer): Server {
           sourceLang,
           translations: { [sourceLang]: text },
           timestamp: Date.now(),
+          ttsEnabled: false,
+          ttsAvailable: false,
           error: 'Translation temporarily unavailable',
         });
       }

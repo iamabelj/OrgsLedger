@@ -30,6 +30,7 @@ import { socketClient } from '../../src/api/socket';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
 import { Card, Badge, Button, Avatar, SectionHeader, LoadingScreen, CrossPlatformDateTimePicker, ResponsiveScrollView } from '../../src/components/ui';
 import LiveTranslation, { LANGUAGES, LANG_FLAGS, LiveTranslationRef } from '../../src/components/ui/LiveTranslation';
+import { ALL_LANGUAGES, getLanguageFlag, getLanguageName, isTtsSupported } from '../../src/utils/languages';
 import { showAlert } from '../../src/utils/alert';
 
 // ── Constants ──────────────────────────────────────────────
@@ -224,9 +225,19 @@ export default function MeetingDetailScreen() {
   // ── Unified Control Bar State ───────────────────────────
   const [showLangPicker, setShowLangPicker] = useState(false);
   const [translationLang, setTranslationLang] = useState('en');
+  const [langPickerSearch, setLangPickerSearch] = useState('');
   const [translationListening, setTranslationListening] = useState(false);
   const [voiceToVoice, setVoiceToVoice] = useState(true); // Auto TTS for translations
   const translationRef = useRef<LiveTranslationRef>(null);
+
+  // Filtered language list for control bar picker
+  const filteredPickerLangs = useMemo(() => {
+    if (!langPickerSearch.trim()) return ALL_LANGUAGES;
+    const q = langPickerSearch.toLowerCase().trim();
+    return ALL_LANGUAGES.filter(
+      (l) => l.name.toLowerCase().includes(q) || l.nativeName.toLowerCase().includes(q) || l.code.includes(q)
+    );
+  }, [langPickerSearch]);
 
   // ── Tab State ───────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'meeting' | 'transcript' | 'minutes'>('meeting');
@@ -1055,7 +1066,7 @@ export default function MeetingDetailScreen() {
                     <View key={t.id || idx} style={[z.transcriptRow, isSelf && z.transcriptRowSelf]}>
                       <View style={z.transcriptHeader}>
                         <Text style={z.transcriptSpeaker}>
-                          {LANG_FLAGS[t.source_lang] || '🌐'} {isSelf ? 'You' : t.speaker_name}
+                          {getLanguageFlag(t.source_lang)} {isSelf ? 'You' : t.speaker_name}
                         </Text>
                         <Text style={z.transcriptTime}>{time}</Text>
                       </View>
@@ -1064,7 +1075,7 @@ export default function MeetingDetailScreen() {
                         <View style={z.transcriptTranslations}>
                           {Object.entries(typeof t.translations === 'string' ? JSON.parse(t.translations) : t.translations).map(([lang, text]) => (
                             <Text key={lang} style={z.transcriptTranslation}>
-                              {LANG_FLAGS[lang] || '🌐'} {text as string}
+                              {getLanguageFlag(lang)} {text as string}
                             </Text>
                           ))}
                         </View>
@@ -1410,10 +1421,10 @@ export default function MeetingDetailScreen() {
                 activeOpacity={0.7}
               >
                 <View style={[z.controlIcon, showLangPicker ? z.controlIconActive : z.controlIconLang]}>
-                  <Text style={{ fontSize: 20 }}>{LANG_FLAGS[translationLang] || '🌐'}</Text>
+                  <Text style={{ fontSize: 20 }}>{getLanguageFlag(translationLang)}</Text>
                 </View>
                 <Text style={z.controlText} numberOfLines={1}>
-                  {LANGUAGES[translationLang]?.slice(0, 6) || 'Lang'}
+                  {getLanguageName(translationLang)?.slice(0, 6) || 'Lang'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1454,33 +1465,72 @@ export default function MeetingDetailScreen() {
             </View>
           </Card>
 
-          {/* Language Picker Dropdown */}
+          {/* Language Picker Dropdown (Searchable, 100+ languages) */}
           {showLangPicker && (
             <Card style={z.langPickerCard} variant="elevated">
               <View style={z.langPickerHeader}>
                 <Ionicons name="language" size={18} color={Colors.highlight} />
                 <Text style={z.langPickerTitle}>Select Language</Text>
-                <TouchableOpacity onPress={() => setShowLangPicker(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity onPress={() => { setShowLangPicker(false); setLangPickerSearch(''); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <Ionicons name="close" size={20} color={Colors.textLight} />
                 </TouchableOpacity>
               </View>
-              <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
-                {Object.entries(LANGUAGES).map(([code, name]) => (
-                  <TouchableOpacity
-                    key={code}
-                    style={[z.langPickerItem, translationLang === code && z.langPickerItemActive]}
-                    onPress={() => {
-                      setTranslationLang(code);
-                      translationRef.current?.selectLanguage(code);
-                      setShowLangPicker(false);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={{ fontSize: 18 }}>{LANG_FLAGS[code] || '🌐'}</Text>
-                    <Text style={[z.langPickerName, translationLang === code && { color: Colors.highlight }]}>{name}</Text>
-                    {translationLang === code && <Ionicons name="checkmark-circle" size={16} color={Colors.highlight} />}
+
+              {/* Search input */}
+              <View style={z.langSearchWrap}>
+                <Ionicons name="search" size={14} color={Colors.textLight} style={{ marginRight: 6 }} />
+                <TextInput
+                  style={z.langSearchInput}
+                  placeholder="Search language..."
+                  placeholderTextColor={Colors.textLight}
+                  value={langPickerSearch}
+                  onChangeText={setLangPickerSearch}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                />
+                {langPickerSearch.length > 0 && (
+                  <TouchableOpacity onPress={() => setLangPickerSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={14} color={Colors.textLight} />
                   </TouchableOpacity>
-                ))}
+                )}
+              </View>
+
+              <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator keyboardShouldPersistTaps="handled">
+                {filteredPickerLangs.length === 0 && (
+                  <Text style={{ color: Colors.textLight, fontSize: FontSize.xs, textAlign: 'center', paddingVertical: Spacing.md }}>
+                    No languages match "{langPickerSearch}"
+                  </Text>
+                )}
+                {filteredPickerLangs.map((lang) => {
+                  const isActive = translationLang === lang.code;
+                  return (
+                    <TouchableOpacity
+                      key={lang.code}
+                      style={[z.langPickerItem, isActive && z.langPickerItemActive]}
+                      onPress={() => {
+                        setTranslationLang(lang.code);
+                        translationRef.current?.selectLanguage(lang.code);
+                        setShowLangPicker(false);
+                        setLangPickerSearch('');
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{ fontSize: 18 }}>{lang.flag || '🌐'}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[z.langPickerName, isActive && { color: Colors.highlight }]}>{lang.name}</Text>
+                        {lang.nativeName !== lang.name && (
+                          <Text style={{ color: Colors.textLight, fontSize: FontSize.xs - 1 }}>{lang.nativeName}</Text>
+                        )}
+                      </View>
+                      {isTtsSupported(lang.code) ? (
+                        <Ionicons name="volume-medium-outline" size={12} color={Colors.textLight} style={{ marginRight: 4 }} />
+                      ) : (
+                        <Ionicons name="document-text-outline" size={12} color={Colors.textLight} style={{ marginRight: 4 }} />
+                      )}
+                      {isActive && <Ionicons name="checkmark-circle" size={16} color={Colors.highlight} />}
+                    </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
             </Card>
           )}
@@ -1594,7 +1644,7 @@ export default function MeetingDetailScreen() {
               </View>
               <Text style={z.serviceHint}>
                 {meeting.translation_enabled
-                  ? 'Enabled — Real-time multilingual translation (26 languages).'
+                  ? 'Enabled — Real-time multilingual translation (100+ languages).'
                   : 'Disabled — Enable to allow real-time multilingual translation.'}
               </Text>
             </View>
@@ -1907,7 +1957,19 @@ const z = StyleSheet.create({
   langPickerTitle: { flex: 1, fontSize: FontSize.md, fontWeight: FontWeight.semibold as any, color: Colors.textWhite },
   langPickerItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.xs + 2, paddingHorizontal: Spacing.xs, borderRadius: BorderRadius.sm },
   langPickerItemActive: { backgroundColor: Colors.highlightSubtle },
-  langPickerName: { flex: 1, color: Colors.textWhite, fontSize: FontSize.sm },
+  langPickerName: { color: Colors.textWhite, fontSize: FontSize.sm },
+  langSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.cardDark,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    marginBottom: Spacing.xs,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  langSearchInput: { flex: 1, color: Colors.textWhite, fontSize: FontSize.sm, padding: 0 },
 
   // ── Recording Status ────────────────────────────────────
   recordStatusCard: { marginHorizontal: Spacing.sm, marginBottom: Spacing.xs, padding: Spacing.sm },

@@ -426,3 +426,6 @@ export interface PaginatedRequest {
   sortOrder?: 'asc' | 'desc';
   search?: string;
 }
+
+// ── Language Registry ───────────────────────────────────────
+export * from './languages';
