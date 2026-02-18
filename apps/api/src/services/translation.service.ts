@@ -80,6 +80,7 @@ export async function translateText(
   const cacheKey = `${sourceLang || 'auto'}:${targetLang}:${text.slice(0, 200)}`;
   const cached = getCached(cacheKey);
   if (cached) {
+    logger.debug(`[TRANSLATION] Cache hit: ${sourceLang || 'auto'} → ${targetLang}`);
     return { translatedText: cached, detectedSourceLanguage: sourceLang };
   }
 
@@ -120,8 +121,8 @@ export async function translateText(
       const openai = new OpenAI({ apiKey: config.ai.openaiApiKey });
 
       const systemPrompt = sourceName
-        ? `You are a professional translator. Translate the following text from ${sourceName} to ${targetName}. Output ONLY the translated text, nothing else. Preserve tone, formality, and meaning exactly.`
-        : `You are a professional translator. Detect the source language and translate the following text to ${targetName}. Output ONLY the translated text, nothing else. Preserve tone, formality, and meaning exactly.`;
+        ? `You are a professional translator. Translate the following text from ${sourceName} to ${targetName}. Output ONLY the translated text, nothing else. Translate exactly. Do not summarize. Do not paraphrase. Do not add commentary. Preserve tone, formality, and meaning strictly.`
+        : `You are a professional translator. Detect the source language and translate the following text to ${targetName}. Output ONLY the translated text, nothing else. Translate exactly. Do not summarize. Do not paraphrase. Do not add commentary. Preserve tone, formality, and meaning strictly.`;
 
       const response = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
@@ -134,6 +135,7 @@ export async function translateText(
       });
 
       const translated = response.choices[0]?.message?.content?.trim() || text;
+      logger.debug(`[TRANSLATION] GPT result: "${text.slice(0, 60)}" → "${translated.slice(0, 60)}" (${sourceLang || 'auto'} → ${targetLang})`);
       setCache(cacheKey, translated);
       return { translatedText: translated, detectedSourceLanguage: sourceLang };
     } catch (err) {

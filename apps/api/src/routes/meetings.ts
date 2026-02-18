@@ -825,10 +825,20 @@ router.post(
           hasLiveTranscripts = parseInt(transcriptCount?.count as string) > 0;
         }
 
+        logger.info('[MEETING_END] AI minutes check', {
+          meetingId: req.params.meetingId,
+          ai_enabled: meeting.ai_enabled,
+          hasAudio,
+          hasLiveTranscripts,
+        });
+
         if (hasAudio || hasLiveTranscripts) {
           // Notify that processing is starting
           if (io) {
             io.to(`org:${req.params.orgId}`).emit('meeting:minutes:processing', {
+              meetingId: req.params.meetingId,
+            });
+            io.to(`meeting:${req.params.meetingId}`).emit('meeting:minutes:processing', {
               meetingId: req.params.meetingId,
             });
           }
@@ -848,11 +858,29 @@ router.post(
           // Queue AI processing (handled by AI service)
           const aiService = req.app.get('aiService');
           if (aiService) {
-            aiService.processMinutes(req.params.meetingId, req.params.orgId).catch((err: any) => {
-              logger.error('AI minutes processing failed', err);
+            logger.info('[MEETING_END] Triggering AI minutes processing', {
+              meetingId: req.params.meetingId,
+              orgId: req.params.orgId,
             });
+            aiService.processMinutes(req.params.meetingId, req.params.orgId).catch((err: any) => {
+              logger.error('[MEETING_END] AI minutes processing failed', {
+                meetingId: req.params.meetingId,
+                error: err.message,
+              });
+            });
+          } else {
+            logger.warn('[MEETING_END] aiService not registered on app — minutes will NOT be generated');
           }
+        } else {
+          logger.info('[MEETING_END] No audio or transcripts found — skipping minutes generation', {
+            meetingId: req.params.meetingId,
+          });
         }
+      } else {
+        logger.info('[MEETING_END] AI not enabled for this meeting — skipping minutes generation', {
+          meetingId: req.params.meetingId,
+          ai_enabled: meeting.ai_enabled,
+        });
       }
 
       await (req as any).audit?.({

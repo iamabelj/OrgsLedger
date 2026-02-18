@@ -1946,10 +1946,10 @@ const z = StyleSheet.create({
   controlIconRec: { backgroundColor: Colors.error },
   controlIconReady: { backgroundColor: Colors.success },
   controlIconLang: { backgroundColor: Colors.primaryLight, borderWidth: 1, borderColor: Colors.accent },
-  controlText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.medium as any, marginTop: 2 },
+  controlText: { fontSize: FontSize.xs, color: Colors.textWhite, fontWeight: FontWeight.medium as any, marginTop: 2 },
   controlSecondary: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: Spacing.sm, marginTop: Spacing.md, paddingTop: Spacing.sm, borderTopWidth: 0.5, borderTopColor: Colors.accent },
   controlSecBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: Spacing.sm, paddingVertical: Spacing.xs, borderRadius: BorderRadius.full, backgroundColor: Colors.primaryLight, borderWidth: 0.5, borderColor: Colors.accent },
-  controlSecText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.medium as any },
+  controlSecText: { fontSize: FontSize.xs, color: Colors.textWhite, fontWeight: FontWeight.medium as any },
 
   // ── Language Picker ─────────────────────────────────────
   langPickerCard: { marginHorizontal: Spacing.sm, marginBottom: Spacing.xs, padding: Spacing.sm },

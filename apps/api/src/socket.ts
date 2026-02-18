@@ -23,6 +23,39 @@ interface AuthenticatedSocket extends Socket {
   globalRole?: string;
 }
 
+// ── Helper: Persist transcript segment to DB ────────────
+// Always stores transcript even when org_id is missing
+async function this_persistTranscript(
+  meetingId: string,
+  organizationId: string | null,
+  speakerId: string,
+  speakerName: string,
+  originalText: string,
+  sourceLang: string,
+  translations: Record<string, string>
+): Promise<void> {
+  try {
+    const hasTable = await db.schema.hasTable('meeting_transcripts');
+    if (!hasTable) {
+      logger.warn('[TRANSLATION] meeting_transcripts table does not exist, skipping persist');
+      return;
+    }
+    await db('meeting_transcripts').insert({
+      meeting_id: meetingId,
+      organization_id: organizationId,
+      speaker_id: speakerId,
+      speaker_name: speakerName,
+      original_text: originalText,
+      source_lang: sourceLang,
+      translations: JSON.stringify(translations),
+      spoken_at: Date.now(),
+    });
+    logger.debug(`[TRANSLATION] Transcript persisted: meeting=${meetingId}, speaker=${speakerName}, lang=${sourceLang}`);
+  } catch (dbErr) {
+    logger.warn('[TRANSLATION] Failed to persist transcript segment', dbErr);
+  }
+}
+
 export function setupSocketIO(httpServer: HttpServer): Server {
   const allowedOrigins = config.env === 'production'
     ? ['https://app.orgsledger.com', 'https://orgsledger.com']
@@ -204,6 +237,47 @@ export function setupSocketIO(httpServer: HttpServer): Server {
           isModerator,
           meetingId,
         });
+
+        // ── Auto-load saved language preference for this user ──
+        // If user previously set a language in this org, auto-apply it
+        try {
+          const hasTable = await db.schema.hasTable('user_language_preferences');
+          if (hasTable) {
+            const pref = await db('user_language_preferences')
+              .where({ user_id: userId, organization_id: meeting.organization_id })
+              .first();
+            if (pref?.preferred_language) {
+              // Set in memory map so translation routing works immediately
+              if (!meetingLanguages.has(meetingId)) {
+                meetingLanguages.set(meetingId, new Map());
+              }
+              meetingLanguages.get(meetingId)!.set(userId, {
+                language: pref.preferred_language,
+                name,
+                receiveVoice: pref.receive_voice !== false,
+              });
+
+              // Notify the user of their auto-loaded language
+              socket.emit('translation:language-restored', {
+                meetingId,
+                language: pref.preferred_language,
+                receiveVoice: pref.receive_voice !== false,
+              });
+
+              // Broadcast updated participant languages
+              const participants: Array<{ userId: string; name: string; language: string }> = [];
+              meetingLanguages.get(meetingId)!.forEach((val, uid) => {
+                participants.push({ userId: uid, name: val.name, language: val.language });
+              });
+              io.to(`meeting:${meetingId}`).emit('translation:participants', { meetingId, participants });
+
+              logger.debug(`[TRANSLATION] Auto-loaded language ${pref.preferred_language} for user ${userId} in meeting ${meetingId}`);
+            }
+          }
+        } catch (prefErr) {
+          logger.warn('[TRANSLATION] Failed to auto-load language preference', prefErr);
+        }
+
         logger.debug(`User ${userId} (${name}) joined meeting ${meetingId}`);
       } catch (err) {
         logger.error('meeting:join authorization error', err);
@@ -261,6 +335,8 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       const { meetingId, language, receiveVoice = true } = data;
       if (!meetingId || !language) return;
 
+      logger.debug(`[TRANSLATION] User ${userId} setting language to ${language} for meeting ${meetingId} (receiveVoice: ${receiveVoice})`);
+
       // Get user's name
       const user = await db('users').where({ id: userId }).select('first_name', 'last_name').first();
       const name = user ? `${user.first_name} ${user.last_name}` : 'Unknown';
@@ -287,6 +363,7 @@ export function setupSocketIO(httpServer: HttpServer): Server {
               })
               .onConflict(['user_id', 'organization_id'])
               .merge({ preferred_language: language, receive_voice: receiveVoice });
+            logger.debug(`[TRANSLATION] Persisted language preference for user ${userId}: ${language}`);
           }
         }
       } catch (prefErr) {
@@ -337,6 +414,8 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       const speaker = langMap.get(userId);
       const speakerName = speaker?.name || 'Unknown';
 
+      logger.debug(`[TRANSLATION] Speech from ${speakerName} (${userId}): isFinal=${isFinal}, lang=${sourceLang}, length=${text.length}`);
+
       // For interim results, just broadcast the original text to others
       // (so they see the speaker is talking)
       if (!isFinal) {
@@ -358,15 +437,24 @@ export function setupSocketIO(httpServer: HttpServer): Server {
         }
       });
 
+      // Always look up organization_id early for transcript storage
+      let organizationId: string | null = null;
+      try {
+        const meeting = await db('meetings').where({ id: meetingId }).select('organization_id').first();
+        organizationId = meeting?.organization_id || null;
+      } catch (lookupErr) {
+        logger.warn('[TRANSLATION] Failed to look up meeting org', lookupErr);
+      }
+
       try {
         let translations: Record<string, string> = {};
 
         if (targetLangs.size > 0) {
-          // Check translation wallet before making API calls
-          // Find the org for this meeting
-          const meeting = await db('meetings').where({ id: meetingId }).select('organization_id').first();
-          if (meeting?.organization_id) {
-            const wallet = await getTranslationWallet(meeting.organization_id);
+          logger.debug(`[TRANSLATION] Translating to ${targetLangs.size} languages: ${[...targetLangs].join(', ')}`);
+
+          if (organizationId) {
+            // Check translation wallet before making API calls
+            const wallet = await getTranslationWallet(organizationId);
             const balance = parseFloat(wallet.balance_minutes);
             if (balance <= 0) {
               socket.emit('translation:error', {
@@ -374,63 +462,36 @@ export function setupSocketIO(httpServer: HttpServer): Server {
                 error: 'Translation wallet empty. Please top up to continue translations.',
                 code: 'WALLET_EMPTY',
               });
+              // Still persist the original transcript even if wallet empty
+              await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, {});
               return;
             }
 
             translations = await translateToMultiple(text, [...targetLangs], sourceLang);
 
+            logger.debug(`[TRANSLATION] Translation complete: ${Object.keys(translations).length} languages`);
+
             // Deduct translation wallet — estimate ~0.5 minutes per translation batch
             const deductMinutes = 0.5;
             const deduction = await deductTranslationWallet(
-              meeting.organization_id,
+              organizationId,
               deductMinutes,
               `Live translation: ${targetLangs.size} language(s) in meeting`
             );
             if (!deduction.success) {
               logger.warn('[TRANSLATION] Wallet deduction failed but translation was served', {
-                meetingId, orgId: meeting.organization_id,
+                meetingId, orgId: organizationId,
               });
-            }
-
-            // ── Persist transcript segment to DB ──────────
-            try {
-              await db('meeting_transcripts').insert({
-                meeting_id: meetingId,
-                organization_id: meeting.organization_id,
-                speaker_id: userId,
-                speaker_name: speakerName,
-                original_text: text,
-                source_lang: sourceLang,
-                translations: JSON.stringify(translations),
-                spoken_at: Date.now(),
-              });
-            } catch (dbErr) {
-              logger.warn('[TRANSLATION] Failed to persist transcript segment', dbErr);
             }
           } else {
+            // No org found but still translate
             translations = await translateToMultiple(text, [...targetLangs], sourceLang);
-          }
-        } else {
-          // No translations needed but still persist
-          try {
-            const meeting = await db('meetings').where({ id: meetingId }).select('organization_id').first();
-            if (meeting?.organization_id) {
-              await db('meeting_transcripts').insert({
-                meeting_id: meetingId,
-                organization_id: meeting.organization_id,
-                speaker_id: userId,
-                speaker_name: speakerName,
-                original_text: text,
-                source_lang: sourceLang,
-                translations: JSON.stringify({}),
-                spoken_at: Date.now(),
-              });
-            }
-          } catch (dbErr) {
-            logger.warn('[TRANSLATION] Failed to persist transcript segment', dbErr);
+            logger.warn('[TRANSLATION] No organization_id found for meeting, skipping wallet deduction', { meetingId });
           }
         }
 
+        // ── Always persist transcript segment to DB ──────────
+        await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, translations);
         // Always include the original language
         translations[sourceLang] = text;
 
@@ -440,9 +501,9 @@ export function setupSocketIO(httpServer: HttpServer): Server {
         // Each user gets their translation + a ttsAvailable flag based on:
         //   1. Whether TTS engine supports their target language
         //   2. Whether the user has opted in to receive voice
-        const langMap = meetingLanguages.get(meetingId);
-        if (langMap) {
-          for (const [targetUserId, prefs] of langMap.entries()) {
+        const langMapForEmit = meetingLanguages.get(meetingId);
+        if (langMapForEmit) {
+          for (const [targetUserId, prefs] of langMapForEmit.entries()) {
             if (targetUserId === userId) continue; // Don't send to speaker
             const targetSocketIds = await io.in(`meeting:${meetingId}`).fetchSockets();
             const targetSocket = targetSocketIds.find((s) => (s as any).userId === targetUserId || (s as any).data?.userId === targetUserId);
@@ -460,6 +521,7 @@ export function setupSocketIO(httpServer: HttpServer): Server {
                 ttsAvailable,
                 userLang: prefs.language,
               });
+              logger.debug(`[TRANSLATION] Emitted to user ${targetUserId} (lang=${prefs.language}, tts=${ttsAvailable})`);
             }
           }
         }
@@ -477,7 +539,10 @@ export function setupSocketIO(httpServer: HttpServer): Server {
           ttsAvailable: false,
         });
       } catch (err) {
-        logger.error('Translation failed', err);
+        logger.error('[TRANSLATION] Translation pipeline failed', err);
+        // Still persist the original text even if translation fails
+        await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, { [sourceLang]: text });
+
         // Still send the original text even if translation fails
         socket.emit('translation:result', {
           meetingId,

@@ -128,6 +128,20 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
       }
     });
 
+    // Auto-restore saved language preference from server
+    const unsubRestored = socketClient.on('translation:language-restored', (data: any) => {
+      if (data.meetingId === meetingId && data.language) {
+        console.debug('[TRANSLATION] Language restored from server:', data.language);
+        setMyLanguage(data.language);
+        setHasChosenLanguage(true);
+        setShowLanguagePicker(false);
+        storeSetMyLanguage(data.language);
+        if (data.receiveVoice !== undefined) {
+          setSpeakEnabled(data.receiveVoice);
+        }
+      }
+    });
+
     const unsubResult = socketClient.on('translation:result', (data: any) => {
       if (data.meetingId !== meetingId) return;
 
@@ -175,6 +189,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
 
     return () => {
       unsubParticipants();
+      unsubRestored();
       unsubResult();
       unsubInterim();
     };
@@ -225,6 +240,8 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
     recognition.lang = getBcp47(myLanguage) || 'en-US';
     recognition.maxAlternatives = 1;
 
+    console.debug(`[TRANSLATION] Starting STT with forced language: ${recognition.lang} (code: ${myLanguage})`);
+
     recognition.onresult = (event: any) => {
       let interim = '';
       let final = '';
@@ -244,6 +261,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
       }
 
       if (final.trim()) {
+        console.debug('[TRANSLATION] Final STT result:', final.trim().slice(0, 100), `(lang=${myLanguageRef.current})`);
         setInterimText('');
         socketClient.sendSpeechForTranslation(meetingId, final.trim(), myLanguageRef.current, true);
       }
@@ -253,7 +271,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
       if (event.error === 'not-allowed') {
         showAlert('Microphone Blocked', 'Please allow microphone access in your browser settings.');
       } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        console.warn('Speech recognition error:', event.error);
+        console.warn('[TRANSLATION] Speech recognition error:', event.error);
       }
     };
 
@@ -296,10 +314,12 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
   }), [startListening, stopListening, selectLanguage, isListening, myLanguage]);
 
   // ── Text-to-Speech (Web + Android + iOS) — Voice-to-Voice ──
+  // Private per-user: TTS is played locally only, does NOT override meeting audio
   const speak = useCallback((text: string, lang: string) => {
     // Check TTS support before attempting
     if (!isTtsSupported(lang)) {
       // Language has no TTS voice — text-only translation, skip voice
+      console.debug(`[TRANSLATION] TTS not available for ${lang}, text-only fallback`);
       return;
     }
 
