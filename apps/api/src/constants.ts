@@ -15,8 +15,6 @@ export const DOMAINS = {
 export const LANDING_HOSTS = [
   DOMAINS.LANDING,
   DOMAINS.LANDING_WWW,
-  DOMAINS.LOCALHOST,
-  DOMAINS.LOOPBACK,
 ] as const;
 
 /** Check whether a Host header belongs to the landing / marketing domain */
