@@ -269,12 +269,19 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
   }, [meetingId]);
 
   // Initialize: set default language on mount (include receiveVoice preference)
+  // Delayed to allow server's language-restored event to arrive first
   useEffect(() => {
-    socketClient.emit('translation:set-language', {
-      meetingId,
-      language: myLanguage,
-      receiveVoice: speakEnabledRef.current,
-    });
+    const timer = setTimeout(() => {
+      // Only emit if language hasn't been restored from server
+      if (!hasChosenLanguage) {
+        socketClient.emit('translation:set-language', {
+          meetingId,
+          language: myLanguage,
+          receiveVoice: speakEnabledRef.current,
+        });
+      }
+    }, 500); // Give language-restored event 500ms to arrive
+    return () => clearTimeout(timer);
   }, [meetingId]);
 
   // ── Web Speech Recognition ─────────────────────────────
