@@ -20,7 +20,6 @@ import {
   Animated,
   Dimensions,
 } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, Stack, router } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
@@ -32,6 +31,7 @@ import { Card, Badge, Button, Avatar, SectionHeader, LoadingScreen, CrossPlatfor
 import LiveTranslation, { LANGUAGES, LANG_FLAGS, LiveTranslationRef } from '../../src/components/ui/LiveTranslation';
 import { ALL_LANGUAGES, getLanguageFlag, getLanguageName, isTtsSupported } from '../../src/utils/languages';
 import { showAlert } from '../../src/utils/alert';
+import { MeetingRoom } from '../../src/components/meeting';
 
 // ── Constants ──────────────────────────────────────────────
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -699,20 +699,7 @@ export default function MeetingDetailScreen() {
       setJoinConfig(cfg);
       setVideoEnabled(joinType === 'video');
       setAudioEnabled(true);
-
-      if (Platform.OS === 'web') {
-        setShowVideo(true);
-      } else {
-        // On native, open LiveKit room in web browser
-        const livekitWebUrl = `${cfg.url.replace('wss://', 'https://').replace('ws://', 'http://')}/rooms/${cfg.roomName}?token=${cfg.token}`;
-        await WebBrowser.openBrowserAsync(livekitWebUrl, {
-          toolbarColor: Colors.surface,
-          controlsColor: Colors.highlight,
-          dismissButtonStyle: 'close',
-          presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
-        });
-        handleLeaveMeeting();
-      }
+      setShowVideo(true);
     } catch (err: any) {
       const msg = err.response?.data?.error || err.message || 'Failed to join meeting';
       showAlert('Cannot Join', msg);
@@ -830,12 +817,6 @@ export default function MeetingDetailScreen() {
   const statusCfg = STATUS_CONFIG[meeting?.status] || STATUS_CONFIG.scheduled;
   const countdown = formatCountdown(countdownMs);
   const participantCount = liveParticipants.length + (meeting?.attendance?.length || 0);
-
-  // ── Build LiveKit connection URL ────────────────────────
-  const livekitConnUrl = useMemo(() => {
-    if (!joinConfig) return '';
-    return joinConfig.url || '';
-  }, [joinConfig]);
 
   // ── Loading / Error ─────────────────────────────────────
   if (loading) return <LoadingScreen />;
@@ -1566,37 +1547,36 @@ export default function MeetingDetailScreen() {
         </>
       )}
 
-      {/* ═══ INLINE VIDEO (LiveKit — Web Only) ════════════════ */}
-      {showVideo && joinConfig && Platform.OS === 'web' && (
-        <View style={z.videoWrapper}>
-          <View style={z.videoStatusBar}>
-            <PulseDot color="#34D399" size={8} />
-            <Text style={z.videoToolbarText}>In Meeting</Text>
-            <Text style={z.videoTimerText}>{formatDuration(elapsedSeconds)}</Text>
-            <View style={{ flex: 1 }} />
-            {/* Video/Audio toggle controls */}
-            <TouchableOpacity
-              style={[z.toolbarBtn, videoEnabled && z.toolbarBtnActive]}
-              onPress={() => setVideoEnabled(!videoEnabled)}
-            >
-              <Ionicons name={(videoEnabled ? 'videocam' : 'videocam-off') as any} size={16} color="#FFF" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[z.toolbarBtn, audioEnabled && z.toolbarBtnActive, { marginLeft: 6 }]}
-              onPress={() => setAudioEnabled(!audioEnabled)}
-            >
-              <Ionicons name={audioEnabled ? 'mic' : 'mic-off'} size={16} color="#FFF" />
-            </TouchableOpacity>
-          </View>
-          <View style={z.videoContainer}>
-            <iframe
-              src={`${livekitConnUrl.replace('wss://', 'https://').replace('ws://', 'http://')}/rooms/${joinConfig.roomName}?token=${joinConfig.token}&videoEnabled=${videoEnabled}&audioEnabled=${audioEnabled}`}
-              style={{ width: '100%', height: '100%', border: 'none', borderRadius: 0 } as any}
-              allow="camera; microphone; fullscreen; display-capture; autoplay"
-              allowFullScreen
-            />
-          </View>
-        </View>
+      {/* ═══ FULL-SCREEN MEETING ROOM (LiveKit SDK) ═══════ */}
+      {showVideo && joinConfig && (
+        <MeetingRoom
+          meetingId={meetingId!}
+          meeting={meeting}
+          joinConfig={{
+            url: joinConfig.url,
+            token: joinConfig.token,
+            roomName: joinConfig.roomName,
+            meetingType: joinConfig.meetingType || (meeting.meeting_type === 'audio' ? 'audio' : 'video'),
+          }}
+          userId={userId!}
+          userName={userName}
+          isAdmin={!!isAdmin}
+          joinType={videoEnabled ? 'video' : 'audio'}
+          translationEnabled={!!meeting.translation_enabled}
+          transcripts={transcripts}
+          transcriptsLoading={transcriptsLoading}
+          onRefreshTranscripts={loadTranscripts}
+          minutes={minutes}
+          minutesLoading={minutesLoading}
+          generateLoading={generateLoading}
+          onRefreshMinutes={loadMinutes}
+          onGenerateMinutes={handleGenerateMinutes}
+          elapsedSeconds={elapsedSeconds}
+          socketParticipants={liveParticipants}
+          isRecordingFromSocket={!!meetingStore.isRecording}
+          onLeave={handleLeaveMeeting}
+          onEnd={isAdmin ? handleEnd : undefined}
+        />
       )}
 
       {/* ═══ START / CANCEL (SCHEDULED — ADMIN) ══════════════ */}
