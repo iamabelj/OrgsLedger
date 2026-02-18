@@ -256,9 +256,10 @@ async function safeSetBoolNotNull(
 ): Promise<void> {
   const has = await knex.schema.hasColumn(table, column);
   if (!has) return;
-  await knex.raw(`UPDATE ${table} SET ${column} = ? WHERE ${column} IS NULL`, [defaultVal]);
+  const pgDefault = defaultVal ? 'true' : 'false';
+  await knex.raw(`UPDATE ${table} SET ${column} = ${pgDefault} WHERE ${column} IS NULL`);
   await knex.raw(`ALTER TABLE ${table} ALTER COLUMN ${column} SET NOT NULL`);
-  await knex.raw(`ALTER TABLE ${table} ALTER COLUMN ${column} SET DEFAULT ?`, [defaultVal]);
+  await knex.raw(`ALTER TABLE ${table} ALTER COLUMN ${column} SET DEFAULT ${pgDefault}`);
 }
 
 /** Safely set a string column to NOT NULL with a default */
@@ -270,7 +271,8 @@ async function safeSetStringNotNull(
 ): Promise<void> {
   const has = await knex.schema.hasColumn(table, column);
   if (!has) return;
-  await knex.raw(`UPDATE ${table} SET ${column} = ? WHERE ${column} IS NULL`, [defaultVal]);
+  const escaped = defaultVal.replace(/'/g, "''");
+  await knex.raw(`UPDATE ${table} SET ${column} = '${escaped}' WHERE ${column} IS NULL`);
   await knex.raw(`ALTER TABLE ${table} ALTER COLUMN ${column} SET NOT NULL`);
-  await knex.raw(`ALTER TABLE ${table} ALTER COLUMN ${column} SET DEFAULT ?`, [defaultVal]);
+  await knex.raw(`ALTER TABLE ${table} ALTER COLUMN ${column} SET DEFAULT '${escaped}'`);
 }
