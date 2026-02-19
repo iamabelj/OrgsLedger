@@ -23,14 +23,14 @@ const defaults = {
   AI_PROXY_URL: 'https://orgsledger.com',
   GATEWAY_URL: 'https://orgsledger.com',
 
-  // LiveKit (real-time video/audio transport)
-  LIVEKIT_URL: 'wss://livekit.orgsledger.com',
-  LIVEKIT_API_KEY: 'orgsledger',
-  LIVEKIT_API_SECRET: '9d91c6a6631af5ed641488460fb0da7bd1baf731c9c8b540e74777afd7c2c905',
+  // LiveKit Cloud (real-time video/audio transport)
+  LIVEKIT_URL: 'wss://orgsledger-b1j68gr8.livekit.cloud',
+  LIVEKIT_API_KEY: 'APICY5e7mofWboH',
+  LIVEKIT_API_SECRET: 'YzfIEjVvzv2LGzfva3TNlwqb0jps9exkxyPIb8UY1tDA',
   LIVEKIT_TOKEN_EXPIRY: '7200',
 
   // CORS
-  CORS_ORIGINS: 'https://orgsledger.com,https://app.orgsledger.com,https://livekit.orgsledger.com',
+  CORS_ORIGINS: 'https://orgsledger.com,https://app.orgsledger.com',
 
   // Email (SMTP via Hostinger)
   SMTP_HOST: 'smtp.hostinger.com',

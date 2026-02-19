@@ -21,13 +21,28 @@ const audit_1 = require("./middleware/audit");
 // In-memory store for meeting translation sessions
 // meetingId -> Map<userId, { language, name, receiveVoice }>
 const meetingLanguages = new Map();
+// Cache whether meeting_transcripts table exists (checked once on first insert)
+let transcriptTableExists = null;
+// Cache whether user_language_preferences table exists
+let langPrefsTableExists = null;
+// Per-user rate limiter for translation:speech events (max 2 per second)
+const speechRateLimits = new Map();
+const SPEECH_RATE_LIMIT_MS = 500; // Min interval between final speech events
 // ── Helper: Persist transcript segment to DB ────────────
-// Always stores transcript even when org_id is missing
+// Stores transcript. Requires valid organizationId (NOT NULL in schema).
 async function this_persistTranscript(meetingId, organizationId, speakerId, speakerName, originalText, sourceLang, translations) {
     try {
-        const hasTable = await db_1.default.schema.hasTable('meeting_transcripts');
-        if (!hasTable) {
+        // Check table existence once and cache result
+        if (transcriptTableExists === null) {
+            transcriptTableExists = await db_1.default.schema.hasTable('meeting_transcripts');
+        }
+        if (!transcriptTableExists) {
             logger_1.logger.warn('[TRANSLATION] meeting_transcripts table does not exist, skipping persist');
+            return;
+        }
+        // Guard: organization_id is NOT NULL in the schema
+        if (!organizationId) {
+            logger_1.logger.warn('[TRANSLATION] Cannot persist transcript — organization_id is null', { meetingId });
             return;
         }
         await (0, db_1.default)('meeting_transcripts').insert({
@@ -203,8 +218,10 @@ function setupSocketIO(httpServer) {
                 // ── Auto-load saved language preference for this user ──
                 // If user previously set a language in this org, auto-apply it
                 try {
-                    const hasTable = await db_1.default.schema.hasTable('user_language_preferences');
-                    if (hasTable) {
+                    if (langPrefsTableExists === null) {
+                        langPrefsTableExists = await db_1.default.schema.hasTable('user_language_preferences');
+                    }
+                    if (langPrefsTableExists) {
                         const pref = await (0, db_1.default)('user_language_preferences')
                             .where({ user_id: userId, organization_id: meeting.organization_id })
                             .first();
@@ -306,7 +323,9 @@ function setupSocketIO(httpServer) {
             try {
                 const meeting = await (0, db_1.default)('meetings').where({ id: meetingId }).select('organization_id').first();
                 if (meeting?.organization_id) {
-                    const hasTable = await db_1.default.schema.hasTable('user_language_preferences');
+                    const hasTable = langPrefsTableExists !== null ? langPrefsTableExists : await db_1.default.schema.hasTable('user_language_preferences');
+                    if (langPrefsTableExists === null)
+                        langPrefsTableExists = hasTable;
                     if (hasTable) {
                         await (0, db_1.default)('user_language_preferences')
                             .insert({
@@ -353,6 +372,17 @@ function setupSocketIO(httpServer) {
             const { meetingId, text, sourceLang, isFinal } = data;
             if (!meetingId || !text?.trim())
                 return;
+            // Rate limit final speech events per user (prevent flooding)
+            if (isFinal) {
+                const rateLimitKey = `${userId}:${meetingId}`;
+                const lastTime = speechRateLimits.get(rateLimitKey) || 0;
+                const now = Date.now();
+                if (now - lastTime < SPEECH_RATE_LIMIT_MS) {
+                    logger_1.logger.debug(`[TRANSLATION] Rate limited speech from ${userId} (${now - lastTime}ms since last)`);
+                    return;
+                }
+                speechRateLimits.set(rateLimitKey, now);
+            }
             const langMap = meetingLanguages.get(meetingId);
             // Get speaker name — from in-memory map or fall back to DB lookup
             let speakerName = 'Unknown';
@@ -424,9 +454,14 @@ function setupSocketIO(httpServer) {
                         }
                         translations = await (0, translation_service_1.translateToMultiple)(text, [...targetLangs], sourceLang);
                         logger_1.logger.debug(`[TRANSLATION] Translation complete: ${Object.keys(translations).length} languages`);
-                        // Deduct translation wallet — estimate ~0.5 minutes per translation batch
-                        const deductMinutes = 0.5;
-                        const deduction = await (0, subscription_service_1.deductTranslationWallet)(organizationId, deductMinutes, `Live translation: ${targetLangs.size} language(s) in meeting`);
+                        // Deduct translation wallet — scale with content:
+                        // Base: ~5 seconds per utterance, scaled by number of target languages
+                        // Longer texts cost proportionally more (chars / 100 ~= speaking seconds)
+                        const speakingSeconds = Math.max(5, Math.ceil(text.length / 15)); // ~15 chars/sec speech rate
+                        const langMultiplier = Math.max(1, targetLangs.size);
+                        const deductMinutes = (speakingSeconds * langMultiplier) / 60; // Convert to minutes
+                        const deduction = await (0, subscription_service_1.deductTranslationWallet)(organizationId, Math.round(deductMinutes * 100) / 100, // Round to 2 decimal places
+                        `Live translation: ${targetLangs.size} language(s), ${text.length} chars in meeting`);
                         if (!deduction.success) {
                             logger_1.logger.warn('[TRANSLATION] Wallet deduction failed but translation was served', {
                                 meetingId, orgId: organizationId,
@@ -439,11 +474,11 @@ function setupSocketIO(httpServer) {
                         logger_1.logger.warn('[TRANSLATION] No organization_id found for meeting, skipping wallet deduction', { meetingId });
                     }
                 }
-                // ── Always persist transcript segment to DB ──────────
+                // Always include the original language BEFORE persisting
+                translations[sourceLang] = text;
+                // ── Persist transcript segment to DB ──────────
                 await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, translations);
                 logger_1.logger.info(`[TRANSCRIPT] ✓ Stored: meeting=${meetingId}, speaker=${speakerName}, translations=${Object.keys(translations).length}`);
-                // Always include the original language
-                translations[sourceLang] = text;
                 const now = Date.now();
                 // ── Emit transcript:stored for real-time transcript tab updates ──
                 io.to(`meeting:${meetingId}`).emit('transcript:stored', {
@@ -456,11 +491,12 @@ function setupSocketIO(httpServer) {
                 //   2. Whether the user has opted in to receive voice
                 const langMapForEmit = meetingLanguages.get(meetingId);
                 if (langMapForEmit) {
+                    // Fetch all sockets ONCE outside the loop (was O(N²) before)
+                    const allSockets = await io.in(`meeting:${meetingId}`).fetchSockets();
                     for (const [targetUserId, prefs] of langMapForEmit.entries()) {
                         if (targetUserId === userId)
                             continue; // Don't send to speaker
-                        const targetSocketIds = await io.in(`meeting:${meetingId}`).fetchSockets();
-                        const targetSocket = targetSocketIds.find((s) => s.userId === targetUserId || s.data?.userId === targetUserId);
+                        const targetSocket = allSockets.find((s) => s.userId === targetUserId || s.data?.userId === targetUserId);
                         if (targetSocket) {
                             const ttsAvailable = (0, translation_service_1.isTtsSupported)(prefs.language) && prefs.receiveVoice;
                             targetSocket.emit('translation:result', {
@@ -524,6 +560,8 @@ function setupSocketIO(httpServer) {
                 userId,
                 meetingId,
             });
+            // Clean up rate limiter for this user+meeting
+            speechRateLimits.delete(`${userId}:${meetingId}`);
             // Remove from translation map
             const langMap = meetingLanguages.get(meetingId);
             if (langMap) {
@@ -565,6 +603,8 @@ function setupSocketIO(httpServer) {
             meetingLanguages.forEach((langMap, meetingId) => {
                 if (langMap.has(userId)) {
                     langMap.delete(userId);
+                    // Clean up rate limiter for this user+meeting
+                    speechRateLimits.delete(`${userId}:${meetingId}`);
                     if (langMap.size === 0) {
                         meetingLanguages.delete(meetingId);
                     }

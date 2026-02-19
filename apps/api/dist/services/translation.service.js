@@ -82,6 +82,37 @@ function setCache(key, text) {
     }
     translationCache.set(key, { text, ts: Date.now() });
 }
+// ── Singleton OpenAI client (avoid re-instantiating per call) ──
+let openaiClient = null;
+function getOpenAIClient() {
+    if (!openaiClient && config_1.config.ai.openaiApiKey) {
+        const OpenAI = require('openai').default;
+        openaiClient = new OpenAI({ apiKey: config_1.config.ai.openaiApiKey });
+    }
+    return openaiClient;
+}
+// ── Singleton Google Auth client ──
+let googleAuthClient = null;
+async function getGoogleAuthClient() {
+    if (!googleAuthClient) {
+        const credentialsPath = config_1.config.ai.googleCredentials;
+        if (!credentialsPath)
+            return null;
+        const { GoogleAuth } = await Promise.resolve().then(() => __importStar(require('google-auth-library')));
+        const auth = new GoogleAuth({
+            keyFilename: credentialsPath,
+            scopes: ['https://www.googleapis.com/auth/cloud-translation'],
+        });
+        googleAuthClient = await auth.getClient();
+    }
+    return googleAuthClient;
+}
+// Fetch with timeout helper
+function fetchWithTimeout(url, options, timeoutMs = 10000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
 /**
  * Translate text using GPT-4o-mini (primary) or fallback chain.
  * Accepts ANY ISO language code — no pre-defined list required.
@@ -95,7 +126,9 @@ async function translateText(text, targetLang, sourceLang) {
         return { translatedText: text, detectedSourceLanguage: sourceLang };
     }
     // ── Check cache ─────────────────────────────────────────
-    const cacheKey = `${sourceLang || 'auto'}:${targetLang}:${text.slice(0, 200)}`;
+    // Use full text in cache key (hashed for long strings)
+    const textKey = text.length > 300 ? text.slice(0, 150) + '|' + text.length + '|' + text.slice(-100) : text;
+    const cacheKey = `${sourceLang || 'auto'}:${targetLang}:${textKey}`;
     const cached = getCached(cacheKey);
     if (cached) {
         logger_1.logger.debug(`[TRANSLATION] Cache hit: ${sourceLang || 'auto'} → ${targetLang}`);
@@ -108,14 +141,14 @@ async function translateText(text, targetLang, sourceLang) {
     // ── Try AI Proxy first ────────────────────────────────
     if (config_1.config.aiProxy.url && config_1.config.aiProxy.apiKey) {
         try {
-            const res = await fetch(`${config_1.config.aiProxy.url}/api/ai/translate`, {
+            const res = await fetchWithTimeout(`${config_1.config.aiProxy.url}/api/ai/translate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-API-Key': config_1.config.aiProxy.apiKey,
                 },
                 body: JSON.stringify({ text, targetLang, sourceLang }),
-            });
+            }, 8000);
             if (res.ok) {
                 const data = (await res.json());
                 const translated = data.translatedText || text;
@@ -131,10 +164,9 @@ async function translateText(text, targetLang, sourceLang) {
         }
     }
     // ── GPT-4o-mini translation (100+ languages) ──────────
-    if (config_1.config.ai.openaiApiKey) {
+    const openai = getOpenAIClient();
+    if (openai) {
         try {
-            const OpenAI = (await Promise.resolve().then(() => __importStar(require('openai')))).default;
-            const openai = new OpenAI({ apiKey: config_1.config.ai.openaiApiKey });
             const systemPrompt = sourceName
                 ? `You are a professional translator. Translate the following text from ${sourceName} to ${targetName}. Output ONLY the translated text, nothing else. Translate exactly. Do not summarize. Do not paraphrase. Do not add commentary. Preserve tone, formality, and meaning strictly.`
                 : `You are a professional translator. Detect the source language and translate the following text to ${targetName}. Output ONLY the translated text, nothing else. Translate exactly. Do not summarize. Do not paraphrase. Do not add commentary. Preserve tone, formality, and meaning strictly.`;
@@ -145,7 +177,7 @@ async function translateText(text, targetLang, sourceLang) {
                     { role: 'user', content: text },
                 ],
                 temperature: 0,
-                max_tokens: Math.max(256, text.length * 3),
+                max_tokens: Math.min(4096, Math.max(256, text.length * 3)),
             });
             const translated = response.choices[0]?.message?.content?.trim() || text;
             logger_1.logger.debug(`[TRANSLATION] GPT result: "${text.slice(0, 60)}" → "${translated.slice(0, 60)}" (${sourceLang || 'auto'} → ${targetLang})`);
@@ -158,17 +190,11 @@ async function translateText(text, targetLang, sourceLang) {
     }
     // ── Google Cloud Translation API v2 (fallback) ────────
     try {
-        const credentialsPath = config_1.config.ai.googleCredentials;
-        if (!credentialsPath) {
+        const client = await getGoogleAuthClient();
+        if (!client) {
             logger_1.logger.warn('No Google credentials configured for translation');
             return { translatedText: text };
         }
-        const { GoogleAuth } = await Promise.resolve().then(() => __importStar(require('google-auth-library')));
-        const auth = new GoogleAuth({
-            keyFilename: credentialsPath,
-            scopes: ['https://www.googleapis.com/auth/cloud-translation'],
-        });
-        const client = await auth.getClient();
         const accessToken = (await client.getAccessToken()).token;
         const url = 'https://translation.googleapis.com/language/translate/v2';
         const body = {
@@ -179,14 +205,14 @@ async function translateText(text, targetLang, sourceLang) {
         if (sourceLang) {
             body.source = sourceLang;
         }
-        const res = await fetch(url, {
+        const res = await fetchWithTimeout(url, {
             method: 'POST',
             headers: {
                 Authorization: `Bearer ${accessToken}`,
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(body),
-        });
+        }, 10000);
         if (!res.ok) {
             const err = await res.text();
             throw new Error(`Google Translate API error: ${res.status} — ${err}`);

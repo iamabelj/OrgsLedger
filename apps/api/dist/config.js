@@ -77,11 +77,11 @@ exports.config = {
     // Self-hosted or cloud LiveKit for video/audio conferencing.
     // All participants receive backend-issued tokens — no external login.
     livekit: {
-        // LiveKit server WebSocket URL (wss://livekit.yourdomain.com)
-        url: process.env.LIVEKIT_URL || 'ws://localhost:7880',
-        // API key for token signing (from LiveKit server config)
+        // LiveKit Cloud WebSocket URL
+        url: process.env.LIVEKIT_URL || 'wss://orgsledger-b1j68gr8.livekit.cloud',
+        // API key for token signing (from LiveKit Cloud dashboard)
         apiKey: process.env.LIVEKIT_API_KEY || '',
-        // API secret for token signing (from LiveKit server config)
+        // API secret for token signing (from LiveKit Cloud dashboard)
         apiSecret: process.env.LIVEKIT_API_SECRET || '',
         // Token expiry in seconds (default 2 hours)
         tokenExpirySeconds: parseInt(process.env.LIVEKIT_TOKEN_EXPIRY || '7200', 10),

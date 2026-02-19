@@ -48,6 +48,15 @@ const audit_1 = require("../middleware/audit");
 const email_service_1 = require("./email.service");
 const push_service_1 = require("./push.service");
 const subscription_service_1 = require("./subscription.service");
+// Singleton OpenAI client (avoid re-instantiating per call)
+let openaiSingleton = null;
+function getOpenAI() {
+    if (!openaiSingleton && config_1.config.ai.openaiApiKey) {
+        const OpenAI = require('openai').default;
+        openaiSingleton = new OpenAI({ apiKey: config_1.config.ai.openaiApiKey });
+    }
+    return openaiSingleton;
+}
 class AIService {
     io;
     constructor(io) {
@@ -62,6 +71,7 @@ class AIService {
      */
     async processMinutes(meetingId, organizationId) {
         const startTime = Date.now();
+        let meetingDurationMinutes = 0; // Track for refund on failure
         try {
             logger_1.logger.info(`Starting AI minutes processing for meeting ${meetingId}`);
             const meeting = await (0, db_1.default)('meetings').where({ id: meetingId }).first();
@@ -75,7 +85,7 @@ class AIService {
                 throw new Error('Insufficient AI wallet balance');
             }
             // Calculate meeting duration in minutes (actual, not rounded up to hours)
-            const meetingDurationMinutes = meeting.actual_start && meeting.actual_end
+            meetingDurationMinutes = meeting.actual_start && meeting.actual_end
                 ? Math.max(1, Math.ceil((new Date(meeting.actual_end).getTime() - new Date(meeting.actual_start).getTime()) /
                     (1000 * 60)))
                 : 60; // default 60 minutes
@@ -145,9 +155,13 @@ class AIService {
                 data: JSON.stringify({ meetingId }),
             }));
             await (0, db_1.default)('notifications').insert(notifications);
-            // Emit socket event
+            // Emit socket event to both org and meeting rooms
             if (this.io) {
                 this.io.to(`org:${organizationId}`).emit('meeting:minutes:ready', {
+                    meetingId,
+                    title: meeting.title,
+                });
+                this.io.to(`meeting:${meetingId}`).emit('meeting:minutes:ready', {
                     meetingId,
                     title: meeting.title,
                 });
@@ -186,6 +200,19 @@ class AIService {
         }
         catch (err) {
             logger_1.logger.error(`AI minutes processing failed for meeting ${meetingId}`, err);
+            // Refund wallet on processing failure (credits were deducted upfront)
+            try {
+                const minutesRow = await (0, db_1.default)('meeting_minutes').where({ meeting_id: meetingId }).select('ai_credits_used').first();
+                const deductedMinutes = minutesRow?.ai_credits_used || meetingDurationMinutes;
+                if (deductedMinutes > 0) {
+                    // Negative deduction = refund
+                    await (0, subscription_service_1.deductAiWallet)(organizationId, -deductedMinutes, `Refund: AI minutes failed for meeting ${meetingId}`);
+                    logger_1.logger.info(`[AI] Wallet refunded ${deductedMinutes} minutes for failed processing`, { meetingId });
+                }
+            }
+            catch (refundErr) {
+                logger_1.logger.error('[AI] Failed to refund wallet after processing failure', refundErr);
+            }
             await (0, db_1.default)('meeting_minutes')
                 .where({ meeting_id: meetingId })
                 .update({
@@ -193,7 +220,12 @@ class AIService {
                 error_message: err.message,
             });
             if (this.io) {
+                // Emit to both org and meeting rooms for consistency
                 this.io.to(`org:${organizationId}`).emit('meeting:minutes:failed', {
+                    meetingId,
+                    error: err.message,
+                });
+                this.io.to(`meeting:${meetingId}`).emit('meeting:minutes:failed', {
                     meetingId,
                     error: err.message,
                 });
@@ -226,14 +258,14 @@ class AIService {
                 return data.transcript || [];
             }
             catch (err) {
-                logger_1.logger.error('AI Gateway transcription failed, falling back to mock', err);
-                return this.getMockTranscript();
+                logger_1.logger.error('AI Gateway transcription failed', err);
+                throw new Error('Audio transcription failed via AI Gateway');
             }
         }
         // ── Direct mode: call Google API directly ──────────
         if (!config_1.config.ai.googleCredentials) {
-            logger_1.logger.warn('Google credentials not configured, returning mock transcript');
-            return this.getMockTranscript();
+            logger_1.logger.warn('Google credentials not configured');
+            throw new Error('No transcription service configured (no AI proxy, no Google credentials)');
         }
         try {
             // Dynamic import for Google Speech
@@ -243,15 +275,21 @@ class AIService {
                 config: {
                     encoding: 'LINEAR16',
                     sampleRateHertz: 16000,
-                    // Do NOT force languageCode — let Speech-to-Text auto-detect.
-                    // This enables 100+ language support including African,
-                    // Asian, European, Arabic dialects, and mixed speech.
-                    languageCode: 'auto',
+                    // Google STT requires a valid BCP-47 code; 'auto' is not valid.
+                    // Use 'en-US' as primary with broad alternativeLanguageCodes for
+                    // 100+ language auto-detection.
+                    languageCode: 'en-US',
+                    alternativeLanguageCodes: [
+                        'fr-FR', 'es-ES', 'de-DE', 'pt-BR', 'it-IT', 'nl-NL',
+                        'ar-SA', 'zh-CN', 'ja-JP', 'ko-KR', 'hi-IN', 'ru-RU',
+                        'tr-TR', 'pl-PL', 'sv-SE', 'da-DK', 'fi-FI', 'no-NO',
+                        'uk-UA', 'ro-RO', 'cs-CZ', 'el-GR', 'he-IL', 'th-TH',
+                        'vi-VN', 'id-ID', 'ms-MY', 'sw-KE', 'af-ZA', 'zu-ZA',
+                    ],
                     enableAutomaticPunctuation: true,
                     enableSpeakerDiarization: true,
                     diarizationSpeakerCount: 10,
                     model: 'latest_long',
-                    // Whisper-style: no alternative language codes needed with auto-detect
                 },
                 audio: {
                     uri: audioUrl, // GCS URI like gs://bucket/file.wav
@@ -287,8 +325,8 @@ class AIService {
             return segments;
         }
         catch (err) {
-            logger_1.logger.error('Google Speech-to-Text failed, falling back to mock', err);
-            return this.getMockTranscript();
+            logger_1.logger.error('Google Speech-to-Text failed', err);
+            throw new Error('Audio transcription failed via Google Speech-to-Text');
         }
     }
     /**
@@ -338,18 +376,17 @@ class AIService {
                 };
             }
             catch (err) {
-                logger_1.logger.error('AI Gateway summarization failed, falling back to mock', err);
-                return this.getMockMinutes(transcript);
+                logger_1.logger.error('AI Gateway summarization failed', err);
+                throw new Error('Minutes generation failed via AI Gateway');
             }
         }
         // ── Direct mode: call OpenAI directly ──────────────
-        if (!config_1.config.ai.openaiApiKey) {
-            logger_1.logger.warn('OpenAI API key not configured, returning mock minutes');
-            return this.getMockMinutes(transcript);
+        const openai = getOpenAI();
+        if (!openai) {
+            logger_1.logger.warn('OpenAI API key not configured');
+            throw new Error('OpenAI API key not configured — cannot generate minutes');
         }
         try {
-            const OpenAI = (await Promise.resolve().then(() => __importStar(require('openai')))).default;
-            const openai = new OpenAI({ apiKey: config_1.config.ai.openaiApiKey });
             const transcriptText = transcript
                 .map((s) => `[${s.speakerName}] (${this.formatTime(s.startTime)}): ${s.text}`)
                 .join('\n');
@@ -402,8 +439,8 @@ Be thorough and accurate. Identify all decisions, motions, and action items.`;
             };
         }
         catch (err) {
-            logger_1.logger.error('OpenAI processing failed, falling back to mock', err);
-            return this.getMockMinutes(transcript);
+            logger_1.logger.error('OpenAI processing failed', err);
+            throw new Error('Minutes generation failed via OpenAI');
         }
     }
     formatTime(seconds) {
@@ -442,13 +479,14 @@ Be thorough and accurate. Identify all decisions, motions, and action items.`;
                 logger_1.logger.warn('[AI] No live transcripts found for meeting', { meetingId });
                 return this.getMockTranscript();
             }
-            // Convert to TranscriptSegment format
-            let prevEndTime = 0;
-            return rows.map((row) => {
-                const startTime = prevEndTime;
-                const estimatedDuration = Math.max(3, Math.ceil(row.original_text.length / 15)); // ~15 chars/sec speech
+            // Convert to TranscriptSegment format using real spoken_at timestamps
+            const baseTime = rows[0]?.spoken_at ? Number(rows[0].spoken_at) : 0;
+            return rows.map((row, idx) => {
+                const spokenAt = row.spoken_at ? Number(row.spoken_at) : 0;
+                // Use real timestamps relative to first segment (convert ms → seconds)
+                const startTime = baseTime ? Math.max(0, (spokenAt - baseTime) / 1000) : idx * 5;
+                const estimatedDuration = Math.max(3, Math.ceil(row.original_text.length / 15));
                 const endTime = startTime + estimatedDuration;
-                prevEndTime = endTime;
                 return {
                     speakerId: row.speaker_id,
                     speakerName: row.speaker_name,
