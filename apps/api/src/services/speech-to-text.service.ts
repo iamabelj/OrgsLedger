@@ -136,9 +136,16 @@ export class SpeechSession {
     this.bytesSent += buf.length;
 
     try {
-      this.recognizeStream.write(buf);
+      if (this.recognizeStream && !this.recognizeStream.destroyed) {
+        this.recognizeStream.write(buf);
+      } else {
+        logger.debug(`[STT] Stream not writable for ${this.speakerName}, restarting`);
+        this.restartStream();
+        return;
+      }
     } catch (err) {
       logger.debug(`[STT] Write failed for ${this.speakerName}, restarting stream`);
+      this.recognizeStream = null;
       this.restartStream();
     }
 
@@ -189,11 +196,9 @@ export class SpeechSession {
       }],
     };
 
-    // For LINEAR16, set sampleRateHertz explicitly
-    // For WEBM_OPUS, Google auto-detects from the container header
-    if (this.encoding === 'LINEAR16') {
-      config.sampleRateHertz = this.sampleRateHertz;
-    }
+    // Always set sampleRateHertz explicitly — Google may fail to auto-detect
+    // from the WebM/Opus container header (returns 0), so be explicit.
+    config.sampleRateHertz = this.sampleRateHertz;
 
     const request = {
       config,
@@ -228,6 +233,10 @@ export class SpeechSession {
         }
 
         logger.error(`[STT] Error for ${this.speakerName}: code=${err.code}, message=${err.message}`);
+
+        // Immediately null out the stream to prevent "write after destroyed" errors
+        this.recognizeStream = null;
+
         this.onError?.(err);
 
         // Try to restart on transient errors
