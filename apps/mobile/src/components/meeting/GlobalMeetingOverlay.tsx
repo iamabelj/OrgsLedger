@@ -508,6 +508,8 @@ function FullMeetingOverlay() {
         isSidebarOpen={sidebarOpen}
         activeSidebarPanel={activePanel}
         participantCount={lk.participants.length}
+        unreadChatCount={gm.unreadChatCount}
+        isChatOpen={gm.isChatOpen}
         isAdmin={gm.isAdmin}
         onToggleMic={lk.toggleMic}
         onToggleCamera={gm.isAudioOnly ? gm.toggleAudioOnly : lk.toggleCamera}

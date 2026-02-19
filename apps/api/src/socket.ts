@@ -317,6 +317,9 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       socket.userId = payload.userId;
       socket.email = payload.email;
       socket.globalRole = user.global_role || 'member';
+
+      // CRITICAL: Also set on socket.data so fetchSockets() RemoteSocket objects can access it
+      socket.data = { ...socket.data, userId: payload.userId, email: payload.email };
       next();
     } catch (err) {
       next(new Error('Invalid token'));

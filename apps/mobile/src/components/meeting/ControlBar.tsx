@@ -41,6 +41,10 @@ interface ControlBarProps {
 
   // Counts
   participantCount: number;
+  unreadChatCount: number;
+
+  // Chat
+  isChatOpen: boolean;
 
   // Admin
   isAdmin: boolean;
@@ -137,6 +141,8 @@ function ControlBarInner(props: ControlBarProps) {
     isSidebarOpen,
     activeSidebarPanel,
     participantCount,
+    unreadChatCount,
+    isChatOpen,
     isAdmin,
     onToggleMic,
     onToggleCamera,
@@ -207,10 +213,11 @@ function ControlBarInner(props: ControlBarProps) {
         />
 
         <ControlBtn
-          icon="chatbubbles"
-          label="Transcript"
-          active={isSidebarOpen && activeSidebarPanel === 'transcript'}
-          onPress={() => onToggleSidebar('transcript')}
+          icon="chatbubble-ellipses"
+          label="Chat"
+          active={isChatOpen}
+          badge={unreadChatCount > 0 ? unreadChatCount : undefined}
+          onPress={() => onToggleSidebar('chat')}
           compact={isNarrow}
         />
 
