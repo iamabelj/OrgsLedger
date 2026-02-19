@@ -160,6 +160,23 @@ function FullMeetingOverlay() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [gm.meetingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Auto-start speech recognition once connected ──────
+  // Start transcription automatically so transcripts are captured
+  // without requiring the user to manually select a language.
+  useEffect(() => {
+    if (!lk.isConnected) return;
+    if (translationListening) return; // already started
+    // Small delay to let LiveTranslation mount and attach ref
+    const timer = setTimeout(() => {
+      if (translationRef.current && !translationListening) {
+        translationRef.current.startListening();
+        setTranslationListening(true);
+        console.debug('[GlobalMeetingOverlay] Auto-started speech recognition for transcription');
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [lk.isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Toggle sidebar panel ──────────────────────────────
   const handleToggleSidebar = useCallback((panel?: string) => {
     if (panel === 'chat') {
