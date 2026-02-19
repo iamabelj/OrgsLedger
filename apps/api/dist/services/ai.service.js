@@ -518,7 +518,7 @@ Be thorough and accurate. Identify all decisions, motions, and action items.`;
             const hasTable = await db_1.default.schema.hasTable('meeting_transcripts');
             if (!hasTable) {
                 logger_1.logger.warn('[AI] meeting_transcripts table does not exist');
-                return this.getMockTranscript();
+                return [];
             }
             const rows = await (0, db_1.default)('meeting_transcripts')
                 .where({ meeting_id: meetingId })
@@ -548,7 +548,7 @@ Be thorough and accurate. Identify all decisions, motions, and action items.`;
         }
         catch (err) {
             logger_1.logger.error('[AI] Failed to get transcripts from DB', err);
-            return this.getMockTranscript();
+            return [];
         }
     }
     getMockMinutes(transcript) {

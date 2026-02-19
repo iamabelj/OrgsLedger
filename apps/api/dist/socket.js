@@ -19,7 +19,7 @@ const logger_1 = require("./logger");
 const translation_service_1 = require("./services/translation.service");
 const subscription_service_1 = require("./services/subscription.service");
 const audit_1 = require("./middleware/audit");
-const speech_to_text_service_1 = require("./services/speech-to-text.service");
+const whisper_service_1 = require("./services/whisper.service");
 // In-memory store for meeting translation sessions
 // meetingId -> Map<userId, { language, name, receiveVoice }>
 exports.meetingLanguages = new Map();
@@ -30,8 +30,7 @@ let langPrefsTableExists = null;
 // Per-user rate limiter for translation:speech events (max 2 per second)
 const speechRateLimits = new Map();
 const SPEECH_RATE_LIMIT_MS = 500; // Min interval between final speech events
-// Active Google STT sessions: socketId -> SpeechSession
-const activeSttSessions = new Map();
+const activeAudioStreams = new Map();
 // ── Helper: Persist transcript segment to DB ────────────
 // Stores transcript. Requires valid organizationId (NOT NULL in schema).
 async function this_persistTranscript(meetingId, organizationId, speakerId, speakerName, originalText, sourceLang, translations) {
@@ -39,14 +38,15 @@ async function this_persistTranscript(meetingId, organizationId, speakerId, spea
         // Check table existence once and cache result
         if (transcriptTableExists === null) {
             transcriptTableExists = await db_1.default.schema.hasTable('meeting_transcripts');
+            logger_1.logger.info(`[TRANSLATION] meeting_transcripts table exists: ${transcriptTableExists}`);
         }
         if (!transcriptTableExists) {
-            logger_1.logger.warn('[TRANSLATION] meeting_transcripts table does not exist, skipping persist');
+            logger_1.logger.error('[TRANSLATION] ❌ meeting_transcripts table does not exist — transcripts will NOT be saved! Run migrations or restart server.');
             return;
         }
         // Guard: organization_id is NOT NULL in the schema
         if (!organizationId) {
-            logger_1.logger.warn('[TRANSLATION] Cannot persist transcript — organization_id is null', { meetingId });
+            logger_1.logger.error('[TRANSLATION] ❌ Cannot persist transcript — organization_id is null', { meetingId, speakerName });
             return;
         }
         await (0, db_1.default)('meeting_transcripts').insert({
@@ -59,10 +59,10 @@ async function this_persistTranscript(meetingId, organizationId, speakerId, spea
             translations: JSON.stringify(translations),
             spoken_at: Date.now(),
         });
-        logger_1.logger.debug(`[TRANSLATION] Transcript persisted: meeting=${meetingId}, speaker=${speakerName}, lang=${sourceLang}`);
+        logger_1.logger.info(`[TRANSCRIPT] ✓ Persisted: meeting=${meetingId}, speaker=${speakerName}, lang=${sourceLang}, textLen=${originalText.length}`);
     }
     catch (dbErr) {
-        logger_1.logger.warn('[TRANSLATION] Failed to persist transcript segment', dbErr);
+        logger_1.logger.error(`[TRANSLATION] ❌ Failed to persist transcript: ${dbErr.message}`, { meetingId, speakerName, organizationId });
     }
 }
 // ── Helper: Process speech text (translate, persist, broadcast) ──
@@ -175,16 +175,17 @@ async function handleSpeechText(io, socket, userId, meetingId, text, sourceLang,
             meetingId, speakerId: userId, speakerName, originalText: text,
             sourceLang, translations, timestamp: now,
         });
-        // Per-user routing with TTS availability
+        // Per-user routing — emit translated text immediately
         const langMapForEmit = exports.meetingLanguages.get(meetingId);
+        const ttsTargets = [];
         if (langMapForEmit) {
             const allSockets = await io.in(`meeting:${meetingId}`).fetchSockets();
             for (const [targetUserId, prefs] of langMapForEmit.entries()) {
                 if (targetUserId === userId)
                     continue;
-                const targetSocket = allSockets.find((s) => s.userId === targetUserId || s.data?.userId === targetUserId);
+                const targetSocket = allSockets.find((s) => s.data?.userId === targetUserId);
                 if (targetSocket) {
-                    const ttsAvailable = (0, translation_service_1.isTtsSupported)(prefs.language) && prefs.receiveVoice;
+                    const wantsTts = (0, translation_service_1.isTtsSupported)(prefs.language) && prefs.receiveVoice;
                     targetSocket.emit('translation:result', {
                         meetingId,
                         speakerId: userId,
@@ -193,11 +194,13 @@ async function handleSpeechText(io, socket, userId, meetingId, text, sourceLang,
                         sourceLang,
                         translations,
                         timestamp: now,
-                        ttsEnabled: ttsAvailable,
-                        ttsAvailable,
+                        ttsAvailable: wantsTts,
                         userLang: prefs.language,
                     });
-                    logger_1.logger.debug(`[TRANSLATION] Emitted to user ${targetUserId} (lang=${prefs.language}, tts=${ttsAvailable})`);
+                    logger_1.logger.debug(`[TRANSLATION] Emitted to user ${targetUserId} (lang=${prefs.language}, tts=${wantsTts})`);
+                    if (wantsTts) {
+                        ttsTargets.push({ userId: targetUserId, language: prefs.language });
+                    }
                 }
             }
         }
@@ -210,9 +213,52 @@ async function handleSpeechText(io, socket, userId, meetingId, text, sourceLang,
             sourceLang,
             translations,
             timestamp: now,
-            ttsEnabled: false,
             ttsAvailable: false,
         });
+        // ── Fire-and-forget: generate server-side TTS audio ──
+        // Group by language so we generate only one audio per language
+        if (ttsTargets.length > 0) {
+            const ttsGroups = new Map(); // language → userId[]
+            for (const t of ttsTargets) {
+                const arr = ttsGroups.get(t.language) || [];
+                arr.push(t.userId);
+                ttsGroups.set(t.language, arr);
+            }
+            // Async — don't block the translation result delivery
+            (async () => {
+                try {
+                    const allSocks = await io.in(`meeting:${meetingId}`).fetchSockets();
+                    for (const [lang, userIds] of ttsGroups.entries()) {
+                        const ttsText = translations[lang] || text;
+                        if (!ttsText.trim())
+                            continue;
+                        try {
+                            const audioBuffer = await (0, whisper_service_1.generateTTSAudio)(ttsText);
+                            const audioBase64 = audioBuffer.toString('base64');
+                            for (const uid of userIds) {
+                                const sock = allSocks.find((s) => s.data?.userId === uid);
+                                if (sock) {
+                                    sock.emit('tts:audio', {
+                                        meetingId,
+                                        speakerId: userId,
+                                        speakerName,
+                                        audio: audioBase64,
+                                        format: 'mp3',
+                                    });
+                                }
+                            }
+                            logger_1.logger.debug(`[TTS] Sent audio for lang=${lang} to ${userIds.length} user(s)`);
+                        }
+                        catch (ttsErr) {
+                            logger_1.logger.warn(`[TTS] Failed to generate for lang=${lang}: ${ttsErr.message}`);
+                        }
+                    }
+                }
+                catch (outerErr) {
+                    logger_1.logger.error('[TTS] Async TTS generation failed:', outerErr);
+                }
+            })();
+        }
     }
     catch (err) {
         logger_1.logger.error('[TRANSCRIPT] Translation pipeline failed', err);
@@ -267,6 +313,8 @@ function setupSocketIO(httpServer) {
             socket.userId = payload.userId;
             socket.email = payload.email;
             socket.globalRole = user.global_role || 'member';
+            // CRITICAL: Also set on socket.data so fetchSockets() RemoteSocket objects can access it
+            socket.data = { ...socket.data, userId: payload.userId, email: payload.email };
             next();
         }
         catch (err) {
@@ -547,100 +595,89 @@ function setupSocketIO(httpServer) {
             const { meetingId, text, sourceLang, isFinal } = data;
             await handleSpeechText(io, socket, userId, meetingId, text, sourceLang, isFinal);
         });
-        // ── Server-Side Speech-to-Text (Google Cloud) ──────────
-        // Client streams raw audio → server transcribes via Google STT
-        // Works for web (MediaRecorder WEBM_OPUS) and mobile clients
+        // ── Server-Side Speech-to-Text (OpenAI Whisper) ──────────
+        // Client records 4-second audio segments → sends complete webm files
+        // Server transcribes via Whisper (excellent multilingual accuracy)
         socket.on('audio:start', async (data) => {
-            const { meetingId, language, encoding, sampleRate } = data;
+            const { meetingId, language } = data;
             if (!meetingId)
                 return;
-            // Pre-flight: check if STT credentials are available
-            const { isSttAvailable } = require('./services/speech-to-text.service');
-            if (!isSttAvailable()) {
-                logger_1.logger.error('[STT] ❌ Cannot start audio stream — Google credentials missing!');
+            // Pre-flight: check if Whisper (OpenAI key) is available
+            if (!(0, whisper_service_1.isWhisperAvailable)()) {
+                logger_1.logger.error('[STT] ❌ Cannot start audio stream — OpenAI API key not configured!');
                 socket.emit('audio:error', {
                     meetingId,
-                    error: 'Speech-to-text service unavailable. Server credentials not configured.',
+                    error: 'Speech-to-text service unavailable. OpenAI API key not configured.',
                     code: 'STT_UNAVAILABLE',
                 });
                 return;
             }
-            // Clean up any existing session for this socket
-            const sessionKey = socket.id;
-            const existingSession = activeSttSessions.get(sessionKey);
-            if (existingSession) {
-                existingSession.close();
-                activeSttSessions.delete(sessionKey);
-            }
-            // Look up speaker name
-            let speakerName = 'Unknown';
-            try {
-                const user = await (0, db_1.default)('users').where({ id: userId }).select('first_name', 'last_name').first();
-                if (user)
-                    speakerName = `${user.first_name} ${user.last_name}`.trim();
-            }
-            catch (_) { }
-            // Determine language code (from language picker or default en-US)
+            // Clean up any existing state for this socket
+            activeAudioStreams.delete(socket.id);
+            // Determine language code
             const langMap = exports.meetingLanguages.get(meetingId);
             const userPrefs = langMap?.get(userId);
-            const langCode = language || userPrefs?.language || 'en-US';
-            // Map our short language codes to BCP-47
-            const bcp47Map = {
-                en: 'en-US', es: 'es-ES', fr: 'fr-FR', de: 'de-DE',
-                pt: 'pt-BR', it: 'it-IT', zh: 'zh-CN', ja: 'ja-JP',
-                ko: 'ko-KR', ar: 'ar-SA', hi: 'hi-IN', ru: 'ru-RU',
-                nl: 'nl-NL', sv: 'sv-SE', pl: 'pl-PL', tr: 'tr-TR',
-                vi: 'vi-VN', th: 'th-TH', uk: 'uk-UA', cs: 'cs-CZ',
-                ro: 'ro-RO', hu: 'hu-HU', el: 'el-GR', he: 'he-IL',
-                da: 'da-DK', fi: 'fi-FI', no: 'nb-NO', id: 'id-ID',
-                ms: 'ms-MY', tl: 'fil-PH', sw: 'sw-KE', bn: 'bn-IN',
-            };
-            const bcp47Lang = bcp47Map[langCode] || langCode;
-            logger_1.logger.info(`[STT] Starting audio stream: user=${userId}, meeting=${meetingId}, lang=${bcp47Lang}, encoding=${encoding || 'WEBM_OPUS'}`);
-            const session = new speech_to_text_service_1.SpeechSession({
+            const langCode = language || userPrefs?.language || 'en';
+            logger_1.logger.info(`[STT] Starting Whisper audio stream: user=${userId}, meeting=${meetingId}, lang=${langCode}`);
+            activeAudioStreams.set(socket.id, {
                 meetingId,
-                userId,
-                speakerName,
-                languageCode: bcp47Lang,
-                encoding: encoding || 'WEBM_OPUS',
-                sampleRateHertz: sampleRate,
-                onTranscript: (text, isFinal) => {
-                    // Feed Google STT results into the same translation pipeline
-                    handleSpeechText(io, socket, userId, meetingId, text, langCode, isFinal);
-                },
-                onError: (err) => {
-                    socket.emit('audio:error', {
-                        meetingId,
-                        error: err.message,
-                    });
-                },
+                language: langCode,
+                lastTranscript: '',
             });
+            socket.emit('audio:started', { meetingId });
+        });
+        // Client sends a complete audio segment (4-second webm file)
+        socket.on('audio:segment', async (data) => {
+            const state = activeAudioStreams.get(socket.id);
+            if (!state)
+                return;
             try {
-                session.start();
-                activeSttSessions.set(sessionKey, session);
-                socket.emit('audio:started', { meetingId });
+                // Convert to Buffer
+                let buf;
+                if (typeof data.audio === 'string') {
+                    buf = Buffer.from(data.audio, 'base64');
+                }
+                else if (data.audio instanceof ArrayBuffer) {
+                    buf = Buffer.from(data.audio);
+                }
+                else {
+                    buf = Buffer.isBuffer(data.audio) ? data.audio : Buffer.from(data.audio);
+                }
+                // Skip tiny segments (likely silence/noise)
+                if (buf.length < 1000) {
+                    logger_1.logger.debug(`[STT] Skipping tiny segment (${buf.length} bytes) for user=${userId}`);
+                    return;
+                }
+                // Transcribe via Whisper
+                const result = await (0, whisper_service_1.transcribeAudio)(buf, {
+                    language: state.language,
+                    prompt: state.lastTranscript,
+                });
+                const text = result.text;
+                if (!text || !text.trim()) {
+                    logger_1.logger.debug(`[STT] Empty transcript from Whisper for user=${userId}`);
+                    return;
+                }
+                // Update context for next segment
+                state.lastTranscript = text;
+                // Feed into the translation pipeline (as a final result)
+                await handleSpeechText(io, socket, userId, state.meetingId, text, state.language, true);
             }
-            catch (startErr) {
-                logger_1.logger.error(`[STT] Failed to start session: ${startErr.message}`);
+            catch (err) {
+                logger_1.logger.error(`[STT] Whisper transcription failed for user=${userId}: ${err.message}`);
                 socket.emit('audio:error', {
-                    meetingId,
-                    error: `Failed to start speech recognition: ${startErr.message}`,
-                    code: 'STT_START_FAILED',
+                    meetingId: state.meetingId,
+                    error: `Transcription failed: ${err.message}`,
                 });
             }
         });
-        socket.on('audio:chunk', (data) => {
-            const session = activeSttSessions.get(socket.id);
-            if (!session || session.isClosed)
-                return;
-            session.pushAudio(data.audio);
-        });
+        // Legacy audio:chunk handler — no-op (replaced by audio:segment)
+        socket.on('audio:chunk', () => { });
         socket.on('audio:stop', (data) => {
-            const session = activeSttSessions.get(socket.id);
-            if (session) {
-                logger_1.logger.info(`[STT] Stopping audio stream: user=${userId}`);
-                session.close();
-                activeSttSessions.delete(socket.id);
+            const state = activeAudioStreams.get(socket.id);
+            if (state) {
+                logger_1.logger.info(`[STT] Stopping Whisper audio stream: user=${userId}`);
+                activeAudioStreams.delete(socket.id);
                 socket.emit('audio:stopped', { meetingId: data?.meetingId });
             }
         });
@@ -739,12 +776,8 @@ function setupSocketIO(httpServer) {
                 userId,
                 meetingId,
             });
-            // Clean up STT session when leaving meeting
-            const sttSession = activeSttSessions.get(socket.id);
-            if (sttSession) {
-                sttSession.close();
-                activeSttSessions.delete(socket.id);
-            }
+            // Clean up audio stream state when leaving meeting
+            activeAudioStreams.delete(socket.id);
             // Clean up rate limiter for this user+meeting
             speechRateLimits.delete(`${userId}:${meetingId}`);
             // Remove from translation map
@@ -784,13 +817,8 @@ function setupSocketIO(httpServer) {
         // ── Presence ────────────────────────────────────────
         socket.on('disconnect', () => {
             logger_1.logger.debug(`Socket disconnected: ${userId}`);
-            // Clean up STT session
-            const sttSession = activeSttSessions.get(socket.id);
-            if (sttSession) {
-                sttSession.close();
-                activeSttSessions.delete(socket.id);
-                logger_1.logger.debug(`[STT] Cleaned up session on disconnect: user=${userId}`);
-            }
+            // Clean up audio stream state
+            activeAudioStreams.delete(socket.id);
             // Clean up translation data for any meetings this user was in
             exports.meetingLanguages.forEach((langMap, meetingId) => {
                 if (langMap.has(userId)) {

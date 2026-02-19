@@ -146,9 +146,9 @@ app.get('/health', (_req, res) => {
 // GET /health/pipeline — check if all services for minutes/TTS are configured
 app.get('/health/pipeline', async (_req, res) => {
     try {
-        const { isSttAvailable, getSttDiagnostics } = require('./services/speech-to-text.service');
+        const { isWhisperAvailable, getWhisperDiagnostics } = require('./services/whisper.service');
         const { config: appConfig } = require('./config');
-        const sttDiag = getSttDiagnostics();
+        const whisperDiag = getWhisperDiagnostics();
         // Check database connectivity
         let dbOk = false;
         let transcriptTableExists = false;
@@ -162,10 +162,14 @@ app.get('/health/pipeline', async (_req, res) => {
         res.json({
             status: 'ok',
             pipeline: {
-                googleSTT: {
-                    credentialsExist: sttDiag.credentialsExist,
-                    credentialsValid: sttDiag.credentialsValid,
-                    available: isSttAvailable(),
+                whisperSTT: {
+                    engine: whisperDiag.engine,
+                    available: isWhisperAvailable(),
+                    openaiKeyConfigured: whisperDiag.openaiKeyConfigured,
+                },
+                openAITTS: {
+                    model: whisperDiag.ttsModel,
+                    available: isWhisperAvailable(),
                 },
                 openAI: {
                     keyConfigured: !!appConfig.ai.openaiApiKey,
@@ -251,10 +255,85 @@ app.all('/api/*', (_req, res) => {
 // ── Global Error Handler ──────────────────────────────────
 app.use(error_monitor_service_1.errorMonitorMiddleware); // Capture errors before responding
 app.use(error_handler_1.globalErrorHandler); // Structured JSON error responses
+// ── Ensure Critical Meeting Tables Exist ──────────────────
+// These tables were added in migrations 021-025 but production
+// may not have run them. Auto-create on startup to guarantee
+// transcripts, chat, and language preferences work.
+async function ensureMeetingTables() {
+    const { db } = require('./db');
+    try {
+        // 1. meeting_transcripts (migration 021)
+        if (!(await db.schema.hasTable('meeting_transcripts'))) {
+            logger_1.logger.info('[STARTUP] Creating missing table: meeting_transcripts');
+            await db.schema.createTable('meeting_transcripts', (t) => {
+                t.uuid('id').primary().defaultTo(db.raw("gen_random_uuid()"));
+                t.uuid('meeting_id').notNullable().references('id').inTable('meetings').onDelete('CASCADE');
+                t.uuid('organization_id').notNullable().references('id').inTable('organizations').onDelete('CASCADE');
+                t.uuid('speaker_id').nullable().references('id').inTable('users').onDelete('SET NULL');
+                t.string('speaker_name', 200).notNullable();
+                t.text('original_text').notNullable();
+                t.string('source_lang', 10).notNullable().defaultTo('en');
+                t.jsonb('translations').notNullable().defaultTo('{}');
+                t.bigInteger('spoken_at').notNullable();
+                t.timestamps(true, true);
+                t.index(['meeting_id', 'spoken_at'], 'idx_mt_meeting_spoken');
+                t.index(['organization_id'], 'idx_mt_org');
+            });
+            logger_1.logger.info('[STARTUP] ✓ Created meeting_transcripts table');
+        }
+        // 2. user_language_preferences (migration 022)
+        if (!(await db.schema.hasTable('user_language_preferences'))) {
+            logger_1.logger.info('[STARTUP] Creating missing table: user_language_preferences');
+            await db.schema.createTable('user_language_preferences', (t) => {
+                t.uuid('id').primary().defaultTo(db.raw("gen_random_uuid()"));
+                t.uuid('user_id').notNullable().references('id').inTable('users').onDelete('CASCADE');
+                t.uuid('organization_id').notNullable().references('id').inTable('organizations').onDelete('CASCADE');
+                t.string('preferred_language', 10).notNullable().defaultTo('en');
+                t.boolean('receive_voice').notNullable().defaultTo(true);
+                t.boolean('receive_text').notNullable().defaultTo(true);
+                t.timestamps(true, true);
+                t.unique(['user_id', 'organization_id']);
+                t.index(['organization_id']);
+            });
+            logger_1.logger.info('[STARTUP] ✓ Created user_language_preferences table');
+        }
+        // 3. meeting_messages (migration 025)
+        if (!(await db.schema.hasTable('meeting_messages'))) {
+            logger_1.logger.info('[STARTUP] Creating missing table: meeting_messages');
+            await db.schema.createTable('meeting_messages', (t) => {
+                t.uuid('id').primary().defaultTo(db.raw("gen_random_uuid()"));
+                t.uuid('meeting_id').notNullable().references('id').inTable('meetings').onDelete('CASCADE');
+                t.uuid('sender_id').notNullable().references('id').inTable('users').onDelete('CASCADE');
+                t.string('sender_name', 255).notNullable();
+                t.text('message').notNullable();
+                t.timestamp('created_at').defaultTo(db.fn.now());
+            });
+            await db.schema.raw('CREATE INDEX IF NOT EXISTS idx_meeting_messages_meeting_created ON meeting_messages (meeting_id, created_at)');
+            logger_1.logger.info('[STARTUP] ✓ Created meeting_messages table');
+        }
+        // 4. meeting_minutes — add download_formats column if missing (migration 021 part 2)
+        if (await db.schema.hasTable('meeting_minutes')) {
+            const hasFormats = await db.schema.hasColumn('meeting_minutes', 'download_formats');
+            if (!hasFormats) {
+                await db.schema.alterTable('meeting_minutes', (t) => {
+                    t.jsonb('download_formats').notNullable().defaultTo('{}');
+                });
+                logger_1.logger.info('[STARTUP] ✓ Added download_formats to meeting_minutes');
+            }
+        }
+        logger_1.logger.info('[STARTUP] ✓ All critical meeting tables verified');
+    }
+    catch (err) {
+        logger_1.logger.error('[STARTUP] ❌ Failed to ensure meeting tables:', err.message);
+        // Don't crash — the app can still serve other features
+    }
+}
 // ── Start Server ──────────────────────────────────────────
 (async () => {
     // Ensure super admin account exists on startup
     await (0, seed_service_1.ensureSuperAdmin)();
+    // Ensure critical meeting tables exist (auto-create if migrations weren't run)
+    await ensureMeetingTables();
     server.listen(config_1.config.port, '0.0.0.0', () => {
         logger_1.logger.info(`OrgsLedger API running on port ${config_1.config.port}`);
         logger_1.logger.info(`Environment: ${config_1.config.env}`);
