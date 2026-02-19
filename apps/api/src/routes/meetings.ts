@@ -813,12 +813,15 @@ router.post(
         io.to(`org:${req.params.orgId}`).emit('meeting:ended', endPayload);
         io.to(`meeting:${req.params.meetingId}`).emit('meeting:ended', endPayload);
 
-        // Force disconnect ALL sockets from the meeting room.
-        // This emits meeting:force-disconnect, removes sockets from room,
-        // and cleans up translation session data.
-        forceDisconnectMeeting(io, req.params.meetingId).catch((err) =>
-          logger.warn('Force disconnect failed', err)
-        );
+        // NOTE: Do NOT force-disconnect sockets immediately.
+        // Clients need to remain in the meeting room to receive
+        // meeting:minutes:processing / meeting:minutes:ready / meeting:minutes:failed events.
+        // Instead, force-disconnect after a delay so minutes events can be delivered.
+        setTimeout(() => {
+          forceDisconnectMeeting(io, req.params.meetingId).catch((err) =>
+            logger.warn('Force disconnect failed', err)
+          );
+        }, 5_000); // 5 seconds grace period for minutes events
       }
 
       // Stop transcription bot (best-effort)

@@ -214,15 +214,30 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
       if (data.meetingId !== meetingId) return;
       setMeetingState((prev: any) => prev ? { ...prev, status: 'ended', actual_end: new Date().toISOString() } : prev);
       meetingStore.onMeetingEnded(data);
-      // Auto-close the meeting overlay
-      resetMeeting();
+      // Don't immediately reset — keep listeners alive for minutes:ready/failed events.
+      // Minimize the overlay so user can continue navigating.
+      setIsMinimized(true);
+      // Auto-reset after 2 minutes if minutes events don't arrive
+      setTimeout(() => {
+        setIsActive((active) => {
+          if (active) resetMeeting();
+          return false;
+        });
+      }, 120_000);
     }));
 
     unsubs.push(socketClient.on('meeting:force-disconnect', (data: any) => {
       if (data.meetingId !== meetingId) return;
       meetingStore.setMeetingEndedByModerator(true);
       meetingStore.setStatus('ended');
-      resetMeeting();
+      // Don't immediately reset — keep listeners alive for minutes events.
+      setIsMinimized(true);
+      setTimeout(() => {
+        setIsActive((active) => {
+          if (active) resetMeeting();
+          return false;
+        });
+      }, 120_000);
     }));
 
     // Recording
@@ -235,7 +250,12 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
 
     // Minutes lifecycle
     unsubs.push(socketClient.on('meeting:minutes:ready', (data: any) => {
-      if (data.meetingId === meetingId) refreshMinutes();
+      if (data.meetingId === meetingId) {
+        refreshMinutes();
+        showAlert('Minutes Ready', 'AI-generated meeting minutes are now available.');
+        // Meeting is done and minutes arrived — safe to clean up now
+        setTimeout(() => resetMeeting(), 3000);
+      }
     }));
     unsubs.push(socketClient.on('meeting:minutes:processing', (data: any) => {
       if (data.meetingId === meetingId) {
@@ -246,6 +266,8 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
       if (data.meetingId !== meetingId) return;
       setMinutes((prev: any) => prev ? { ...prev, status: 'failed', error: data.error } : { status: 'failed', error: data.error });
       showAlert('Minutes Failed', data.error || 'AI minutes generation failed.');
+      // Minutes failed — safe to clean up now
+      setTimeout(() => resetMeeting(), 3000);
     }));
 
     // Translation errors (e.g., empty wallet)
