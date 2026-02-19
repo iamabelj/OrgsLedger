@@ -143,6 +143,20 @@ class SocketClient {
     this.socket?.emit('translation:speech', { meetingId, text, sourceLang, isFinal });
   }
 
+  // ── Audio Streaming (Server-Side STT) ───────────────────
+
+  startAudioStream(meetingId: string, language?: string, encoding?: string): void {
+    this.socket?.emit('audio:start', { meetingId, language, encoding: encoding || 'WEBM_OPUS' });
+  }
+
+  sendAudioChunk(meetingId: string, audio: ArrayBuffer): void {
+    this.socket?.emit('audio:chunk', { meetingId, audio });
+  }
+
+  stopAudioStream(meetingId?: string): void {
+    this.socket?.emit('audio:stop', { meetingId });
+  }
+
   // ── Meeting Chat ────────────────────────────────────────
 
   sendChatMessage(meetingId: string, message: string): void {

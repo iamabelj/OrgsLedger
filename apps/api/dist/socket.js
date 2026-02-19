@@ -19,6 +19,7 @@ const logger_1 = require("./logger");
 const translation_service_1 = require("./services/translation.service");
 const subscription_service_1 = require("./services/subscription.service");
 const audit_1 = require("./middleware/audit");
+const speech_to_text_service_1 = require("./services/speech-to-text.service");
 // In-memory store for meeting translation sessions
 // meetingId -> Map<userId, { language, name, receiveVoice }>
 exports.meetingLanguages = new Map();
@@ -29,6 +30,8 @@ let langPrefsTableExists = null;
 // Per-user rate limiter for translation:speech events (max 2 per second)
 const speechRateLimits = new Map();
 const SPEECH_RATE_LIMIT_MS = 500; // Min interval between final speech events
+// Active Google STT sessions: socketId -> SpeechSession
+const activeSttSessions = new Map();
 // ── Helper: Persist transcript segment to DB ────────────
 // Stores transcript. Requires valid organizationId (NOT NULL in schema).
 async function this_persistTranscript(meetingId, organizationId, speakerId, speakerName, originalText, sourceLang, translations) {
@@ -60,6 +63,177 @@ async function this_persistTranscript(meetingId, organizationId, speakerId, spea
     }
     catch (dbErr) {
         logger_1.logger.warn('[TRANSLATION] Failed to persist transcript segment', dbErr);
+    }
+}
+// ── Helper: Process speech text (translate, persist, broadcast) ──
+// Shared by both translation:speech (text from client) and STT (text from Google)
+async function handleSpeechText(io, socket, userId, meetingId, text, sourceLang, isFinal) {
+    if (!meetingId || !text?.trim())
+        return;
+    // Rate limit final speech events per user (prevent flooding)
+    if (isFinal) {
+        const rateLimitKey = `${userId}:${meetingId}`;
+        const lastTime = speechRateLimits.get(rateLimitKey) || 0;
+        const now = Date.now();
+        if (now - lastTime < SPEECH_RATE_LIMIT_MS) {
+            logger_1.logger.debug(`[TRANSLATION] Rate limited speech from ${userId} (${now - lastTime}ms since last)`);
+            return;
+        }
+        speechRateLimits.set(rateLimitKey, now);
+    }
+    const langMap = exports.meetingLanguages.get(meetingId);
+    // Get speaker name
+    let speakerName = 'Unknown';
+    const speaker = langMap?.get(userId);
+    if (speaker?.name) {
+        speakerName = speaker.name;
+    }
+    else {
+        try {
+            const user = await (0, db_1.default)('users').where({ id: userId }).select('first_name', 'last_name').first();
+            if (user)
+                speakerName = `${user.first_name} ${user.last_name}`.trim();
+        }
+        catch (_) { /* non-critical */ }
+    }
+    logger_1.logger.debug(`[TRANSCRIPT] Speech: speaker=${speakerName}, isFinal=${isFinal}, lang=${sourceLang}, len=${text.length}`);
+    // For interim results, just broadcast original text
+    if (!isFinal) {
+        socket.to(`meeting:${meetingId}`).emit('translation:interim', {
+            meetingId,
+            speakerId: userId,
+            speakerName,
+            text,
+            sourceLang,
+        });
+        return;
+    }
+    // Collect target languages
+    const targetLangs = new Set();
+    if (langMap) {
+        langMap.forEach((val) => {
+            if (val.language !== sourceLang) {
+                targetLangs.add(val.language);
+            }
+        });
+    }
+    // Look up organization_id
+    let organizationId = null;
+    try {
+        const meeting = await (0, db_1.default)('meetings').where({ id: meetingId }).select('organization_id').first();
+        organizationId = meeting?.organization_id || null;
+    }
+    catch (lookupErr) {
+        logger_1.logger.warn('[TRANSLATION] Failed to look up meeting org', lookupErr);
+    }
+    try {
+        let translations = {};
+        if (targetLangs.size > 0) {
+            logger_1.logger.debug(`[TRANSLATION] Translating to ${targetLangs.size} languages: ${[...targetLangs].join(', ')}`);
+            if (organizationId) {
+                const wallet = await (0, subscription_service_1.getTranslationWallet)(organizationId);
+                const balance = parseFloat(wallet.balance_minutes);
+                if (balance <= 0) {
+                    socket.emit('translation:error', {
+                        meetingId,
+                        error: 'Translation wallet empty. Please top up to continue translations.',
+                        code: 'WALLET_EMPTY',
+                    });
+                    await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, {});
+                    logger_1.logger.info(`[TRANSCRIPT] ✓ Stored (wallet empty): meeting=${meetingId}, speaker=${speakerName}`);
+                    io.to(`meeting:${meetingId}`).emit('transcript:stored', {
+                        meetingId, speakerId: userId, speakerName, originalText: text,
+                        sourceLang, translations: {}, timestamp: Date.now(),
+                    });
+                    return;
+                }
+                translations = await (0, translation_service_1.translateToMultiple)(text, [...targetLangs], sourceLang);
+                logger_1.logger.debug(`[TRANSLATION] Translation complete: ${Object.keys(translations).length} languages`);
+                const speakingSeconds = Math.max(5, Math.ceil(text.length / 15));
+                const langMultiplier = Math.max(1, targetLangs.size);
+                const deductMinutes = (speakingSeconds * langMultiplier) / 60;
+                const deduction = await (0, subscription_service_1.deductTranslationWallet)(organizationId, Math.round(deductMinutes * 100) / 100, `Live translation: ${targetLangs.size} language(s), ${text.length} chars in meeting`);
+                if (!deduction.success) {
+                    logger_1.logger.warn('[TRANSLATION] Wallet deduction failed but translation was served', {
+                        meetingId, orgId: organizationId,
+                    });
+                }
+            }
+            else {
+                translations = await (0, translation_service_1.translateToMultiple)(text, [...targetLangs], sourceLang);
+                logger_1.logger.warn('[TRANSLATION] No organization_id found for meeting, skipping wallet deduction', { meetingId });
+            }
+        }
+        // Always include the original language
+        translations[sourceLang] = text;
+        // Persist transcript
+        await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, translations);
+        logger_1.logger.info(`[TRANSCRIPT] ✓ Stored: meeting=${meetingId}, speaker=${speakerName}, translations=${Object.keys(translations).length}`);
+        const now = Date.now();
+        // Emit transcript:stored for real-time transcript tab
+        io.to(`meeting:${meetingId}`).emit('transcript:stored', {
+            meetingId, speakerId: userId, speakerName, originalText: text,
+            sourceLang, translations, timestamp: now,
+        });
+        // Per-user routing with TTS availability
+        const langMapForEmit = exports.meetingLanguages.get(meetingId);
+        if (langMapForEmit) {
+            const allSockets = await io.in(`meeting:${meetingId}`).fetchSockets();
+            for (const [targetUserId, prefs] of langMapForEmit.entries()) {
+                if (targetUserId === userId)
+                    continue;
+                const targetSocket = allSockets.find((s) => s.userId === targetUserId || s.data?.userId === targetUserId);
+                if (targetSocket) {
+                    const ttsAvailable = (0, translation_service_1.isTtsSupported)(prefs.language) && prefs.receiveVoice;
+                    targetSocket.emit('translation:result', {
+                        meetingId,
+                        speakerId: userId,
+                        speakerName,
+                        originalText: text,
+                        sourceLang,
+                        translations,
+                        timestamp: now,
+                        ttsEnabled: ttsAvailable,
+                        ttsAvailable,
+                        userLang: prefs.language,
+                    });
+                    logger_1.logger.debug(`[TRANSLATION] Emitted to user ${targetUserId} (lang=${prefs.language}, tts=${ttsAvailable})`);
+                }
+            }
+        }
+        // Also emit to the speaker (no TTS for own speech)
+        socket.emit('translation:result', {
+            meetingId,
+            speakerId: userId,
+            speakerName,
+            originalText: text,
+            sourceLang,
+            translations,
+            timestamp: now,
+            ttsEnabled: false,
+            ttsAvailable: false,
+        });
+    }
+    catch (err) {
+        logger_1.logger.error('[TRANSCRIPT] Translation pipeline failed', err);
+        await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, { [sourceLang]: text });
+        logger_1.logger.info(`[TRANSCRIPT] ✓ Stored (error fallback): meeting=${meetingId}, speaker=${speakerName}`);
+        io.to(`meeting:${meetingId}`).emit('transcript:stored', {
+            meetingId, speakerId: userId, speakerName, originalText: text,
+            sourceLang, translations: { [sourceLang]: text }, timestamp: Date.now(),
+        });
+        socket.emit('translation:result', {
+            meetingId,
+            speakerId: userId,
+            speakerName,
+            originalText: text,
+            sourceLang,
+            translations: { [sourceLang]: text },
+            timestamp: Date.now(),
+            ttsEnabled: false,
+            ttsAvailable: false,
+            error: 'Translation temporarily unavailable',
+        });
     }
 }
 function setupSocketIO(httpServer) {
@@ -371,186 +545,82 @@ function setupSocketIO(httpServer) {
         // User sends spoken text for translation
         socket.on('translation:speech', async (data) => {
             const { meetingId, text, sourceLang, isFinal } = data;
-            if (!meetingId || !text?.trim())
+            await handleSpeechText(io, socket, userId, meetingId, text, sourceLang, isFinal);
+        });
+        // ── Server-Side Speech-to-Text (Google Cloud) ──────────
+        // Client streams raw audio → server transcribes via Google STT
+        // Works for web (MediaRecorder WEBM_OPUS) and mobile clients
+        socket.on('audio:start', async (data) => {
+            const { meetingId, language, encoding, sampleRate } = data;
+            if (!meetingId)
                 return;
-            // Rate limit final speech events per user (prevent flooding)
-            if (isFinal) {
-                const rateLimitKey = `${userId}:${meetingId}`;
-                const lastTime = speechRateLimits.get(rateLimitKey) || 0;
-                const now = Date.now();
-                if (now - lastTime < SPEECH_RATE_LIMIT_MS) {
-                    logger_1.logger.debug(`[TRANSLATION] Rate limited speech from ${userId} (${now - lastTime}ms since last)`);
-                    return;
-                }
-                speechRateLimits.set(rateLimitKey, now);
+            // Clean up any existing session for this socket
+            const sessionKey = socket.id;
+            const existingSession = activeSttSessions.get(sessionKey);
+            if (existingSession) {
+                existingSession.close();
+                activeSttSessions.delete(sessionKey);
             }
-            const langMap = exports.meetingLanguages.get(meetingId);
-            // Get speaker name — from in-memory map or fall back to DB lookup
+            // Look up speaker name
             let speakerName = 'Unknown';
-            const speaker = langMap?.get(userId);
-            if (speaker?.name) {
-                speakerName = speaker.name;
+            try {
+                const user = await (0, db_1.default)('users').where({ id: userId }).select('first_name', 'last_name').first();
+                if (user)
+                    speakerName = `${user.first_name} ${user.last_name}`.trim();
             }
-            else {
-                try {
-                    const user = await (0, db_1.default)('users').where({ id: userId }).select('first_name', 'last_name').first();
-                    if (user)
-                        speakerName = `${user.first_name} ${user.last_name}`.trim();
-                }
-                catch (_) { /* non-critical */ }
-            }
-            logger_1.logger.debug(`[TRANSCRIPT] Speech: speaker=${speakerName}, isFinal=${isFinal}, lang=${sourceLang}, len=${text.length}`);
-            // For interim results, just broadcast the original text to others
-            // (so they see the speaker is talking)
-            if (!isFinal) {
-                socket.to(`meeting:${meetingId}`).emit('translation:interim', {
-                    meetingId,
-                    speakerId: userId,
-                    speakerName,
-                    text,
-                    sourceLang,
-                });
+            catch (_) { }
+            // Determine language code (from language picker or default en-US)
+            const langMap = exports.meetingLanguages.get(meetingId);
+            const userPrefs = langMap?.get(userId);
+            const langCode = language || userPrefs?.language || 'en-US';
+            // Map our short language codes to BCP-47
+            const bcp47Map = {
+                en: 'en-US', es: 'es-ES', fr: 'fr-FR', de: 'de-DE',
+                pt: 'pt-BR', it: 'it-IT', zh: 'zh-CN', ja: 'ja-JP',
+                ko: 'ko-KR', ar: 'ar-SA', hi: 'hi-IN', ru: 'ru-RU',
+                nl: 'nl-NL', sv: 'sv-SE', pl: 'pl-PL', tr: 'tr-TR',
+                vi: 'vi-VN', th: 'th-TH', uk: 'uk-UA', cs: 'cs-CZ',
+                ro: 'ro-RO', hu: 'hu-HU', el: 'el-GR', he: 'he-IL',
+                da: 'da-DK', fi: 'fi-FI', no: 'nb-NO', id: 'id-ID',
+                ms: 'ms-MY', tl: 'fil-PH', sw: 'sw-KE', bn: 'bn-IN',
+            };
+            const bcp47Lang = bcp47Map[langCode] || langCode;
+            logger_1.logger.info(`[STT] Starting audio stream: user=${userId}, meeting=${meetingId}, lang=${bcp47Lang}, encoding=${encoding || 'WEBM_OPUS'}`);
+            const session = new speech_to_text_service_1.SpeechSession({
+                meetingId,
+                userId,
+                speakerName,
+                languageCode: bcp47Lang,
+                encoding: encoding || 'WEBM_OPUS',
+                sampleRateHertz: sampleRate,
+                onTranscript: (text, isFinal) => {
+                    // Feed Google STT results into the same translation pipeline
+                    handleSpeechText(io, socket, userId, meetingId, text, langCode, isFinal);
+                },
+                onError: (err) => {
+                    socket.emit('audio:error', {
+                        meetingId,
+                        error: err.message,
+                    });
+                },
+            });
+            session.start();
+            activeSttSessions.set(sessionKey, session);
+            socket.emit('audio:started', { meetingId });
+        });
+        socket.on('audio:chunk', (data) => {
+            const session = activeSttSessions.get(socket.id);
+            if (!session || session.isClosed)
                 return;
-            }
-            // For final results, translate to all unique languages needed
-            const targetLangs = new Set();
-            if (langMap) {
-                langMap.forEach((val) => {
-                    if (val.language !== sourceLang) {
-                        targetLangs.add(val.language);
-                    }
-                });
-            }
-            // Always look up organization_id early for transcript storage
-            let organizationId = null;
-            try {
-                const meeting = await (0, db_1.default)('meetings').where({ id: meetingId }).select('organization_id').first();
-                organizationId = meeting?.organization_id || null;
-            }
-            catch (lookupErr) {
-                logger_1.logger.warn('[TRANSLATION] Failed to look up meeting org', lookupErr);
-            }
-            try {
-                let translations = {};
-                if (targetLangs.size > 0) {
-                    logger_1.logger.debug(`[TRANSLATION] Translating to ${targetLangs.size} languages: ${[...targetLangs].join(', ')}`);
-                    if (organizationId) {
-                        // Check translation wallet before making API calls
-                        const wallet = await (0, subscription_service_1.getTranslationWallet)(organizationId);
-                        const balance = parseFloat(wallet.balance_minutes);
-                        if (balance <= 0) {
-                            socket.emit('translation:error', {
-                                meetingId,
-                                error: 'Translation wallet empty. Please top up to continue translations.',
-                                code: 'WALLET_EMPTY',
-                            });
-                            // Still persist the original transcript even if wallet empty
-                            await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, {});
-                            logger_1.logger.info(`[TRANSCRIPT] ✓ Stored (wallet empty): meeting=${meetingId}, speaker=${speakerName}`);
-                            io.to(`meeting:${meetingId}`).emit('transcript:stored', {
-                                meetingId, speakerId: userId, speakerName, originalText: text,
-                                sourceLang, translations: {}, timestamp: Date.now(),
-                            });
-                            return;
-                        }
-                        translations = await (0, translation_service_1.translateToMultiple)(text, [...targetLangs], sourceLang);
-                        logger_1.logger.debug(`[TRANSLATION] Translation complete: ${Object.keys(translations).length} languages`);
-                        // Deduct translation wallet — scale with content:
-                        // Base: ~5 seconds per utterance, scaled by number of target languages
-                        // Longer texts cost proportionally more (chars / 100 ~= speaking seconds)
-                        const speakingSeconds = Math.max(5, Math.ceil(text.length / 15)); // ~15 chars/sec speech rate
-                        const langMultiplier = Math.max(1, targetLangs.size);
-                        const deductMinutes = (speakingSeconds * langMultiplier) / 60; // Convert to minutes
-                        const deduction = await (0, subscription_service_1.deductTranslationWallet)(organizationId, Math.round(deductMinutes * 100) / 100, // Round to 2 decimal places
-                        `Live translation: ${targetLangs.size} language(s), ${text.length} chars in meeting`);
-                        if (!deduction.success) {
-                            logger_1.logger.warn('[TRANSLATION] Wallet deduction failed but translation was served', {
-                                meetingId, orgId: organizationId,
-                            });
-                        }
-                    }
-                    else {
-                        // No org found but still translate
-                        translations = await (0, translation_service_1.translateToMultiple)(text, [...targetLangs], sourceLang);
-                        logger_1.logger.warn('[TRANSLATION] No organization_id found for meeting, skipping wallet deduction', { meetingId });
-                    }
-                }
-                // Always include the original language BEFORE persisting
-                translations[sourceLang] = text;
-                // ── Persist transcript segment to DB ──────────
-                await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, translations);
-                logger_1.logger.info(`[TRANSCRIPT] ✓ Stored: meeting=${meetingId}, speaker=${speakerName}, translations=${Object.keys(translations).length}`);
-                const now = Date.now();
-                // ── Emit transcript:stored for real-time transcript tab updates ──
-                io.to(`meeting:${meetingId}`).emit('transcript:stored', {
-                    meetingId, speakerId: userId, speakerName, originalText: text,
-                    sourceLang, translations, timestamp: now,
-                });
-                // ── Per-user routing: emit individually with TTS availability ──
-                // Each user gets their translation + a ttsAvailable flag based on:
-                //   1. Whether TTS engine supports their target language
-                //   2. Whether the user has opted in to receive voice
-                const langMapForEmit = exports.meetingLanguages.get(meetingId);
-                if (langMapForEmit) {
-                    // Fetch all sockets ONCE outside the loop (was O(N²) before)
-                    const allSockets = await io.in(`meeting:${meetingId}`).fetchSockets();
-                    for (const [targetUserId, prefs] of langMapForEmit.entries()) {
-                        if (targetUserId === userId)
-                            continue; // Don't send to speaker
-                        const targetSocket = allSockets.find((s) => s.userId === targetUserId || s.data?.userId === targetUserId);
-                        if (targetSocket) {
-                            const ttsAvailable = (0, translation_service_1.isTtsSupported)(prefs.language) && prefs.receiveVoice;
-                            targetSocket.emit('translation:result', {
-                                meetingId,
-                                speakerId: userId,
-                                speakerName,
-                                originalText: text,
-                                sourceLang,
-                                translations,
-                                timestamp: now,
-                                ttsEnabled: ttsAvailable,
-                                ttsAvailable,
-                                userLang: prefs.language,
-                            });
-                            logger_1.logger.debug(`[TRANSLATION] Emitted to user ${targetUserId} (lang=${prefs.language}, tts=${ttsAvailable})`);
-                        }
-                    }
-                }
-                // Also emit to the speaker (no TTS for own speech)
-                socket.emit('translation:result', {
-                    meetingId,
-                    speakerId: userId,
-                    speakerName,
-                    originalText: text,
-                    sourceLang,
-                    translations,
-                    timestamp: now,
-                    ttsEnabled: false,
-                    ttsAvailable: false,
-                });
-            }
-            catch (err) {
-                logger_1.logger.error('[TRANSCRIPT] Translation pipeline failed', err);
-                // Still persist the original text even if translation fails
-                await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, { [sourceLang]: text });
-                logger_1.logger.info(`[TRANSCRIPT] ✓ Stored (error fallback): meeting=${meetingId}, speaker=${speakerName}`);
-                io.to(`meeting:${meetingId}`).emit('transcript:stored', {
-                    meetingId, speakerId: userId, speakerName, originalText: text,
-                    sourceLang, translations: { [sourceLang]: text }, timestamp: Date.now(),
-                });
-                // Still send the original text even if translation fails
-                socket.emit('translation:result', {
-                    meetingId,
-                    speakerId: userId,
-                    speakerName,
-                    originalText: text,
-                    sourceLang,
-                    translations: { [sourceLang]: text },
-                    timestamp: Date.now(),
-                    ttsEnabled: false,
-                    ttsAvailable: false,
-                    error: 'Translation temporarily unavailable',
-                });
+            session.pushAudio(data.audio);
+        });
+        socket.on('audio:stop', (data) => {
+            const session = activeSttSessions.get(socket.id);
+            if (session) {
+                logger_1.logger.info(`[STT] Stopping audio stream: user=${userId}`);
+                session.close();
+                activeSttSessions.delete(socket.id);
+                socket.emit('audio:stopped', { meetingId: data?.meetingId });
             }
         });
         // ── In-Meeting Chat ─────────────────────────────────
@@ -648,6 +718,12 @@ function setupSocketIO(httpServer) {
                 userId,
                 meetingId,
             });
+            // Clean up STT session when leaving meeting
+            const sttSession = activeSttSessions.get(socket.id);
+            if (sttSession) {
+                sttSession.close();
+                activeSttSessions.delete(socket.id);
+            }
             // Clean up rate limiter for this user+meeting
             speechRateLimits.delete(`${userId}:${meetingId}`);
             // Remove from translation map
@@ -687,6 +763,13 @@ function setupSocketIO(httpServer) {
         // ── Presence ────────────────────────────────────────
         socket.on('disconnect', () => {
             logger_1.logger.debug(`Socket disconnected: ${userId}`);
+            // Clean up STT session
+            const sttSession = activeSttSessions.get(socket.id);
+            if (sttSession) {
+                sttSession.close();
+                activeSttSessions.delete(socket.id);
+                logger_1.logger.debug(`[STT] Cleaned up session on disconnect: user=${userId}`);
+            }
             // Clean up translation data for any meetings this user was in
             exports.meetingLanguages.forEach((langMap, meetingId) => {
                 if (langMap.has(userId)) {
