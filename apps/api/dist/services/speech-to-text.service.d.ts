@@ -1,3 +1,11 @@
+/** Check if STT credentials are available */
+export declare function isSttAvailable(): boolean;
+/** Get credential diagnostic info */
+export declare function getSttDiagnostics(): {
+    credentialsPath: string;
+    credentialsExist: boolean;
+    credentialsValid: boolean;
+};
 export type AudioEncoding = 'WEBM_OPUS' | 'LINEAR16';
 export interface SpeechSessionOptions {
     meetingId: string;

@@ -142,6 +142,54 @@ app.get('/health', (_req, res) => {
         },
     });
 });
+// ── Pipeline Diagnostic Endpoint ──────────────────────────
+// GET /health/pipeline — check if all services for minutes/TTS are configured
+app.get('/health/pipeline', async (_req, res) => {
+    try {
+        const { isSttAvailable, getSttDiagnostics } = require('./services/speech-to-text.service');
+        const { config: appConfig } = require('./config');
+        const sttDiag = getSttDiagnostics();
+        // Check database connectivity
+        let dbOk = false;
+        let transcriptTableExists = false;
+        try {
+            const knex = require('./db').default;
+            await knex.raw('SELECT 1');
+            dbOk = true;
+            transcriptTableExists = await knex.schema.hasTable('meeting_transcripts');
+        }
+        catch (_) { }
+        res.json({
+            status: 'ok',
+            pipeline: {
+                googleSTT: {
+                    credentialsExist: sttDiag.credentialsExist,
+                    credentialsValid: sttDiag.credentialsValid,
+                    available: isSttAvailable(),
+                },
+                openAI: {
+                    keyConfigured: !!appConfig.ai.openaiApiKey,
+                    keyPrefix: appConfig.ai.openaiApiKey ? appConfig.ai.openaiApiKey.slice(0, 10) + '...' : '(not set)',
+                },
+                aiProxy: {
+                    urlConfigured: !!appConfig.aiProxy.url,
+                    keyConfigured: !!appConfig.aiProxy.apiKey,
+                },
+                database: {
+                    connected: dbOk,
+                    transcriptTableExists,
+                },
+                livekit: {
+                    urlConfigured: !!appConfig.livekit.url,
+                    keyConfigured: !!appConfig.livekit.apiKey,
+                },
+            },
+        });
+    }
+    catch (err) {
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
 // ── Landing / Gateway (orgsledger.com) ────────────────────
 (0, landing_gateway_1.mountLandingGateway)(app);
 // ── Serve Web Frontend (production) ──────────────────────

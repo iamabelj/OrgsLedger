@@ -11,9 +11,41 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SpeechSession = void 0;
+exports.isSttAvailable = isSttAvailable;
+exports.getSttDiagnostics = getSttDiagnostics;
 const speech_1 = require("@google-cloud/speech");
 const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
 const logger_1 = require("../logger");
+// ── Credential Validation ────────────────────────────────
+const CRED_PATH = path_1.default.resolve(__dirname, '../../google-credentials.json');
+let credentialsValid = false;
+try {
+    if (fs_1.default.existsSync(CRED_PATH)) {
+        const raw = fs_1.default.readFileSync(CRED_PATH, 'utf-8');
+        const parsed = JSON.parse(raw);
+        credentialsValid = !!(parsed.private_key && parsed.client_email);
+        logger_1.logger.info(`[STT] Google credentials file found: ${CRED_PATH} (valid=${credentialsValid}, email=${parsed.client_email})`);
+    }
+    else {
+        logger_1.logger.error(`[STT] ❌ Google credentials file NOT FOUND at ${CRED_PATH} — Speech-to-Text will NOT work!`);
+    }
+}
+catch (err) {
+    logger_1.logger.error(`[STT] ❌ Failed to read credentials: ${err.message}`);
+}
+/** Check if STT credentials are available */
+function isSttAvailable() {
+    return credentialsValid;
+}
+/** Get credential diagnostic info */
+function getSttDiagnostics() {
+    return {
+        credentialsPath: CRED_PATH,
+        credentialsExist: fs_1.default.existsSync(CRED_PATH),
+        credentialsValid,
+    };
+}
 // ── Constants ────────────────────────────────────────────
 const STREAMING_LIMIT_MS = 4 * 60 * 1000; // Google STT streams max ~5min; restart at 4min
 const RESTART_DELAY_MS = 300;
@@ -21,9 +53,11 @@ const RESTART_DELAY_MS = 300;
 let sharedClient = null;
 function getClient() {
     if (!sharedClient) {
-        const credPath = path_1.default.resolve(__dirname, '../../google-credentials.json');
-        sharedClient = new speech_1.SpeechClient({ keyFilename: credPath });
-        logger_1.logger.info(`[STT] Google Speech client initialized (credentials: ${credPath})`);
+        if (!credentialsValid) {
+            throw new Error('Google STT credentials not found or invalid — check google-credentials.json');
+        }
+        sharedClient = new speech_1.SpeechClient({ keyFilename: CRED_PATH });
+        logger_1.logger.info(`[STT] Google Speech client initialized (credentials: ${CRED_PATH})`);
     }
     return sharedClient;
 }

@@ -241,7 +241,15 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
 
     const unsubAudioError = socketClient.on('audio:error', (data: any) => {
       if (data.meetingId === meetingId) {
-        console.warn('[STT] Server audio error:', data.error);
+        console.warn('[STT] Server audio error:', data.error, data.code);
+        // Show visible error to user so they know why transcription isn't working
+        showAlert('Transcription Error', data.error || 'Speech recognition failed on the server.');
+      }
+    });
+
+    const unsubAudioStarted = socketClient.on('audio:started', (data: any) => {
+      if (data.meetingId === meetingId) {
+        console.debug('[STT] Audio stream started successfully on server');
       }
     });
 
@@ -251,6 +259,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
       unsubResult();
       unsubInterim();
       unsubAudioError();
+      unsubAudioStarted();
     };
   }, [meetingId, userId]);
 

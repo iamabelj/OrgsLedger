@@ -554,6 +554,17 @@ function setupSocketIO(httpServer) {
             const { meetingId, language, encoding, sampleRate } = data;
             if (!meetingId)
                 return;
+            // Pre-flight: check if STT credentials are available
+            const { isSttAvailable } = require('./services/speech-to-text.service');
+            if (!isSttAvailable()) {
+                logger_1.logger.error('[STT] ❌ Cannot start audio stream — Google credentials missing!');
+                socket.emit('audio:error', {
+                    meetingId,
+                    error: 'Speech-to-text service unavailable. Server credentials not configured.',
+                    code: 'STT_UNAVAILABLE',
+                });
+                return;
+            }
             // Clean up any existing session for this socket
             const sessionKey = socket.id;
             const existingSession = activeSttSessions.get(sessionKey);
@@ -604,9 +615,19 @@ function setupSocketIO(httpServer) {
                     });
                 },
             });
-            session.start();
-            activeSttSessions.set(sessionKey, session);
-            socket.emit('audio:started', { meetingId });
+            try {
+                session.start();
+                activeSttSessions.set(sessionKey, session);
+                socket.emit('audio:started', { meetingId });
+            }
+            catch (startErr) {
+                logger_1.logger.error(`[STT] Failed to start session: ${startErr.message}`);
+                socket.emit('audio:error', {
+                    meetingId,
+                    error: `Failed to start speech recognition: ${startErr.message}`,
+                    code: 'STT_START_FAILED',
+                });
+            }
         });
         socket.on('audio:chunk', (data) => {
             const session = activeSttSessions.get(socket.id);

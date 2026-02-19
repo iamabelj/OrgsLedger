@@ -8,7 +8,40 @@
 
 import { SpeechClient } from '@google-cloud/speech';
 import path from 'path';
+import fs from 'fs';
 import { logger } from '../logger';
+
+// ── Credential Validation ────────────────────────────────
+
+const CRED_PATH = path.resolve(__dirname, '../../google-credentials.json');
+let credentialsValid = false;
+
+try {
+  if (fs.existsSync(CRED_PATH)) {
+    const raw = fs.readFileSync(CRED_PATH, 'utf-8');
+    const parsed = JSON.parse(raw);
+    credentialsValid = !!(parsed.private_key && parsed.client_email);
+    logger.info(`[STT] Google credentials file found: ${CRED_PATH} (valid=${credentialsValid}, email=${parsed.client_email})`);
+  } else {
+    logger.error(`[STT] ❌ Google credentials file NOT FOUND at ${CRED_PATH} — Speech-to-Text will NOT work!`);
+  }
+} catch (err: any) {
+  logger.error(`[STT] ❌ Failed to read credentials: ${err.message}`);
+}
+
+/** Check if STT credentials are available */
+export function isSttAvailable(): boolean {
+  return credentialsValid;
+}
+
+/** Get credential diagnostic info */
+export function getSttDiagnostics() {
+  return {
+    credentialsPath: CRED_PATH,
+    credentialsExist: fs.existsSync(CRED_PATH),
+    credentialsValid,
+  };
+}
 
 // ── Types ────────────────────────────────────────────────
 
@@ -35,9 +68,11 @@ let sharedClient: SpeechClient | null = null;
 
 function getClient(): SpeechClient {
   if (!sharedClient) {
-    const credPath = path.resolve(__dirname, '../../google-credentials.json');
-    sharedClient = new SpeechClient({ keyFilename: credPath });
-    logger.info(`[STT] Google Speech client initialized (credentials: ${credPath})`);
+    if (!credentialsValid) {
+      throw new Error('Google STT credentials not found or invalid — check google-credentials.json');
+    }
+    sharedClient = new SpeechClient({ keyFilename: CRED_PATH });
+    logger.info(`[STT] Google Speech client initialized (credentials: ${CRED_PATH})`);
   }
   return sharedClient;
 }
