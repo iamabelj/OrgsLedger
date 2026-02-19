@@ -202,59 +202,29 @@ class RealtimeSession {
     /** Parse incoming OpenAI Realtime events. */
     handleMessage(raw) {
         try {
-            const event = JSON.parse(raw.toString());
-            switch (event.type) {
-                case 'session.created':
-                    logger_1.logger.info(`[Realtime] Session created by OpenAI: speaker=${this.speakerId}, sessionId=${event.session?.id || 'unknown'}`);
-                    break;
-                case 'session.updated':
-                    logger_1.logger.info(`[Realtime] Session updated by OpenAI: speaker=${this.speakerId}`);
-                    break;
-                case 'conversation.item.input_audio_transcription.completed':
-                    // ── LAYER 4.1 — Final transcript received ────────
-                    this.transcriptsReceived++;
-                    if (event.transcript?.trim()) {
-                        const text = event.transcript.trim();
-                        // ── LAYER 4.2 — Filter short/noise transcripts ─
-                        if (text.length < 3) {
-                            logger_1.logger.debug(`[Realtime] Filtered short transcript (<3 chars) for ${this.speakerId}: "${text}"`);
-                            break;
+            const data = JSON.parse(raw.toString());
+            if (data.type !== 'response.completed')
+                return;
+            let transcript = '';
+            if (data.response?.output?.length) {
+                for (const item of data.response.output) {
+                    if (item.content?.length) {
+                        for (const content of item.content) {
+                            if (content.type === 'output_text' && content.text) {
+                                transcript += content.text;
+                            }
                         }
-                        logger_1.logger.info(`[Realtime] Final transcript received for ${this.speakerId}: "${text.slice(0, 80)}${text.length > 80 ? '...' : ''}" (len=${text.length}, totalReceived=${this.transcriptsReceived})`);
-                        this.handleTranscript(text);
                     }
-                    else {
-                        logger_1.logger.debug(`[STT_PIPELINE] Empty transcript from Whisper: speaker=${this.speakerName}, meeting=${this.meetingId} (totalReceived=${this.transcriptsReceived})`);
-                    }
-                    break;
-                case 'response.done':
-                    // Response cycle completed — confirms a VAD turn was processed
-                    logger_1.logger.debug(`[Realtime] Response done (VAD turn processed): speaker=${this.speakerId}`);
-                    break;
-                case 'input_audio_buffer.speech_started':
-                    logger_1.logger.debug(`[Realtime] VAD speech started: speaker=${this.speakerId}`);
-                    break;
-                case 'input_audio_buffer.speech_stopped':
-                    logger_1.logger.debug(`[Realtime] VAD speech stopped: speaker=${this.speakerId}`);
-                    break;
-                case 'input_audio_buffer.committed':
-                    logger_1.logger.debug(`[Realtime] Audio buffer committed: speaker=${this.speakerId}`);
-                    break;
-                case 'response.created':
-                case 'response.output_item.added':
-                case 'response.content_part.added':
-                case 'conversation.item.created':
-                    // Normal response lifecycle events — logged at debug
-                    logger_1.logger.debug(`[Realtime] Event: ${event.type} for speaker=${this.speakerId}`);
-                    break;
-                case 'error':
-                    logger_1.logger.error(`[Realtime] OpenAI error for ${this.speakerId}: code=${event.error?.code}, message=${event.error?.message}`);
-                    break;
-                // Catch-all for unexpected event types
-                default:
-                    logger_1.logger.debug(`[Realtime] Unhandled event: ${event.type} for speaker=${this.speakerId}`);
-                    break;
+                }
             }
+            transcript = transcript.trim();
+            if (!transcript || transcript.length < 3) {
+                logger_1.logger.debug(`[Realtime] Ignored empty transcript for speaker=${this.speakerId}`);
+                return;
+            }
+            this.transcriptsReceived++;
+            logger_1.logger.info(`[Realtime] Final transcript for ${this.speakerId}: "${transcript.slice(0, 80)}${transcript.length > 80 ? '...' : ''}" (len=${transcript.length}, totalReceived=${this.transcriptsReceived})`);
+            this.handleTranscript(transcript);
         }
         catch (err) {
             logger_1.logger.warn(`[RealtimeSession] Failed to parse message: speaker=${this.speakerName}`, err);
