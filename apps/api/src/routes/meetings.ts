@@ -824,6 +824,9 @@ router.post(
       // Stop transcription bot (best-effort)
       try {
         const botManager = getBotManager();
+        const bot = botManager.getBot(req.params.meetingId);
+        const sessionCount = bot?.activeSessionCount || 0;
+        logger.info(`[MEETING_END] Stopping transcription bot: meeting=${req.params.meetingId}, activeSessions=${sessionCount}`);
         botManager.stopMeetingBot(req.params.meetingId).catch((err) =>
           logger.warn('[MEETING_END] Transcription bot failed to stop', { meetingId: req.params.meetingId, error: err.message })
         );

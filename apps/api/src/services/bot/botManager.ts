@@ -84,7 +84,8 @@ export class BotManager {
 
     try {
       await bot.connect();
-      logger.info(`[BotManager] Bot connected: meeting=${meetingId}, room=${roomName}`);
+      // ── LAYER 8 — Verify concurrent session count ───
+      logger.info(`[BotManager] Bot connected: meeting=${meetingId}, room=${roomName}, totalActiveBots=${this.bots.size}`);
     } catch (err) {
       logger.error(`[BotManager] Bot failed to connect: meeting=${meetingId}`, err);
       this.bots.delete(meetingId);
@@ -103,10 +104,12 @@ export class BotManager {
       return;
     }
 
-    logger.info(`[BotManager] Stopping bot: meeting=${meetingId}`);
+    // ── LAYER 7.2 — Meeting end closes everything ─────
+    logger.info(`[Bot] Stopping bot for meeting ${meetingId} (activeSessions=${bot.activeSessionCount})`);
     await bot.disconnect();
     this.bots.delete(meetingId);
-    logger.info(`[BotManager] Bot stopped: meeting=${meetingId}`);
+    // ── LAYER 8 — Verify no ghost sessions remain ────
+    logger.info(`[Bot] Bot stopped for meeting ${meetingId}, remainingBots=${this.bots.size}`);
   }
 
   /**
@@ -141,13 +144,15 @@ export class BotManager {
    * Stop all bots. Called during graceful shutdown.
    */
   async shutdownAll(): Promise<void> {
-    logger.info(`[BotManager] Shutting down all bots (${this.bots.size} active)`);
+    // ── LAYER 8 — Cost control: confirm all sessions close ─
+    logger.info(`[BotManager] Shutting down ALL bots (${this.bots.size} active)`);
+    const botIds = [...this.bots.keys()];
     const promises: Promise<void>[] = [];
-    for (const [meetingId] of this.bots) {
+    for (const meetingId of botIds) {
       promises.push(this.stopMeetingBot(meetingId));
     }
     await Promise.allSettled(promises);
-    logger.info('[BotManager] All bots shut down');
+    logger.info(`[BotManager] Shutdown complete — no WebSocket connections should remain (bots.size=${this.bots.size})`);
   }
 }
 

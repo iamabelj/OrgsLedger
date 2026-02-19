@@ -22,6 +22,10 @@ export class AudioProcessor {
   private writeOffset = 0;
   private readonly onBatch: AudioBatchCallback;
   private closed = false;
+  // ── LAYER 2.2 — PCM conversion integrity tracking ───
+  private totalBatches = 0;
+  private totalBytesProcessed = 0;
+  private nanDetected = false;
 
   constructor(onBatch: AudioBatchCallback) {
     this.onBatch = onBatch;
@@ -93,6 +97,10 @@ export class AudioProcessor {
   close(): void {
     this.flushRemaining();
     this.closed = true;
+    // ── LAYER 2.2 — Final PCM integrity summary ───────
+    if (this.totalBatches > 0) {
+      logger.info(`[AudioProcessor] Closed: totalBatches=${this.totalBatches}, totalBytes=${this.totalBytesProcessed}, nanDetected=${this.nanDetected}`);
+    }
   }
 
   // ── Internals ───────────────────────────────────────────
@@ -101,6 +109,14 @@ export class AudioProcessor {
   private flush(): void {
     try {
       const slice = Buffer.from(this.buffer.subarray(0, this.writeOffset));
+      // ── LAYER 2.2 — Buffer size validation ───────────
+      if (slice.length === 0) {
+        logger.warn('[AudioProcessor] Flush produced empty buffer — skipping');
+        this.writeOffset = 0;
+        return;
+      }
+      this.totalBatches++;
+      this.totalBytesProcessed += slice.length;
       const base64 = slice.toString('base64');
       this.onBatch(base64);
     } catch (err) {
@@ -117,6 +133,15 @@ export class AudioProcessor {
   private float32ToPcm16(float32: Float32Array): Buffer {
     const pcm16 = Buffer.alloc(float32.length * BYTES_PER_SAMPLE);
     for (let i = 0; i < float32.length; i++) {
+      // ── LAYER 2.2 — NaN detection ──────────────────
+      if (Number.isNaN(float32[i])) {
+        if (!this.nanDetected) {
+          logger.error('[AudioProcessor] NaN detected in Float32 audio data — PCM conversion will produce garbage. Check LiveKit track source.');
+          this.nanDetected = true;
+        }
+        pcm16.writeInt16LE(0, i * BYTES_PER_SAMPLE);
+        continue;
+      }
       // Clamp to [-1, 1] range
       const s = Math.max(-1, Math.min(1, float32[i]));
       const val = s < 0 ? s * 0x8000 : s * 0x7FFF;

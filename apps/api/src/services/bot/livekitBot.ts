@@ -74,9 +74,18 @@ export class LivekitBot {
     if (this.closed) return;
 
     const { url, apiKey, apiSecret } = config.livekit;
+
+    // ── LAYER 1.1 — Config validation ─────────────────
+    if (!url) {
+      logger.error('[Bot] LIVEKIT_URL not configured — cannot connect');
+      throw new Error('LIVEKIT_URL not configured');
+    }
     if (!apiKey || !apiSecret) {
+      logger.error('[Bot] LIVEKIT_API_KEY / LIVEKIT_API_SECRET not configured');
       throw new Error('LIVEKIT_API_KEY / LIVEKIT_API_SECRET not configured');
     }
+    logger.info(`[Bot] Connecting to room: ${this.roomName} (meeting=${this.meetingId})`);
+    logger.info(`[Bot] LiveKit URL=${url}, apiKey=${apiKey.slice(0, 6)}..., identity=${BOT_IDENTITY}`);
 
     // Generate a bot access token — subscribe-only, hidden
     const token = new AccessToken(apiKey, apiSecret, {
@@ -93,6 +102,7 @@ export class LivekitBot {
       hidden: true,
     });
     const jwt = await token.toJwt();
+    logger.debug(`[Bot] Token generated: room=${this.roomName}, grants=[roomJoin, canSubscribe, hidden]`);
 
     // Dynamic import of the ESM-only rtc-node SDK
     const rtc = await getLkRtc();
@@ -101,17 +111,23 @@ export class LivekitBot {
     this.room = new rtc.Room();
     this.setupEventHandlers(rtc);
 
-    logger.info(`[LivekitBot] Connecting to ${url} room=${this.roomName}...`);
+    const connectStart = Date.now();
     await this.room.connect(url, jwt, { autoSubscribe: true });
-    logger.info(`[LivekitBot] Connected: room=${this.roomName}, participants=${this.room.remoteParticipants.size}`);
+    const connectMs = Date.now() - connectStart;
+    logger.info(`[Bot] Connected successfully in ${connectMs}ms: room=${this.roomName}, participants=${this.room.remoteParticipants.size}`);
 
     // Process participants already in the room
+    let existingAudioTracks = 0;
     for (const participant of this.room.remoteParticipants.values()) {
       for (const pub of participant.trackPublications.values()) {
         if (pub.track && pub.kind === rtc.TrackKind.KIND_AUDIO) {
+          existingAudioTracks++;
           await this.onTrackSubscribed(rtc, pub.track, pub, participant);
         }
       }
+    }
+    if (existingAudioTracks > 0) {
+      logger.info(`[Bot] Processed ${existingAudioTracks} existing audio track(s) in room`);
     }
   }
 
@@ -120,13 +136,15 @@ export class LivekitBot {
     if (this.closed) return;
     this.closed = true;
 
-    logger.info(`[LivekitBot] Disconnecting: meeting=${this.meetingId}, activeSessions=${this.sessions.size}`);
+    // ── LAYER 7.2 — Meeting end closes everything ─────
+    logger.info(`[Bot] Stopping bot for meeting ${this.meetingId} (activeSessions=${this.sessions.size}, audioStreams=${this.audioStreams.size})`);
 
     // Close all RealtimeSession instances
     for (const [speakerId, session] of this.sessions) {
-      logger.info(`[LivekitBot] Closing session: speaker=${speakerId}`);
+      logger.info(`[Realtime] Closing session for ${speakerId}`);
       session.close();
     }
+    logger.info(`[Realtime] All sessions closed (meeting=${this.meetingId})`);
     this.sessions.clear();
     this.audioStreams.clear();
 
@@ -136,7 +154,7 @@ export class LivekitBot {
       this.room = null;
     }
 
-    logger.info(`[LivekitBot] Fully disconnected: meeting=${this.meetingId}`);
+    logger.info(`[Bot] Room disconnected: meeting=${this.meetingId}, no WebSocket connections remain`);
   }
 
   get activeSessionCount(): number {
@@ -209,13 +227,14 @@ export class LivekitBot {
 
     // Skip duplicate sessions
     if (this.sessions.has(speakerId)) {
-      logger.debug(`[LivekitBot] Session already exists: speaker=${speakerName}`);
+      logger.debug(`[Bot] Session already exists: speaker=${speakerName}`);
       return;
     }
     // Skip bot's own tracks
     if (speakerId === BOT_IDENTITY) return;
 
-    logger.info(`[LivekitBot] Audio track subscribed: speaker=${speakerName} (${speakerId})`);
+    // ── LAYER 1.2 — Track subscription confirmation ───
+    logger.info(`[Bot] Subscribed to audio track from ${speakerId} (name=${speakerName}, trackSid=${track?.sid || 'unknown'})`);
 
     // Determine source language from metadata or in-memory map
     let sourceLang = 'en';
@@ -272,27 +291,51 @@ export class LivekitBot {
     speakerId: string,
     speakerName: string,
   ): Promise<void> {
+    // ── LAYER 2.1 — Audio frame flow tracking ─────────
+    let frameCount = 0;
+    let totalSamples = 0;
+    let zeroFrames = 0;
+    const pipeStart = Date.now();
+    const LOG_INTERVAL = 500; // Log summary every 500 frames
+
     try {
       for await (const frame of audioStream) {
         if (session.isClosed || this.closed) break;
+        frameCount++;
 
         // @livekit/rtc-node AudioFrame.data is Int16Array (PCM16 mono)
         if (frame.data instanceof Int16Array) {
+          totalSamples += frame.data.length;
+          if (frame.data.length === 0) zeroFrames++;
           const buf = Buffer.from(frame.data.buffer, frame.data.byteOffset, frame.data.byteLength);
           session.pushAudio(buf);
         } else if (frame.data instanceof Float32Array) {
+          totalSamples += frame.data.length;
+          if (frame.data.length === 0) zeroFrames++;
           session.pushAudio(frame.data);
         } else if (Buffer.isBuffer(frame.data)) {
+          totalSamples += frame.data.length / 2; // PCM16 = 2 bytes/sample
+          if (frame.data.length === 0) zeroFrames++;
           session.pushAudio(frame.data);
+        }
+
+        // ── LAYER 2.1 — Periodic audio flow summary ───
+        if (frameCount === 1) {
+          logger.info(`[Audio] First frame received from ${speakerId}, samples: ${frame.data?.length || 0}, type: ${frame.data?.constructor?.name || 'unknown'}`);
+        }
+        if (frameCount % LOG_INTERVAL === 0) {
+          const elapsedSec = ((Date.now() - pipeStart) / 1000).toFixed(1);
+          logger.info(`[Audio] Pipeline stats for ${speakerId}: frames=${frameCount}, totalSamples=${totalSamples}, zeroFrames=${zeroFrames}, elapsed=${elapsedSec}s`);
         }
       }
     } catch (err: any) {
       if (!this.closed && !session.isClosed) {
-        logger.warn(`[LivekitBot] AudioStream ended: speaker=${speakerName}: ${err.message}`);
+        logger.warn(`[Audio] AudioStream ended: speaker=${speakerName}: ${err.message}`);
       }
     } finally {
+      const totalSec = ((Date.now() - pipeStart) / 1000).toFixed(1);
+      logger.info(`[Audio] Pipeline ended for ${speakerId}: totalFrames=${frameCount}, totalSamples=${totalSamples}, zeroFrames=${zeroFrames}, duration=${totalSec}s`);
       this.audioStreams.delete(speakerId);
-      logger.debug(`[LivekitBot] Audio pipeline ended: speaker=${speakerName}`);
     }
   }
 
@@ -300,10 +343,12 @@ export class LivekitBot {
   private closeSession(speakerId: string): void {
     const session = this.sessions.get(speakerId);
     if (session) {
+      // ── LAYER 7.1 — Track unsubscribe closes session ─
+      logger.info(`[Realtime] Closing session for ${speakerId}`);
       session.close();
       this.sessions.delete(speakerId);
       this.audioStreams.delete(speakerId);
-      logger.info(`[LivekitBot] Session closed: speaker=${speakerId}, remaining=${this.sessions.size}`);
+      logger.info(`[Realtime] Session closed: speaker=${speakerId}, remainingSessions=${this.sessions.size}`);
     }
   }
 
@@ -316,7 +361,8 @@ export class LivekitBot {
    */
   private async translateAndBroadcast(transcript: TranscriptRow): Promise<void> {
     const { meetingId, organizationId, speakerId, speakerName, text, sourceLang, timestamp } = transcript;
-    logger.info(`[TRANSLATION_PIPELINE] Starting: meeting=${meetingId}, speaker=${speakerName}, text="${text.slice(0, 60)}...", sourceLang=${sourceLang}`);
+    // ── LAYER 6.1 — Translation trigger fires ─────────
+    logger.info(`[Translation] Translating transcript for meeting ${meetingId}: speaker=${speakerName}, textLen=${text.length}, sourceLang=${sourceLang}`);
 
     try {
       const langMap = this.meetingLanguages?.get(meetingId);
@@ -360,12 +406,15 @@ export class LivekitBot {
 
       // Update DB row with translations (best-effort)
       try {
-        await db('meeting_transcripts')
+        const updated = await db('meeting_transcripts')
           .where({ meeting_id: meetingId, speaker_id: speakerId, spoken_at: timestamp })
           .update({ translations: JSON.stringify(translations) });
-      } catch (_) { /* non-critical */ }
+        logger.debug(`[DB] Translation update: meeting=${meetingId}, speaker=${speakerId}, rowsUpdated=${updated}`);
+      } catch (dbErr) {
+        logger.warn(`[DB] Translation update failed (non-critical): meeting=${meetingId}, error=${(dbErr as any)?.message}`);
+      }
 
-      // Broadcast transcript:stored to all in the meeting room
+      // ── LAYER 6.2 — Socket broadcast occurs ──────────
       this.io.to(`meeting:${meetingId}`).emit('transcript:stored', {
         meetingId,
         speakerId,
@@ -375,10 +424,12 @@ export class LivekitBot {
         translations,
         timestamp,
       });
+      logger.info(`[Socket] Emitted transcript:stored to room meeting:${meetingId} (langs=${Object.keys(translations).join(',')})`);
 
       // Per-user routing with TTS availability
       if (langMap) {
         const allSockets = await this.io.in(`meeting:${meetingId}`).fetchSockets();
+        let routed = 0;
         for (const [targetUserId, prefs] of langMap.entries()) {
           if (targetUserId === speakerId) continue;
           const targetSocket = allSockets.find(
@@ -398,8 +449,10 @@ export class LivekitBot {
               ttsAvailable,
               userLang: prefs.language,
             });
+            routed++;
           }
         }
+        logger.info(`[Socket] Emitted translation:result to ${routed} user(s) in meeting ${meetingId}`);
       }
 
       logger.info(`[TRANSLATION_PIPELINE] Broadcast COMPLETE: meeting=${meetingId}, speaker=${speakerName}, langs=${Object.keys(translations).join(',')}`);

@@ -53,6 +53,13 @@ export class RealtimeSession {
   private maxDurationTimer: ReturnType<typeof setTimeout> | null = null;
   private lastTranscriptAt: number = Date.now();
 
+  // ── LAYER 3.3 / 4.1 / 8 — Counters for debugging & cost control
+  private audioChunksSent = 0;
+  private transcriptsReceived = 0;
+  private transcriptsPersisted = 0;
+  private sessionOpenedAt: number = 0;
+  private readonly AUDIO_LOG_INTERVAL = 200; // Log every N chunks
+
   private readonly meetingId: string;
   private readonly organizationId: string;
   private readonly speakerId: string;
@@ -97,7 +104,9 @@ export class RealtimeSession {
       });
 
       this.ws.on('open', () => {
-        logger.info(`[STT_PIPELINE] WebSocket CONNECTED: speaker=${this.speakerName}, meeting=${this.meetingId}`);
+        // ── LAYER 3.1 — WebSocket successfully opens ────
+        this.sessionOpenedAt = Date.now();
+        logger.info(`[Realtime] Session opened for speaker ${this.speakerId} (name=${this.speakerName}, meeting=${this.meetingId})`);
         this.configureSession();
         this.startTimers();
         resolve();
@@ -108,12 +117,12 @@ export class RealtimeSession {
       });
 
       this.ws.on('error', (err) => {
-        logger.error(`[STT_PIPELINE] WebSocket ERROR: speaker=${this.speakerName}, meeting=${this.meetingId}`, err);
+        logger.error(`[Realtime] WebSocket ERROR for speaker ${this.speakerId}: meeting=${this.meetingId}, error=${(err as any)?.message || err}`);
         this.handleDisconnect();
       });
 
       this.ws.on('close', (code, reason) => {
-        logger.warn(`[STT_PIPELINE] WebSocket CLOSED: speaker=${this.speakerName}, meeting=${this.meetingId}, code=${code}, reason=${reason?.toString()}`);
+        logger.warn(`[Realtime] WebSocket CLOSED for speaker ${this.speakerId}: meeting=${this.meetingId}, code=${code}, reason=${reason?.toString() || 'none'}`);
         this.handleDisconnect();
       });
 
@@ -146,7 +155,9 @@ export class RealtimeSession {
     if (this.closed) return;
     this.closed = true;
 
-    logger.info(`[RealtimeSession] Closing: speaker=${this.speakerName}, meeting=${this.meetingId}`);
+    // ── LAYER 7.1 + 8 — Session lifecycle summary ─────
+    const sessionDurationSec = this.sessionOpenedAt ? ((Date.now() - this.sessionOpenedAt) / 1000).toFixed(1) : '0';
+    logger.info(`[Realtime] Closing session for ${this.speakerId}: meeting=${this.meetingId}, audioChunksSent=${this.audioChunksSent}, transcriptsReceived=${this.transcriptsReceived}, transcriptsPersisted=${this.transcriptsPersisted}, sessionDuration=${sessionDurationSec}s`);
 
     // Flush remaining audio
     this.audioProcessor.close();
@@ -206,7 +217,8 @@ export class RealtimeSession {
       },
     });
 
-    logger.debug(`[RealtimeSession] Session configured: speaker=${this.speakerName}`);
+    // ── LAYER 3.2 — Confirm session.update sent ────────
+    logger.info(`[Realtime] Session configured for speaker ${this.speakerId}: format=pcm16, sampleRate=24kHz, vad=server_vad(threshold=0.5, silence=500ms), model=whisper-1`);
   }
 
   // ── Audio Sending ───────────────────────────────────────
@@ -219,6 +231,15 @@ export class RealtimeSession {
       type: 'input_audio_buffer.append',
       audio: pcm16Base64,
     });
+
+    // ── LAYER 3.3 — Audio chunk send counter ──────────
+    this.audioChunksSent++;
+    if (this.audioChunksSent === 1) {
+      logger.info(`[Realtime] First audio chunk sent for speaker ${this.speakerId} (bytes=${Buffer.from(pcm16Base64, 'base64').length})`);
+    }
+    if (this.audioChunksSent % this.AUDIO_LOG_INTERVAL === 0) {
+      logger.info(`[Realtime] Sent ${this.audioChunksSent} audio chunks for speaker ${this.speakerId}`);
+    }
   }
 
   // ── Message Handling ────────────────────────────────────
@@ -230,35 +251,62 @@ export class RealtimeSession {
 
       switch (event.type) {
         case 'session.created':
-          logger.debug(`[RealtimeSession] Session created by OpenAI: speaker=${this.speakerName}`);
+          logger.info(`[Realtime] Session created by OpenAI: speaker=${this.speakerId}, sessionId=${event.session?.id || 'unknown'}`);
           break;
 
         case 'session.updated':
-          logger.debug(`[RealtimeSession] Session updated: speaker=${this.speakerName}`);
+          logger.info(`[Realtime] Session updated by OpenAI: speaker=${this.speakerId}`);
           break;
 
         case 'conversation.item.input_audio_transcription.completed':
-          // This is the primary transcript event from Whisper
+          // ── LAYER 4.1 — Final transcript received ────────
+          this.transcriptsReceived++;
           if (event.transcript?.trim()) {
-            logger.info(`[STT_PIPELINE] Whisper transcript received: speaker=${this.speakerName}, meeting=${this.meetingId}, length=${event.transcript.trim().length}`);
-            this.handleTranscript(event.transcript.trim());
+            const text = event.transcript.trim();
+            // ── LAYER 4.2 — Filter short/noise transcripts ─
+            if (text.length < 3) {
+              logger.debug(`[Realtime] Filtered short transcript (<3 chars) for ${this.speakerId}: "${text}"`);
+              break;
+            }
+            logger.info(`[Realtime] Final transcript received for ${this.speakerId}: "${text.slice(0, 80)}${text.length > 80 ? '...' : ''}" (len=${text.length}, totalReceived=${this.transcriptsReceived})`);
+            this.handleTranscript(text);
           } else {
-            logger.debug(`[STT_PIPELINE] Empty transcript from Whisper: speaker=${this.speakerName}, meeting=${this.meetingId}`);
+            logger.debug(`[STT_PIPELINE] Empty transcript from Whisper: speaker=${this.speakerName}, meeting=${this.meetingId} (totalReceived=${this.transcriptsReceived})`);
           }
           break;
 
         case 'response.done':
-          // Response cycle completed — we don't need the AI text response
-          // but this confirms a VAD turn was processed
-          logger.debug(`[RealtimeSession] Response done: speaker=${this.speakerName}`);
+          // Response cycle completed — confirms a VAD turn was processed
+          logger.debug(`[Realtime] Response done (VAD turn processed): speaker=${this.speakerId}`);
+          break;
+
+        case 'input_audio_buffer.speech_started':
+          logger.debug(`[Realtime] VAD speech started: speaker=${this.speakerId}`);
+          break;
+
+        case 'input_audio_buffer.speech_stopped':
+          logger.debug(`[Realtime] VAD speech stopped: speaker=${this.speakerId}`);
+          break;
+
+        case 'input_audio_buffer.committed':
+          logger.debug(`[Realtime] Audio buffer committed: speaker=${this.speakerId}`);
+          break;
+
+        case 'response.created':
+        case 'response.output_item.added':
+        case 'response.content_part.added':
+        case 'conversation.item.created':
+          // Normal response lifecycle events — logged at debug
+          logger.debug(`[Realtime] Event: ${event.type} for speaker=${this.speakerId}`);
           break;
 
         case 'error':
-          logger.error(`[RealtimeSession] OpenAI error: speaker=${this.speakerName}`, event.error);
+          logger.error(`[Realtime] OpenAI error for ${this.speakerId}: code=${event.error?.code}, message=${event.error?.message}`);
           break;
 
-        // Ignore other event types (response.audio.delta, etc.)
+        // Catch-all for unexpected event types
         default:
+          logger.debug(`[Realtime] Unhandled event: ${event.type} for speaker=${this.speakerId}`);
           break;
       }
     } catch (err) {
@@ -279,9 +327,9 @@ export class RealtimeSession {
 
     logger.info(`[STT_PIPELINE] Transcript persisting: speaker=${this.speakerName}, meeting=${this.meetingId}, text="${text.slice(0, 80)}..."`);
 
-    // Persist to meeting_transcripts table
+    // ── LAYER 5.1 — Persist to meeting_transcripts table ─
     try {
-      await db('meeting_transcripts').insert({
+      const inserted = await db('meeting_transcripts').insert({
         meeting_id: this.meetingId,
         organization_id: this.organizationId,
         speaker_id: this.speakerId,
@@ -292,9 +340,10 @@ export class RealtimeSession {
         spoken_at: now,
       });
 
-      logger.info(`[STT_PIPELINE] Transcript SAVED to DB: meeting=${this.meetingId}, speaker=${this.speakerName}`);
+      this.transcriptsPersisted++;
+      logger.info(`[DB] Transcript saved: id=${inserted?.[0] || 'unknown'}, meeting=${this.meetingId}, speaker=${this.speakerName}, totalPersisted=${this.transcriptsPersisted}`);
     } catch (dbErr) {
-      logger.error(`[STT_PIPELINE] DB insert FAILED: speaker=${this.speakerName}, meeting=${this.meetingId}`, dbErr);
+      logger.error(`[DB] Transcript insert FAILED: speaker=${this.speakerName}, meeting=${this.meetingId}, error=${(dbErr as any)?.message}`);
     }
 
     // Trigger translation + broadcast callback

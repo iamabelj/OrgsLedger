@@ -122,7 +122,11 @@ export class AIService {
       } else {
         // Fall back to live translation transcripts stored in DB
         transcript = await this.getTranscriptsFromDB(meetingId);
+        // ── LAYER 9 — Confirm transcript rows exist ─────
         logger.info('[MINUTES_PIPELINE] Using live transcripts from DB', { meetingId, segments: transcript.length });
+        if (transcript.length === 0) {
+          logger.warn('[MINUTES_PIPELINE] No transcripts found in DB — minutes will be empty', { meetingId });
+        }
       }
 
       // Step 2: Generate structured minutes
@@ -149,9 +153,13 @@ export class AIService {
           generated_at: db.fn.now(),
         });
 
+      // ── LAYER 9 — Confirm meeting_minutes row created ──
+      const storedMinutes = await db('meeting_minutes').where({ meeting_id: meetingId }).select('id', 'status', 'ai_credits_used').first();
       logger.info('[MINUTES_PIPELINE] Minutes STORED successfully', {
         meetingId,
         organizationId,
+        minutesId: storedMinutes?.id,
+        status: storedMinutes?.status,
         creditsUsed: meetingDurationCredits,
         totalDurationMs: Date.now() - startTime,
         meetingTitle: meeting.title,
