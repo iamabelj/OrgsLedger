@@ -700,10 +700,11 @@ router.post('/:orgId/:meetingId/end', middleware_1.authenticate, middleware_1.lo
             // NOTE: Do NOT force-disconnect sockets immediately.
             // Clients need to remain in the meeting room to receive
             // meeting:minutes:processing / meeting:minutes:ready / meeting:minutes:failed events.
-            // Instead, force-disconnect after a delay so minutes events can be delivered.
+            // GPT-4o summarization can take 10-30 seconds, so allow 60s before disconnect.
+            // (Clients also receive events via org room, so this is a best-effort grace period.)
             setTimeout(() => {
                 (0, socket_1.forceDisconnectMeeting)(io, req.params.meetingId).catch((err) => logger_1.logger.warn('Force disconnect failed', err));
-            }, 5_000); // 5 seconds grace period for minutes events
+            }, 60_000); // 60 seconds grace period — GPT-4o needs time
         }
         // Stop transcription bot (best-effort)
         try {

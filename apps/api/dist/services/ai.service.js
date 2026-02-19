@@ -61,6 +61,13 @@ class AIService {
     io;
     constructor(io) {
         this.io = io;
+        // Startup check: log whether required API keys are configured (not the keys themselves)
+        logger_1.logger.info('[AIService] Initialized', {
+            hasOpenAIKey: !!config_1.config.ai.openaiApiKey,
+            hasAiProxyUrl: !!config_1.config.aiProxy.url,
+            hasAiProxyKey: !!config_1.config.aiProxy.apiKey,
+            hasGoogleCredentials: !!config_1.config.ai.googleCredentials,
+        });
     }
     /**
      * Process meeting audio into structured minutes.
@@ -85,10 +92,13 @@ class AIService {
                 throw new Error('Insufficient AI wallet balance');
             }
             // Calculate meeting duration in minutes (actual, not rounded up to hours)
+            // Safeguard: default to 5 min (not 60) when timestamps are missing to avoid draining wallet
             meetingDurationMinutes = meeting.actual_start && meeting.actual_end
                 ? Math.max(1, Math.ceil((new Date(meeting.actual_end).getTime() - new Date(meeting.actual_start).getTime()) /
                     (1000 * 60)))
-                : 60; // default 60 minutes
+                : 5; // conservative default — don't drain wallet on missing timestamps
+            // Safeguard: cap at 180 minutes to prevent runaway charges
+            meetingDurationMinutes = Math.min(meetingDurationMinutes, 180);
             // Verify sufficient balance for the meeting duration
             if (balance < meetingDurationMinutes) {
                 logger_1.logger.warn('[MINUTES_PIPELINE] Insufficient wallet minutes for meeting duration', {
@@ -117,6 +127,37 @@ class AIService {
                 if (transcript.length === 0) {
                     logger_1.logger.warn('[MINUTES_PIPELINE] No transcripts found in DB — minutes will be empty', { meetingId });
                 }
+            }
+            // Safeguard: if no real transcripts after DB lookup, skip GPT-4o entirely
+            // (saves OpenAI tokens + wallet — don't charge for empty meetings)
+            if (transcript.length === 0 || (transcript.length === 1 && transcript[0].speakerName === 'Speaker 1' && transcript[0].text.includes('will appear here'))) {
+                logger_1.logger.warn('[MINUTES_PIPELINE] No real transcripts — skipping GPT-4o, refunding wallet', { meetingId });
+                // Refund the upfront deduction
+                try {
+                    await (0, subscription_service_1.deductAiWallet)(organizationId, -meetingDurationMinutes, `Refund: no transcripts for meeting ${meetingId}`);
+                    logger_1.logger.info(`[MINUTES_PIPELINE] Wallet refunded ${meetingDurationMinutes} min (no transcripts)`, { meetingId });
+                }
+                catch (refundErr) {
+                    logger_1.logger.error('[MINUTES_PIPELINE] Refund failed for empty transcript meeting', refundErr);
+                }
+                await (0, db_1.default)('meeting_minutes')
+                    .where({ meeting_id: meetingId })
+                    .update({
+                    status: 'completed',
+                    summary: 'No speech was captured during this meeting. Ensure participants have microphone access and the audio transcription is active.',
+                    transcript: '[]',
+                    decisions: '[]',
+                    motions: '[]',
+                    action_items: '[]',
+                    contributions: '[]',
+                    ai_credits_used: 0,
+                    generated_at: db_1.default.fn.now(),
+                });
+                if (this.io) {
+                    this.io.to(`org:${organizationId}`).emit('meeting:minutes:ready', { meetingId, title: meeting.title });
+                    this.io.to(`meeting:${meetingId}`).emit('meeting:minutes:ready', { meetingId, title: meeting.title });
+                }
+                return;
             }
             // Step 2: Generate structured minutes
             const summarizeStart = Date.now();
@@ -485,7 +526,7 @@ Be thorough and accurate. Identify all decisions, motions, and action items.`;
                 .select('*');
             if (rows.length === 0) {
                 logger_1.logger.warn('[AI] No live transcripts found for meeting', { meetingId });
-                return this.getMockTranscript();
+                return []; // Return empty — caller decides whether to skip or use fallback
             }
             // Convert to TranscriptSegment format using real spoken_at timestamps
             const baseTime = rows[0]?.spoken_at ? Number(rows[0].spoken_at) : 0;
