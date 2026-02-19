@@ -143,12 +143,18 @@ class SocketClient {
     this.socket?.emit('translation:speech', { meetingId, text, sourceLang, isFinal });
   }
 
-  // ── Audio Streaming (Server-Side STT) ───────────────────
+  // ── Audio Streaming (Server-Side STT — Whisper) ──────────
 
-  startAudioStream(meetingId: string, language?: string, encoding?: string): void {
-    this.socket?.emit('audio:start', { meetingId, language, encoding: encoding || 'WEBM_OPUS' });
+  startAudioStream(meetingId: string, language?: string): void {
+    this.socket?.emit('audio:start', { meetingId, language });
   }
 
+  /** Send a complete audio segment (4-second webm file) for Whisper transcription */
+  sendAudioSegment(meetingId: string, audio: ArrayBuffer): void {
+    this.socket?.emit('audio:segment', { meetingId, audio });
+  }
+
+  /** @deprecated Use sendAudioSegment instead */
   sendAudioChunk(meetingId: string, audio: ArrayBuffer): void {
     this.socket?.emit('audio:chunk', { meetingId, audio });
   }

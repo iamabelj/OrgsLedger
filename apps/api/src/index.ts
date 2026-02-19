@@ -155,9 +155,9 @@ app.get('/health', (_req, res) => {
 // GET /health/pipeline — check if all services for minutes/TTS are configured
 app.get('/health/pipeline', async (_req, res) => {
   try {
-    const { isSttAvailable, getSttDiagnostics } = require('./services/speech-to-text.service');
+    const { isWhisperAvailable, getWhisperDiagnostics } = require('./services/whisper.service');
     const { config: appConfig } = require('./config');
-    const sttDiag = getSttDiagnostics();
+    const whisperDiag = getWhisperDiagnostics();
 
     // Check database connectivity
     let dbOk = false;
@@ -172,10 +172,14 @@ app.get('/health/pipeline', async (_req, res) => {
     res.json({
       status: 'ok',
       pipeline: {
-        googleSTT: {
-          credentialsExist: sttDiag.credentialsExist,
-          credentialsValid: sttDiag.credentialsValid,
-          available: isSttAvailable(),
+        whisperSTT: {
+          engine: whisperDiag.engine,
+          available: isWhisperAvailable(),
+          openaiKeyConfigured: whisperDiag.openaiKeyConfigured,
+        },
+        openAITTS: {
+          model: whisperDiag.ttsModel,
+          available: isWhisperAvailable(),
         },
         openAI: {
           keyConfigured: !!appConfig.ai.openaiApiKey,

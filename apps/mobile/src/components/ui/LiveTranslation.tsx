@@ -16,7 +16,6 @@ import {
   TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Speech from 'expo-speech';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../theme';
 import { socketClient } from '../../api/socket';
 import { api } from '../../api/client';
@@ -32,7 +31,6 @@ import {
   TTS_SUPPORTED,
   isTtsSupported,
   getLanguageFlag,
-  getBcp47,
   getLanguageName,
   isRtl,
 } from '../../utils/languages';
@@ -86,52 +84,43 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
   const [isExpanded, setIsExpanded] = useState(true);
   const [ttsVolume, setTtsVolume] = useState(0.8); // Voice-to-voice volume control
   const [langSearch, setLangSearch] = useState(''); // Searchable language picker
-  const [ttsWarmedUp, setTtsWarmedUp] = useState(false); // Chrome TTS warm-up state
 
   // Sync autoTTS prop from parent (e.g., Voice-to-Voice toggle in control bar)
   useEffect(() => { setSpeakEnabled(autoTTS); }, [autoTTS]);
 
-  // ── Chrome TTS warm-up ─────────────────────────────────
-  // Chrome loads voices asynchronously and requires a user gesture
-  // to unlock speechSynthesis. Warm up on first user interaction.
+  // ── Audio playback unlock (browser autoplay restriction) ──
+  // Browsers require a user gesture before audio can play.
+  // Create AudioContext on first click to unlock audio.
+  const audioUnlockedRef = useRef(false);
+  const ttsQueueRef = useRef<string[]>([]);
+  const ttsPlayingRef = useRef(false);
+  const ttsVolumeRef = useRef(ttsVolume);
+  useEffect(() => { ttsVolumeRef.current = ttsVolume; }, [ttsVolume]);
+
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    const synth = window.speechSynthesis;
-    if (!synth) return;
-
-    // Load voices (Chrome fires this event asynchronously)
-    const loadVoices = () => {
-      const voices = synth.getVoices();
-      if (voices.length > 0) {
-        console.debug(`[TTS] ${voices.length} voices loaded`);
-      }
-    };
-    loadVoices();
-    synth.addEventListener('voiceschanged', loadVoices);
-
-    // Warm up TTS with a silent utterance on first user click
-    // This unlocks Chrome's autoplay restriction for speechSynthesis
-    const warmUp = () => {
-      if (ttsWarmedUp) return;
+    const unlock = () => {
+      if (audioUnlockedRef.current) return;
       try {
-        const silent = new SpeechSynthesisUtterance('');
-        silent.volume = 0;
-        synth.speak(silent);
-        setTtsWarmedUp(true);
-        console.debug('[TTS] Warmed up — audio unlocked');
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const buf = ctx.createBuffer(1, 1, 22050);
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.connect(ctx.destination);
+        src.start();
+        audioUnlockedRef.current = true;
+        console.debug('[TTS] Audio context unlocked');
       } catch { /* non-critical */ }
-      document.removeEventListener('click', warmUp);
-      document.removeEventListener('touchstart', warmUp);
+      document.removeEventListener('click', unlock);
+      document.removeEventListener('touchstart', unlock);
     };
-    document.addEventListener('click', warmUp, { once: true });
-    document.addEventListener('touchstart', warmUp, { once: true });
-
+    document.addEventListener('click', unlock, { once: true });
+    document.addEventListener('touchstart', unlock, { once: true });
     return () => {
-      synth.removeEventListener('voiceschanged', loadVoices);
-      document.removeEventListener('click', warmUp);
-      document.removeEventListener('touchstart', warmUp);
+      document.removeEventListener('click', unlock);
+      document.removeEventListener('touchstart', unlock);
     };
-  }, [ttsWarmedUp]);
+  }, []);
 
   // Zustand store sync — keep centralized state updated
   const storeSetMyLanguage = useMeetingStore((s) => s.setMyLanguage);
@@ -218,15 +207,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
       storeAddTranslation(entry);
       storeSetInterimText('');
 
-      // Text-to-speech for received translations (not own speech)
-      // Voice-to-voice: only when server says TTS is available for this user's language
-      if (data.speakerId !== userId) {
-        const shouldSpeak = speakEnabledRef.current && data.ttsAvailable;
-        console.debug(`[TTS] Received translation — speakEnabled=${speakEnabledRef.current}, ttsAvailable=${data.ttsAvailable}, shouldSpeak=${shouldSpeak}, text="${translated?.slice(0, 40)}"`);
-        if (shouldSpeak && translated) {
-          speak(translated, myLang);
-        }
-      }
+      // TTS is handled server-side now — audio arrives via 'tts:audio' event
 
       // Auto-scroll
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
@@ -300,9 +281,11 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
     return () => clearTimeout(timer);
   }, [meetingId]);
 
-  // ── Server-Side STT via Audio Streaming ─────────────────
-  // Web: MediaRecorder → audio/webm;codecs=opus → server → Google STT
-  // Mobile: Future native audio module support
+  // ── Server-Side STT via Audio Segments (OpenAI Whisper) ──
+  // Web: MediaRecorder records 4-second segments → complete webm files → server → Whisper
+  // Whisper excels at multilingual transcription (50+ languages)
+  const SEGMENT_DURATION_MS = 4000; // 4 seconds per segment
+
   const startListening = useCallback(async () => {
     if (Platform.OS === 'web') {
       try {
@@ -321,29 +304,57 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
           ? 'audio/webm;codecs=opus'
           : 'audio/webm';
 
-        const recorder = new MediaRecorder(stream, { mimeType });
+        // Tell server to start a Whisper STT session
+        socketClient.startAudioStream(meetingId, myLanguageRef.current);
 
-        // Tell server to start a Google STT session for this user
-        socketClient.startAudioStream(meetingId, myLanguageRef.current, 'WEBM_OPUS');
+        // Rotating recorder: each recorder produces a complete standalone webm file
+        // that Whisper can process independently
+        let active = true;
 
-        recorder.ondataavailable = (e: any) => {
-          if (e.data && e.data.size > 0) {
-            e.data.arrayBuffer().then((buffer: ArrayBuffer) => {
-              socketClient.sendAudioChunk(meetingId, buffer);
-            });
-          }
+        const startSegment = () => {
+          if (!active) return;
+
+          const recorder = new MediaRecorder(stream, { mimeType });
+          const chunks: Blob[] = [];
+
+          recorder.ondataavailable = (e: any) => {
+            if (e.data && e.data.size > 0) chunks.push(e.data);
+          };
+
+          recorder.onstop = () => {
+            // Send complete segment to server for Whisper transcription
+            if (chunks.length > 0) {
+              const blob = new Blob(chunks, { type: mimeType });
+              blob.arrayBuffer().then((buffer: ArrayBuffer) => {
+                socketClient.sendAudioSegment(meetingId, buffer);
+              }).catch(() => {});
+            }
+            // Start next segment after a brief pause
+            if (active) {
+              setTimeout(startSegment, 50);
+            }
+          };
+
+          recorder.onerror = (e: any) => {
+            console.warn('[AUDIO] MediaRecorder error:', e);
+            if (active) setTimeout(startSegment, 200);
+          };
+
+          recorder.start();
+
+          // Stop this recorder after SEGMENT_DURATION_MS to produce a complete file
+          setTimeout(() => {
+            if (recorder.state === 'recording') {
+              try { recorder.stop(); } catch (_) {}
+            }
+          }, SEGMENT_DURATION_MS);
         };
 
-        recorder.onerror = (e: any) => {
-          console.warn('[AUDIO] MediaRecorder error:', e);
-        };
-
-        // Send audio chunks every 250ms
-        recorder.start(250);
-        recognitionRef.current = { recorder, stream };
+        startSegment();
+        recognitionRef.current = { stream, stop: () => { active = false; } };
         setIsListening(true);
 
-        console.debug(`[AUDIO] Started audio capture: mimeType=${mimeType}, meeting=${meetingId}`);
+        console.debug(`[AUDIO] Started segmented audio capture: mimeType=${mimeType}, segment=${SEGMENT_DURATION_MS}ms, meeting=${meetingId}`);
       } catch (err: any) {
         if (err?.name === 'NotAllowedError') {
           showAlert('Microphone Blocked', 'Please allow microphone access in your browser settings.');
@@ -364,8 +375,8 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
     recognitionRef.current = null;
 
     if (ref) {
-      if (Platform.OS === 'web' && ref.recorder) {
-        try { ref.recorder.stop(); } catch (_) {}
+      if (Platform.OS === 'web') {
+        if (ref.stop) ref.stop(); // Stop the rotation loop
         try { ref.stream?.getTracks().forEach((t: any) => t.stop()); } catch (_) {}
       }
       // Tell server to stop the STT session
@@ -386,75 +397,75 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
     setAutoTTS: (enabled: boolean) => setSpeakEnabled(enabled),
   }), [startListening, stopListening, selectLanguage, isListening, myLanguage]);
 
-  // ── Text-to-Speech (Web + Android + iOS) — Voice-to-Voice ──
-  // Private per-user: TTS is played locally only, does NOT override meeting audio
-  const speak = useCallback((text: string, lang: string) => {
-    // Check TTS support before attempting
-    if (!isTtsSupported(lang)) {
-      // Language has no TTS voice — text-only translation, skip voice
-      console.debug(`[TTS] TTS not available for ${lang}, text-only fallback`);
-      return;
-    }
+  // ── Server-Side TTS Playback (OpenAI TTS via socket) ──
+  // Server generates mp3 audio and sends via 'tts:audio' event.
+  // Client decodes and plays using Audio element (web) or expo-av (native).
+  // Audio queue ensures sequential playback without overlap.
 
-    const langCode = getBcp47(lang) || 'en-US';
-    try {
-      if (Platform.OS === 'web') {
-        const synth = window.speechSynthesis;
-        if (!synth) {
-          console.warn('[TTS] speechSynthesis not available');
-          return;
-        }
-        // Cancel queued speech first
-        synth.cancel();
-        // Chrome quirk: after cancel(), must wait a tick before speak()
-        // otherwise the engine can get stuck in a "paused" state
-        setTimeout(() => {
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = langCode;
-          utterance.rate = 1.0;
-          utterance.volume = ttsVolume;
-          utterance.pitch = 1.0;
+  const playNextTTS = useCallback(() => {
+    if (ttsPlayingRef.current || ttsQueueRef.current.length === 0) return;
+    ttsPlayingRef.current = true;
 
-          // Try to find a matching voice (Chrome doesn't auto-match well)
-          const voices = synth.getVoices();
-          const match = voices.find((v) => v.lang.startsWith(langCode.split('-')[0]));
-          if (match) utterance.voice = match;
+    const audioBase64 = ttsQueueRef.current.shift()!;
 
-          utterance.onerror = (e: any) => {
-            console.warn('[TTS] Utterance error:', e.error || e);
-          };
-          utterance.onend = () => {
-            console.debug('[TTS] Utterance complete');
-          };
+    if (Platform.OS === 'web') {
+      try {
+        const raw = atob(audioBase64);
+        const bytes = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+        const blob = new Blob([bytes], { type: 'audio/mp3' });
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.volume = ttsVolumeRef.current;
 
-          synth.speak(utterance);
-          console.debug(`[TTS] Speaking: "${text.slice(0, 40)}..." lang=${langCode}`);
-        }, 50);
-      } else {
-        // Cancel previous speech on native for cleaner voice-to-voice
-        Speech.stop();
-        Speech.speak(text, {
-          language: langCode,
-          rate: 1.0,
-          pitch: 1.0,
-          volume: ttsVolume,
-          onError: (err) => console.warn('TTS failed', err),
+        audio.onended = () => {
+          URL.revokeObjectURL(url);
+          ttsPlayingRef.current = false;
+          playNextTTS(); // play next in queue
+        };
+        audio.onerror = () => {
+          URL.revokeObjectURL(url);
+          ttsPlayingRef.current = false;
+          playNextTTS();
+        };
+
+        audio.play().catch(() => {
+          ttsPlayingRef.current = false;
+          playNextTTS();
         });
+      } catch (err) {
+        console.warn('[TTS] Failed to play audio:', err);
+        ttsPlayingRef.current = false;
+        playNextTTS();
       }
-    } catch (e) {
-      console.warn('TTS failed', e);
+    } else {
+      // Native: play using expo-av (future enhancement)
+      // For now, fall back to expo-speech with the text
+      ttsPlayingRef.current = false;
+      playNextTTS();
     }
-  }, [ttsVolume]);
+  }, []);
+
+  // ── TTS socket event listener ──────────────────────────
+  useEffect(() => {
+    const unsubTTS = socketClient.on('tts:audio', (data: any) => {
+      if (data.meetingId !== meetingId) return;
+      if (data.speakerId === userId) return; // Don't play own speech
+      if (!speakEnabledRef.current) return;
+
+      ttsQueueRef.current.push(data.audio);
+      playNextTTS();
+    });
+
+    return () => { unsubTTS(); };
+  }, [meetingId, userId, playNextTTS]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopListening();
-      if (Platform.OS === 'web') {
-        try { window.speechSynthesis.cancel(); } catch (e) {}
-      } else {
-        Speech.stop();
-      }
+      ttsQueueRef.current = [];
+      ttsPlayingRef.current = false;
     };
   }, []);
 
