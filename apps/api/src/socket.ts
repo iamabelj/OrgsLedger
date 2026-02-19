@@ -52,15 +52,16 @@ async function this_persistTranscript(
     // Check table existence once and cache result
     if (transcriptTableExists === null) {
       transcriptTableExists = await db.schema.hasTable('meeting_transcripts');
+      logger.info(`[TRANSLATION] meeting_transcripts table exists: ${transcriptTableExists}`);
     }
     if (!transcriptTableExists) {
-      logger.warn('[TRANSLATION] meeting_transcripts table does not exist, skipping persist');
+      logger.error('[TRANSLATION] ❌ meeting_transcripts table does not exist — transcripts will NOT be saved! Run migrations or restart server.');
       return;
     }
 
     // Guard: organization_id is NOT NULL in the schema
     if (!organizationId) {
-      logger.warn('[TRANSLATION] Cannot persist transcript — organization_id is null', { meetingId });
+      logger.error('[TRANSLATION] ❌ Cannot persist transcript — organization_id is null', { meetingId, speakerName });
       return;
     }
 
@@ -74,9 +75,9 @@ async function this_persistTranscript(
       translations: JSON.stringify(translations),
       spoken_at: Date.now(),
     });
-    logger.debug(`[TRANSLATION] Transcript persisted: meeting=${meetingId}, speaker=${speakerName}, lang=${sourceLang}`);
-  } catch (dbErr) {
-    logger.warn('[TRANSLATION] Failed to persist transcript segment', dbErr);
+    logger.info(`[TRANSCRIPT] ✓ Persisted: meeting=${meetingId}, speaker=${speakerName}, lang=${sourceLang}, textLen=${originalText.length}`);
+  } catch (dbErr: any) {
+    logger.error(`[TRANSLATION] ❌ Failed to persist transcript: ${dbErr.message}`, { meetingId, speakerName, organizationId });
   }
 }
 

@@ -309,13 +309,14 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
       }
     }));
 
-    // Load chat history
-    socketClient.requestChatHistory(meetingId);
+    // Register history listener BEFORE requesting (avoid race condition)
     unsubs.push(socketClient.on('chat:history', (data: { messages: ChatMessage[] }) => {
       if (data.messages?.length) {
         setChatMessages(data.messages);
       }
     }));
+    // Now request chat history
+    socketClient.requestChatHistory(meetingId);
 
     return () => {
       unsubs.forEach((fn) => fn());

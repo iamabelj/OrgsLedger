@@ -580,7 +580,7 @@ Be thorough and accurate. Identify all decisions, motions, and action items.`;
       const hasTable = await db.schema.hasTable('meeting_transcripts');
       if (!hasTable) {
         logger.warn('[AI] meeting_transcripts table does not exist');
-        return this.getMockTranscript();
+        return [];
       }
 
       const rows = await db('meeting_transcripts')
@@ -612,7 +612,7 @@ Be thorough and accurate. Identify all decisions, motions, and action items.`;
       });
     } catch (err) {
       logger.error('[AI] Failed to get transcripts from DB', err);
-      return this.getMockTranscript();
+      return [];
     }
   }
 
