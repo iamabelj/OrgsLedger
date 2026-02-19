@@ -855,15 +855,18 @@ router.post(
         });
 
         if (hasAudio || hasLiveTranscripts) {
-          // Notify that processing is starting (org room only —
-          // meeting room was already force-disconnected above)
+          // Notify that processing is starting
           if (io) {
             io.to(`org:${req.params.orgId}`).emit('meeting:minutes:processing', {
+              meetingId: req.params.meetingId,
+            });
+            io.to(`meeting:${req.params.meetingId}`).emit('meeting:minutes:processing', {
               meetingId: req.params.meetingId,
             });
           }
 
           // Create pending minutes record (don't overwrite already-completed minutes)
+          let skipProcessing = false;
           const existing = await db('meeting_minutes').where({ meeting_id: req.params.meetingId }).first();
           if (!existing) {
             await db('meeting_minutes').insert({
@@ -878,25 +881,26 @@ router.post(
             logger.info('[MINUTES_PIPELINE] Minutes already completed — skipping re-generation', {
               meetingId: req.params.meetingId,
             });
-            // Skip processing — minutes already exist
-            hasLiveTranscripts = false;
+            skipProcessing = true;
           }
 
-          // Queue AI processing (handled by AI service)
-          const aiService = req.app.get('aiService');
-          if (aiService) {
-            logger.info('[MINUTES_PIPELINE] Triggering AI minutes processing', {
-              meetingId: req.params.meetingId,
-              orgId: req.params.orgId,
-            });
-            aiService.processMinutes(req.params.meetingId, req.params.orgId).catch((err: any) => {
-              logger.error('[MINUTES_PIPELINE] AI minutes processing FAILED', {
+          // Queue AI processing (handled by AI service) — skip if minutes already completed
+          if (!skipProcessing) {
+            const aiService = req.app.get('aiService');
+            if (aiService) {
+              logger.info('[MINUTES_PIPELINE] Triggering AI minutes processing', {
                 meetingId: req.params.meetingId,
-                error: err.message,
+                orgId: req.params.orgId,
               });
-            });
-          } else {
-            logger.warn('[MINUTES_PIPELINE] aiService not registered on app — minutes will NOT be generated');
+              aiService.processMinutes(req.params.meetingId, req.params.orgId).catch((err: any) => {
+                logger.error('[MINUTES_PIPELINE] AI minutes processing FAILED', {
+                  meetingId: req.params.meetingId,
+                  error: err.message,
+                });
+              });
+            } else {
+              logger.warn('[MINUTES_PIPELINE] aiService not registered on app — minutes will NOT be generated');
+            }
           }
         } else {
           logger.info('[MINUTES_PIPELINE] No audio or transcripts found — skipping minutes generation', {

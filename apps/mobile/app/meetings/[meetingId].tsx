@@ -417,6 +417,10 @@ export default function MeetingDetailScreen() {
   // ── Socket: Real-time event-driven architecture ────────
   useEffect(() => {
     if (!meetingId) return;
+    // When GlobalMeetingProvider is active, it handles all socket events.
+    // Skip duplicate listeners here to avoid double-processing.
+    if (gm.isActive) return;
+
     socketClient.joinMeeting(meetingId);
 
     // -- Participant events --
@@ -562,7 +566,7 @@ export default function MeetingDetailScreen() {
       unsub11(); unsub12(); unsub13(); unsub14();
       socketClient.leaveMeeting(meetingId);
     };
-  }, [meetingId]);
+  }, [meetingId, gm.isActive]);
 
   // ── Meeting Actions ─────────────────────────────────────
   const handleStart = async () => {
@@ -1423,7 +1427,7 @@ export default function MeetingDetailScreen() {
       )}
 
       {/* ═══ LIVE TRANSLATION ════════════════════════════════ */}
-      {meeting.status === 'live' && userId && (
+      {!gm.isActive && meeting.status === 'live' && userId && (
         <LiveTranslation ref={translationRef} meetingId={meetingId!} userId={userId} hideControls autoTTS={voiceToVoice} />
       )}
 

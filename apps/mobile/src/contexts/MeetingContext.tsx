@@ -151,6 +151,10 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
   // Recording
   const [isRecordingFromSocket, setIsRecordingFromSocket] = useState(false);
 
+  // Ref for isChatOpen to avoid stale closure in socket handler
+  const isChatOpenRef = useRef(false);
+  useEffect(() => { isChatOpenRef.current = isChatOpen; }, [isChatOpen]);
+
   // ── Timer ───────────────────────────────────────────────
   useEffect(() => {
     if (isActive && meeting?.status === 'live') {
@@ -238,6 +242,17 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
         setMinutes((prev: any) => prev ? { ...prev, status: 'processing' } : { status: 'processing' });
       }
     }));
+    unsubs.push(socketClient.on('meeting:minutes:failed', (data: any) => {
+      if (data.meetingId !== meetingId) return;
+      setMinutes((prev: any) => prev ? { ...prev, status: 'failed', error: data.error } : { status: 'failed', error: data.error });
+      showAlert('Minutes Failed', data.error || 'AI minutes generation failed.');
+    }));
+
+    // Translation errors (e.g., empty wallet)
+    unsubs.push(socketClient.on('translation:error', (data: any) => {
+      if (data.meetingId !== meetingId) return;
+      showAlert('Translation Unavailable', data.error || 'Translation service error');
+    }));
 
     // Real-time transcripts
     unsubs.push(socketClient.on('transcript:stored', (data: any) => {
@@ -267,7 +282,7 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
         return [...prev, data];
       });
       // Increment unread if chat is closed and message is from someone else
-      if (!isChatOpen && data.senderId !== userId) {
+      if (!isChatOpenRef.current && data.senderId !== userId) {
         setUnreadChatCount((c) => c + 1);
       }
     }));

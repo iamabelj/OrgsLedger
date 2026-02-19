@@ -244,7 +244,8 @@ export async function getAiWallet(orgId: string) {
     // Use org's billing currency instead of hardcoded USD
     const org = await db('organizations').where({ id: orgId }).select('billing_currency').first();
     const currency = org?.billing_currency || 'USD';
-    [wallet] = await db('ai_wallet').insert({ organization_id: orgId, balance_minutes: 0, currency }).returning('*');
+    // Default 60 minutes so new orgs can use AI minutes out of the box
+    [wallet] = await db('ai_wallet').insert({ organization_id: orgId, balance_minutes: 60, currency }).returning('*');
   }
   return wallet;
 }
@@ -255,7 +256,8 @@ export async function getTranslationWallet(orgId: string) {
     // Use org's billing currency instead of hardcoded USD
     const org = await db('organizations').where({ id: orgId }).select('billing_currency').first();
     const currency = org?.billing_currency || 'USD';
-    [wallet] = await db('translation_wallet').insert({ organization_id: orgId, balance_minutes: 0, currency }).returning('*');
+    // Default 60 minutes so new orgs can use live translation out of the box
+    [wallet] = await db('translation_wallet').insert({ organization_id: orgId, balance_minutes: 60, currency }).returning('*');
   }
   return wallet;
 }
