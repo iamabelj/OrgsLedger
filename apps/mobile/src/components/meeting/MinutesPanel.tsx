@@ -177,9 +177,7 @@ function MinutesPanelInner(props: MinutesPanelProps) {
       <Ionicons name="document-text-outline" size={32} color={Colors.textLight} />
       <Text style={styles.stateText}>No minutes generated yet</Text>
       <Text style={styles.stateHint}>
-        {aiEnabled
-          ? 'Minutes auto-generate when the meeting ends.'
-          : 'Enable AI Minutes in meeting services.'}
+        Minutes auto-generate when the meeting ends.
       </Text>
       {isAdmin && meetingStatus === 'ended' && transcriptCount > 0 && (
         <TouchableOpacity style={styles.retryBtn} onPress={onGenerate} disabled={generateLoading}>

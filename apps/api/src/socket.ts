@@ -15,7 +15,7 @@ import { writeAuditLog } from './middleware/audit';
 
 // In-memory store for meeting translation sessions
 // meetingId -> Map<userId, { language, name, receiveVoice }>
-const meetingLanguages = new Map<string, Map<string, { language: string; name: string; receiveVoice: boolean }>>();
+export const meetingLanguages = new Map<string, Map<string, { language: string; name: string; receiveVoice: boolean }>>();
 
 // Cache whether meeting_transcripts table exists (checked once on first insert)
 let transcriptTableExists: boolean | null = null;

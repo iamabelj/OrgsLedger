@@ -62,7 +62,7 @@ function TranscriptPanelInner({ transcripts, loading, userId, onRefresh }: Trans
           <Ionicons name="chatbubbles-outline" size={32} color={Colors.textLight} />
           <Text style={styles.emptyText}>No transcripts yet</Text>
           <Text style={styles.emptyHint}>
-            Enable translation and speak to generate a live transcript.
+            Speak during the meeting to generate a live transcript.
           </Text>
         </View>
       ) : (

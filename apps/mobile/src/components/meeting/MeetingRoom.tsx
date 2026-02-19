@@ -48,9 +48,6 @@ interface MeetingRoomProps {
   // Join type
   joinType: 'video' | 'audio';
 
-  // Translation
-  translationEnabled: boolean;
-
   // Transcripts
   transcripts: any[];
   transcriptsLoading: boolean;
@@ -99,7 +96,6 @@ export function MeetingRoom(props: MeetingRoomProps) {
     userName,
     isAdmin,
     joinType,
-    translationEnabled,
     transcripts,
     transcriptsLoading,
     onRefreshTranscripts,
@@ -448,7 +444,6 @@ export function MeetingRoom(props: MeetingRoomProps) {
         isMicEnabled={lk.isMicEnabled}
         isCameraEnabled={lk.isCameraEnabled}
         isScreenSharing={lk.isScreenSharing}
-        translationEnabled={translationEnabled}
         translationLang={translationLang}
         isTranslationListening={translationListening}
         isRecording={isRecording || isRecordingFromSocket}
@@ -469,7 +464,7 @@ export function MeetingRoom(props: MeetingRoomProps) {
       />
 
       {/* ═══ HIDDEN LIVE TRANSLATION CONTROLLER ══════════════ */}
-      {translationEnabled && userId && (
+      {userId && (
         <LiveTranslation
           ref={translationRef}
           meetingId={meetingId}

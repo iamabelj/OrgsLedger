@@ -14,7 +14,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Platform,
-  Switch,
   TextInput,
   Modal,
   Animated,
@@ -663,29 +662,6 @@ export default function MeetingDetailScreen() {
     }
   };
 
-  // ── AI Toggle ───────────────────────────────────────────
-  const handleToggleAi = async () => {
-    if (!currentOrgId || !meetingId) return;
-    setActionLoading(true);
-    try {
-      const res = await api.meetings.toggleAi(currentOrgId, meetingId);
-      showAlert('Done', res.data?.message || 'AI setting updated');
-      await loadMeeting();
-    } catch (err: any) {
-      const errMsg = err.response?.data?.error || 'Failed to toggle AI';
-      if (errMsg.includes('Insufficient')) {
-        showAlert('Insufficient Credits', 'You need AI credits to enable this feature. Go to AI Plans to purchase credits.', [
-          { text: 'Later', style: 'cancel' },
-          { text: 'Go to AI Plans', onPress: () => router.push('/admin/plans' as any) },
-        ]);
-      } else {
-        showAlert('Error', errMsg);
-      }
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   // ── Join Meeting (LiveKit) ──────────────────────────────
   const handleJoinMeeting = async (joinType: 'video' | 'audio') => {
     if (!currentOrgId || !meetingId) return;
@@ -718,22 +694,6 @@ export default function MeetingDetailScreen() {
     setShowVideo(false);
     setJoinConfig(null);
     setHandRaised(false);
-  };
-
-  // ── Toggle Translation ──────────────────────────────────
-  const handleToggleTranslation = async () => {
-    if (!currentOrgId || !meetingId) return;
-    setActionLoading(true);
-    try {
-      await api.meetings.update(currentOrgId, meetingId, {
-        translationEnabled: !meeting.translation_enabled,
-      });
-      await loadMeeting();
-    } catch (err: any) {
-      showAlert('Error', err.response?.data?.error || 'Failed to toggle translation');
-    } finally {
-      setActionLoading(false);
-    }
   };
 
   // ── Vote ────────────────────────────────────────────────
@@ -850,7 +810,6 @@ export default function MeetingDetailScreen() {
           userName={userName}
           isAdmin={!!isAdmin}
           joinType={videoEnabled ? 'video' : 'audio'}
-          translationEnabled={!!meeting.translation_enabled}
           transcripts={transcripts}
           transcriptsLoading={transcriptsLoading}
           onRefreshTranscripts={loadTranscripts}
@@ -865,7 +824,7 @@ export default function MeetingDetailScreen() {
           onLeave={handleLeaveMeeting}
           onEnd={isAdmin ? handleEnd : undefined}
         />
-        {meeting.translation_enabled && userId && (
+        {userId && (
           <LiveTranslation ref={translationRef} meetingId={meetingId!} userId={userId} hideControls autoTTS={voiceToVoice} />
         )}
       </View>
@@ -1278,9 +1237,7 @@ export default function MeetingDetailScreen() {
                   No minutes generated yet.
                 </Text>
                 <Text style={{ color: Colors.textSecondary, fontSize: FontSize.sm, marginTop: Spacing.xs, textAlign: 'center' }}>
-                  {meeting.ai_enabled
-                    ? 'Minutes will be auto-generated when the meeting ends.'
-                    : 'Enable AI Minutes in Meeting Services to use this feature.'}
+                  Minutes will be auto-generated when the meeting ends.
                 </Text>
                 {isAdmin && meeting.status === 'ended' && transcripts.length > 0 && (
                   <TouchableOpacity
@@ -1458,7 +1415,7 @@ export default function MeetingDetailScreen() {
       )}
 
       {/* ═══ LIVE TRANSLATION ════════════════════════════════ */}
-      {meeting.status === 'live' && meeting.translation_enabled && userId && (
+      {meeting.status === 'live' && userId && (
         <LiveTranslation ref={translationRef} meetingId={meetingId!} userId={userId} hideControls autoTTS={voiceToVoice} />
       )}
 
@@ -1474,18 +1431,10 @@ export default function MeetingDetailScreen() {
                 <Text style={z.serviceTitle}>AI-Powered Minutes</Text>
               </View>
               <Text style={z.serviceHint}>
-                {meeting.ai_enabled
-                  ? 'Enabled — Record audio and AI will generate minutes when meeting ends.'
-                  : 'Disabled — Enable to allow AI-generated meeting minutes.'}
+                Active — Minutes auto-generate when the meeting ends.
               </Text>
             </View>
-            <Switch
-              value={!!meeting.ai_enabled}
-              onValueChange={handleToggleAi}
-              trackColor={{ false: Colors.accent, true: Colors.highlight }}
-              thumbColor={Colors.textWhite}
-              disabled={actionLoading}
-            />
+            <Ionicons name="checkmark-circle" size={22} color={Colors.success} />
           </View>
 
           <View style={z.serviceRow}>
@@ -1495,18 +1444,10 @@ export default function MeetingDetailScreen() {
                 <Text style={z.serviceTitle}>Live Translation</Text>
               </View>
               <Text style={z.serviceHint}>
-                {meeting.translation_enabled
-                  ? 'Enabled — Real-time multilingual translation (100+ languages).'
-                  : 'Disabled — Enable to allow real-time multilingual translation.'}
+                Active — Real-time multilingual translation (100+ languages).
               </Text>
             </View>
-            <Switch
-              value={!!meeting.translation_enabled}
-              onValueChange={handleToggleTranslation}
-              trackColor={{ false: Colors.accent, true: '#7C3AED' }}
-              thumbColor={Colors.textWhite}
-              disabled={actionLoading}
-            />
+            <Ionicons name="checkmark-circle" size={22} color={Colors.success} />
           </View>
         </Card>
       )}

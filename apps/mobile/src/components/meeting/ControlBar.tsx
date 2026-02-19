@@ -26,7 +26,6 @@ interface ControlBarProps {
   isScreenSharing: boolean;
 
   // Translation
-  translationEnabled: boolean;
   translationLang: string;
   isTranslationListening: boolean;
 
@@ -131,7 +130,6 @@ function ControlBarInner(props: ControlBarProps) {
     isMicEnabled,
     isCameraEnabled,
     isScreenSharing,
-    translationEnabled,
     translationLang,
     isTranslationListening,
     isRecording,
@@ -216,17 +214,15 @@ function ControlBarInner(props: ControlBarProps) {
           compact={isNarrow}
         />
 
-        {/* Language / Translation (single clean button) */}
-        {translationEnabled && (
-          <ControlBtn
-            icon="language"
-            label={isTranslationListening ? translationLang.toUpperCase() : 'Language'}
-            active={isTranslationListening}
-            activeColor="#10B981"
-            onPress={onOpenLanguagePicker}
-            compact={isNarrow}
-          />
-        )}
+        {/* Language / Translation (always available) */}
+        <ControlBtn
+          icon="language"
+          label={isTranslationListening ? translationLang.toUpperCase() : 'Language'}
+          active={isTranslationListening}
+          activeColor="#10B981"
+          onPress={onOpenLanguagePicker}
+          compact={isNarrow}
+        />
 
         {/* Record (admin only) */}
         {isAdmin && (

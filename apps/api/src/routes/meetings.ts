@@ -17,6 +17,7 @@ import { translateText, LANGUAGES, SPEECH_CODES, ALL_LANGUAGES } from '../servic
 import { getAiWallet, getOrgSubscription } from '../services/subscription.service';
 import { generateRoomName, generateLiveKitToken, buildJoinConfig } from '../services/livekit.service';
 import { forceDisconnectMeeting } from '../socket';
+import { getBotManager } from '../services/bot';
 
 const router = Router();
 
@@ -758,6 +759,14 @@ router.post(
         io.to(`meeting:${req.params.meetingId}`).emit('meeting:started', payload);
       }
 
+      // Start transcription bot (best-effort, don't block response)
+      try {
+        const botManager = getBotManager();
+        botManager.startMeetingBot(req.params.meetingId).catch((err) =>
+          logger.warn('[MEETING_START] Transcription bot failed to start', { meetingId: req.params.meetingId, error: err.message })
+        );
+      } catch (_) { /* BotManager not initialized */ }
+
       await (req as any).audit?.({
         organizationId: req.params.orgId,
         action: 'update',
@@ -812,9 +821,17 @@ router.post(
         );
       }
 
-      // If AI enabled, trigger AI minutes generation
-      // Supports both audio file AND live transcripts
-      if (meeting.ai_enabled) {
+      // Stop transcription bot (best-effort)
+      try {
+        const botManager = getBotManager();
+        botManager.stopMeetingBot(req.params.meetingId).catch((err) =>
+          logger.warn('[MEETING_END] Transcription bot failed to stop', { meetingId: req.params.meetingId, error: err.message })
+        );
+      } catch (_) { /* BotManager not initialized */ }
+
+      // Always trigger AI minutes generation when transcripts exist
+      // (no manual toggle required — pipeline is always-on)
+      {
         const hasAudio = !!meeting.audio_storage_url;
         let hasLiveTranscripts = false;
         try {
@@ -828,9 +845,8 @@ router.post(
           hasLiveTranscripts = false;
         }
 
-        logger.info('[MEETING_END] AI minutes check', {
+        logger.info('[MINUTES_PIPELINE] Auto-generate check', {
           meetingId: req.params.meetingId,
-          ai_enabled: meeting.ai_enabled,
           hasAudio,
           hasLiveTranscripts,
         });
@@ -856,7 +872,7 @@ router.post(
             // Only reset to processing if not already completed (prevent data loss on double-end)
             await db('meeting_minutes').where({ meeting_id: req.params.meetingId }).update({ status: 'processing', error_message: null });
           } else {
-            logger.info('[MEETING_END] Minutes already completed — skipping re-generation', {
+            logger.info('[MINUTES_PIPELINE] Minutes already completed — skipping re-generation', {
               meetingId: req.params.meetingId,
             });
             // Skip processing — minutes already exist
@@ -866,29 +882,24 @@ router.post(
           // Queue AI processing (handled by AI service)
           const aiService = req.app.get('aiService');
           if (aiService) {
-            logger.info('[MEETING_END] Triggering AI minutes processing', {
+            logger.info('[MINUTES_PIPELINE] Triggering AI minutes processing', {
               meetingId: req.params.meetingId,
               orgId: req.params.orgId,
             });
             aiService.processMinutes(req.params.meetingId, req.params.orgId).catch((err: any) => {
-              logger.error('[MEETING_END] AI minutes processing failed', {
+              logger.error('[MINUTES_PIPELINE] AI minutes processing FAILED', {
                 meetingId: req.params.meetingId,
                 error: err.message,
               });
             });
           } else {
-            logger.warn('[MEETING_END] aiService not registered on app — minutes will NOT be generated');
+            logger.warn('[MINUTES_PIPELINE] aiService not registered on app — minutes will NOT be generated');
           }
         } else {
-          logger.info('[MEETING_END] No audio or transcripts found — skipping minutes generation', {
+          logger.info('[MINUTES_PIPELINE] No audio or transcripts found — skipping minutes generation', {
             meetingId: req.params.meetingId,
           });
         }
-      } else {
-        logger.info('[MEETING_END] AI not enabled for this meeting — skipping minutes generation', {
-          meetingId: req.params.meetingId,
-          ai_enabled: meeting.ai_enabled,
-        });
       }
 
       await (req as any).audit?.({

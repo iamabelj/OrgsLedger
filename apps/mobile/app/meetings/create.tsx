@@ -10,7 +10,6 @@ import {
   StyleSheet,
   ScrollView,
   Platform,
-  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router } from 'expo-router';
@@ -46,8 +45,8 @@ export default function CreateMeetingScreen() {
   const [loading, setLoading] = useState(false);
   const [recurringPattern, setRecurringPattern] = useState<string>('none');
   const [meetingType, setMeetingType] = useState<'video' | 'audio'>('video');
-  const [aiEnabled, setAiEnabled] = useState(false);
-  const [translationEnabled, setTranslationEnabled] = useState(false);
+  const [aiEnabled] = useState(true);
+  const [translationEnabled] = useState(true);
 
   const addAgendaItem = () => {
     setAgendaItems([...agendaItems, { title: '', duration: '10' }]);
@@ -250,50 +249,24 @@ export default function CreateMeetingScreen() {
         <SectionHeader title="AI Services" />
         <View style={styles.aiRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.aiLabel}>Enable AI Minutes</Text>
+            <Text style={styles.aiLabel}>AI-Powered Minutes</Text>
             <Text style={styles.aiHint}>
-              Auto-generate summary, decisions, and action items. Uses 1 credit per hour.
+              Auto-generates summary, decisions, and action items when the meeting ends.
             </Text>
           </View>
-          <Switch
-            value={aiEnabled}
-            onValueChange={setAiEnabled}
-            trackColor={{ false: Colors.accent, true: Colors.highlight }}
-            thumbColor={Colors.textWhite}
-          />
+          <Ionicons name="checkmark-circle" size={22} color={Colors.success} />
         </View>
-        {aiEnabled && (
-          <View style={styles.aiNote}>
-            <Ionicons name="information-circle" size={16} color={Colors.highlight} />
-            <Text style={styles.aiNoteText}>
-              AI credits will be verified when you create the meeting. Purchase credits in AI Plans if needed.
-            </Text>
-          </View>
-        )}
 
         {/* Live Translation */}
         <View style={styles.aiRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.aiLabel}>Enable Live Translation</Text>
+            <Text style={styles.aiLabel}>Live Translation</Text>
             <Text style={styles.aiHint}>
-              Let members speak their language and hear others in theirs. Supports 100+ languages.
+              Members speak their language and hear others in theirs. 100+ languages supported.
             </Text>
           </View>
-          <Switch
-            value={translationEnabled}
-            onValueChange={setTranslationEnabled}
-            trackColor={{ false: Colors.accent, true: Colors.highlight }}
-            thumbColor={Colors.textWhite}
-          />
+          <Ionicons name="checkmark-circle" size={22} color={Colors.success} />
         </View>
-        {translationEnabled && (
-          <View style={styles.aiNote}>
-            <Ionicons name="language" size={16} color={Colors.highlight} />
-            <Text style={styles.aiNoteText}>
-              Members will choose their preferred language when the meeting goes live. Translations happen in real-time.
-            </Text>
-          </View>
-        )}
 
         <View style={{ height: Spacing.md }} />
         <Button title={loading ? 'Creating...' : 'Create Meeting'} onPress={handleCreate} disabled={loading} variant="primary" />

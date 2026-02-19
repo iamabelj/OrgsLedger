@@ -18,9 +18,10 @@ import { auditContext } from './middleware';
 import { requestLogger } from './middleware/request-logger';
 import { globalErrorHandler } from './middleware/error-handler';
 import { mountLandingGateway, mountWebFrontend, mountSpaFallback } from './middleware/landing-gateway';
-import { setupSocketIO } from './socket';
+import { setupSocketIO, meetingLanguages } from './socket';
 import { AIService } from './services/ai.service';
 import { services } from './services/registry';
+import { initBotManager } from './services/bot';
 import { RATE_LIMITS, PAGINATION, APP_VERSION } from './constants';
 
 // Observability
@@ -69,6 +70,10 @@ services.register('io', io);     // preferred — use services.get('io') in new 
 const aiService = new AIService(io);
 app.set('aiService', aiService);          // backwards compat
 services.register('aiService', aiService);
+
+// ── Transcription Bot Manager ─────────────────────────────
+const botManager = initBotManager({ io, meetingLanguages });
+services.register('botManager', botManager);
 
 // ── Global Middleware ─────────────────────────────────────
 app.use(helmet());

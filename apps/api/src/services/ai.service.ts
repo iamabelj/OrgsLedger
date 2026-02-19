@@ -72,7 +72,7 @@ export class AIService {
     let meetingDurationMinutes = 0; // Track for refund on failure
 
     try {
-      logger.info(`Starting AI minutes processing for meeting ${meetingId}`);
+      logger.info(`[MINUTES_PIPELINE] Starting AI minutes processing for meeting ${meetingId}`);
 
       const meeting = await db('meetings').where({ id: meetingId }).first();
       if (!meeting) throw new Error('Meeting not found');
@@ -81,7 +81,7 @@ export class AIService {
       const wallet = await getAiWallet(organizationId);
       const balance = parseFloat(wallet.balance_minutes);
       if (balance <= 0) {
-        logger.warn('[AI] Insufficient wallet balance', { meetingId, organizationId, available: balance });
+        logger.warn('[MINUTES_PIPELINE] Insufficient wallet balance', { meetingId, organizationId, available: balance });
         throw new Error('Insufficient AI wallet balance');
       }
 
@@ -95,7 +95,7 @@ export class AIService {
 
       // Verify sufficient balance for the meeting duration
       if (balance < meetingDurationMinutes) {
-        logger.warn('[AI] Insufficient wallet minutes for meeting duration', {
+        logger.warn('[MINUTES_PIPELINE] Insufficient wallet minutes for meeting duration', {
           meetingId, organizationId, required: meetingDurationMinutes, available: balance,
         });
         throw new Error(`Insufficient AI wallet balance. Need ${meetingDurationMinutes} min, have ${balance.toFixed(1)} min`);
@@ -118,17 +118,17 @@ export class AIService {
       if (meeting.audio_storage_url) {
         // Prefer uploaded audio for transcription
         transcript = await this.transcribeAudio(meeting.audio_storage_url);
-        logger.info('[AI] Audio transcription complete', { meetingId, durationMs: Date.now() - transcriptStart, segments: transcript.length });
+        logger.info('[MINUTES_PIPELINE] Audio transcription complete', { meetingId, durationMs: Date.now() - transcriptStart, segments: transcript.length });
       } else {
         // Fall back to live translation transcripts stored in DB
         transcript = await this.getTranscriptsFromDB(meetingId);
-        logger.info('[AI] Using live transcripts from DB', { meetingId, segments: transcript.length });
+        logger.info('[MINUTES_PIPELINE] Using live transcripts from DB', { meetingId, segments: transcript.length });
       }
 
       // Step 2: Generate structured minutes
       const summarizeStart = Date.now();
       const minutes = await this.generateMinutes(transcript, meeting);
-      logger.info('[AI] Summarization complete', { meetingId, durationMs: Date.now() - summarizeStart });
+      logger.info('[MINUTES_PIPELINE] Summarization COMPLETE', { meetingId, durationMs: Date.now() - summarizeStart });
 
       // Calculate duration in credits (1 credit = 1 hour, rounded up)
       // NOTE: Credits already deducted before processing via deductAiWallet()
@@ -149,7 +149,7 @@ export class AIService {
           generated_at: db.fn.now(),
         });
 
-      logger.info('[AI] Minutes processed and stored', {
+      logger.info('[MINUTES_PIPELINE] Minutes STORED successfully', {
         meetingId,
         organizationId,
         creditsUsed: meetingDurationCredits,
@@ -222,10 +222,10 @@ export class AIService {
       });
 
       logger.info(
-        `AI minutes completed for meeting ${meetingId} in ${Date.now() - startTime}ms`
+        `[MINUTES_PIPELINE] AI minutes COMPLETED for meeting ${meetingId} in ${Date.now() - startTime}ms`
       );
     } catch (err: any) {
-      logger.error(`AI minutes processing failed for meeting ${meetingId}`, err);
+      logger.error(`[MINUTES_PIPELINE] Processing FAILED for meeting ${meetingId}`, err);
 
       // Refund wallet on processing failure (credits were deducted upfront)
       try {
