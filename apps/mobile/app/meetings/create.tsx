@@ -10,6 +10,7 @@ import {
   StyleSheet,
   ScrollView,
   Platform,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router } from 'expo-router';
@@ -32,7 +33,6 @@ export default function CreateMeetingScreen() {
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [location, setLocation] = useState('');
   const defaultStart = getDefaultStart();
   const [selectedDate, setSelectedDate] = useState<Date>(defaultStart);
   const [selectedTime, setSelectedTime] = useState<Date>(defaultStart);
@@ -44,9 +44,8 @@ export default function CreateMeetingScreen() {
   ]);
   const [loading, setLoading] = useState(false);
   const [recurringPattern, setRecurringPattern] = useState<string>('none');
-  const [meetingType, setMeetingType] = useState<'video' | 'audio'>('video');
-  const [aiEnabled] = useState(true);
-  const [translationEnabled] = useState(true);
+  const [aiEnabled, setAiEnabled] = useState(true);
+  const [translationEnabled, setTranslationEnabled] = useState(true);
 
   const addAgendaItem = () => {
     setAgendaItems([...agendaItems, { title: '', duration: '10' }]);
@@ -110,10 +109,9 @@ export default function CreateMeetingScreen() {
       const res = await api.meetings.create(currentOrgId, {
         title: title.trim(),
         description: description.trim() || undefined,
-        location: location.trim() || undefined,
         scheduledStart,
         recurringPattern,
-        meetingType,
+        meetingType: 'video',
         aiEnabled,
         translationEnabled,
         agendaItems: filteredAgenda.length > 0 ? filteredAgenda : undefined,
@@ -147,34 +145,6 @@ export default function CreateMeetingScreen() {
         <SectionHeader title="Meeting Details" />
         <Input label="Title *" value={title} onChangeText={setTitle} placeholder="e.g. Board Meeting, Budget Review" icon="text-outline" />
         <Input label="Description" value={description} onChangeText={setDescription} placeholder="What's this meeting about?" icon="document-text-outline" multiline numberOfLines={3} />
-        <Input label="Location" value={location} onChangeText={setLocation} placeholder="Room name, Zoom link, etc." icon="location-outline" />
-
-        {/* Meeting Type */}
-        <SectionHeader title="Meeting Type" />
-        <View style={styles.recurRow}>
-          <TouchableOpacity
-            style={[styles.recurChip, meetingType === 'video' && styles.recurChipActive]}
-            onPress={() => setMeetingType('video')}
-          >
-            <Ionicons name="videocam" size={16} color={meetingType === 'video' ? Colors.highlight : Colors.textSecondary} style={{ marginRight: 4 }} />
-            <Text style={[styles.recurChipText, meetingType === 'video' && styles.recurChipTextActive]}>Video</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.recurChip, meetingType === 'audio' && styles.recurChipActive]}
-            onPress={() => setMeetingType('audio')}
-          >
-            <Ionicons name="call" size={16} color={meetingType === 'audio' ? Colors.highlight : Colors.textSecondary} style={{ marginRight: 4 }} />
-            <Text style={[styles.recurChipText, meetingType === 'audio' && styles.recurChipTextActive]}>Audio Only</Text>
-          </TouchableOpacity>
-        </View>
-        {meetingType === 'audio' && (
-          <View style={styles.aiNote}>
-            <Ionicons name="cellular" size={16} color={Colors.highlight} />
-            <Text style={styles.aiNoteText}>
-              Audio-only mode reduces bandwidth by 80-90%. Ideal for low-bandwidth regions and cross-border meetings.
-            </Text>
-          </View>
-        )}
 
         {/* Date & Time */}
         <SectionHeader title="Schedule" />
@@ -254,7 +224,12 @@ export default function CreateMeetingScreen() {
               Auto-generates summary, decisions, and action items when the meeting ends.
             </Text>
           </View>
-          <Ionicons name="checkmark-circle" size={22} color={Colors.success} />
+          <Switch
+            value={aiEnabled}
+            onValueChange={setAiEnabled}
+            trackColor={{ false: Colors.border, true: Colors.highlight }}
+            thumbColor={aiEnabled ? '#fff' : Colors.textSecondary}
+          />
         </View>
 
         {/* Live Translation */}
@@ -265,7 +240,12 @@ export default function CreateMeetingScreen() {
               Members speak their language and hear others in theirs. 100+ languages supported.
             </Text>
           </View>
-          <Ionicons name="checkmark-circle" size={22} color={Colors.success} />
+          <Switch
+            value={translationEnabled}
+            onValueChange={setTranslationEnabled}
+            trackColor={{ false: Colors.border, true: Colors.highlight }}
+            thumbColor={translationEnabled ? '#fff' : Colors.textSecondary}
+          />
         </View>
 
         <View style={{ height: Spacing.md }} />

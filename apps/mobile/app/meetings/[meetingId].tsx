@@ -671,11 +671,11 @@ export default function MeetingDetailScreen() {
   };
 
   // ── Join Meeting (LiveKit) ──────────────────────────────
-  const handleJoinMeeting = async (joinType: 'video' | 'audio') => {
+  const handleJoinMeeting = async () => {
     if (!currentOrgId || !meetingId) return;
     setJoinLoading(true);
     try {
-      const res = await api.meetings.join(currentOrgId, meetingId, joinType);
+      const res = await api.meetings.join(currentOrgId, meetingId, 'video');
       const cfg = res.data?.data;
       if (!cfg) throw new Error('No join config returned');
       if (!cfg.token) throw new Error('Meeting token not received. Please contact your administrator.');
@@ -689,9 +689,9 @@ export default function MeetingDetailScreen() {
           url: cfg.url,
           token: cfg.token,
           roomName: cfg.roomName,
-          meetingType: cfg.meetingType || (meeting.meeting_type === 'audio' ? 'audio' : 'video'),
+          meetingType: cfg.meetingType || 'video',
         },
-        joinType,
+        joinType: 'video',
         userId: userId!,
         userName,
         isAdmin: !!isAdmin,
@@ -1333,14 +1333,14 @@ export default function MeetingDetailScreen() {
           <View style={z.lobbyPreview}>
             <View style={z.lobbyAvatarCircle}>
               <Ionicons
-                name={meeting.meeting_type === 'audio' ? 'mic' : 'videocam'}
+                name="videocam"
                 size={48}
                 color="rgba(129, 140, 248, 0.6)"
               />
             </View>
             <Text style={z.lobbyTitle}>Ready to join?</Text>
             <Text style={z.lobbySubtitle}>
-              {meeting.meeting_type === 'audio' ? 'Audio conference' : 'Video conference'} is in progress
+              Conference is in progress
             </Text>
           </View>
 
@@ -1355,28 +1355,11 @@ export default function MeetingDetailScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Join Buttons */}
+          {/* Join Button */}
           <View style={z.lobbyJoinRow}>
-            {meeting.meeting_type !== 'audio' && (
-              <TouchableOpacity
-                style={z.lobbyJoinVideoBtn}
-                onPress={() => handleJoinMeeting('video')}
-                disabled={joinLoading}
-                activeOpacity={0.7}
-              >
-                {joinLoading ? (
-                  <ActivityIndicator color="#FFF" />
-                ) : (
-                  <>
-                    <Ionicons name="videocam" size={22} color="#FFF" />
-                    <Text style={z.lobbyJoinBtnText}>Join with Video</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            )}
             <TouchableOpacity
-              style={z.lobbyJoinAudioBtn}
-              onPress={() => handleJoinMeeting('audio')}
+              style={z.lobbyJoinVideoBtn}
+              onPress={() => handleJoinMeeting()}
               disabled={joinLoading}
               activeOpacity={0.7}
             >
@@ -1384,8 +1367,8 @@ export default function MeetingDetailScreen() {
                 <ActivityIndicator color="#FFF" />
               ) : (
                 <>
-                  <Ionicons name="mic" size={22} color="#FFF" />
-                  <Text style={z.lobbyJoinBtnText}>Join with Audio</Text>
+                  <Ionicons name="videocam" size={22} color="#FFF" />
+                  <Text style={z.lobbyJoinBtnText}>Join Meeting</Text>
                 </>
               )}
             </TouchableOpacity>
