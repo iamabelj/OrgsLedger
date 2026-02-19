@@ -31,6 +31,7 @@ import LiveTranslation, { LANGUAGES, LANG_FLAGS, LiveTranslationRef } from '../.
 import { ALL_LANGUAGES, getLanguageFlag, getLanguageName, isTtsSupported } from '../../src/utils/languages';
 import { showAlert } from '../../src/utils/alert';
 import { MeetingRoom } from '../../src/components/meeting';
+import { useGlobalMeeting } from '../../src/contexts/MeetingContext';
 
 // ── Constants ──────────────────────────────────────────────
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -188,6 +189,9 @@ export default function MeetingDetailScreen() {
   // ── Zustand Meeting Store (centralized state) ───────────
   const meetingStore = useMeetingStore();
   const meetingEndedByModerator = useMeetingStore((s) => s.meetingEndedByModerator);
+
+  // ── Global Meeting Context (persistent overlay) ─────────
+  const gm = useGlobalMeeting();
 
   // ── Edit State ──────────────────────────────────────────
   const [editMode, setEditMode] = useState(false);
@@ -672,6 +676,24 @@ export default function MeetingDetailScreen() {
       if (!cfg) throw new Error('No join config returned');
       if (!cfg.token) throw new Error('Meeting token not received. Please contact your administrator.');
 
+      // Activate the global meeting overlay (persistent across navigation)
+      gm.joinMeeting({
+        orgId: currentOrgId,
+        meetingId: meetingId!,
+        meeting,
+        joinConfig: {
+          url: cfg.url,
+          token: cfg.token,
+          roomName: cfg.roomName,
+          meetingType: cfg.meetingType || (meeting.meeting_type === 'audio' ? 'audio' : 'video'),
+        },
+        joinType,
+        userId: userId!,
+        userName,
+        isAdmin: !!isAdmin,
+      });
+
+      // Also set local state for backward compat
       setJoinConfig(cfg);
       setVideoEnabled(joinType === 'video');
       setAudioEnabled(true);
@@ -685,12 +707,8 @@ export default function MeetingDetailScreen() {
   };
 
   const handleLeaveMeeting = async () => {
-    if (!currentOrgId || !meetingId) return;
-    try {
-      await api.meetings.leave(currentOrgId, meetingId);
-    } catch {
-      // Non-critical — best effort
-    }
+    // Use global meeting context for leave — it handles LiveKit disconnect + socket leave
+    gm.leaveMeeting();
     setShowVideo(false);
     setJoinConfig(null);
     setHandRaised(false);
@@ -791,52 +809,42 @@ export default function MeetingDetailScreen() {
   }
 
   // ════════════════════════════════════════════════════════
-  // FULL-SCREEN MEETING ROOM (when joined — hides everything)
+  // MEETING ROOM — now handled by GlobalMeetingOverlay.
+  // When the global overlay is active and NOT minimized,
+  // it covers the entire screen. If minimized, this page
+  // is visible behind the floating widget.
+  // We hide header when full-screen overlay is active.
   // ════════════════════════════════════════════════════════
-  if (showVideo && joinConfig) {
-    return (
-      <View style={{ flex: 1, backgroundColor: '#000' }}>
-        <Stack.Screen options={{ headerShown: false }} />
-        <MeetingRoom
-          meetingId={meetingId!}
-          meeting={meeting}
-          joinConfig={{
-            url: joinConfig.url,
-            token: joinConfig.token,
-            roomName: joinConfig.roomName,
-            meetingType: joinConfig.meetingType || (meeting.meeting_type === 'audio' ? 'audio' : 'video'),
-          }}
-          userId={userId!}
-          userName={userName}
-          isAdmin={!!isAdmin}
-          joinType={videoEnabled ? 'video' : 'audio'}
-          transcripts={transcripts}
-          transcriptsLoading={transcriptsLoading}
-          onRefreshTranscripts={loadTranscripts}
-          minutes={minutes}
-          minutesLoading={minutesLoading}
-          generateLoading={generateLoading}
-          onRefreshMinutes={loadMinutes}
-          onGenerateMinutes={handleGenerateMinutes}
-          elapsedSeconds={elapsedSeconds}
-          socketParticipants={liveParticipants}
-          isRecordingFromSocket={!!meetingStore.isRecording}
-          onLeave={handleLeaveMeeting}
-          onEnd={isAdmin ? handleEnd : undefined}
-        />
-        {userId && (
-          <LiveTranslation ref={translationRef} meetingId={meetingId!} userId={userId} hideControls autoTTS={voiceToVoice} />
-        )}
-      </View>
-    );
-  }
+  const isInGlobalMeeting = gm.isActive && gm.meetingId === meetingId;
 
   // ════════════════════════════════════════════════════════
   // RENDER (pre-join / meeting detail view)
   // ════════════════════════════════════════════════════════
   return (
     <ResponsiveScrollView style={z.container}>
-      <Stack.Screen options={{ title: meeting.title || 'Meeting', headerShown: true }} />
+      <Stack.Screen options={{ title: meeting.title || 'Meeting', headerShown: !isInGlobalMeeting || gm.isMinimized }} />
+
+      {/* ═══ IN-MEETING BANNER (when global overlay is active) ═══ */}
+      {isInGlobalMeeting && gm.isMinimized && (
+        <TouchableOpacity
+          style={{
+            backgroundColor: Colors.success,
+            paddingVertical: Spacing.sm,
+            paddingHorizontal: Spacing.md,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: Spacing.sm,
+          }}
+          onPress={gm.maximize}
+          activeOpacity={0.8}
+        >
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFF' }} />
+          <Text style={{ color: '#FFF', fontWeight: FontWeight.semibold as any, fontSize: FontSize.sm }}>
+            Tap to return to meeting
+          </Text>
+        </TouchableOpacity>
+      )}
 
       {/* ═══ MEETING ENDED BY MODERATOR OVERLAY ══════════════ */}
       {meetingEndedByModerator && (

@@ -143,6 +143,16 @@ class SocketClient {
     this.socket?.emit('translation:speech', { meetingId, text, sourceLang, isFinal });
   }
 
+  // ── Meeting Chat ────────────────────────────────────────
+
+  sendChatMessage(meetingId: string, message: string): void {
+    this.socket?.emit('chat:send', { meetingId, message });
+  }
+
+  requestChatHistory(meetingId: string): void {
+    this.socket?.emit('chat:history', { meetingId });
+  }
+
   // ── Status ──────────────────────────────────────────────
 
   get isConnected(): boolean {

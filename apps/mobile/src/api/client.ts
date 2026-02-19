@@ -241,6 +241,9 @@ class ApiClient {
     // Trigger AI minutes generation from live transcripts
     generateMinutes: (orgId: string, meetingId: string) =>
       this.client.post(`/meetings/${orgId}/${meetingId}/generate-minutes`),
+    // In-meeting chat messages
+    getChatMessages: (orgId: string, meetingId: string) =>
+      this.client.get(`/meetings/${orgId}/${meetingId}/chat`),
   };
 
   // ── Financials ────────────────────────────────────────

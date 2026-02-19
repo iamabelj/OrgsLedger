@@ -12,6 +12,8 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useAuthStore } from '../src/stores/auth.store';
 import { Colors } from '../src/theme';
 import { DrawerProvider, useDrawer } from '../src/contexts/DrawerContext';
+import { GlobalMeetingProvider } from '../src/contexts/MeetingContext';
+import { GlobalMeetingOverlay } from '../src/components/meeting';
 import { NavigationDrawer } from '../src/components/NavigationDrawer';
 import { SmartHeaderLeft } from '../src/components/SmartHeaderLeft';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
@@ -90,6 +92,9 @@ function AppShell() {
           <Stack.Screen name="invite/[code]" options={{ title: 'Join Organization' }} />
           <Stack.Screen name="help" options={{ title: 'Help & Support' }} />
         </Stack>
+
+        {/* Global meeting overlay — persists across navigation */}
+        <GlobalMeetingOverlay />
       </View>
     </View>
   );
@@ -122,7 +127,9 @@ export default function RootLayout() {
 
   const content = (
     <DrawerProvider>
-      <AppShell />
+      <GlobalMeetingProvider>
+        <AppShell />
+      </GlobalMeetingProvider>
     </DrawerProvider>
   );
 

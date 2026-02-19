@@ -1247,6 +1247,44 @@ router.get(
   }
 );
 
+// ── Get Meeting Chat Messages ───────────────────────────────
+// Returns persisted in-meeting chat messages.
+router.get(
+  '/:orgId/:meetingId/chat',
+  authenticate,
+  loadMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const { orgId, meetingId } = req.params;
+
+      const meeting = await db('meetings')
+        .where({ id: meetingId, organization_id: orgId })
+        .first();
+      if (!meeting) {
+        res.status(404).json({ success: false, error: 'Meeting not found' });
+        return;
+      }
+
+      const hasTable = await db.schema.hasTable('meeting_messages');
+      if (!hasTable) {
+        res.json({ success: true, data: [] });
+        return;
+      }
+
+      const messages = await db('meeting_messages')
+        .where({ meeting_id: meetingId })
+        .orderBy('created_at', 'asc')
+        .limit(500)
+        .select('id', 'meeting_id', 'sender_id', 'sender_name', 'message', 'created_at');
+
+      res.json({ success: true, data: messages });
+    } catch (err) {
+      logger.error('Get chat messages error', err);
+      res.status(500).json({ success: false, error: 'Failed to get chat messages' });
+    }
+  }
+);
+
 // ── Get Meeting Minutes ─────────────────────────────────────
 router.get(
   '/:orgId/:meetingId/minutes',

@@ -626,6 +626,98 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       }
     });
 
+    // ── In-Meeting Chat ─────────────────────────────────
+    socket.on('chat:send', async (data: { meetingId: string; message: string }) => {
+      try {
+        const { meetingId: mid, message } = data || {};
+        if (!mid || !message || typeof message !== 'string') return;
+
+        const trimmed = message.trim();
+        if (!trimmed || trimmed.length > 2000) return; // Reject empty or oversized messages
+
+        // Verify user is in this meeting room
+        const rooms = socket.rooms;
+        if (!rooms.has(`meeting:${mid}`)) {
+          socket.emit('chat:error', { message: 'Not in this meeting' });
+          return;
+        }
+
+        // Look up sender name
+        const user = await db('users').where({ id: userId }).select('first_name', 'last_name').first();
+        const senderName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : 'Unknown';
+
+        // Check table existence (cached)
+        const tableExists = await db.schema.hasTable('meeting_messages');
+        let msgId: string | null = null;
+
+        if (tableExists) {
+          const [row] = await db('meeting_messages')
+            .insert({
+              meeting_id: mid,
+              sender_id: userId,
+              sender_name: senderName,
+              message: trimmed,
+            })
+            .returning('id');
+          msgId = row?.id || row;
+        }
+
+        const payload = {
+          id: msgId || `temp_${Date.now()}`,
+          meetingId: mid,
+          senderId: userId,
+          senderName,
+          message: trimmed,
+          createdAt: new Date().toISOString(),
+        };
+
+        // Broadcast to everyone in the meeting room (including sender)
+        io.to(`meeting:${mid}`).emit('chat:new', payload);
+        logger.debug(`[Chat] Message in meeting ${mid} from ${senderName}`);
+      } catch (err) {
+        logger.error('[Chat] chat:send error', err);
+        socket.emit('chat:error', { message: 'Failed to send message' });
+      }
+    });
+
+    // Fetch chat history for a meeting
+    socket.on('chat:history', async (data: { meetingId: string }, callback?: Function) => {
+      try {
+        const mid = data?.meetingId;
+        if (!mid) return;
+
+        const tableExists = await db.schema.hasTable('meeting_messages');
+        if (!tableExists) {
+          if (typeof callback === 'function') callback({ messages: [] });
+          return;
+        }
+
+        const messages = await db('meeting_messages')
+          .where({ meeting_id: mid })
+          .orderBy('created_at', 'asc')
+          .limit(200)
+          .select('id', 'meeting_id', 'sender_id', 'sender_name', 'message', 'created_at');
+
+        const formatted = messages.map((m: any) => ({
+          id: m.id,
+          meetingId: m.meeting_id,
+          senderId: m.sender_id,
+          senderName: m.sender_name,
+          message: m.message,
+          createdAt: m.created_at,
+        }));
+
+        if (typeof callback === 'function') {
+          callback({ messages: formatted });
+        } else {
+          socket.emit('chat:history', { messages: formatted });
+        }
+      } catch (err) {
+        logger.error('[Chat] chat:history error', err);
+        if (typeof callback === 'function') callback({ messages: [] });
+      }
+    });
+
     // Clean up translation data when user leaves
     socket.on('meeting:leave', (meetingId: string) => {
       socket.leave(`meeting:${meetingId}`);

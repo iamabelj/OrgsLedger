@@ -3,6 +3,9 @@
 // ============================================================
 
 export { MeetingRoom } from './MeetingRoom';
+export { GlobalMeetingOverlay } from './GlobalMeetingOverlay';
+export { MiniMeetingWidget } from './MiniMeetingWidget';
+export { ChatDrawer } from './ChatDrawer';
 export { VideoGrid } from './VideoGrid';
 export { VideoTile } from './VideoTile';
 export { ControlBar } from './ControlBar';
