@@ -197,10 +197,11 @@ export class RealtimeSession {
     this.sendEvent({
       type: 'session.update',
       session: {
-        // We only want transcription — no AI response audio
+        // Text modality only — we don't want AI-generated audio back
         modalities: ['text'],
-        instructions: 'You are a transcription assistant. Transcribe exactly what the speaker says. Do not add commentary, do not translate, do not correct. Output verbatim text only.',
+        instructions: 'You are a transcription assistant. Repeat back exactly what the speaker says. Do not add commentary, do not translate, do not summarize. Output the verbatim spoken text only.',
         input_audio_format: 'pcm16',
+        // Enable Whisper transcription of input audio (PRIMARY source)
         input_audio_transcription: {
           model: 'whisper-1',
         },
@@ -211,9 +212,9 @@ export class RealtimeSession {
           prefix_padding_ms: 300,
           silence_duration_ms: 500,
         },
-        // Minimal temperature for faithful transcription
+        // Allow enough tokens for model fallback transcription
         temperature: 0.0,
-        max_response_output_tokens: 1,
+        max_response_output_tokens: 500,
       },
     });
 
@@ -247,35 +248,97 @@ export class RealtimeSession {
   /** Parse incoming OpenAI Realtime events. */
   private handleMessage(raw: WebSocket.Data): void {
     try {
-      const data = JSON.parse(raw.toString());
+      const event = JSON.parse(raw.toString());
 
-      if (data.type !== 'response.completed') return;
+      switch (event.type) {
+        case 'session.created':
+          logger.info(`[Realtime] Session created by OpenAI: speaker=${this.speakerId}, sessionId=${event.session?.id || 'unknown'}`);
+          break;
 
-      let transcript = '';
+        case 'session.updated':
+          logger.info(`[Realtime] Session updated by OpenAI: speaker=${this.speakerId}`);
+          break;
 
-      if (data.response?.output?.length) {
-        for (const item of data.response.output) {
-          if (item.content?.length) {
-            for (const content of item.content) {
-              if (content.type === 'output_text' && content.text) {
-                transcript += content.text;
+        // ── PRIMARY — Whisper transcription of user's audio input ──
+        case 'conversation.item.input_audio_transcription.completed':
+          this.transcriptsReceived++;
+          if (event.transcript?.trim()) {
+            const text = event.transcript.trim();
+            if (text.length < 3) {
+              logger.debug(`[Realtime] Filtered short Whisper transcript (<3 chars) for ${this.speakerId}: "${text}"`);
+              break;
+            }
+            logger.info(`[Realtime] Whisper transcript for ${this.speakerId}: "${text.slice(0, 80)}${text.length > 80 ? '...' : ''}" (len=${text.length}, total=${this.transcriptsReceived})`);
+            this.handleTranscript(text);
+          } else {
+            logger.debug(`[Realtime] Empty Whisper transcript for speaker=${this.speakerId} (total=${this.transcriptsReceived})`);
+          }
+          break;
+
+        // ── FALLBACK — Model-generated text response ───────────────
+        case 'response.done': {
+          let modelText = '';
+          if (event.response?.output?.length) {
+            for (const item of event.response.output) {
+              if (item.content?.length) {
+                for (const content of item.content) {
+                  if (content.type === 'text' && content.text) {
+                    modelText += content.text;
+                  }
+                }
               }
             }
           }
+          modelText = modelText.trim();
+          if (modelText && modelText.length >= 3) {
+            // Only use model text if Whisper didn't already provide a transcript
+            // for this turn (check via timing — if last transcript was >2s ago)
+            const sinceLastTranscript = Date.now() - this.lastTranscriptAt;
+            if (sinceLastTranscript > 2000) {
+              logger.info(`[Realtime] Using model text as fallback transcript for ${this.speakerId}: "${modelText.slice(0, 80)}..." (sinceLastTranscript=${sinceLastTranscript}ms)`);
+              this.transcriptsReceived++;
+              this.handleTranscript(modelText);
+            } else {
+              logger.debug(`[Realtime] Ignoring model text (Whisper already delivered): speaker=${this.speakerId}`);
+            }
+          }
+          break;
         }
+
+        case 'input_audio_buffer.speech_started':
+          logger.debug(`[Realtime] VAD speech started: speaker=${this.speakerId}`);
+          break;
+
+        case 'input_audio_buffer.speech_stopped':
+          logger.debug(`[Realtime] VAD speech stopped: speaker=${this.speakerId}`);
+          break;
+
+        case 'input_audio_buffer.committed':
+          logger.debug(`[Realtime] Audio buffer committed: speaker=${this.speakerId}`);
+          break;
+
+        case 'conversation.item.input_audio_transcription.failed':
+          logger.error(`[Realtime] Whisper transcription FAILED for ${this.speakerId}: ${JSON.stringify(event.error || {})}`);
+          break;
+
+        case 'error':
+          logger.error(`[Realtime] OpenAI error for ${this.speakerId}: code=${event.error?.code}, message=${event.error?.message}`);
+          break;
+
+        case 'response.created':
+        case 'response.output_item.added':
+        case 'response.content_part.added':
+        case 'response.output_item.done':
+        case 'response.text.delta':
+        case 'response.text.done':
+        case 'conversation.item.created':
+          logger.debug(`[Realtime] Event: ${event.type} for speaker=${this.speakerId}`);
+          break;
+
+        default:
+          logger.debug(`[Realtime] Unhandled event: ${event.type} for speaker=${this.speakerId}`);
+          break;
       }
-
-      transcript = transcript.trim();
-
-      if (!transcript || transcript.length < 3) {
-        logger.debug(`[Realtime] Ignored empty transcript for speaker=${this.speakerId}`);
-        return;
-      }
-
-      this.transcriptsReceived++;
-      logger.info(`[Realtime] Final transcript for ${this.speakerId}: "${transcript.slice(0, 80)}${transcript.length > 80 ? '...' : ''}" (len=${transcript.length}, totalReceived=${this.transcriptsReceived})`);
-
-      this.handleTranscript(transcript);
     } catch (err) {
       logger.warn(`[RealtimeSession] Failed to parse message: speaker=${this.speakerName}`, err);
     }
