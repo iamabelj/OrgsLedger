@@ -1,5 +1,10 @@
 import { Server as HttpServer } from 'http';
 import { Server } from 'socket.io';
+export declare const meetingLanguages: Map<string, Map<string, {
+    language: string;
+    name: string;
+    receiveVoice: boolean;
+}>>;
 export declare function setupSocketIO(httpServer: HttpServer): Server;
 /**
  * Force-disconnect all sockets from a meeting room.

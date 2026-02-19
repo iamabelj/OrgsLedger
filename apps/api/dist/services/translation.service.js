@@ -138,31 +138,8 @@ async function translateText(text, targetLang, sourceLang) {
     const targetName = (0, shared_1.getLanguageName)(targetLang);
     const sourceName = sourceLang ? (0, shared_1.getLanguageName)(sourceLang) : null;
     logger_1.logger.debug(`[TRANSLATION] Translating: "${text.slice(0, 60)}" from ${sourceName || 'auto'} (${sourceLang || 'auto'}) → ${targetName} (${targetLang})`);
-    // ── Try AI Proxy first ────────────────────────────────
-    if (config_1.config.aiProxy.url && config_1.config.aiProxy.apiKey) {
-        try {
-            const res = await fetchWithTimeout(`${config_1.config.aiProxy.url}/api/ai/translate`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-API-Key': config_1.config.aiProxy.apiKey,
-                },
-                body: JSON.stringify({ text, targetLang, sourceLang }),
-            }, 8000);
-            if (res.ok) {
-                const data = (await res.json());
-                const translated = data.translatedText || text;
-                setCache(cacheKey, translated);
-                return {
-                    translatedText: translated,
-                    detectedSourceLanguage: data.detectedSourceLanguage || sourceLang,
-                };
-            }
-        }
-        catch (err) {
-            logger_1.logger.warn('AI proxy translation failed, falling back to GPT', err);
-        }
-    }
+    // NOTE: AI proxy does not have a /translate endpoint — skip it.
+    // Translation goes directly through GPT-4o-mini (primary) or Google Translate (fallback).
     // ── GPT-4o-mini translation (100+ languages) ──────────
     const openai = getOpenAIClient();
     if (openai) {

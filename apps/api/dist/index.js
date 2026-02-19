@@ -26,6 +26,7 @@ const landing_gateway_1 = require("./middleware/landing-gateway");
 const socket_1 = require("./socket");
 const ai_service_1 = require("./services/ai.service");
 const registry_1 = require("./services/registry");
+const bot_1 = require("./services/bot");
 const constants_1 = require("./constants");
 // Observability
 const metrics_service_1 = require("./services/metrics.service");
@@ -70,6 +71,9 @@ registry_1.services.register('io', io); // preferred — use services.get('io') 
 const aiService = new ai_service_1.AIService(io);
 app.set('aiService', aiService); // backwards compat
 registry_1.services.register('aiService', aiService);
+// ── Transcription Bot Manager ─────────────────────────────
+const botManager = (0, bot_1.initBotManager)({ io, meetingLanguages: socket_1.meetingLanguages });
+registry_1.services.register('botManager', botManager);
 // ── Global Middleware ─────────────────────────────────────
 app.use((0, helmet_1.default)());
 app.use((0, cors_1.default)({

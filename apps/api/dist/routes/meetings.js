@@ -21,6 +21,7 @@ const translation_service_1 = require("../services/translation.service");
 const subscription_service_1 = require("../services/subscription.service");
 const livekit_service_1 = require("../services/livekit.service");
 const socket_1 = require("../socket");
+const bot_1 = require("../services/bot");
 const router = (0, express_1.Router)();
 // ── Multer for audio uploads ────────────────────────────────
 const audioStorage = multer_1.default.diskStorage({
@@ -654,6 +655,12 @@ router.post('/:orgId/:meetingId/start', middleware_1.authenticate, middleware_1.
             io.to(`org:${req.params.orgId}`).emit('meeting:started', payload);
             io.to(`meeting:${req.params.meetingId}`).emit('meeting:started', payload);
         }
+        // Start transcription bot (best-effort, don't block response)
+        try {
+            const botManager = (0, bot_1.getBotManager)();
+            botManager.startMeetingBot(req.params.meetingId).catch((err) => logger_1.logger.warn('[MEETING_START] Transcription bot failed to start', { meetingId: req.params.meetingId, error: err.message }));
+        }
+        catch (_) { /* BotManager not initialized */ }
         await req.audit?.({
             organizationId: req.params.orgId,
             action: 'update',
@@ -690,14 +697,26 @@ router.post('/:orgId/:meetingId/end', middleware_1.authenticate, middleware_1.lo
             };
             io.to(`org:${req.params.orgId}`).emit('meeting:ended', endPayload);
             io.to(`meeting:${req.params.meetingId}`).emit('meeting:ended', endPayload);
-            // Force disconnect ALL sockets from the meeting room.
-            // This emits meeting:force-disconnect, removes sockets from room,
-            // and cleans up translation session data.
-            (0, socket_1.forceDisconnectMeeting)(io, req.params.meetingId).catch((err) => logger_1.logger.warn('Force disconnect failed', err));
+            // NOTE: Do NOT force-disconnect sockets immediately.
+            // Clients need to remain in the meeting room to receive
+            // meeting:minutes:processing / meeting:minutes:ready / meeting:minutes:failed events.
+            // Instead, force-disconnect after a delay so minutes events can be delivered.
+            setTimeout(() => {
+                (0, socket_1.forceDisconnectMeeting)(io, req.params.meetingId).catch((err) => logger_1.logger.warn('Force disconnect failed', err));
+            }, 5_000); // 5 seconds grace period for minutes events
         }
-        // If AI enabled, trigger AI minutes generation
-        // Supports both audio file AND live transcripts
-        if (meeting.ai_enabled) {
+        // Stop transcription bot (best-effort)
+        try {
+            const botManager = (0, bot_1.getBotManager)();
+            const bot = botManager.getBot(req.params.meetingId);
+            const sessionCount = bot?.activeSessionCount || 0;
+            logger_1.logger.info(`[MEETING_END] Stopping transcription bot: meeting=${req.params.meetingId}, activeSessions=${sessionCount}`);
+            botManager.stopMeetingBot(req.params.meetingId).catch((err) => logger_1.logger.warn('[MEETING_END] Transcription bot failed to stop', { meetingId: req.params.meetingId, error: err.message }));
+        }
+        catch (_) { /* BotManager not initialized */ }
+        // Always trigger AI minutes generation when transcripts exist
+        // (no manual toggle required — pipeline is always-on)
+        {
             const hasAudio = !!meeting.audio_storage_url;
             let hasLiveTranscripts = false;
             try {
@@ -711,21 +730,23 @@ router.post('/:orgId/:meetingId/end', middleware_1.authenticate, middleware_1.lo
                 // Table may not exist yet — that's fine
                 hasLiveTranscripts = false;
             }
-            logger_1.logger.info('[MEETING_END] AI minutes check', {
+            logger_1.logger.info('[MINUTES_PIPELINE] Auto-generate check', {
                 meetingId: req.params.meetingId,
-                ai_enabled: meeting.ai_enabled,
                 hasAudio,
                 hasLiveTranscripts,
             });
             if (hasAudio || hasLiveTranscripts) {
-                // Notify that processing is starting (org room only —
-                // meeting room was already force-disconnected above)
+                // Notify that processing is starting
                 if (io) {
                     io.to(`org:${req.params.orgId}`).emit('meeting:minutes:processing', {
                         meetingId: req.params.meetingId,
                     });
+                    io.to(`meeting:${req.params.meetingId}`).emit('meeting:minutes:processing', {
+                        meetingId: req.params.meetingId,
+                    });
                 }
                 // Create pending minutes record (don't overwrite already-completed minutes)
+                let skipProcessing = false;
                 const existing = await (0, db_1.default)('meeting_minutes').where({ meeting_id: req.params.meetingId }).first();
                 if (!existing) {
                     await (0, db_1.default)('meeting_minutes').insert({
@@ -739,41 +760,36 @@ router.post('/:orgId/:meetingId/end', middleware_1.authenticate, middleware_1.lo
                     await (0, db_1.default)('meeting_minutes').where({ meeting_id: req.params.meetingId }).update({ status: 'processing', error_message: null });
                 }
                 else {
-                    logger_1.logger.info('[MEETING_END] Minutes already completed — skipping re-generation', {
+                    logger_1.logger.info('[MINUTES_PIPELINE] Minutes already completed — skipping re-generation', {
                         meetingId: req.params.meetingId,
                     });
-                    // Skip processing — minutes already exist
-                    hasLiveTranscripts = false;
+                    skipProcessing = true;
                 }
-                // Queue AI processing (handled by AI service)
-                const aiService = req.app.get('aiService');
-                if (aiService) {
-                    logger_1.logger.info('[MEETING_END] Triggering AI minutes processing', {
-                        meetingId: req.params.meetingId,
-                        orgId: req.params.orgId,
-                    });
-                    aiService.processMinutes(req.params.meetingId, req.params.orgId).catch((err) => {
-                        logger_1.logger.error('[MEETING_END] AI minutes processing failed', {
+                // Queue AI processing (handled by AI service) — skip if minutes already completed
+                if (!skipProcessing) {
+                    const aiService = req.app.get('aiService');
+                    if (aiService) {
+                        logger_1.logger.info('[MINUTES_PIPELINE] Triggering AI minutes processing', {
                             meetingId: req.params.meetingId,
-                            error: err.message,
+                            orgId: req.params.orgId,
                         });
-                    });
-                }
-                else {
-                    logger_1.logger.warn('[MEETING_END] aiService not registered on app — minutes will NOT be generated');
+                        aiService.processMinutes(req.params.meetingId, req.params.orgId).catch((err) => {
+                            logger_1.logger.error('[MINUTES_PIPELINE] AI minutes processing FAILED', {
+                                meetingId: req.params.meetingId,
+                                error: err.message,
+                            });
+                        });
+                    }
+                    else {
+                        logger_1.logger.warn('[MINUTES_PIPELINE] aiService not registered on app — minutes will NOT be generated');
+                    }
                 }
             }
             else {
-                logger_1.logger.info('[MEETING_END] No audio or transcripts found — skipping minutes generation', {
+                logger_1.logger.info('[MINUTES_PIPELINE] No audio or transcripts found — skipping minutes generation', {
                     meetingId: req.params.meetingId,
                 });
             }
-        }
-        else {
-            logger_1.logger.info('[MEETING_END] AI not enabled for this meeting — skipping minutes generation', {
-                meetingId: req.params.meetingId,
-                ai_enabled: meeting.ai_enabled,
-            });
         }
         await req.audit?.({
             organizationId: req.params.orgId,
@@ -1038,6 +1054,35 @@ router.get('/:orgId/:meetingId/transcripts', middleware_1.authenticate, middlewa
     catch (err) {
         logger_1.logger.error('Get transcripts error', err);
         res.status(500).json({ success: false, error: 'Failed to get transcripts' });
+    }
+});
+// ── Get Meeting Chat Messages ───────────────────────────────
+// Returns persisted in-meeting chat messages.
+router.get('/:orgId/:meetingId/chat', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+    try {
+        const { orgId, meetingId } = req.params;
+        const meeting = await (0, db_1.default)('meetings')
+            .where({ id: meetingId, organization_id: orgId })
+            .first();
+        if (!meeting) {
+            res.status(404).json({ success: false, error: 'Meeting not found' });
+            return;
+        }
+        const hasTable = await db_1.default.schema.hasTable('meeting_messages');
+        if (!hasTable) {
+            res.json({ success: true, data: [] });
+            return;
+        }
+        const messages = await (0, db_1.default)('meeting_messages')
+            .where({ meeting_id: meetingId })
+            .orderBy('created_at', 'asc')
+            .limit(500)
+            .select('id', 'meeting_id', 'sender_id', 'sender_name', 'message', 'created_at');
+        res.json({ success: true, data: messages });
+    }
+    catch (err) {
+        logger_1.logger.error('Get chat messages error', err);
+        res.status(500).json({ success: false, error: 'Failed to get chat messages' });
     }
 });
 // ── Get Meeting Minutes ─────────────────────────────────────
