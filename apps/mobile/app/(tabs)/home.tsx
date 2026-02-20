@@ -54,6 +54,7 @@ export default function HomeScreen() {
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [showOrgSwitcher, setShowOrgSwitcher] = useState(false);
   const [aiHours, setAiHours] = useState<{ balance: number; used: number; remaining: number } | null>(null);
+  const [translationHours, setTranslationHours] = useState<{ balance: number; used: number; remaining: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Enhanced dashboard data
@@ -168,6 +169,18 @@ export default function HomeScreen() {
           const used = parseFloat(w.total_spent || '0') / 60;
           const remaining = parseFloat(w.balance_minutes || '0') / 60;
           setAiHours({ balance, used, remaining });
+        }
+      } catch (_) {}
+
+      // Load Translation hours from wallet
+      try {
+        const walletRes = await api.subscriptions.getTranslationWallet(currentOrgId);
+        const w = walletRes.data?.data;
+        if (w) {
+          const balance = parseFloat(w.total_topped_up || '0') / 60;
+          const used = parseFloat(w.total_spent || '0') / 60;
+          const remaining = parseFloat(w.balance_minutes || '0') / 60;
+          setTranslationHours({ balance, used, remaining });
         }
       } catch (_) {}
 
@@ -366,6 +379,66 @@ export default function HomeScreen() {
                         ? `${Math.min((aiHours.used / aiHours.balance) * 100, 100)}%`
                         : '0%',
                       backgroundColor: aiHours.remaining < 0.5 ? Colors.error : Colors.highlight,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+          </Card>
+        </View>
+      )}
+
+      {/* Translation Hours Card */}
+      {translationHours && (
+        <View style={styles.section}>
+          <Card variant="elevated" style={styles.aiCard}>
+            <View style={styles.finCardHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="language" size={18} color="#10B981" />
+                <Text style={styles.finCardTitle}>Translation Hours</Text>
+              </View>
+              {isAdmin && (
+                <TouchableOpacity onPress={() => router.push('/admin/plans')}>
+                  <Text style={styles.viewAllText}>Manage</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.finCardGrid}>
+              <View style={styles.finCardItem}>
+                <Ionicons name="time" size={20} color={Colors.success} />
+                <Text style={styles.finCardValue}>
+                  {translationHours.remaining.toFixed(1)}h
+                </Text>
+                <Text style={styles.finCardLabel}>Remaining</Text>
+              </View>
+              <View style={styles.finCardDivider} />
+              <View style={styles.finCardItem}>
+                <Ionicons name="play-circle" size={20} color={Colors.info} />
+                <Text style={styles.finCardValue}>
+                  {translationHours.used.toFixed(1)}h
+                </Text>
+                <Text style={styles.finCardLabel}>Used</Text>
+              </View>
+              <View style={styles.finCardDivider} />
+              <View style={styles.finCardItem}>
+                <Ionicons name="server" size={20} color="#10B981" />
+                <Text style={styles.finCardValue}>
+                  {translationHours.balance.toFixed(1)}h
+                </Text>
+                <Text style={styles.finCardLabel}>Total</Text>
+              </View>
+            </View>
+            {/* Usage bar */}
+            <View style={styles.aiBarContainer}>
+              <View style={styles.aiBarTrack}>
+                <View
+                  style={[
+                    styles.aiBarFill,
+                    {
+                      width: translationHours.balance > 0
+                        ? `${Math.min((translationHours.used / translationHours.balance) * 100, 100)}%`
+                        : '0%',
+                      backgroundColor: translationHours.remaining < 0.5 ? Colors.error : '#10B981',
                     },
                   ]}
                 />

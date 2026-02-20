@@ -161,12 +161,11 @@ function FullMeetingOverlay() {
   }, [gm.meetingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-start speech recognition once connected ──────
-  // Only start transcription if AI is enabled for this meeting.
-  // When AI is disabled, no transcription/translation is captured.
+  // Always start speech recognition so that live translation works.
+  // AI minutes generation is gated server-side on meeting.ai_enabled.
   useEffect(() => {
     if (!lk.isConnected) return;
     if (translationListening) return; // already started
-    if (!gm.meeting?.ai_enabled) return; // AI disabled — skip auto-start
     // Small delay to let LiveTranslation mount and attach ref
     const timer = setTimeout(() => {
       if (translationRef.current && !translationListening) {
@@ -176,7 +175,7 @@ function FullMeetingOverlay() {
       }
     }, 1500);
     return () => clearTimeout(timer);
-  }, [lk.isConnected, gm.meeting?.ai_enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lk.isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Toggle sidebar panel ──────────────────────────────
   const handleToggleSidebar = useCallback((panel?: string) => {
@@ -523,6 +522,7 @@ function FullMeetingOverlay() {
         unreadChatCount={gm.unreadChatCount}
         isChatOpen={gm.isChatOpen}
         isAdmin={gm.isAdmin}
+        aiEnabled={gm.meeting?.ai_enabled ?? false}
         onToggleMic={lk.toggleMic}
         onToggleCamera={gm.isAudioOnly ? gm.toggleAudioOnly : lk.toggleCamera}
         onToggleScreenShare={lk.toggleScreenShare}
@@ -530,6 +530,7 @@ function FullMeetingOverlay() {
         onToggleRecording={handleToggleRecording}
         onRaiseHand={handleRaiseHand}
         onToggleSidebar={handleToggleSidebar}
+        onToggleAi={gm.toggleAi}
         onLeave={handleLeave}
         onEnd={gm.isAdmin ? handleEnd : undefined}
       />

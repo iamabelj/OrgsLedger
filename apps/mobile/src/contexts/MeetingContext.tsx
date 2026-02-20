@@ -92,6 +92,7 @@ interface GlobalMeetingState {
   refreshMinutes: () => void;
   generateMinutes: () => void;
   setMeeting: (meeting: any) => void;
+  toggleAi: () => void;
 }
 
 const GlobalMeetingContext = createContext<GlobalMeetingState | null>(null);
@@ -491,6 +492,18 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
     }
   }, [orgId, meetingId, refreshMinutes]);
 
+  const toggleAi = useCallback(async () => {
+    if (!orgId || !meetingId) return;
+    try {
+      const res = await api.meetings.toggleAi(orgId, meetingId);
+      const newState = res.data?.data?.aiEnabled;
+      setMeetingState((prev: any) => prev ? { ...prev, ai_enabled: newState } : prev);
+      showAlert('AI Minutes', newState ? 'AI minutes enabled' : 'AI minutes disabled');
+    } catch (err: any) {
+      showAlert('Error', err.response?.data?.error || 'Failed to toggle AI');
+    }
+  }, [orgId, meetingId]);
+
   const setMeeting = useCallback((m: any) => {
     setMeetingState(m);
     meetingStore.setMeeting(m);
@@ -534,6 +547,7 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
     refreshMinutes,
     generateMinutes,
     setMeeting,
+    toggleAi,
   };
 
   return (

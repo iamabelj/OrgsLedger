@@ -50,6 +50,9 @@ interface ControlBarProps {
   // Admin
   isAdmin: boolean;
 
+  // AI
+  aiEnabled: boolean;
+
   // Handlers
   onToggleMic: () => void;
   onToggleCamera: () => void;
@@ -58,6 +61,7 @@ interface ControlBarProps {
   onToggleRecording: () => void;
   onRaiseHand: () => void;
   onToggleSidebar: (panel?: string) => void;
+  onToggleAi: () => void;
   onLeave: () => void;
   onEnd?: () => void;
 }
@@ -149,6 +153,7 @@ function ControlBarInner(props: ControlBarProps) {
     unreadChatCount,
     isChatOpen,
     isAdmin,
+    aiEnabled,
     onToggleMic,
     onToggleCamera,
     onToggleScreenShare,
@@ -156,6 +161,7 @@ function ControlBarInner(props: ControlBarProps) {
     onToggleRecording,
     onRaiseHand,
     onToggleSidebar,
+    onToggleAi,
     onLeave,
     onEnd,
   } = props;
@@ -236,10 +242,18 @@ function ControlBarInner(props: ControlBarProps) {
           compact={isNarrow}
         />
 
-        {/* Record (admin only) */}
+        {/* AI toggle + Record (admin only) */}
         {isAdmin && (
           <>
             <Divider />
+            <ControlBtn
+              icon={aiEnabled ? 'sparkles' as any : 'sparkles' as any}
+              label={aiEnabled ? 'AI On' : 'AI Off'}
+              active={aiEnabled}
+              activeColor="#8B5CF6"
+              onPress={onToggleAi}
+              compact={isNarrow}
+            />
             <ControlBtn
               icon={isRecording ? 'stop-circle' : 'radio-button-on'}
               label={isRecording ? 'Stop Rec' : 'Record'}
