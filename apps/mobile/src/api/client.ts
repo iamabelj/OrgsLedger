@@ -125,6 +125,10 @@ class ApiClient {
       this.client.post('/auth/verify-email', data),
     changePassword: (data: { currentPassword: string; newPassword: string }) =>
       this.client.put('/auth/change-password', data),
+    getLanguagePreference: (orgId: string) =>
+      this.client.get(`/auth/language-preference/${orgId}`),
+    setLanguagePreference: (orgId: string, data: { language: string; receiveVoice?: boolean }) =>
+      this.client.put(`/auth/language-preference/${orgId}`, data),
     uploadAvatar: (file: { uri: string; name: string; mimeType: string }) => {
       const formData = new FormData();
       formData.append('avatar', {

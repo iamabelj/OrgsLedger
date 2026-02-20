@@ -27,7 +27,6 @@ interface ControlBarProps {
   isScreenSharing: boolean;
 
   // Translation
-  translationLang: string;
   isTranslationListening: boolean;
 
   // Recording
@@ -57,7 +56,6 @@ interface ControlBarProps {
   onToggleMic: () => void;
   onToggleCamera: () => void;
   onToggleScreenShare: () => void;
-  onOpenLanguagePicker: () => void;
   onToggleRecording: () => void;
   onRaiseHand: () => void;
   onToggleSidebar: (panel?: string) => void;
@@ -143,7 +141,6 @@ function ControlBarInner(props: ControlBarProps) {
     isMicEnabled,
     isCameraEnabled,
     isScreenSharing,
-    translationLang,
     isTranslationListening,
     isRecording,
     handRaised,
@@ -157,7 +154,6 @@ function ControlBarInner(props: ControlBarProps) {
     onToggleMic,
     onToggleCamera,
     onToggleScreenShare,
-    onOpenLanguagePicker,
     onToggleRecording,
     onRaiseHand,
     onToggleSidebar,
@@ -229,16 +225,6 @@ function ControlBarInner(props: ControlBarProps) {
           active={isChatOpen}
           badge={unreadChatCount > 0 ? unreadChatCount : undefined}
           onPress={() => onToggleSidebar('chat')}
-          compact={isNarrow}
-        />
-
-        {/* Language / Translation (always available) */}
-        <ControlBtn
-          icon="language"
-          label={isTranslationListening ? translationLang.toUpperCase() : 'Language'}
-          active={isTranslationListening}
-          activeColor="#10B981"
-          onPress={onOpenLanguagePicker}
           compact={isNarrow}
         />
 

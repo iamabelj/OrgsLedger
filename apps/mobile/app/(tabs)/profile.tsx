@@ -4,7 +4,7 @@
 // Features: Profile photo upload for facial recognition,
 //           premium card-based layout, responsive design.
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,8 @@ import {
   Platform,
   Image,
   Alert,
+  TextInput,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -31,6 +33,7 @@ import {
 } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
 import { useResponsive } from '../../src/hooks/useResponsive';
+import { ALL_LANGUAGES, getLanguage, isTtsSupported } from '../../src/utils/languages';
 
 const API_BASE = __DEV__ ? 'http://localhost:3000' : 'https://app.orgsledger.com';
 
@@ -61,6 +64,22 @@ export default function ProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+
+  // ── Language Preference ───────────────────────────────
+  const [nativeLanguage, setNativeLanguage] = useState('en');
+  const [showLangPicker, setShowLangPicker] = useState(false);
+  const [langSearch, setLangSearch] = useState('');
+  const [savingLang, setSavingLang] = useState(false);
+
+  const filteredLangs = useMemo(() => {
+    if (!langSearch.trim()) return ALL_LANGUAGES;
+    const q = langSearch.toLowerCase().trim();
+    return ALL_LANGUAGES.filter(
+      (l) => l.name.toLowerCase().includes(q) || l.nativeName.toLowerCase().includes(q) || l.code.includes(q)
+    );
+  }, [langSearch]);
+
+  const currentLangInfo = useMemo(() => getLanguage(nativeLanguage), [nativeLanguage]);
   const [notifPrefs, setNotifPrefs] = useState<Record<string, boolean>>({
     email_meetings: true,
     email_finances: true,
@@ -76,6 +95,10 @@ export default function ProfileScreen() {
     api.notifications.getPreferences().then((res: any) => {
       if (res.data?.data) setNotifPrefs((prev) => ({ ...prev, ...res.data.data }));
     }).catch(() => {});
+    // Load saved language preference
+    api.auth.getLanguagePreference(currentOrgId).then((res: any) => {
+      if (res.data?.data?.language) setNativeLanguage(res.data.data.language);
+    }).catch(() => {});
   }, [currentOrgId]);
 
   const updateNotifPref = useCallback(async (key: string, value: boolean) => {
@@ -84,6 +107,22 @@ export default function ProfileScreen() {
     if (!currentOrgId) return;
     try { await api.notifications.updatePreferences(updated); } catch {}
   }, [notifPrefs, currentOrgId]);
+
+  const handleSelectLanguage = useCallback(async (code: string) => {
+    if (!currentOrgId) return;
+    setNativeLanguage(code);
+    setShowLangPicker(false);
+    setLangSearch('');
+    setSavingLang(true);
+    try {
+      await api.auth.setLanguagePreference(currentOrgId, { language: code });
+      showAlert('Language Saved', `Your native language has been set to ${getLanguage(code)?.name || code}. This will be used in all meetings.`);
+    } catch (err: any) {
+      showAlert('Error', err?.response?.data?.error || 'Failed to save language preference');
+    } finally {
+      setSavingLang(false);
+    }
+  }, [currentOrgId]);
 
   const currentMembership = memberships.find((m) => m.organization_id === currentOrgId);
   const roleConfig = ROLE_CONFIG[currentMembership?.role || 'member'] || ROLE_CONFIG.member;
@@ -387,6 +426,36 @@ export default function ProfileScreen() {
 
         {/* ── Right Column ─────────────────────────────── */}
         <View style={[styles.column, isWide && styles.columnRight]}>
+          {/* Native Language */}
+          <Card style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={[styles.cardIconWrap, { backgroundColor: 'rgba(16,185,129,0.12)' }]}>
+                <Ionicons name="language" size={18} color="#10B981" />
+              </View>
+              <Text style={styles.cardTitle}>Native Language</Text>
+              {savingLang && <ActivityIndicator size="small" color={Colors.highlight} />}
+            </View>
+
+            <Text style={{ fontSize: FontSize.sm, color: Colors.textLight, marginBottom: Spacing.md, lineHeight: 18 }}>
+              Your preferred language for meeting translations. All meetings will automatically translate to this language.
+            </Text>
+
+            <TouchableOpacity
+              style={langCardStyles.currentLangRow}
+              onPress={() => setShowLangPicker(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={{ fontSize: 24 }}>{currentLangInfo?.flag || '🌐'}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={langCardStyles.currentLangName}>{currentLangInfo?.name || nativeLanguage}</Text>
+                {currentLangInfo && currentLangInfo.nativeName !== currentLangInfo.name && (
+                  <Text style={langCardStyles.currentLangNative}>{currentLangInfo.nativeName}</Text>
+                )}
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={Colors.textLight} />
+            </TouchableOpacity>
+          </Card>
+
           {/* Notification Settings */}
           <Card style={styles.card}>
             <View style={styles.cardHeader}>
@@ -450,6 +519,79 @@ export default function ProfileScreen() {
         <Text style={styles.footerText}>OrgsLedger v1.0.0</Text>
       </View>
       <View style={{ height: Spacing.xxl }} />
+
+      {/* ═══ LANGUAGE PICKER MODAL ═══════════════════════════ */}
+      <Modal
+        visible={showLangPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { setShowLangPicker(false); setLangSearch(''); }}
+      >
+        <View style={langCardStyles.overlay}>
+          <View style={langCardStyles.card}>
+            <View style={langCardStyles.header}>
+              <Ionicons name="language" size={18} color="#10B981" />
+              <Text style={langCardStyles.headerTitle}>Select Native Language</Text>
+              <TouchableOpacity onPress={() => { setShowLangPicker(false); setLangSearch(''); }}>
+                <Ionicons name="close" size={22} color={Colors.textLight} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ fontSize: FontSize.xs, color: Colors.textLight, marginBottom: Spacing.sm, paddingHorizontal: Spacing.md }}>
+              This language will be used for all meeting translations.
+            </Text>
+
+            <View style={langCardStyles.searchWrap}>
+              <Ionicons name="search" size={14} color={Colors.textLight} />
+              <TextInput
+                style={langCardStyles.searchInput}
+                placeholder="Search language..."
+                placeholderTextColor={Colors.textLight}
+                value={langSearch}
+                onChangeText={setLangSearch}
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+              {langSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setLangSearch('')}>
+                  <Ionicons name="close-circle" size={14} color={Colors.textLight} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <ScrollView style={langCardStyles.list} keyboardShouldPersistTaps="handled">
+              {filteredLangs.length === 0 && (
+                <Text style={langCardStyles.noResults}>No languages match "{langSearch}"</Text>
+              )}
+              {filteredLangs.map((lang) => {
+                const isCurrent = nativeLanguage === lang.code;
+                return (
+                  <TouchableOpacity
+                    key={lang.code}
+                    style={[langCardStyles.langItem, isCurrent && langCardStyles.langItemActive]}
+                    onPress={() => handleSelectLanguage(lang.code)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={{ fontSize: 18 }}>{lang.flag || '🌐'}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[langCardStyles.langName, isCurrent && { color: '#10B981' }]}>
+                        {lang.name}
+                      </Text>
+                      {lang.nativeName !== lang.name && (
+                        <Text style={langCardStyles.langNative}>{lang.nativeName}</Text>
+                      )}
+                    </View>
+                    {isTtsSupported(lang.code) && (
+                      <Ionicons name="volume-medium-outline" size={12} color={Colors.textLight} />
+                    )}
+                    {isCurrent && <Ionicons name="checkmark-circle" size={18} color="#10B981" />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ResponsiveScrollView>
   );
 }
@@ -847,5 +989,106 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: FontSize.xs,
     color: Colors.textLight,
+  },
+});
+
+// ── Language Card Styles ────────────────────────────────
+const langCardStyles = StyleSheet.create({
+  currentLangRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    backgroundColor: Colors.primaryLight,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.2)',
+  },
+  currentLangName: {
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.semibold as any,
+    color: Colors.textPrimary,
+  },
+  currentLangNative: {
+    fontSize: FontSize.xs,
+    color: Colors.textLight,
+    marginTop: 1,
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.lg,
+  },
+  card: {
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    width: '100%',
+    maxWidth: 440,
+    maxHeight: '80%',
+    ...Shadow.md,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: FontSize.lg,
+    fontWeight: FontWeight.bold as any,
+    color: Colors.textPrimary,
+  },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primaryLight,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.sm,
+    marginHorizontal: Spacing.md,
+    marginBottom: Spacing.sm,
+    gap: 6,
+    height: 36,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: FontSize.sm,
+    color: Colors.textPrimary,
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
+  },
+  list: {
+    maxHeight: 360,
+    paddingHorizontal: Spacing.sm,
+  },
+  noResults: {
+    fontSize: FontSize.sm,
+    color: Colors.textLight,
+    textAlign: 'center',
+    padding: Spacing.lg,
+  },
+  langItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: 10,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+  },
+  langItemActive: {
+    backgroundColor: 'rgba(16,185,129,0.08)',
+  },
+  langName: {
+    fontSize: FontSize.md,
+    color: Colors.textPrimary,
+    fontWeight: FontWeight.medium as any,
+  },
+  langNative: {
+    fontSize: FontSize.xs,
+    color: Colors.textLight,
+    marginTop: 1,
   },
 });

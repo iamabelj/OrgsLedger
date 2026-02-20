@@ -3,6 +3,39 @@
 // OrgsLedger API — Auth Routes
 // Registration, Login, Token Refresh, Password Reset
 // ============================================================
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -15,7 +48,7 @@ const zod_1 = require("zod");
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const multer_1 = __importDefault(require("multer"));
-const db_1 = __importDefault(require("../db"));
+const db_1 = __importStar(require("../db"));
 const config_1 = require("../config");
 const middleware_1 = require("../middleware");
 const logger_1 = require("../logger");
@@ -1151,6 +1184,76 @@ router.post('/upload-avatar', middleware_1.authenticate, (req, res, next) => {
     catch (err) {
         logger_1.logger.error('Avatar upload error:', err);
         res.status(500).json({ success: false, error: 'Failed to upload avatar' });
+    }
+});
+// ── Get Language Preference ─────────────────────────────────
+router.get('/language-preference/:orgId', middleware_1.authenticate, async (req, res) => {
+    try {
+        const { orgId } = req.params;
+        const userId = req.user.userId;
+        if (!(await (0, db_1.tableExists)('user_language_preferences'))) {
+            res.json({ success: true, data: { language: 'en', receiveVoice: true } });
+            return;
+        }
+        const pref = await (0, db_1.default)('user_language_preferences')
+            .where({ user_id: userId, organization_id: orgId })
+            .first();
+        res.json({
+            success: true,
+            data: {
+                language: pref?.preferred_language || 'en',
+                receiveVoice: pref?.receive_voice !== false,
+            },
+        });
+    }
+    catch (err) {
+        logger_1.logger.error('Get language preference error:', err);
+        res.status(500).json({ success: false, error: 'Failed to get language preference' });
+    }
+});
+// ── Set Language Preference ─────────────────────────────────
+const languagePrefSchema = zod_1.z.object({
+    language: zod_1.z.string().min(2).max(10),
+    receiveVoice: zod_1.z.boolean().optional().default(true),
+}).strict();
+router.put('/language-preference/:orgId', middleware_1.authenticate, async (req, res) => {
+    try {
+        const parsed = languagePrefSchema.safeParse(req.body);
+        if (!parsed.success) {
+            res.status(400).json({ success: false, error: 'Invalid input', details: parsed.error.flatten() });
+            return;
+        }
+        const { orgId } = req.params;
+        const userId = req.user.userId;
+        const { language, receiveVoice } = parsed.data;
+        if (!(await (0, db_1.tableExists)('user_language_preferences'))) {
+            res.status(500).json({ success: false, error: 'Language preferences table not available' });
+            return;
+        }
+        await (0, db_1.default)('user_language_preferences')
+            .insert({
+            user_id: userId,
+            organization_id: orgId,
+            preferred_language: language,
+            receive_voice: receiveVoice,
+            receive_text: true,
+        })
+            .onConflict(['user_id', 'organization_id'])
+            .merge({ preferred_language: language, receive_voice: receiveVoice });
+        await (0, middleware_1.writeAuditLog)({
+            organizationId: orgId,
+            userId,
+            action: 'update',
+            entityType: 'user_language_preference',
+            entityId: userId,
+            newValue: { language, receiveVoice },
+        });
+        logger_1.logger.info(`Language preference updated for user ${userId} in org ${orgId}: ${language}`);
+        res.json({ success: true, data: { language, receiveVoice }, message: 'Language preference saved' });
+    }
+    catch (err) {
+        logger_1.logger.error('Set language preference error:', err);
+        res.status(500).json({ success: false, error: 'Failed to save language preference' });
     }
 });
 exports.default = router;

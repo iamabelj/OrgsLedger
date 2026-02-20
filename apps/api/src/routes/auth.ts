@@ -11,7 +11,7 @@ import { z } from 'zod';
 import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
-import db from '../db';
+import db, { tableExists } from '../db';
 import { config } from '../config';
 import { authenticate, validate, writeAuditLog } from '../middleware';
 import { logger } from '../logger';
@@ -1292,6 +1292,85 @@ router.post('/upload-avatar', authenticate, (req: Request, res: Response, next) 
   } catch (err) {
     logger.error('Avatar upload error:', err);
     res.status(500).json({ success: false, error: 'Failed to upload avatar' });
+  }
+});
+
+// ── Get Language Preference ─────────────────────────────────
+router.get('/language-preference/:orgId', authenticate, async (req: Request, res: Response) => {
+  try {
+    const { orgId } = req.params;
+    const userId = req.user!.userId;
+
+    if (!(await tableExists('user_language_preferences'))) {
+      res.json({ success: true, data: { language: 'en', receiveVoice: true } });
+      return;
+    }
+
+    const pref = await db('user_language_preferences')
+      .where({ user_id: userId, organization_id: orgId })
+      .first();
+
+    res.json({
+      success: true,
+      data: {
+        language: pref?.preferred_language || 'en',
+        receiveVoice: pref?.receive_voice !== false,
+      },
+    });
+  } catch (err) {
+    logger.error('Get language preference error:', err);
+    res.status(500).json({ success: false, error: 'Failed to get language preference' });
+  }
+});
+
+// ── Set Language Preference ─────────────────────────────────
+const languagePrefSchema = z.object({
+  language: z.string().min(2).max(10),
+  receiveVoice: z.boolean().optional().default(true),
+}).strict();
+
+router.put('/language-preference/:orgId', authenticate, async (req: Request, res: Response) => {
+  try {
+    const parsed = languagePrefSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: 'Invalid input', details: parsed.error.flatten() });
+      return;
+    }
+
+    const { orgId } = req.params;
+    const userId = req.user!.userId;
+    const { language, receiveVoice } = parsed.data;
+
+    if (!(await tableExists('user_language_preferences'))) {
+      res.status(500).json({ success: false, error: 'Language preferences table not available' });
+      return;
+    }
+
+    await db('user_language_preferences')
+      .insert({
+        user_id: userId,
+        organization_id: orgId,
+        preferred_language: language,
+        receive_voice: receiveVoice,
+        receive_text: true,
+      })
+      .onConflict(['user_id', 'organization_id'])
+      .merge({ preferred_language: language, receive_voice: receiveVoice });
+
+    await writeAuditLog({
+      organizationId: orgId,
+      userId,
+      action: 'update',
+      entityType: 'user_language_preference',
+      entityId: userId,
+      newValue: { language, receiveVoice },
+    });
+
+    logger.info(`Language preference updated for user ${userId} in org ${orgId}: ${language}`);
+    res.json({ success: true, data: { language, receiveVoice }, message: 'Language preference saved' });
+  } catch (err) {
+    logger.error('Set language preference error:', err);
+    res.status(500).json({ success: false, error: 'Failed to save language preference' });
   }
 });
 
