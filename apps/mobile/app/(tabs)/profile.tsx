@@ -376,6 +376,36 @@ export default function ProfileScreen() {
             </Card>
           )}
 
+          {/* Native Language — prominent position for discoverability */}
+          <Card style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={[styles.cardIconWrap, { backgroundColor: 'rgba(16,185,129,0.12)' }]}>
+                <Ionicons name="language" size={18} color="#10B981" />
+              </View>
+              <Text style={styles.cardTitle}>Native Language</Text>
+              {savingLang && <ActivityIndicator size="small" color={Colors.highlight} />}
+            </View>
+
+            <Text style={{ fontSize: FontSize.sm, color: Colors.textLight, marginBottom: Spacing.md, lineHeight: 18 }}>
+              Your preferred language for meeting translations. All meetings will automatically translate to this language.
+            </Text>
+
+            <TouchableOpacity
+              style={langCardStyles.currentLangRow}
+              onPress={() => setShowLangPicker(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={{ fontSize: 24 }}>{currentLangInfo?.flag || '🌐'}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={langCardStyles.currentLangName}>{currentLangInfo?.name || nativeLanguage}</Text>
+                {currentLangInfo && currentLangInfo.nativeName !== currentLangInfo.name && (
+                  <Text style={langCardStyles.currentLangNative}>{currentLangInfo.nativeName}</Text>
+                )}
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={Colors.textLight} />
+            </TouchableOpacity>
+          </Card>
+
           {/* Profile Details */}
           <Card style={styles.card}>
             <View style={styles.cardHeader}>
@@ -426,36 +456,6 @@ export default function ProfileScreen() {
 
         {/* ── Right Column ─────────────────────────────── */}
         <View style={[styles.column, isWide && styles.columnRight]}>
-          {/* Native Language */}
-          <Card style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={[styles.cardIconWrap, { backgroundColor: 'rgba(16,185,129,0.12)' }]}>
-                <Ionicons name="language" size={18} color="#10B981" />
-              </View>
-              <Text style={styles.cardTitle}>Native Language</Text>
-              {savingLang && <ActivityIndicator size="small" color={Colors.highlight} />}
-            </View>
-
-            <Text style={{ fontSize: FontSize.sm, color: Colors.textLight, marginBottom: Spacing.md, lineHeight: 18 }}>
-              Your preferred language for meeting translations. All meetings will automatically translate to this language.
-            </Text>
-
-            <TouchableOpacity
-              style={langCardStyles.currentLangRow}
-              onPress={() => setShowLangPicker(true)}
-              activeOpacity={0.7}
-            >
-              <Text style={{ fontSize: 24 }}>{currentLangInfo?.flag || '🌐'}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={langCardStyles.currentLangName}>{currentLangInfo?.name || nativeLanguage}</Text>
-                {currentLangInfo && currentLangInfo.nativeName !== currentLangInfo.name && (
-                  <Text style={langCardStyles.currentLangNative}>{currentLangInfo.nativeName}</Text>
-                )}
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={Colors.textLight} />
-            </TouchableOpacity>
-          </Card>
-
           {/* Notification Settings */}
           <Card style={styles.card}>
             <View style={styles.cardHeader}>

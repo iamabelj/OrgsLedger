@@ -306,7 +306,7 @@ function FullMeetingOverlay() {
               <Text style={styles.connectingText}>Connecting to meeting...</Text>
               <Text style={styles.connectingHint}>Setting up your audio and video</Text>
             </View>
-          ) : lk.error && !lk.isConnected ? (
+          ) : lk.error && !lk.isConnected && gm.meeting?.status !== 'ended' ? (
             <View style={styles.connectingOverlay}>
               <Ionicons name="alert-circle" size={40} color={Colors.error} />
               <Text style={[styles.connectingText, { color: Colors.error }]}>Connection Error</Text>
