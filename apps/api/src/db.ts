@@ -1,5 +1,5 @@
 // ============================================================
-// OrgsLedger API — Database Connection
+// OrgsLedger API — Database Connection (Optimized)
 // ============================================================
 
 import Knex from 'knex';
@@ -21,11 +21,17 @@ export const db = Knex({
   connection,
   pool: {
     min: 2,
-    max: 10,
+    max: 20,                // ↑ from 10 — prevents pool exhaustion under load
+    acquireTimeoutMillis: 30000,  // Fail fast if pool is exhausted (30s)
+    createTimeoutMillis: 10000,   // Don't hang forever creating connections
+    idleTimeoutMillis: 30000,     // Release idle connections after 30s
+    reapIntervalMillis: 1000,     // Check for idle connections every 1s
+    propagateCreateError: false,  // Don't crash on transient connection errors
     afterCreate: (conn: any, done: any) => {
-      conn.query('SELECT 1', (err: any) => {
+      // Set statement timeout to 30s to prevent runaway queries
+      conn.query('SET statement_timeout = 30000', (err: any) => {
         if (err) {
-          logger.error('Database connection failed', { error: err.message });
+          logger.error('Database connection setup failed', { error: err.message });
         }
         done(err, conn);
       });
@@ -38,8 +44,24 @@ db.raw('SELECT 1')
   .then(() => logger.info('Database connected successfully'))
   .catch((err) => {
     logger.error('Database connection failed on startup', { error: err.message });
-    // Log but don't crash — let the fallback server handle diagnostics
     logger.error('App will continue but database queries will fail');
   });
+
+// ── Table Existence Cache ────────────────────────────────
+// Avoids expensive db.schema.hasTable() calls on every request
+const tableExistsCache = new Map<string, boolean>();
+
+export async function tableExists(tableName: string): Promise<boolean> {
+  const cached = tableExistsCache.get(tableName);
+  if (cached !== undefined) return cached;
+  const exists = await db.schema.hasTable(tableName);
+  tableExistsCache.set(tableName, exists);
+  return exists;
+}
+
+/** Call after creating a table at runtime to update cache */
+export function markTableExists(tableName: string): void {
+  tableExistsCache.set(tableName, true);
+}
 
 export default db;

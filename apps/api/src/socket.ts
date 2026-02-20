@@ -7,7 +7,7 @@ import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { config } from './config';
-import db from './db';
+import db, { tableExists } from './db';
 import { logger } from './logger';
 import { translateToMultiple, isTtsSupported } from './services/translation.service';
 import { getOrgSubscription, getTranslationWallet, deductTranslationWallet } from './services/subscription.service';
@@ -18,11 +18,31 @@ import { transcribeAudio, generateTTSAudio, isWhisperAvailable } from './service
 // meetingId -> Map<userId, { language, name, receiveVoice }>
 export const meetingLanguages = new Map<string, Map<string, { language: string; name: string; receiveVoice: boolean }>>();
 
-// Cache whether meeting_transcripts table exists (checked once on first insert)
-let transcriptTableExists: boolean | null = null;
+// ── Caches to avoid repeated DB queries ─────────────────
+// Meeting org_id cache (meetings rarely change org) — cleared on meeting end
+const meetingOrgCache = new Map<string, string>();
 
-// Cache whether user_language_preferences table exists
-let langPrefsTableExists: boolean | null = null;
+// User name cache (avoid DB lookup on every speech event)
+const userNameCache = new Map<string, { name: string; cachedAt: number }>();
+const USER_NAME_CACHE_TTL = 300_000; // 5 minutes
+
+function getCachedUserName(userId: string): string | null {
+  const entry = userNameCache.get(userId);
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt > USER_NAME_CACHE_TTL) {
+    userNameCache.delete(userId);
+    return null;
+  }
+  return entry.name;
+}
+
+function cacheUserName(userId: string, name: string): void {
+  if (userNameCache.size >= 500) {
+    const firstKey = userNameCache.keys().next().value;
+    if (firstKey) userNameCache.delete(firstKey);
+  }
+  userNameCache.set(userId, { name, cachedAt: Date.now() });
+}
 
 // Per-user rate limiter for translation:speech events (max 2 per second)
 const speechRateLimits = new Map<string, number>();
@@ -54,13 +74,8 @@ async function this_persistTranscript(
   translations: Record<string, string>
 ): Promise<void> {
   try {
-    // Check table existence once and cache result
-    if (transcriptTableExists === null) {
-      transcriptTableExists = await db.schema.hasTable('meeting_transcripts');
-      logger.info(`[TRANSLATION] meeting_transcripts table exists: ${transcriptTableExists}`);
-    }
-    if (!transcriptTableExists) {
-      logger.error('[TRANSLATION] ❌ meeting_transcripts table does not exist — transcripts will NOT be saved! Run migrations or restart server.');
+    if (!(await tableExists('meeting_transcripts'))) {
+      logger.error('[TRANSLATION] ❌ meeting_transcripts table does not exist');
       return;
     }
 
@@ -113,16 +128,24 @@ async function handleSpeechText(
 
   const langMap = meetingLanguages.get(meetingId);
 
-  // Get speaker name
+  // Get speaker name (cached)
   let speakerName = 'Unknown';
   const speaker = langMap?.get(userId);
   if (speaker?.name) {
     speakerName = speaker.name;
   } else {
-    try {
-      const user = await db('users').where({ id: userId }).select('first_name', 'last_name').first();
-      if (user) speakerName = `${user.first_name} ${user.last_name}`.trim();
-    } catch (_) { /* non-critical */ }
+    const cached = getCachedUserName(userId);
+    if (cached) {
+      speakerName = cached;
+    } else {
+      try {
+        const user = await db('users').where({ id: userId }).select('first_name', 'last_name').first();
+        if (user) {
+          speakerName = `${user.first_name} ${user.last_name}`.trim();
+          cacheUserName(userId, speakerName);
+        }
+      } catch (_) { /* non-critical */ }
+    }
   }
 
   logger.debug(`[TRANSCRIPT] Speech: speaker=${speakerName}, isFinal=${isFinal}, lang=${sourceLang}, len=${text.length}`);
@@ -152,13 +175,16 @@ async function handleSpeechText(
     logger.warn(`[TRANSLATION] No language map for meeting ${meetingId} — no one has set translation preferences`);
   }
 
-  // Look up organization_id
-  let organizationId: string | null = null;
-  try {
-    const meeting = await db('meetings').where({ id: meetingId }).select('organization_id').first();
-    organizationId = meeting?.organization_id || null;
-  } catch (lookupErr) {
-    logger.warn('[TRANSLATION] Failed to look up meeting org', lookupErr);
+  // Look up organization_id (cached per meeting)
+  let organizationId: string | null = meetingOrgCache.get(meetingId) || null;
+  if (!organizationId) {
+    try {
+      const meeting = await db('meetings').where({ id: meetingId }).select('organization_id').first();
+      organizationId = meeting?.organization_id || null;
+      if (organizationId) meetingOrgCache.set(meetingId, organizationId);
+    } catch (lookupErr) {
+      logger.warn('[TRANSLATION] Failed to look up meeting org', lookupErr);
+    }
   }
 
   try {
@@ -374,8 +400,10 @@ export function setupSocketIO(httpServer: HttpServer): Server {
         email: string;
       };
 
+      // Lightweight check — only select what we need
       const user = await db('users')
         .where({ id: payload.userId, is_active: true })
+        .select('id', 'global_role')
         .first();
       if (!user) {
         return next(new Error('User not found'));
@@ -427,14 +455,15 @@ export function setupSocketIO(httpServer: HttpServer): Server {
     // ── Channel Events ──────────────────────────────────
     socket.on('channel:join', async (channelId: string) => {
       try {
-        // Verify user is a member of this channel (or it's a general/announcement channel in an org they belong to)
-        const channel = await db('channels').where({ id: channelId }).first();
+        // Parallel: fetch channel + membership in one go
+        const [channel, memberships] = await Promise.all([
+          db('channels').where({ id: channelId }).select('id', 'organization_id', 'type').first(),
+          db('memberships').where({ user_id: userId, is_active: true }).select('organization_id'),
+        ]);
         if (!channel) return;
 
-        const membership = await db('memberships')
-          .where({ user_id: userId, organization_id: channel.organization_id, is_active: true })
-          .first();
-        if (!membership) {
+        const isMember = memberships.some((m: any) => m.organization_id === channel.organization_id);
+        if (!isMember) {
           socket.emit('error', { message: 'Not a member of this organization' });
           return;
         }
@@ -443,6 +472,7 @@ export function setupSocketIO(httpServer: HttpServer): Server {
         if (!['general', 'announcement'].includes(channel.type)) {
           const channelMember = await db('channel_members')
             .where({ channel_id: channelId, user_id: userId })
+            .select('user_id')
             .first();
           if (!channelMember) {
             socket.emit('error', { message: 'Not a member of this channel' });
@@ -491,8 +521,12 @@ export function setupSocketIO(httpServer: HttpServer): Server {
     // ── Meeting Events ──────────────────────────────────
     socket.on('meeting:join', async (meetingId: string) => {
       try {
-        // Verify user is a member of the meeting's organization
-        const meeting = await db('meetings').where({ id: meetingId }).select('organization_id', 'status').first();
+        // Parallel: fetch meeting + user + membership in one batch
+        const [meeting, user] = await Promise.all([
+          db('meetings').where({ id: meetingId }).select('organization_id', 'status').first(),
+          db('users').where({ id: userId }).select('first_name', 'last_name').first(),
+        ]);
+
         if (!meeting) {
           socket.emit('error', { message: 'Meeting not found' });
           return;
@@ -512,9 +546,10 @@ export function setupSocketIO(httpServer: HttpServer): Server {
           return;
         }
 
-        // Get user name for participant payload
-        const user = await db('users').where({ id: userId }).select('first_name', 'last_name').first();
         const name = user ? `${user.first_name} ${user.last_name}`.trim() : 'Unknown';
+        cacheUserName(userId, name);
+        // Cache meeting org_id
+        meetingOrgCache.set(meetingId, meeting.organization_id);
         const isModerator = ['org_admin', 'executive'].includes(membership.role);
 
         socket.join(`meeting:${meetingId}`);
@@ -529,17 +564,12 @@ export function setupSocketIO(httpServer: HttpServer): Server {
         });
 
         // ── Auto-load saved language preference for this user ──
-        // If user previously set a language in this org, auto-apply it
         try {
-          if (langPrefsTableExists === null) {
-            langPrefsTableExists = await db.schema.hasTable('user_language_preferences');
-          }
-          if (langPrefsTableExists) {
+          if (await tableExists('user_language_preferences')) {
             const pref = await db('user_language_preferences')
               .where({ user_id: userId, organization_id: meeting.organization_id })
               .first();
             if (pref?.preferred_language) {
-              // Set in memory map so translation routing works immediately
               if (!meetingLanguages.has(meetingId)) {
                 meetingLanguages.set(meetingId, new Map());
               }
@@ -549,21 +579,19 @@ export function setupSocketIO(httpServer: HttpServer): Server {
                 receiveVoice: pref.receive_voice !== false,
               });
 
-              // Notify the user of their auto-loaded language
               socket.emit('translation:language-restored', {
                 meetingId,
                 language: pref.preferred_language,
                 receiveVoice: pref.receive_voice !== false,
               });
 
-              // Broadcast updated participant languages
               const participants: Array<{ userId: string; name: string; language: string }> = [];
               meetingLanguages.get(meetingId)!.forEach((val, uid) => {
                 participants.push({ userId: uid, name: val.name, language: val.language });
               });
               io.to(`meeting:${meetingId}`).emit('translation:participants', { meetingId, participants });
 
-              logger.debug(`[TRANSLATION] Auto-loaded language ${pref.preferred_language} for user ${userId} in meeting ${meetingId}`);
+              logger.debug(`[TRANSLATION] Auto-loaded language ${pref.preferred_language} for user ${userId}`);
             }
           }
         } catch (prefErr) {
@@ -627,67 +655,63 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       const { meetingId, language, receiveVoice = true } = data;
       if (!meetingId || !language) return;
 
-      logger.debug(`[TRANSLATION] User ${userId} setting language to ${language} for meeting ${meetingId} (receiveVoice: ${receiveVoice})`);
+      logger.debug(`[TRANSLATION] User ${userId} setting language to ${language} for meeting ${meetingId}`);
 
-      // Get user's name
-      const user = await db('users').where({ id: userId }).select('first_name', 'last_name').first();
-      const name = user ? `${user.first_name} ${user.last_name}` : 'Unknown';
+      // Get user name (cached)
+      let name = getCachedUserName(userId);
+      if (!name) {
+        const user = await db('users').where({ id: userId }).select('first_name', 'last_name').first();
+        name = user ? `${user.first_name} ${user.last_name}` : 'Unknown';
+        cacheUserName(userId, name);
+      }
 
-      // Store in memory (per-user preference including voice toggle)
+      // Store in memory
       if (!meetingLanguages.has(meetingId)) {
         meetingLanguages.set(meetingId, new Map());
       }
       meetingLanguages.get(meetingId)!.set(userId, { language, name, receiveVoice });
 
-      // Persist to DB for future meetings
-      try {
-        const meeting = await db('meetings').where({ id: meetingId }).select('organization_id').first();
-        if (meeting?.organization_id) {
-          const hasTable = langPrefsTableExists !== null ? langPrefsTableExists : await db.schema.hasTable('user_language_preferences');
-          if (langPrefsTableExists === null) langPrefsTableExists = hasTable;
-          if (hasTable) {
-            await db('user_language_preferences')
-              .insert({
-                user_id: userId,
-                organization_id: meeting.organization_id,
-                preferred_language: language,
-                receive_voice: receiveVoice,
-                receive_text: true,
-              })
-              .onConflict(['user_id', 'organization_id'])
-              .merge({ preferred_language: language, receive_voice: receiveVoice });
-            logger.debug(`[TRANSLATION] Persisted language preference for user ${userId}: ${language}`);
-          }
-        }
-      } catch (prefErr) {
-        logger.warn('[TRANSLATION] Failed to persist user language preference', prefErr);
+      // Persist to DB (fire-and-forget, don't block response)
+      const orgId = meetingOrgCache.get(meetingId);
+      if (orgId) {
+        // Already cached — persist directly
+        (async () => {
+          try {
+            if (await tableExists('user_language_preferences')) {
+              await db('user_language_preferences')
+                .insert({ user_id: userId, organization_id: orgId, preferred_language: language, receive_voice: receiveVoice, receive_text: true })
+                .onConflict(['user_id', 'organization_id'])
+                .merge({ preferred_language: language, receive_voice: receiveVoice });
+            }
+          } catch (e) { logger.warn('[TRANSLATION] Failed to persist pref', e); }
+          writeAuditLog({ organizationId: orgId, userId, action: 'translation_session_start', entityType: 'meeting', entityId: meetingId, newValue: { language } }).catch(() => {});
+        })();
+      } else {
+        // Need to look up org_id
+        (async () => {
+          try {
+            const meeting = await db('meetings').where({ id: meetingId }).select('organization_id').first();
+            if (meeting?.organization_id) {
+              meetingOrgCache.set(meetingId, meeting.organization_id);
+              if (await tableExists('user_language_preferences')) {
+                await db('user_language_preferences')
+                  .insert({ user_id: userId, organization_id: meeting.organization_id, preferred_language: language, receive_voice: receiveVoice, receive_text: true })
+                  .onConflict(['user_id', 'organization_id'])
+                  .merge({ preferred_language: language, receive_voice: receiveVoice });
+              }
+              writeAuditLog({ organizationId: meeting.organization_id, userId, action: 'translation_session_start', entityType: 'meeting', entityId: meetingId, newValue: { language } }).catch(() => {});
+            }
+          } catch (e) { logger.warn('[TRANSLATION] Failed to persist pref', e); }
+        })();
       }
 
-      // Broadcast updated participant languages to everyone in the meeting
+      // Broadcast updated participant languages (immediate, no DB needed)
       const participants: Array<{ userId: string; name: string; language: string }> = [];
       meetingLanguages.get(meetingId)!.forEach((val, uid) => {
         participants.push({ userId: uid, name: val.name, language: val.language });
       });
-
-      io.to(`meeting:${meetingId}`).emit('translation:participants', {
-        meetingId,
-        participants,
-      });
-
+      io.to(`meeting:${meetingId}`).emit('translation:participants', { meetingId, participants });
       logger.debug(`User ${userId} set translation language to ${language} for meeting ${meetingId}`);
-
-      // Audit log for translation session start
-      const meetingForAudit = await db('meetings').where({ id: meetingId }).select('organization_id').first();
-      if (meetingForAudit?.organization_id) {
-        writeAuditLog({
-          organizationId: meetingForAudit.organization_id,
-          userId,
-          action: 'translation_session_start',
-          entityType: 'meeting',
-          entityId: meetingId,
-          newValue: { language, participantCount: participants.length },
-        }).catch(err => logger.warn('Audit log failed (translation session)', err));
-      }
     });
 
     // User sends spoken text for translation
@@ -812,24 +836,27 @@ export function setupSocketIO(httpServer: HttpServer): Server {
         if (!mid || !message || typeof message !== 'string') return;
 
         const trimmed = message.trim();
-        if (!trimmed || trimmed.length > 2000) return; // Reject empty or oversized messages
+        if (!trimmed || trimmed.length > 2000) return;
 
         // Verify user is in this meeting room
-        const rooms = socket.rooms;
-        if (!rooms.has(`meeting:${mid}`)) {
+        if (!socket.rooms.has(`meeting:${mid}`)) {
           socket.emit('chat:error', { message: 'Not in this meeting' });
           return;
         }
 
-        // Look up sender name
-        const user = await db('users').where({ id: userId }).select('first_name', 'last_name').first();
-        const senderName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : 'Unknown';
+        // Cached user name lookup
+        let senderName = getCachedUserName(userId);
+        if (!senderName) {
+          const user = await db('users').where({ id: userId }).select('first_name', 'last_name').first();
+          senderName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : 'Unknown';
+          cacheUserName(userId, senderName);
+        }
 
-        // Check table existence (cached)
-        const tableExists = await db.schema.hasTable('meeting_messages');
+        // Cached table existence check
+        const hasTable = await tableExists('meeting_messages');
         let msgId: string | null = null;
 
-        if (tableExists) {
+        if (hasTable) {
           const [row] = await db('meeting_messages')
             .insert({
               meeting_id: mid,
@@ -850,7 +877,6 @@ export function setupSocketIO(httpServer: HttpServer): Server {
           createdAt: new Date().toISOString(),
         };
 
-        // Broadcast to everyone in the meeting room (including sender)
         io.to(`meeting:${mid}`).emit('chat:new', payload);
         logger.debug(`[Chat] Message in meeting ${mid} from ${senderName}`);
       } catch (err) {
@@ -865,8 +891,8 @@ export function setupSocketIO(httpServer: HttpServer): Server {
         const mid = data?.meetingId;
         if (!mid) return;
 
-        const tableExists = await db.schema.hasTable('meeting_messages');
-        if (!tableExists) {
+        const hasTable = await tableExists('meeting_messages');
+        if (!hasTable) {
           if (typeof callback === 'function') callback({ messages: [] });
           return;
         }
@@ -999,8 +1025,9 @@ export async function forceDisconnectMeeting(
     s.leave(roomName);
   }
 
-  // Clean up translation session data for this meeting
+  // Clean up caches for this meeting
   meetingLanguages.delete(meetingId);
+  meetingOrgCache.delete(meetingId);
 
   logger.info(`Force-disconnected ${sockets.length} sockets from meeting ${meetingId}`);
 }

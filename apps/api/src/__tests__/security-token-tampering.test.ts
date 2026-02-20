@@ -40,7 +40,7 @@ jest.mock('../config', () => ({
 }));
 
 import { Request, Response, NextFunction } from 'express';
-import { authenticate } from '../middleware/auth';
+import { authenticate, clearUserCache } from '../middleware/auth';
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -63,7 +63,10 @@ function createRes() {
 // ── Tests ───────────────────────────────────────────────────
 
 describe('Token Tampering & JWT Security', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearUserCache();
+  });
 
   // ── Missing / Malformed Tokens ─────────────────────────
 
@@ -347,7 +350,7 @@ describe('Token Tampering & JWT Security', () => {
   // ── Token Reuse Check ──────────────────────────────────
 
   describe('Token state validation', () => {
-    it('should always re-verify user exists on each request (no caching)', async () => {
+    it('should always re-verify user exists on each request (cache-invalidated)', async () => {
       mockVerify.mockReturnValue({
         userId: 'user-1',
         email: 'test@test.com',
@@ -362,6 +365,9 @@ describe('Token Tampering & JWT Security', () => {
       await authenticate(req1, res1, next1);
       expect(next1).toHaveBeenCalled();
 
+      // Invalidate cache to simulate admin deactivating user
+      clearUserCache();
+
       // Second request — user deactivated between requests
       mockDbFirst.mockResolvedValueOnce(null);
       const req2 = createReq({ authorization: 'Bearer token' });
@@ -370,7 +376,7 @@ describe('Token Tampering & JWT Security', () => {
       await authenticate(req2, res2, next2);
       expect(res2._status).toBe(401);
 
-      // Proves each request re-checks DB — no stale cache
+      // Each request triggered a DB lookup (cache was invalidated)
       expect(mockDb).toHaveBeenCalledTimes(2);
     });
   });

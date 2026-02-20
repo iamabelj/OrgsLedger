@@ -17,6 +17,10 @@ declare global {
         }
     }
 }
+/** Invalidate cache for a user (call after password change, deactivation, etc.) */
+export declare function invalidateUserCache(userId: string): void;
+/** Clear entire user cache (used in tests) */
+export declare function clearUserCache(): void;
 export declare function authenticate(req: Request, res: Response, next: NextFunction): Promise<void>;
 /**
  * Load membership for the current user in the given organization.

@@ -1,5 +1,5 @@
 // ============================================================
-// OrgsLedger API — Authentication Middleware
+// OrgsLedger API — Authentication Middleware (Optimized)
 // ============================================================
 
 import { Request, Response, NextFunction } from 'express';
@@ -26,6 +26,52 @@ declare global {
       };
     }
   }
+}
+
+// ── In-Memory User Cache (avoids DB hit on every request) ──
+// TTL-based: entries expire after 60 seconds
+interface CachedUser {
+  is_active: boolean;
+  global_role: string;
+  password_changed_at: string | null;
+  cachedAt: number;
+}
+const USER_CACHE = new Map<string, CachedUser>();
+const USER_CACHE_TTL = 60_000; // 60 seconds
+const USER_CACHE_MAX = 500;    // Max entries to prevent memory leak
+
+function getCachedUser(userId: string): CachedUser | null {
+  const entry = USER_CACHE.get(userId);
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt > USER_CACHE_TTL) {
+    USER_CACHE.delete(userId);
+    return null;
+  }
+  return entry;
+}
+
+function cacheUser(userId: string, user: any): void {
+  // Evict oldest if at capacity
+  if (USER_CACHE.size >= USER_CACHE_MAX) {
+    const firstKey = USER_CACHE.keys().next().value;
+    if (firstKey) USER_CACHE.delete(firstKey);
+  }
+  USER_CACHE.set(userId, {
+    is_active: user.is_active,
+    global_role: user.global_role,
+    password_changed_at: user.password_changed_at,
+    cachedAt: Date.now(),
+  });
+}
+
+/** Invalidate cache for a user (call after password change, deactivation, etc.) */
+export function invalidateUserCache(userId: string): void {
+  USER_CACHE.delete(userId);
+}
+
+/** Clear entire user cache (used in tests) */
+export function clearUserCache(): void {
+  USER_CACHE.clear();
 }
 
 export async function authenticate(
@@ -65,12 +111,23 @@ export async function authenticate(
     // ── Normal app user JWT ──
     const payload = jwt.verify(token, config.jwt.secret) as AuthPayload & { iat?: number };
 
-    // Verify user still exists and is active
-    const user = await db('users')
-      .where({ id: payload.userId, is_active: true })
-      .first();
+    // Check cache first, then DB
+    let user = getCachedUser(payload.userId);
     if (!user) {
-      logger.warn('[AUTH] User not found or deactivated', { userId: payload.userId, email: payload.email });
+      const dbUser = await db('users')
+        .where({ id: payload.userId })
+        .select('is_active', 'global_role', 'password_changed_at')
+        .first();
+      if (!dbUser || !dbUser.is_active) {
+        logger.warn('[AUTH] User not found or deactivated', { userId: payload.userId });
+        res.status(401).json({ success: false, error: 'User not found or deactivated' });
+        return;
+      }
+      cacheUser(payload.userId, dbUser);
+      user = getCachedUser(payload.userId)!;
+    }
+
+    if (!user.is_active) {
       res.status(401).json({ success: false, error: 'User not found or deactivated' });
       return;
     }

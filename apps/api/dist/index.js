@@ -15,6 +15,7 @@ const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
+const compression_1 = __importDefault(require("compression"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const config_1 = require("./config");
@@ -76,6 +77,17 @@ const botManager = (0, bot_1.initBotManager)({ io, meetingLanguages: socket_1.me
 registry_1.services.register('botManager', botManager);
 // ── Global Middleware ─────────────────────────────────────
 app.use((0, helmet_1.default)());
+// Gzip/deflate compression — reduces response sizes by 60-80%
+app.use((0, compression_1.default)({
+    level: 6, // Balanced speed vs ratio
+    threshold: 1024, // Only compress responses > 1KB
+    filter: (req, res) => {
+        // Don't compress SSE or WebSocket upgrade requests
+        if (req.headers['accept'] === 'text/event-stream')
+            return false;
+        return compression_1.default.filter(req, res);
+    },
+}));
 app.use((0, cors_1.default)({
     origin: config_1.config.env === 'production'
         ? (process.env.CORS_ORIGINS || 'https://orgsledger.com,https://app.orgsledger.com').split(',')
@@ -86,9 +98,9 @@ app.use((0, cors_1.default)({
 app.use('/api/payments/webhooks/stripe', express_1.default.raw({ type: 'application/json' }));
 // Raw body for Paystack webhooks
 app.use('/api/payments/webhooks/paystack', express_1.default.raw({ type: 'application/json' }));
-// JSON parser for everything else
-app.use(express_1.default.json({ limit: '10mb' }));
-app.use(express_1.default.urlencoded({ extended: true }));
+// JSON parser — smaller default limit, documents/uploads get their own limits
+app.use(express_1.default.json({ limit: '2mb' }));
+app.use(express_1.default.urlencoded({ extended: true, limit: '2mb' }));
 // Rate limiting
 const limiter = (0, express_rate_limit_1.default)({
     windowMs: constants_1.RATE_LIMITS.GLOBAL.windowMs,
@@ -260,7 +272,7 @@ app.use(error_handler_1.globalErrorHandler); // Structured JSON error responses
 // may not have run them. Auto-create on startup to guarantee
 // transcripts, chat, and language preferences work.
 async function ensureMeetingTables() {
-    const { db } = require('./db');
+    const { db, tableExists: checkTable, markTableExists } = require('./db');
     try {
         // 1. meeting_transcripts (migration 021)
         if (!(await db.schema.hasTable('meeting_transcripts'))) {
@@ -281,6 +293,7 @@ async function ensureMeetingTables() {
             });
             logger_1.logger.info('[STARTUP] ✓ Created meeting_transcripts table');
         }
+        markTableExists('meeting_transcripts');
         // 2. user_language_preferences (migration 022)
         if (!(await db.schema.hasTable('user_language_preferences'))) {
             logger_1.logger.info('[STARTUP] Creating missing table: user_language_preferences');
@@ -297,6 +310,7 @@ async function ensureMeetingTables() {
             });
             logger_1.logger.info('[STARTUP] ✓ Created user_language_preferences table');
         }
+        markTableExists('user_language_preferences');
         // 3. meeting_messages (migration 025)
         if (!(await db.schema.hasTable('meeting_messages'))) {
             logger_1.logger.info('[STARTUP] Creating missing table: meeting_messages');
@@ -311,6 +325,7 @@ async function ensureMeetingTables() {
             await db.schema.raw('CREATE INDEX IF NOT EXISTS idx_meeting_messages_meeting_created ON meeting_messages (meeting_id, created_at)');
             logger_1.logger.info('[STARTUP] ✓ Created meeting_messages table');
         }
+        markTableExists('meeting_messages');
         // 4. meeting_minutes — add download_formats column if missing (migration 021 part 2)
         if (await db.schema.hasTable('meeting_minutes')) {
             const hasFormats = await db.schema.hasColumn('meeting_minutes', 'download_formats');
@@ -338,6 +353,9 @@ async function ensureMeetingTables() {
         logger_1.logger.info(`OrgsLedger API running on port ${config_1.config.port}`);
         logger_1.logger.info(`Environment: ${config_1.config.env}`);
         logger_1.logger.info(`Socket.io enabled`);
+        // Prevent 503s from stale connections / reverse proxy timeouts
+        server.keepAliveTimeout = 65_000; // Slightly above typical LB idle timeout (60s)
+        server.headersTimeout = 70_000; // Must be > keepAliveTimeout
         // Start recurring dues scheduler
         (0, scheduler_service_1.startScheduler)();
     });

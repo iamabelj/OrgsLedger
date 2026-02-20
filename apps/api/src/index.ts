@@ -10,6 +10,7 @@ import path from 'path';
 import fs from 'fs';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
 import { config } from './config';
@@ -77,6 +78,18 @@ services.register('botManager', botManager);
 
 // ── Global Middleware ─────────────────────────────────────
 app.use(helmet());
+
+// Gzip/deflate compression — reduces response sizes by 60-80%
+app.use(compression({
+  level: 6,                    // Balanced speed vs ratio
+  threshold: 1024,             // Only compress responses > 1KB
+  filter: (req, res) => {
+    // Don't compress SSE or WebSocket upgrade requests
+    if (req.headers['accept'] === 'text/event-stream') return false;
+    return compression.filter(req, res);
+  },
+}));
+
 app.use(cors({
   origin: config.env === 'production'
     ? (process.env.CORS_ORIGINS || 'https://orgsledger.com,https://app.orgsledger.com').split(',')
@@ -90,9 +103,9 @@ app.use('/api/payments/webhooks/stripe', express.raw({ type: 'application/json' 
 // Raw body for Paystack webhooks
 app.use('/api/payments/webhooks/paystack', express.raw({ type: 'application/json' }));
 
-// JSON parser for everything else
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+// JSON parser — smaller default limit, documents/uploads get their own limits
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -278,7 +291,7 @@ app.use(globalErrorHandler);     // Structured JSON error responses
 // may not have run them. Auto-create on startup to guarantee
 // transcripts, chat, and language preferences work.
 async function ensureMeetingTables(): Promise<void> {
-  const { db } = require('./db');
+  const { db, tableExists: checkTable, markTableExists } = require('./db');
   try {
     // 1. meeting_transcripts (migration 021)
     if (!(await db.schema.hasTable('meeting_transcripts'))) {
@@ -299,6 +312,7 @@ async function ensureMeetingTables(): Promise<void> {
       });
       logger.info('[STARTUP] ✓ Created meeting_transcripts table');
     }
+    markTableExists('meeting_transcripts');
 
     // 2. user_language_preferences (migration 022)
     if (!(await db.schema.hasTable('user_language_preferences'))) {
@@ -316,6 +330,7 @@ async function ensureMeetingTables(): Promise<void> {
       });
       logger.info('[STARTUP] ✓ Created user_language_preferences table');
     }
+    markTableExists('user_language_preferences');
 
     // 3. meeting_messages (migration 025)
     if (!(await db.schema.hasTable('meeting_messages'))) {
@@ -333,6 +348,7 @@ async function ensureMeetingTables(): Promise<void> {
       );
       logger.info('[STARTUP] ✓ Created meeting_messages table');
     }
+    markTableExists('meeting_messages');
 
     // 4. meeting_minutes — add download_formats column if missing (migration 021 part 2)
     if (await db.schema.hasTable('meeting_minutes')) {
@@ -364,6 +380,10 @@ async function ensureMeetingTables(): Promise<void> {
     logger.info(`OrgsLedger API running on port ${config.port}`);
     logger.info(`Environment: ${config.env}`);
     logger.info(`Socket.io enabled`);
+
+    // Prevent 503s from stale connections / reverse proxy timeouts
+    server.keepAliveTimeout = 65_000;  // Slightly above typical LB idle timeout (60s)
+    server.headersTimeout = 70_000;    // Must be > keepAliveTimeout
 
     // Start recurring dues scheduler
     startScheduler();
