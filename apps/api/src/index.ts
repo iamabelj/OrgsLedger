@@ -369,25 +369,36 @@ async function ensureMeetingTables(): Promise<void> {
 }
 
 // ── Start Server ──────────────────────────────────────────
-(async () => {
-  // Ensure super admin account exists on startup
-  await ensureSuperAdmin();
+// CRITICAL: Listen on the port FIRST so Hostinger's health check
+// doesn't time out and return 503. DB setup is done asynchronously.
+server.listen(config.port, '0.0.0.0', () => {
+  logger.info(`OrgsLedger API running on port ${config.port}`);
+  logger.info(`Environment: ${config.env}`);
+  logger.info(`Socket.io enabled`);
 
-  // Ensure critical meeting tables exist (auto-create if migrations weren't run)
-  await ensureMeetingTables();
+  // Prevent 503s from stale connections / reverse proxy timeouts
+  server.keepAliveTimeout = 65_000;  // Slightly above typical LB idle timeout (60s)
+  server.headersTimeout = 70_000;    // Must be > keepAliveTimeout
 
-  server.listen(config.port, '0.0.0.0', () => {
-    logger.info(`OrgsLedger API running on port ${config.port}`);
-    logger.info(`Environment: ${config.env}`);
-    logger.info(`Socket.io enabled`);
+  // Async DB initialization — runs after port is bound
+  (async () => {
+    try {
+      await ensureSuperAdmin();
+      logger.info('[STARTUP] Super admin verified');
+    } catch (err: any) {
+      logger.error('[STARTUP] ensureSuperAdmin failed (non-fatal):', err.message);
+    }
 
-    // Prevent 503s from stale connections / reverse proxy timeouts
-    server.keepAliveTimeout = 65_000;  // Slightly above typical LB idle timeout (60s)
-    server.headersTimeout = 70_000;    // Must be > keepAliveTimeout
+    try {
+      await ensureMeetingTables();
+      logger.info('[STARTUP] Meeting tables verified');
+    } catch (err: any) {
+      logger.error('[STARTUP] ensureMeetingTables failed (non-fatal):', err.message);
+    }
 
     // Start recurring dues scheduler
     startScheduler();
-  });
-})();
+  })();
+});
 
 export { app, server, io };

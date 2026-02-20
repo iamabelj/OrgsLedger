@@ -51,7 +51,7 @@ try {
       },
     }));
   });
-  server.listen(PORT, function() {
+  server.listen(PORT, '0.0.0.0', function() {
     console.log('[OrgsLedger] Fallback diagnostic server on port ' + PORT);
   });
 }

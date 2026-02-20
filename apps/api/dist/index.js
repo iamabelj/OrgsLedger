@@ -344,20 +344,33 @@ async function ensureMeetingTables() {
     }
 }
 // ── Start Server ──────────────────────────────────────────
-(async () => {
-    // Ensure super admin account exists on startup
-    await (0, seed_service_1.ensureSuperAdmin)();
-    // Ensure critical meeting tables exist (auto-create if migrations weren't run)
-    await ensureMeetingTables();
-    server.listen(config_1.config.port, '0.0.0.0', () => {
-        logger_1.logger.info(`OrgsLedger API running on port ${config_1.config.port}`);
-        logger_1.logger.info(`Environment: ${config_1.config.env}`);
-        logger_1.logger.info(`Socket.io enabled`);
-        // Prevent 503s from stale connections / reverse proxy timeouts
-        server.keepAliveTimeout = 65_000; // Slightly above typical LB idle timeout (60s)
-        server.headersTimeout = 70_000; // Must be > keepAliveTimeout
+// CRITICAL: Listen on the port FIRST so Hostinger's health check
+// doesn't time out and return 503. DB setup is done asynchronously.
+server.listen(config_1.config.port, '0.0.0.0', () => {
+    logger_1.logger.info(`OrgsLedger API running on port ${config_1.config.port}`);
+    logger_1.logger.info(`Environment: ${config_1.config.env}`);
+    logger_1.logger.info(`Socket.io enabled`);
+    // Prevent 503s from stale connections / reverse proxy timeouts
+    server.keepAliveTimeout = 65_000; // Slightly above typical LB idle timeout (60s)
+    server.headersTimeout = 70_000; // Must be > keepAliveTimeout
+    // Async DB initialization — runs after port is bound
+    (async () => {
+        try {
+            await (0, seed_service_1.ensureSuperAdmin)();
+            logger_1.logger.info('[STARTUP] Super admin verified');
+        }
+        catch (err) {
+            logger_1.logger.error('[STARTUP] ensureSuperAdmin failed (non-fatal):', err.message);
+        }
+        try {
+            await ensureMeetingTables();
+            logger_1.logger.info('[STARTUP] Meeting tables verified');
+        }
+        catch (err) {
+            logger_1.logger.error('[STARTUP] ensureMeetingTables failed (non-fatal):', err.message);
+        }
         // Start recurring dues scheduler
         (0, scheduler_service_1.startScheduler)();
-    });
-})();
+    })();
+});
 //# sourceMappingURL=index.js.map
