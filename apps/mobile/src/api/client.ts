@@ -45,10 +45,27 @@ class ApiClient {
       return config;
     });
 
-    // Response interceptor — handle token refresh
+    // Response interceptor — handle token refresh + startup retries
     this.client.interceptors.response.use(
       (response) => response,
       async (error) => {
+        const config = error.config;
+
+        // ── Retry on 503 (server starting up) ──
+        // Hostinger returns 503 or our loading handler returns it while API boots.
+        if (error.response?.status === 503 && (!config._retryCount || config._retryCount < 3)) {
+          config._retryCount = (config._retryCount || 0) + 1;
+          await new Promise(r => setTimeout(r, 1500 * config._retryCount));
+          return this.client(config);
+        }
+
+        // ── Detect HTML response (server proxy error page) ──
+        // If we got HTML instead of JSON, the server is likely down or restarting
+        if (!error.response && error.message?.includes('is not valid JSON')) {
+          error.message = 'Server is temporarily unavailable. Please try again in a moment.';
+          return Promise.reject(error);
+        }
+
         if (error.response?.status === 401) {
           const refreshToken = await storage.getItemAsync('refreshToken');
           if (refreshToken) {

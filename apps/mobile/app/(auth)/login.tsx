@@ -66,7 +66,11 @@ export default function LoginScreen() {
       await login(email.trim().toLowerCase(), password);
       router.replace('/(tabs)/home');
     } catch (err: any) {
-      showAlert('Login Failed', err.response?.data?.error || 'Invalid credentials');
+      const msg = err.response?.data?.error
+        || (err.message?.includes('not valid JSON') || err.message?.includes('unavailable')
+          ? 'Server is temporarily unavailable. Please try again in a moment.'
+          : 'Invalid credentials');
+      showAlert('Login Failed', msg);
     } finally {
       setLoading(false);
     }

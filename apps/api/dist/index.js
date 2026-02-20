@@ -54,7 +54,10 @@ const scheduler_service_1 = require("./services/scheduler.service");
 const seed_service_1 = require("./services/seed.service");
 const app = (0, express_1.default)();
 exports.app = app;
-const server = http_1.default.createServer(app);
+// Use pre-created server from server.js if available (production).
+// This ensures the port is already bound before this module loads.
+const preCreatedServer = global.__orgsServer;
+const server = preCreatedServer || http_1.default.createServer(app);
 exports.server = server;
 // Set up process-level error handlers (uncaughtException, unhandledRejection)
 (0, error_monitor_service_1.setupProcessErrorHandlers)();
@@ -344,9 +347,9 @@ async function ensureMeetingTables() {
     }
 }
 // ── Start Server ──────────────────────────────────────────
-// CRITICAL: Listen on the port FIRST so Hostinger's health check
-// doesn't time out and return 503. DB setup is done asynchronously.
-server.listen(config_1.config.port, '0.0.0.0', () => {
+// When launched via server.js (production), port is already bound.
+// When launched directly (dev), we bind here.
+function doPostStart() {
     logger_1.logger.info(`OrgsLedger API running on port ${config_1.config.port}`);
     logger_1.logger.info(`Environment: ${config_1.config.env}`);
     logger_1.logger.info(`Socket.io enabled`);
@@ -372,5 +375,17 @@ server.listen(config_1.config.port, '0.0.0.0', () => {
         // Start recurring dues scheduler
         (0, scheduler_service_1.startScheduler)();
     })();
-});
+}
+if (preCreatedServer) {
+    // Production: server.js already has the port bound.
+    // Just run post-start tasks immediately.
+    logger_1.logger.info('[STARTUP] Using pre-created server from server.js');
+    doPostStart();
+}
+else {
+    // Dev / standalone: bind the port ourselves.
+    server.listen(config_1.config.port, '0.0.0.0', () => {
+        doPostStart();
+    });
+}
 //# sourceMappingURL=index.js.map
