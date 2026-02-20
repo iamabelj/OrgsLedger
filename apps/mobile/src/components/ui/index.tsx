@@ -11,6 +11,7 @@ import {
   View,
   Text,
   TouchableOpacity,
+  Pressable,
   TextInput,
   ScrollView,
   StyleSheet,
@@ -111,19 +112,20 @@ export function Button({
   };
 
   return (
-    <TouchableOpacity
-      style={[
+    <Pressable
+      style={({ pressed }) => [
         styles.button,
         { backgroundColor: buttonBg[variant], paddingVertical: s.paddingVertical, paddingHorizontal: s.paddingHorizontal },
         variant === 'outline' && { borderWidth: 1.5, borderColor: Colors.highlight },
         variant === 'primary' && Shadow.gold,
         fullWidth && { width: '100%' },
         isDisabled && { opacity: 0.5 },
+        pressed && !isDisabled && { opacity: 0.7 },
+        Platform.OS === 'web' && ({ cursor: isDisabled ? 'default' : 'pointer' } as any),
         style,
       ]}
       onPress={onPress}
       disabled={isDisabled}
-      activeOpacity={0.7}
     >
       {loading ? (
         <ActivityIndicator size="small" color={textColor[variant]} />
@@ -134,7 +136,7 @@ export function Button({
           {iconRight && <Ionicons name={iconRight} size={iconSize} color={textColor[variant]} style={{ marginLeft: Spacing.xs }} />}
         </View>
       )}
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 

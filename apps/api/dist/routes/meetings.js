@@ -655,12 +655,16 @@ router.post('/:orgId/:meetingId/start', middleware_1.authenticate, middleware_1.
             io.to(`org:${req.params.orgId}`).emit('meeting:started', payload);
             io.to(`meeting:${req.params.meetingId}`).emit('meeting:started', payload);
         }
-        // Start transcription bot (best-effort, don't block response)
-        try {
-            const botManager = (0, bot_1.getBotManager)();
-            botManager.startMeetingBot(req.params.meetingId).catch((err) => logger_1.logger.warn('[MEETING_START] Transcription bot failed to start', { meetingId: req.params.meetingId, error: err.message }));
-        }
-        catch (_) { /* BotManager not initialized */ }
+        // Bot disabled — client-side Whisper handles transcription,
+        // translation, TTS, and persistence. The bot was causing
+        // duplicate transcripts and socket broadcasts.
+        // To re-enable, uncomment the block below:
+        // try {
+        //   const botManager = getBotManager();
+        //   botManager.startMeetingBot(req.params.meetingId).catch((err) =>
+        //     logger.warn('[MEETING_START] Transcription bot failed to start', { meetingId: req.params.meetingId, error: err.message })
+        //   );
+        // } catch (_) { /* BotManager not initialized */ }
         await req.audit?.({
             organizationId: req.params.orgId,
             action: 'update',

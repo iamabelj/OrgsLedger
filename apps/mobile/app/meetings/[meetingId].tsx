@@ -12,6 +12,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Pressable,
   ActivityIndicator,
   Platform,
   TextInput,
@@ -1357,11 +1358,15 @@ export default function MeetingDetailScreen() {
 
           {/* Join Button */}
           <View style={z.lobbyJoinRow}>
-            <TouchableOpacity
-              style={z.lobbyJoinVideoBtn}
+            <Pressable
+              style={({ pressed }) => [
+                z.lobbyJoinVideoBtn,
+                pressed && !joinLoading && { opacity: 0.7 },
+                joinLoading && { opacity: 0.5 },
+                Platform.OS === 'web' && ({ cursor: joinLoading ? 'default' : 'pointer' } as any),
+              ]}
               onPress={() => handleJoinMeeting()}
               disabled={joinLoading}
-              activeOpacity={0.7}
             >
               {joinLoading ? (
                 <ActivityIndicator color="#FFF" />
@@ -1371,7 +1376,7 @@ export default function MeetingDetailScreen() {
                   <Text style={z.lobbyJoinBtnText}>Join Meeting</Text>
                 </>
               )}
-            </TouchableOpacity>
+            </Pressable>
           </View>
 
           {/* Quick Actions */}

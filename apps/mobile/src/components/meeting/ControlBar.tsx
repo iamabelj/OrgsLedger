@@ -10,6 +10,7 @@ import {
   View,
   Text,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   Platform,
   useWindowDimensions,
@@ -100,11 +101,15 @@ function ControlBtn({
     : Colors.textSecondary;
 
   return (
-    <TouchableOpacity
-      style={[styles.controlBtn, compact && styles.controlBtnCompact]}
+    <Pressable
+      style={({ pressed }) => [
+        styles.controlBtn,
+        compact && styles.controlBtnCompact,
+        pressed && !disabled && { opacity: 0.7 },
+        Platform.OS === 'web' && ({ cursor: disabled ? 'default' : 'pointer' } as any),
+      ]}
       onPress={onPress}
       disabled={disabled}
-      activeOpacity={0.7}
     >
       <View style={[styles.controlIcon, compact && styles.controlIconCompact, { backgroundColor: bgColor }]}>
         <Ionicons name={icon} size={compact ? 16 : 20} color={iconColor} />
@@ -117,7 +122,7 @@ function ControlBtn({
       <Text style={[styles.controlLabel, { color: labelColor }]} numberOfLines={1}>
         {label}
       </Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
