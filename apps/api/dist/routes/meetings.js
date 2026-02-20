@@ -719,8 +719,7 @@ router.post('/:orgId/:meetingId/end', middleware_1.authenticate, middleware_1.lo
             botManager.stopMeetingBot(req.params.meetingId).catch((err) => logger_1.logger.warn('[MEETING_END] Transcription bot failed to stop', { meetingId: req.params.meetingId, error: err.message }));
         }
         catch (_) { /* BotManager not initialized */ }
-        // Always trigger AI minutes generation when transcripts exist
-        // (no manual toggle required — pipeline is always-on)
+        // Only trigger AI minutes generation if AI is enabled for this meeting
         {
             const hasAudio = !!meeting.audio_storage_url;
             let hasLiveTranscripts = false;
@@ -735,12 +734,18 @@ router.post('/:orgId/:meetingId/end', middleware_1.authenticate, middleware_1.lo
                 // Table may not exist yet — that's fine
                 hasLiveTranscripts = false;
             }
-            logger_1.logger.info('[MINUTES_PIPELINE] Auto-generate check', {
+            logger_1.logger.info('[MINUTES_PIPELINE] AI minutes check', {
                 meetingId: req.params.meetingId,
+                aiEnabled: meeting.ai_enabled,
                 hasAudio,
                 hasLiveTranscripts,
             });
-            if (hasAudio || hasLiveTranscripts) {
+            if (!meeting.ai_enabled) {
+                logger_1.logger.info('[MINUTES_PIPELINE] AI is disabled for this meeting — skipping minutes generation', {
+                    meetingId: req.params.meetingId,
+                });
+            }
+            else if (hasAudio || hasLiveTranscripts) {
                 // Notify that processing is starting
                 if (io) {
                     io.to(`org:${req.params.orgId}`).emit('meeting:minutes:processing', {

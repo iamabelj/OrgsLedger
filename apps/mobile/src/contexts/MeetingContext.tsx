@@ -400,24 +400,29 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
     resetMeeting();
   }, [orgId, meetingId, resetMeeting]);
 
+  const [endingMeeting, setEndingMeeting] = useState(false);
+
   const endMeeting = useCallback(async () => {
-    if (!orgId || !meetingId) return;
+    if (!orgId || !meetingId || endingMeeting) return;
     showAlert('End Meeting', 'Are you sure? All participants will be disconnected.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'End Meeting',
         style: 'destructive',
         onPress: async () => {
+          if (endingMeeting) return; // Guard against double-tap
+          setEndingMeeting(true);
           try {
             await api.meetings.end(orgId, meetingId);
             // Socket handler will trigger resetMeeting
           } catch (err: any) {
+            setEndingMeeting(false);
             showAlert('Error', err.response?.data?.error || 'Failed to end meeting');
           }
         },
       },
     ]);
-  }, [orgId, meetingId]);
+  }, [orgId, meetingId, endingMeeting]);
 
   const minimize = useCallback(() => setIsMinimized(true), []);
   const maximize = useCallback(() => setIsMinimized(false), []);

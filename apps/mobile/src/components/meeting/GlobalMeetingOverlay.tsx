@@ -161,11 +161,12 @@ function FullMeetingOverlay() {
   }, [gm.meetingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-start speech recognition once connected ──────
-  // Start transcription automatically so transcripts are captured
-  // without requiring the user to manually select a language.
+  // Only start transcription if AI is enabled for this meeting.
+  // When AI is disabled, no transcription/translation is captured.
   useEffect(() => {
     if (!lk.isConnected) return;
     if (translationListening) return; // already started
+    if (!gm.meeting?.ai_enabled) return; // AI disabled — skip auto-start
     // Small delay to let LiveTranslation mount and attach ref
     const timer = setTimeout(() => {
       if (translationRef.current && !translationListening) {
@@ -175,7 +176,7 @@ function FullMeetingOverlay() {
       }
     }, 1500);
     return () => clearTimeout(timer);
-  }, [lk.isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lk.isConnected, gm.meeting?.ai_enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Toggle sidebar panel ──────────────────────────────
   const handleToggleSidebar = useCallback((panel?: string) => {
