@@ -241,12 +241,23 @@ function FullMeetingOverlay() {
   }, [lk, gm]);
 
   // ── End Meeting ───────────────────────────────────────
+  // Don't disconnect LK or stop translation here — endMeeting() shows
+  // a confirmation dialog first. If user cancels, they stay connected.
+  // Cleanup happens reactively when meeting:ended event sets status='ended'.
   const handleEnd = useCallback(() => {
-    lk.disconnect();
-    translationRef.current?.stopListening();
-    setTranslationListening(false);
     gm.endMeeting();
-  }, [lk, gm]);
+  }, [gm]);
+
+  // ── Reactive cleanup when meeting ends ────────────────
+  // Triggered by meeting:ended socket event (status → 'ended') for ALL
+  // participants, not just the admin who clicked End.
+  useEffect(() => {
+    if (gm.meeting?.status === 'ended') {
+      lk.disconnect();
+      translationRef.current?.stopListening();
+      setTranslationListening(false);
+    }
+  }, [gm.meeting?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Minimize handler ──────────────────────────────────
   const handleMinimize = useCallback(() => {

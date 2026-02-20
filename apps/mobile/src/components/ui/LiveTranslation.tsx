@@ -419,22 +419,36 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
         audio.volume = ttsVolumeRef.current;
 
         audio.onended = () => {
+          console.debug('[TTS] ✓ Audio playback finished');
           URL.revokeObjectURL(url);
           ttsPlayingRef.current = false;
           playNextTTS(); // play next in queue
         };
-        audio.onerror = () => {
+        audio.onerror = (e) => {
+          console.warn('[TTS] Audio element error:', e);
           URL.revokeObjectURL(url);
           ttsPlayingRef.current = false;
           playNextTTS();
         };
 
-        audio.play().catch(() => {
+        audio.play().then(() => {
+          console.debug(`[TTS] ▶ Playing translated audio (${(raw.length / 1024).toFixed(1)}KB, vol=${audio.volume})`);
+        }).catch((err) => {
+          console.warn('[TTS] Audio play() blocked:', err?.message || err);
+          // Chrome autoplay policy may block — try unlocking with AudioContext
+          try {
+            const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            ctx.resume().then(() => {
+              audio.play().catch(() => {
+                console.warn('[TTS] Audio play() still blocked after AudioContext resume');
+              });
+            });
+          } catch (_) { /* AudioContext not available */ }
           ttsPlayingRef.current = false;
           playNextTTS();
         });
       } catch (err) {
-        console.warn('[TTS] Failed to play audio:', err);
+        console.warn('[TTS] Failed to decode/play audio:', err);
         ttsPlayingRef.current = false;
         playNextTTS();
       }
@@ -451,8 +465,12 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
     const unsubTTS = socketClient.on('tts:audio', (data: any) => {
       if (data.meetingId !== meetingId) return;
       if (data.speakerId === userId) return; // Don't play own speech
-      if (!speakEnabledRef.current) return;
+      if (!speakEnabledRef.current) {
+        console.debug('[TTS] Skipping — speakEnabled is false');
+        return;
+      }
 
+      console.debug(`[TTS] Received audio from ${data.speakerName} (${(data.audio?.length / 1024).toFixed(1)}KB base64)`);
       ttsQueueRef.current.push(data.audio);
       playNextTTS();
     });

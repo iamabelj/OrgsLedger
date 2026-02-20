@@ -142,11 +142,14 @@ async function handleSpeechText(
   // Collect target languages
   const targetLangs = new Set<string>();
   if (langMap) {
-    langMap.forEach((val) => {
+    langMap.forEach((val, uid) => {
       if (val.language !== sourceLang) {
         targetLangs.add(val.language);
       }
     });
+    logger.info(`[TRANSLATION] Meeting ${meetingId}: ${langMap.size} participant(s), sourceLang=${sourceLang}, targetLangs=[${[...targetLangs].join(',')}]`);
+  } else {
+    logger.warn(`[TRANSLATION] No language map for meeting ${meetingId} — no one has set translation preferences`);
   }
 
   // Look up organization_id
@@ -225,11 +228,13 @@ async function handleSpeechText(
 
     if (langMapForEmit) {
       const allSockets = await io.in(`meeting:${meetingId}`).fetchSockets();
+      logger.debug(`[TRANSLATION] Routing to ${langMapForEmit.size} user(s), ${allSockets.length} socket(s) in room`);
       for (const [targetUserId, prefs] of langMapForEmit.entries()) {
         if (targetUserId === userId) continue;
         const targetSocket = allSockets.find((s) => s.data?.userId === targetUserId);
         if (targetSocket) {
-          const wantsTts = isTtsSupported(prefs.language) && prefs.receiveVoice;
+          const ttsSupported = isTtsSupported(prefs.language);
+          const wantsTts = ttsSupported && prefs.receiveVoice;
           targetSocket.emit('translation:result', {
             meetingId,
             speakerId: userId,
@@ -241,10 +246,12 @@ async function handleSpeechText(
             ttsAvailable: wantsTts,
             userLang: prefs.language,
           });
-          logger.debug(`[TRANSLATION] Emitted to user ${targetUserId} (lang=${prefs.language}, tts=${wantsTts})`);
+          logger.info(`[TRANSLATION] → user ${targetUserId} (lang=${prefs.language}, ttsSupported=${ttsSupported}, receiveVoice=${prefs.receiveVoice}, willTTS=${wantsTts})`);
           if (wantsTts) {
             ttsTargets.push({ userId: targetUserId, language: prefs.language });
           }
+        } else {
+          logger.warn(`[TRANSLATION] Socket not found for user ${targetUserId} in meeting room`);
         }
       }
     }
@@ -264,6 +271,7 @@ async function handleSpeechText(
     // ── Fire-and-forget: generate server-side TTS audio ──
     // Group by language so we generate only one audio per language
     if (ttsTargets.length > 0) {
+      logger.info(`[TTS] Generating audio for ${ttsTargets.length} target(s): ${ttsTargets.map(t => `${t.userId}:${t.language}`).join(', ')}`);
       const ttsGroups = new Map<string, string[]>(); // language → userId[]
       for (const t of ttsTargets) {
         const arr = ttsGroups.get(t.language) || [];
@@ -276,10 +284,15 @@ async function handleSpeechText(
           const allSocks = await io.in(`meeting:${meetingId}`).fetchSockets();
           for (const [lang, userIds] of ttsGroups.entries()) {
             const ttsText = translations[lang] || text;
-            if (!ttsText.trim()) continue;
+            if (!ttsText.trim()) {
+              logger.warn(`[TTS] Empty text for lang=${lang}, skipping`);
+              continue;
+            }
             try {
+              logger.debug(`[TTS] Generating audio: lang=${lang}, textLen=${ttsText.length}, text="${ttsText.slice(0, 60)}..."`);
               const audioBuffer = await generateTTSAudio(ttsText);
               const audioBase64 = audioBuffer.toString('base64');
+              logger.info(`[TTS] ✓ Generated ${(audioBuffer.length / 1024).toFixed(1)}KB mp3 for lang=${lang}`);
               for (const uid of userIds) {
                 const sock = allSocks.find((s) => s.data?.userId === uid);
                 if (sock) {
@@ -290,17 +303,21 @@ async function handleSpeechText(
                     audio: audioBase64,
                     format: 'mp3',
                   });
+                  logger.info(`[TTS] ✓ Sent audio to user ${uid} (lang=${lang}, ${(audioBase64.length / 1024).toFixed(1)}KB base64)`);
+                } else {
+                  logger.warn(`[TTS] ✗ Socket not found for user ${uid} — they may have left`);
                 }
               }
-              logger.debug(`[TTS] Sent audio for lang=${lang} to ${userIds.length} user(s)`);
             } catch (ttsErr: any) {
-              logger.warn(`[TTS] Failed to generate for lang=${lang}: ${ttsErr.message}`);
+              logger.error(`[TTS] ✗ Failed to generate for lang=${lang}: ${ttsErr.message}`);
             }
           }
         } catch (outerErr) {
           logger.error('[TTS] Async TTS generation failed:', outerErr);
         }
       })();
+    } else {
+      logger.debug(`[TTS] No TTS targets (all same language or no receiveVoice) for meeting=${meetingId}`);
     }
   } catch (err) {
     logger.error('[TRANSCRIPT] Translation pipeline failed', err);
