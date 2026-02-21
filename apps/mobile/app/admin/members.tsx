@@ -59,6 +59,7 @@ interface Member {
   last_name: string;
   email: string;
   joined_at: string;
+  avatar_url?: string;
 }
 
 export default function MembersScreen() {
@@ -282,7 +283,7 @@ export default function MembersScreen() {
     return (
       <Card style={styles.memberCard}>
         <View style={styles.memberRow}>
-          <Avatar name={fullName} size={44} color={isCurrentUser ? Colors.highlight : Colors.primaryMid} />
+          <Avatar name={fullName} size={44} color={isCurrentUser ? Colors.highlight : Colors.primaryMid} imageUrl={item.avatar_url} />
           <View style={styles.memberInfo}>
             <View style={styles.memberNameRow}>
               <Text style={styles.memberName}>{fullName}</Text>

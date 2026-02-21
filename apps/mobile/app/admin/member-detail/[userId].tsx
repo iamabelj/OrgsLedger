@@ -213,7 +213,7 @@ export default function MemberDetailScreen() {
 
       {/* Profile Header */}
       <View style={styles.profileHeader}>
-        <Avatar name={member.fullName} size={80} />
+        <Avatar name={member.fullName} size={80} imageUrl={member.avatarUrl} />
         <Text style={styles.profileName}>{member.fullName}</Text>
         <Text style={styles.profileEmail}>{member.email}</Text>
         {member.phone && (

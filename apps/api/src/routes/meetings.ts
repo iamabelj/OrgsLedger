@@ -443,7 +443,8 @@ router.get(
           'meeting_attendance.*',
           'users.first_name',
           'users.last_name',
-          'users.email'
+          'users.email',
+          'users.avatar_url'
         );
 
       const votes = await db('votes')

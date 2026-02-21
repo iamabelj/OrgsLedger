@@ -127,7 +127,7 @@ function ParticipantModal({
               {participants.map((p, i) => (
                 <View key={p.userId || i} style={z.participantRow}>
                   <View style={[z.participantDot, { backgroundColor: '#34D399' }]} />
-                  <Avatar name={p.name?.[0]?.toUpperCase() || '?'} size={32} />
+                  <Avatar name={p.name?.[0]?.toUpperCase() || '?'} size={32} imageUrl={p.avatar} />
                   <View style={{ flex: 1, marginLeft: Spacing.sm }}>
                     <Text style={z.participantName}>{p.name}</Text>
                     {p.isModerator && <Text style={z.moderatorBadge}>Moderator</Text>}
@@ -150,7 +150,7 @@ function ParticipantModal({
                 return (
                   <View key={a.id || a.user_id} style={z.participantRow}>
                     <View style={[z.participantDot, { backgroundColor: a.status === 'present' ? '#34D399' : Colors.warning }]} />
-                    <Avatar name={initials} size={32} />
+                    <Avatar name={initials} size={32} imageUrl={a.avatar_url} />
                     <Text style={[z.participantName, { flex: 1, marginLeft: Spacing.sm }]}>
                       {a.first_name || a.user_id} {a.last_name || ''}
                     </Text>
@@ -1484,7 +1484,7 @@ export default function MeetingDetailScreen() {
             const initials = `${(a.first_name?.[0] || '?').toUpperCase()}${(a.last_name?.[0] || '').toUpperCase()}`;
             return (
               <View key={a.id || a.user_id} style={z.attendeeRow}>
-                <Avatar name={initials} size={32} />
+                <Avatar name={initials} size={32} imageUrl={a.avatar_url} />
                 <Text style={z.attendeeName}>{a.first_name || a.user_id} {a.last_name || ''}</Text>
                 <Badge variant={a.status === 'present' ? 'success' : 'warning'} label={a.status === 'present' ? 'Present' : 'Late'} />
               </View>

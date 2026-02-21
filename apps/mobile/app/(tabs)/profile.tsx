@@ -684,13 +684,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   avatarImage: {
-    width: 86,
-    height: 86,
+    width: '100%',
+    height: '100%',
     borderRadius: 43,
   },
   avatarInitials: {
-    width: 86,
-    height: 86,
+    width: '100%',
+    height: '100%',
     borderRadius: 43,
     backgroundColor: Colors.primaryMid,
     alignItems: 'center',

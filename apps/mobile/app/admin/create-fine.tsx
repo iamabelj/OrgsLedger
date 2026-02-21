@@ -27,6 +27,7 @@ interface Member {
   fullName: string;
   email: string;
   role: string;
+  avatarUrl?: string;
 }
 
 export default function CreateFineScreen() {
@@ -60,6 +61,7 @@ export default function CreateFineScreen() {
         fullName: m.fullName || `${m.first_name || ''} ${m.last_name || ''}`.trim() || 'Unknown',
         email: m.email || '',
         role: m.role || 'member',
+        avatarUrl: m.avatar_url || m.avatarUrl || undefined,
       }));
       setMembers(normalized);
     } catch (err) {
@@ -143,7 +145,7 @@ export default function CreateFineScreen() {
           <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
             {isSelected && <Ionicons name="checkmark" size={14} color={Colors.primary} />}
           </View>
-          <Avatar name={item.fullName} size={38} />
+          <Avatar name={item.fullName} size={38} imageUrl={item.avatarUrl} />
           <View>
             <Text style={styles.memberName}>{item.fullName}</Text>
             <Text style={styles.memberEmail}>{item.email}</Text>

@@ -48,6 +48,7 @@ interface Member {
   fullName: string;
   email: string;
   role: string;
+  avatarUrl?: string;
 }
 
 const COMMITTEE_ROLES = ['Chair', 'Vice-Chair', 'Secretary', 'Member'] as const;
@@ -99,6 +100,7 @@ export default function CommitteesScreen() {
         fullName: m.fullName || m.full_name || `${m.first_name || ''} ${m.last_name || ''}`.trim() || m.name || 'Unknown',
         email: m.email || '',
         role: m.role || 'member',
+        avatarUrl: m.avatar_url || m.avatarUrl || undefined,
       }));
       setMembers(normalized);
     } catch (err) {
@@ -334,7 +336,7 @@ export default function CommitteesScreen() {
                     if (!member) return null;
                     return (
                       <View key={sm.userId} style={styles.selectedMemberRow}>
-                        <Avatar name={member.fullName} size={34} />
+                        <Avatar name={member.fullName} size={34} imageUrl={member.avatarUrl} />
                         <View style={styles.selectedMemberInfo}>
                           <Text style={styles.selectedMemberName} numberOfLines={1}>
                             {member.fullName}
@@ -395,7 +397,7 @@ export default function CommitteesScreen() {
                       activeOpacity={0.7}
                       onPress={() => toggleMember(member.id)}
                     >
-                      <Avatar name={member.fullName} size={34} />
+                      <Avatar name={member.fullName} size={34} imageUrl={member.avatarUrl} />
                       <View style={styles.memberItemInfo}>
                         <Text style={styles.memberItemName}>{member.fullName}</Text>
                         <Text style={styles.memberItemEmail}>{member.email}</Text>
@@ -467,7 +469,7 @@ export default function CommitteesScreen() {
                     }
                   }}
                 >
-                  <Avatar name={member.fullName} size={38} />
+                  <Avatar name={member.fullName} size={38} imageUrl={member.avatarUrl} />
                   <View style={styles.memberItemInfo}>
                     <Text style={styles.memberItemName}>{member.fullName}</Text>
                     <Text style={styles.memberItemEmail}>{member.email}</Text>

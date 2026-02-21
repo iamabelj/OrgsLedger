@@ -6,10 +6,11 @@
 // beyond React Native and the theme constants.
 // ============================================================
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
+  Image,
   TouchableOpacity,
   Pressable,
   TextInput,
@@ -174,14 +175,31 @@ export function Badge({ label, variant = 'neutral', size = 'sm' }: BadgeProps) {
 // ────────────────────────────────────────────────────────────
 // AVATAR — User initials / image placeholder
 // ────────────────────────────────────────────────────────────
+
+/** Resolve a potentially-relative avatar path to a full URL */
+function resolveAvatarUrl(url?: string | null): string | null {
+  if (!url) return null;
+  if (url.startsWith('http')) return url;
+  // Relative path like /uploads/avatars/xxx.jpg — prepend origin
+  const origin =
+    Platform.OS === 'web' && typeof window !== 'undefined' && window.location
+      ? window.location.origin
+      : __DEV__
+        ? 'http://localhost:3000'
+        : 'https://app.orgsledger.com';
+  return `${origin}${url}`;
+}
+
 interface AvatarProps {
   name?: string;
   size?: number;
   color?: string;
+  imageUrl?: string | null;
   style?: ViewStyle;
 }
 
-export function Avatar({ name = '?', size = 44, color, style }: AvatarProps) {
+export function Avatar({ name = '?', size = 44, color, imageUrl, style }: AvatarProps) {
+  const [imgError, setImgError] = useState(false);
   const initials = name
     .split(' ')
     .map((n) => n[0])
@@ -191,9 +209,23 @@ export function Avatar({ name = '?', size = 44, color, style }: AvatarProps) {
 
   const bg = color || Colors.highlight;
   const fontSize = size * 0.38;
+  const radius = size / 2;
+  const resolved = resolveAvatarUrl(imageUrl);
+
+  if (resolved && !imgError) {
+    return (
+      <View style={[styles.avatar, { width: size, height: size, borderRadius: radius, backgroundColor: bg, overflow: 'hidden' }, style]}>
+        <Image
+          source={{ uri: resolved }}
+          style={{ width: size, height: size, borderRadius: radius }}
+          onError={() => setImgError(true)}
+        />
+      </View>
+    );
+  }
 
   return (
-    <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: bg }, style]}>
+    <View style={[styles.avatar, { width: size, height: size, borderRadius: radius, backgroundColor: bg }, style]}>
       <Text style={[styles.avatarText, { fontSize }]}>{initials}</Text>
     </View>
   );

@@ -221,7 +221,7 @@ export default function ChannelMessagesScreen() {
     const initials = `${(item.senderFirstName?.[0] || '?').toUpperCase()}${(item.senderLastName?.[0] || '').toUpperCase()}`;
     return (
       <View style={[styles.messageRow, isOwn && styles.messageRowOwn]}>
-        {!isOwn && <Avatar name={initials} size={32} />}
+        {!isOwn && <Avatar name={initials} size={32} imageUrl={item.senderAvatar} />}
         <View style={[styles.messageBubble, isOwn ? styles.ownBubble : styles.otherBubble]}>
           {!isOwn && (
             <Text style={styles.senderName}>
