@@ -435,7 +435,7 @@ function FullMeetingOverlay() {
         isAdmin={gm.isAdmin}
         aiEnabled={gm.meeting?.ai_enabled ?? false}
         onToggleMic={lk.toggleMic}
-        onToggleCamera={gm.isAudioOnly ? gm.toggleAudioOnly : lk.toggleCamera}
+        onToggleCamera={gm.isAudioOnly ? async () => { gm.toggleAudioOnly(); await lk.toggleCamera(); } : lk.toggleCamera}
         onToggleScreenShare={lk.toggleScreenShare}
         onToggleTranscription={handleToggleTranscription}
         onToggleRecording={handleToggleRecording}

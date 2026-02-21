@@ -700,7 +700,7 @@ export default function MeetingDetailScreen() {
 
       // Also set local state for backward compat
       setJoinConfig(cfg);
-      setVideoEnabled(joinType === 'video');
+      setVideoEnabled(true);
       setAudioEnabled(true);
       setShowVideo(true);
     } catch (err: any) {

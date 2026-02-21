@@ -29,7 +29,6 @@ export declare class RealtimeSession {
     private transcriptsReceived;
     private transcriptsPersisted;
     private sessionOpenedAt;
-    private readonly AUDIO_LOG_INTERVAL;
     private readonly meetingId;
     private readonly organizationId;
     private readonly speakerId;
@@ -48,23 +47,21 @@ export declare class RealtimeSession {
     close(): void;
     get isClosed(): boolean;
     /**
-     * Send session.update to configure OpenAI Realtime for
-     * transcription-only mode with server-side VAD.
-     * We disable model responses entirely — only Whisper transcription is used.
+     * Configure OpenAI Realtime for transcription-only mode.
+     * Key design decisions:
+     *  - modalities: ['text'] — no audio output
+     *  - instructions: stay silent, never respond
+     *  - input_audio_transcription: whisper-1 (the ONLY transcript source)
+     *  - turn_detection: server_vad for automatic speech segmentation
+     *  - max_response_output_tokens: 1 — minimise wasted model tokens
      */
     private configureSession;
-    /** Send a base64-encoded PCM16 audio chunk to OpenAI. */
     private sendAudio;
-    /** Parse incoming OpenAI Realtime events. */
     private handleMessage;
-    /**
-     * Save a final transcript segment to DB and trigger the
-     * translation/broadcast callback.
-     */
-    private handleTranscript;
+    private persistAndBroadcast;
     private handleDisconnect;
     private startTimers;
     private resetSilenceTimer;
-    private sendEvent;
+    private send;
 }
 //# sourceMappingURL=realtimeSession.d.ts.map

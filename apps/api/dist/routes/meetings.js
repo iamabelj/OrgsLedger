@@ -496,13 +496,16 @@ router.post('/:orgId/:meetingId/join', middleware_1.authenticate, middleware_1.l
         // 8. Determine moderator status
         //    - Meeting creator = always moderator
         //    - Org admins/executives = moderator (fallback when creator leaves)
+        //    - Super admins and developers = always moderator (god-mode)
         const membership = await (0, db_1.default)('memberships')
             .where({ user_id: userId, organization_id: orgId, is_active: true })
             .select('role')
             .first();
         const isCreator = meeting.created_by === userId;
         const isOrgAdmin = membership && ['org_admin', 'executive'].includes(membership.role);
-        const isModerator = isCreator || !!isOrgAdmin;
+        const userGlobalRole = req.user?.globalRole;
+        const isSuperUser = userGlobalRole === 'super_admin' || userGlobalRole === 'developer';
+        const isModerator = isCreator || !!isOrgAdmin || isSuperUser;
         // 9. Determine meeting type (allow per-request override to 'audio')
         const meetingType = joinType === 'audio' ? 'audio' : (meeting.meeting_type || 'video');
         // 10. Generate room name (deterministic, tenant-isolated)
