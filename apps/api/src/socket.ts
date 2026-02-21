@@ -15,8 +15,8 @@ import { writeAuditLog } from './middleware/audit';
 import { transcribeAudio, generateTTSAudio, isWhisperAvailable } from './services/whisper.service';
 
 // In-memory store for meeting translation sessions
-// meetingId -> Map<userId, { language, name, receiveVoice, platform }>
-export const meetingLanguages = new Map<string, Map<string, { language: string; name: string; receiveVoice: boolean; platform: string }>>();
+// meetingId -> Map<userId, { language, name, receiveVoice }>
+export const meetingLanguages = new Map<string, Map<string, { language: string; name: string; receiveVoice: boolean }>>();
 
 // ── Caches to avoid repeated DB queries ─────────────────
 // Meeting org_id cache (meetings rarely change org) — cleared on meeting end
@@ -260,9 +260,7 @@ async function handleSpeechText(
         const targetSocket = allSockets.find((s) => s.data?.userId === targetUserId);
         if (targetSocket) {
           const ttsSupported = isTtsSupported(prefs.language);
-          // Only generate server-side TTS for web users; mobile uses device-native TTS
-          const isWebUser = (prefs.platform || 'web') === 'web';
-          const wantsTts = ttsSupported && prefs.receiveVoice && isWebUser;
+          const wantsTts = ttsSupported && prefs.receiveVoice;
           targetSocket.emit('translation:result', {
             meetingId,
             speakerId: userId,
@@ -274,7 +272,7 @@ async function handleSpeechText(
             ttsAvailable: wantsTts,
             userLang: prefs.language,
           });
-          logger.info(`[TRANSLATION] → user ${targetUserId} (lang=${prefs.language}, platform=${prefs.platform || 'web'}, ttsSupported=${ttsSupported}, receiveVoice=${prefs.receiveVoice}, willTTS=${wantsTts})`);
+          logger.info(`[TRANSLATION] → user ${targetUserId} (lang=${prefs.language}, ttsSupported=${ttsSupported}, receiveVoice=${prefs.receiveVoice}, willTTS=${wantsTts})`);
           if (wantsTts) {
             ttsTargets.push({ userId: targetUserId, language: prefs.language });
           }
@@ -579,7 +577,6 @@ export function setupSocketIO(httpServer: HttpServer): Server {
                 language: pref.preferred_language,
                 name,
                 receiveVoice: pref.receive_voice !== false,
-                platform: 'web', // Default; client will update via translation:set-language
               });
 
               socket.emit('translation:language-restored', {
@@ -654,8 +651,8 @@ export function setupSocketIO(httpServer: HttpServer): Server {
 
     // ── Live Translation System ─────────────────────────
     // User sets their preferred language for a meeting
-    socket.on('translation:set-language', async (data: { meetingId: string; language: string; receiveVoice?: boolean; platform?: string }) => {
-      const { meetingId, language, receiveVoice = true, platform = 'web' } = data;
+    socket.on('translation:set-language', async (data: { meetingId: string; language: string; receiveVoice?: boolean }) => {
+      const { meetingId, language, receiveVoice = true } = data;
       if (!meetingId || !language) return;
 
       logger.debug(`[TRANSLATION] User ${userId} setting language to ${language} for meeting ${meetingId}`);
@@ -672,7 +669,7 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       if (!meetingLanguages.has(meetingId)) {
         meetingLanguages.set(meetingId, new Map());
       }
-      meetingLanguages.get(meetingId)!.set(userId, { language, name, receiveVoice, platform });
+      meetingLanguages.get(meetingId)!.set(userId, { language, name, receiveVoice });
 
       // Persist to DB (fire-and-forget, don't block response)
       const orgId = meetingOrgCache.get(meetingId);

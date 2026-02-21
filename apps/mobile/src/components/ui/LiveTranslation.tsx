@@ -15,7 +15,6 @@ import {
   Animated,
   TextInput,
 } from 'react-native';
-import * as Speech from 'expo-speech';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../theme';
 import { socketClient } from '../../api/socket';
@@ -208,20 +207,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
       storeAddTranslation(entry);
       storeSetInterimText('');
 
-      // ── Platform-specific TTS ──
-      // Web: TTS handled server-side — audio arrives via 'tts:audio' event
-      // Mobile: Use device-native TTS (expo-speech) — no server audio needed
-      if (Platform.OS !== 'web' && speakEnabledRef.current && data.speakerId !== userId) {
-        // Use device-native TTS on mobile
-        const langCode = SPEECH_CODES[myLang as keyof typeof SPEECH_CODES] || myLang;
-        Speech.speak(translated, {
-          language: langCode,
-          rate: 0.95,
-          pitch: 1.0,
-          volume: ttsVolumeRef.current,
-          onError: (err) => console.warn('[TTS-Native] Speech error:', err),
-        });
-      }
+      // TTS is handled server-side now — audio arrives via 'tts:audio' event
 
       // Auto-scroll
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
@@ -270,12 +256,11 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
     setShowLanguagePicker(false);
     setHasChosenLanguage(true);
     setLangSearch('');
-    // Send receiveVoice preference along with language and platform
+    // Send receiveVoice preference along with language
     socketClient.emit('translation:set-language', {
       meetingId,
       language: lang,
       receiveVoice: speakEnabledRef.current,
-      platform: Platform.OS,
     });
     storeSetMyLanguage(lang);
   }, [meetingId]);
@@ -290,7 +275,6 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
           meetingId,
           language: myLanguage,
           receiveVoice: speakEnabledRef.current,
-          platform: Platform.OS,
         });
       }
     }, 500); // Give language-restored event 500ms to arrive
@@ -476,9 +460,8 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
     }
   }, []);
 
-  // ── TTS socket event listener (web only — server-side Google TTS) ──
+  // ── TTS socket event listener ──────────────────────────
   useEffect(() => {
-    if (Platform.OS !== 'web') return; // Mobile uses device-native TTS, not server audio
     const unsubTTS = socketClient.on('tts:audio', (data: any) => {
       if (data.meetingId !== meetingId) return;
       if (data.speakerId === userId) return; // Don't play own speech
@@ -501,10 +484,6 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
       stopListening();
       ttsQueueRef.current = [];
       ttsPlayingRef.current = false;
-      // Stop any native TTS on unmount
-      if (Platform.OS !== 'web') {
-        Speech.stop();
-      }
     };
   }, []);
 
@@ -559,21 +538,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
             <View style={styles.actionButtons}>
               <TouchableOpacity
                 style={[styles.ttsButton, speakEnabled && styles.ttsActive]}
-                onPress={() => {
-                  const next = !speakEnabled;
-                  setSpeakEnabled(next);
-                  // Notify server so it knows whether to generate TTS for this user
-                  socketClient.emit('translation:set-language', {
-                    meetingId,
-                    language: myLanguage,
-                    receiveVoice: next,
-                    platform: Platform.OS,
-                  });
-                  // Stop any in-progress native speech when disabling
-                  if (!next && Platform.OS !== 'web') {
-                    Speech.stop();
-                  }
-                }}
+                onPress={() => setSpeakEnabled(!speakEnabled)}
                 activeOpacity={0.7}
               >
                 <Ionicons name={speakEnabled ? 'volume-high' : 'volume-mute'} size={18} color={speakEnabled ? Colors.highlight : Colors.textLight} />
