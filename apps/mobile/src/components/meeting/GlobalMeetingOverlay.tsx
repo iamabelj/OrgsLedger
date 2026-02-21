@@ -25,6 +25,7 @@ import { ChatDrawer } from './ChatDrawer';
 import { MiniMeetingWidget } from './MiniMeetingWidget';
 import LiveTranslation, { type LiveTranslationRef } from '../ui/LiveTranslation';
 import { socketClient } from '../../api/socket';
+import { api } from '../../api/client';
 import { showAlert } from '../../utils/alert';
 
 // ── Recording Indicator ───────────────────────────────────
@@ -203,6 +204,35 @@ function FullMeetingOverlay() {
       showAlert('Recording', 'Recording started');
     }
   }, [isRecording]);
+
+  // ── Toggle AI ─────────────────────────────────────────
+  const aiEnabled = gm.meeting?.ai_enabled ?? false;
+
+  const handleToggleAi = useCallback(async () => {
+    if (!gm.meetingId || !gm.meeting?.organization_id) return;
+    try {
+      const res = await api.meetings.toggleAi(gm.meeting.organization_id, gm.meetingId);
+      const newState = res.data?.data?.aiEnabled ?? !aiEnabled;
+      // Update the local meeting object so UI reflects the change
+      gm.setMeeting({ ...gm.meeting, ai_enabled: newState });
+
+      // Start/stop speech recognition accordingly
+      if (newState) {
+        if (translationRef.current && !translationListening) {
+          translationRef.current.startListening();
+          setTranslationListening(true);
+        }
+      } else {
+        if (translationRef.current && translationListening) {
+          translationRef.current.stopListening();
+          setTranslationListening(false);
+        }
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.error || 'Failed to toggle AI';
+      showAlert('AI Toggle', msg);
+    }
+  }, [gm, aiEnabled, translationListening]);
 
   // ── Leave handler ─────────────────────────────────────
   const handleLeave = useCallback(() => {
@@ -412,6 +442,7 @@ function FullMeetingOverlay() {
         isScreenSharing={lk.isScreenSharing}
         isChatOpen={gm.isChatOpen}
         unreadChatCount={gm.unreadChatCount}
+        isAiEnabled={aiEnabled}
         isRecording={isRecording || gm.isRecordingFromSocket}
         handRaised={handRaised}
         isSidebarOpen={sidebarOpen}
@@ -422,6 +453,7 @@ function FullMeetingOverlay() {
         onToggleCamera={gm.isAudioOnly ? gm.toggleAudioOnly : lk.toggleCamera}
         onToggleScreenShare={lk.toggleScreenShare}
         onToggleChat={gm.toggleChat}
+        onToggleAi={handleToggleAi}
         onToggleRecording={handleToggleRecording}
         onRaiseHand={handleRaiseHand}
         onToggleSidebar={handleToggleSidebar}

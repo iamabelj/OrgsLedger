@@ -45,8 +45,6 @@ export default function CreateMeetingScreen() {
   const [loading, setLoading] = useState(false);
   const [recurringPattern, setRecurringPattern] = useState<string>('none');
   const [meetingType, setMeetingType] = useState<'video' | 'audio'>('video');
-  const [aiEnabled] = useState(true);
-  const [translationEnabled] = useState(true);
 
   const addAgendaItem = () => {
     setAgendaItems([...agendaItems, { title: '', duration: '10' }]);
@@ -114,8 +112,8 @@ export default function CreateMeetingScreen() {
         scheduledStart,
         recurringPattern,
         meetingType,
-        aiEnabled,
-        translationEnabled,
+        aiEnabled: true,
+        translationEnabled: true,
         agendaItems: filteredAgenda.length > 0 ? filteredAgenda : undefined,
       });
 
@@ -218,29 +216,6 @@ export default function CreateMeetingScreen() {
           </View>
         ))}
 
-        {/* AI Meeting Minutes */}
-        <SectionHeader title="AI Services" />
-        <View style={styles.aiRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.aiLabel}>AI-Powered Minutes</Text>
-            <Text style={styles.aiHint}>
-              Auto-generates summary, decisions, and action items when the meeting ends.
-            </Text>
-          </View>
-          <Ionicons name="checkmark-circle" size={22} color={Colors.success} />
-        </View>
-
-        {/* Live Translation */}
-        <View style={styles.aiRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.aiLabel}>Live Translation</Text>
-            <Text style={styles.aiHint}>
-              Members speak their language and hear others in theirs. 100+ languages supported.
-            </Text>
-          </View>
-          <Ionicons name="checkmark-circle" size={22} color={Colors.success} />
-        </View>
-
         <View style={{ height: Spacing.md }} />
         <Button title={loading ? 'Creating...' : 'Create Meeting'} onPress={handleCreate} disabled={loading} variant="primary" />
         <View style={{ height: Spacing.xxl }} />
@@ -295,29 +270,5 @@ const styles = StyleSheet.create({
   },
   recurChipText: { fontSize: FontSize.sm, color: Colors.textSecondary },
   recurChipTextActive: { color: Colors.highlight, fontWeight: FontWeight.semibold as any },
-  aiRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Spacing.sm,
-    gap: Spacing.md,
-  },
-  aiLabel: {
-    fontSize: FontSize.md,
-    fontWeight: FontWeight.semibold as any,
-    color: Colors.textWhite,
-  },
-  aiHint: {
-    fontSize: FontSize.xs,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  aiNote: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-    backgroundColor: Colors.highlightSubtle,
-    padding: Spacing.sm,
-    borderRadius: BorderRadius.md,
-  },
-  aiNoteText: { flex: 1, color: Colors.highlight, fontSize: FontSize.xs },
+
 });
