@@ -1,9 +1,9 @@
 // ============================================================
 // OrgsLedger — Realtime Session (per-speaker)
-// Clean rewrite: connects to OpenAI Realtime API via WebSocket,
-// streams PCM16 audio, uses ONLY Whisper transcription.
-// Model responses are actively cancelled — the bot is a
-// completely silent member that only transcribes.
+// Connects to OpenAI Realtime API via WebSocket, streams
+// buffered PCM16 audio, and persists final transcripts to DB.
+// After each DB insert it triggers translateAndBroadcast so
+// other meeting participants receive the translated text.
 // ============================================================
 
 import WebSocket from 'ws';
@@ -38,10 +38,9 @@ export interface TranscriptRow {
 // ── Constants ────────────────────────────────────────────────
 
 const OPENAI_REALTIME_URL = 'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17';
-const SILENCE_TIMEOUT_MS = 10 * 60 * 1000;        // 10 min — close if no transcript
+const SILENCE_TIMEOUT_MS = 10 * 60 * 1000;        // 10 minutes — close if no transcript
 const MAX_SESSION_DURATION_MS = 2 * 60 * 60 * 1000; // 2 hours hard cap
-const MAX_RECONNECT_ATTEMPTS = 2;
-const CONNECT_TIMEOUT_MS = 15_000;
+const MAX_RECONNECT_ATTEMPTS = 1;                   // One reconnect attempt max
 
 // ── Realtime Session ─────────────────────────────────────────
 
@@ -54,13 +53,13 @@ export class RealtimeSession {
   private maxDurationTimer: ReturnType<typeof setTimeout> | null = null;
   private lastTranscriptAt: number = Date.now();
 
-  // Stats
+  // ── LAYER 3.3 / 4.1 / 8 — Counters for debugging & cost control
   private audioChunksSent = 0;
   private transcriptsReceived = 0;
   private transcriptsPersisted = 0;
-  private sessionOpenedAt = 0;
+  private sessionOpenedAt: number = 0;
+  private readonly AUDIO_LOG_INTERVAL = 200; // Log every N chunks
 
-  // Config
   private readonly meetingId: string;
   private readonly organizationId: string;
   private readonly speakerId: string;
@@ -81,7 +80,7 @@ export class RealtimeSession {
       this.sendAudio(pcm16Base64);
     });
 
-    logger.info(`[RealtimeSession] Created: speaker=${this.speakerName} (${this.speakerId}), meeting=${this.meetingId}`);
+    logger.info(`[RealtimeSession] Created for speaker=${this.speakerName} (${this.speakerId}) meeting=${this.meetingId}`);
   }
 
   // ── Public API ──────────────────────────────────────────
@@ -92,7 +91,7 @@ export class RealtimeSession {
 
     const apiKey = config.ai.openaiApiKey;
     if (!apiKey) {
-      logger.error('[RealtimeSession] OPENAI_API_KEY not set — cannot start transcription');
+      logger.error('[RealtimeSession] OPENAI_API_KEY not configured — cannot start transcription');
       return;
     }
 
@@ -105,32 +104,35 @@ export class RealtimeSession {
       });
 
       this.ws.on('open', () => {
+        // ── LAYER 3.1 — WebSocket successfully opens ────
         this.sessionOpenedAt = Date.now();
-        logger.info(`[RealtimeSession] Connected: speaker=${this.speakerName}, meeting=${this.meetingId}`);
+        logger.info(`[Realtime] Session opened for speaker ${this.speakerId} (name=${this.speakerName}, meeting=${this.meetingId})`);
         this.configureSession();
         this.startTimers();
         resolve();
       });
 
-      this.ws.on('message', (data) => this.handleMessage(data));
+      this.ws.on('message', (data) => {
+        this.handleMessage(data);
+      });
 
       this.ws.on('error', (err) => {
-        logger.error(`[RealtimeSession] WS error: speaker=${this.speakerId}, err=${(err as any)?.message || err}`);
+        logger.error(`[Realtime] WebSocket ERROR for speaker ${this.speakerId}: meeting=${this.meetingId}, error=${(err as any)?.message || err}`);
         this.handleDisconnect();
       });
 
       this.ws.on('close', (code, reason) => {
-        logger.warn(`[RealtimeSession] WS closed: speaker=${this.speakerId}, code=${code}, reason=${reason?.toString() || 'none'}`);
+        logger.warn(`[Realtime] WebSocket CLOSED for speaker ${this.speakerId}: meeting=${this.meetingId}, code=${code}, reason=${reason?.toString() || 'none'}`);
         this.handleDisconnect();
       });
 
-      // Timeout guard
+      // Reject after 10s if connection hangs
       setTimeout(() => {
         if (this.ws?.readyState !== WebSocket.OPEN) {
           reject(new Error('OpenAI Realtime connection timeout'));
           this.close();
         }
-      }, CONNECT_TIMEOUT_MS);
+      }, 10_000);
     });
   }
 
@@ -140,6 +142,7 @@ export class RealtimeSession {
    */
   pushAudio(audio: Float32Array | Buffer): void {
     if (this.closed) return;
+
     if (audio instanceof Float32Array) {
       this.audioProcessor.pushFloat32(audio);
     } else {
@@ -152,20 +155,30 @@ export class RealtimeSession {
     if (this.closed) return;
     this.closed = true;
 
-    const dur = this.sessionOpenedAt ? ((Date.now() - this.sessionOpenedAt) / 1000).toFixed(1) : '0';
-    logger.info(`[RealtimeSession] Closing: speaker=${this.speakerId}, chunks=${this.audioChunksSent}, transcripts=${this.transcriptsReceived}, persisted=${this.transcriptsPersisted}, duration=${dur}s`);
+    // ── LAYER 7.1 + 8 — Session lifecycle summary ─────
+    const sessionDurationSec = this.sessionOpenedAt ? ((Date.now() - this.sessionOpenedAt) / 1000).toFixed(1) : '0';
+    logger.info(`[Realtime] Closing session for ${this.speakerId}: meeting=${this.meetingId}, audioChunksSent=${this.audioChunksSent}, transcriptsReceived=${this.transcriptsReceived}, transcriptsPersisted=${this.transcriptsPersisted}, sessionDuration=${sessionDurationSec}s`);
 
+    // Flush remaining audio
     this.audioProcessor.close();
+
+    // Clear timers
     if (this.silenceTimer) clearTimeout(this.silenceTimer);
     if (this.maxDurationTimer) clearTimeout(this.maxDurationTimer);
 
+    // Close WebSocket
     if (this.ws) {
       try {
         if (this.ws.readyState === WebSocket.OPEN) {
-          this.send({ type: 'input_audio_buffer.commit' });
+          // Commit any buffered audio before closing
+          this.sendEvent({
+            type: 'input_audio_buffer.commit',
+          });
         }
         this.ws.close(1000, 'session_end');
-      } catch (_) { /* ignore */ }
+      } catch (e) {
+        // Ignore close errors
+      }
       this.ws = null;
     }
   }
@@ -177,130 +190,174 @@ export class RealtimeSession {
   // ── Session Configuration ───────────────────────────────
 
   /**
-   * Configure OpenAI Realtime for transcription-only mode.
-   * Key design decisions:
-   *  - modalities: ['text'] — no audio output
-   *  - instructions: stay silent, never respond
-   *  - input_audio_transcription: whisper-1 (the ONLY transcript source)
-   *  - turn_detection: server_vad for automatic speech segmentation
-   *  - max_response_output_tokens: 1 — minimise wasted model tokens
+   * Send session.update to configure OpenAI Realtime for
+   * transcription-only mode with server-side VAD.
    */
   private configureSession(): void {
-    this.send({
+    this.sendEvent({
       type: 'session.update',
       session: {
+        // Text modality only — we don't want AI-generated audio back
         modalities: ['text'],
-        instructions: 'Do not respond. Do not output any text. You are used solely for audio transcription via the input_audio_transcription feature. Stay completely silent. Output nothing.',
+        instructions: 'You are a transcription assistant. Repeat back exactly what the speaker says. Do not add commentary, do not translate, do not summarize. Output the verbatim spoken text only.',
         input_audio_format: 'pcm16',
-        input_audio_transcription: { model: 'whisper-1' },
+        // Enable Whisper transcription of input audio (PRIMARY source)
+        input_audio_transcription: {
+          model: 'whisper-1',
+        },
+        // Server-side VAD for silence detection
         turn_detection: {
           type: 'server_vad',
           threshold: 0.5,
           prefix_padding_ms: 300,
           silence_duration_ms: 500,
         },
+        // Allow enough tokens for model fallback transcription
         temperature: 0.0,
-        max_response_output_tokens: 1,
+        max_response_output_tokens: 500,
       },
     });
-    logger.info(`[RealtimeSession] Session configured: speaker=${this.speakerId}, whisper-1, server_vad`);
+
+    // ── LAYER 3.2 — Confirm session.update sent ────────
+    logger.info(`[Realtime] Session configured for speaker ${this.speakerId}: format=pcm16, sampleRate=24kHz, vad=server_vad(threshold=0.5, silence=500ms), model=whisper-1`);
   }
 
   // ── Audio Sending ───────────────────────────────────────
 
+  /** Send a base64-encoded PCM16 audio chunk to OpenAI. */
   private sendAudio(pcm16Base64: string): void {
     if (this.closed || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
-    this.send({ type: 'input_audio_buffer.append', audio: pcm16Base64 });
+    this.sendEvent({
+      type: 'input_audio_buffer.append',
+      audio: pcm16Base64,
+    });
 
+    // ── LAYER 3.3 — Audio chunk send counter ──────────
     this.audioChunksSent++;
     if (this.audioChunksSent === 1) {
-      logger.info(`[RealtimeSession] First audio chunk sent: speaker=${this.speakerId}`);
-    } else if (this.audioChunksSent % 200 === 0) {
-      logger.debug(`[RealtimeSession] Audio chunks: ${this.audioChunksSent}, speaker=${this.speakerId}`);
+      logger.info(`[Realtime] First audio chunk sent for speaker ${this.speakerId} (bytes=${Buffer.from(pcm16Base64, 'base64').length})`);
+    }
+    if (this.audioChunksSent % this.AUDIO_LOG_INTERVAL === 0) {
+      logger.info(`[Realtime] Sent ${this.audioChunksSent} audio chunks for speaker ${this.speakerId}`);
     }
   }
 
   // ── Message Handling ────────────────────────────────────
 
+  /** Parse incoming OpenAI Realtime events. */
   private handleMessage(raw: WebSocket.Data): void {
     try {
       const event = JSON.parse(raw.toString());
 
       switch (event.type) {
-        // ─── Session lifecycle ───────────────────────
         case 'session.created':
-          logger.info(`[RealtimeSession] OpenAI session created: speaker=${this.speakerId}`);
+          logger.info(`[Realtime] Session created by OpenAI: speaker=${this.speakerId}, sessionId=${event.session?.id || 'unknown'}`);
           break;
 
         case 'session.updated':
-          logger.info(`[RealtimeSession] Session updated: speaker=${this.speakerId}`);
+          logger.info(`[Realtime] Session updated by OpenAI: speaker=${this.speakerId}`);
           break;
 
-        // ─── Whisper transcription (ONLY transcript source) ──
+        // ── PRIMARY — Whisper transcription of user's audio input ──
         case 'conversation.item.input_audio_transcription.completed':
           this.transcriptsReceived++;
           if (event.transcript?.trim()) {
             const text = event.transcript.trim();
             if (text.length < 3) {
-              logger.debug(`[RealtimeSession] Short transcript filtered (<3 chars): speaker=${this.speakerId}`);
+              logger.debug(`[Realtime] Filtered short Whisper transcript (<3 chars) for ${this.speakerId}: "${text}"`);
               break;
             }
-            logger.info(`[RealtimeSession] Transcript: speaker=${this.speakerName}, text="${text.slice(0, 80)}${text.length > 80 ? '...' : ''}"`);
-            this.persistAndBroadcast(text);
+            logger.info(`[Realtime] Whisper transcript for ${this.speakerId}: "${text.slice(0, 80)}${text.length > 80 ? '...' : ''}" (len=${text.length}, total=${this.transcriptsReceived})`);
+            this.handleTranscript(text);
+          } else {
+            logger.debug(`[Realtime] Empty Whisper transcript for speaker=${this.speakerId} (total=${this.transcriptsReceived})`);
           }
+          break;
+
+        // ── FALLBACK — Model-generated text response ───────────────
+        case 'response.done': {
+          let modelText = '';
+          if (event.response?.output?.length) {
+            for (const item of event.response.output) {
+              if (item.content?.length) {
+                for (const content of item.content) {
+                  if (content.type === 'text' && content.text) {
+                    modelText += content.text;
+                  }
+                }
+              }
+            }
+          }
+          modelText = modelText.trim();
+          if (modelText && modelText.length >= 3) {
+            // Only use model text if Whisper didn't already provide a transcript
+            // for this turn (check via timing — if last transcript was >2s ago)
+            const sinceLastTranscript = Date.now() - this.lastTranscriptAt;
+            if (sinceLastTranscript > 2000) {
+              logger.info(`[Realtime] Using model text as fallback transcript for ${this.speakerId}: "${modelText.slice(0, 80)}..." (sinceLastTranscript=${sinceLastTranscript}ms)`);
+              this.transcriptsReceived++;
+              this.handleTranscript(modelText);
+            } else {
+              logger.debug(`[Realtime] Ignoring model text (Whisper already delivered): speaker=${this.speakerId}`);
+            }
+          }
+          break;
+        }
+
+        case 'input_audio_buffer.speech_started':
+          logger.debug(`[Realtime] VAD speech started: speaker=${this.speakerId}`);
+          break;
+
+        case 'input_audio_buffer.speech_stopped':
+          logger.debug(`[Realtime] VAD speech stopped: speaker=${this.speakerId}`);
+          break;
+
+        case 'input_audio_buffer.committed':
+          logger.debug(`[Realtime] Audio buffer committed: speaker=${this.speakerId}`);
           break;
 
         case 'conversation.item.input_audio_transcription.failed':
-          logger.error(`[RealtimeSession] Whisper FAILED: speaker=${this.speakerId}, error=${JSON.stringify(event.error || {})}`);
+          logger.error(`[Realtime] Whisper transcription FAILED for ${this.speakerId}: ${JSON.stringify(event.error || {})}`);
           break;
 
-        // ─── VAD events (debug only) ────────────────
-        case 'input_audio_buffer.speech_started':
-        case 'input_audio_buffer.speech_stopped':
-        case 'input_audio_buffer.committed':
+        case 'error':
+          logger.error(`[Realtime] OpenAI error for ${this.speakerId}: code=${event.error?.code}, message=${event.error?.message}`);
           break;
 
-        // ─── Model response events — CANCEL immediately ──
-        // The bot is a silent member. We actively cancel every
-        // model response to prevent any AI-generated output.
         case 'response.created':
-          if (event.response?.id) {
-            this.send({ type: 'response.cancel' });
-          }
-          break;
-
-        // All other model response lifecycle events — silently ignore
-        case 'response.done':
         case 'response.output_item.added':
         case 'response.content_part.added':
         case 'response.output_item.done':
         case 'response.text.delta':
         case 'response.text.done':
-        case 'response.cancelled':
         case 'conversation.item.created':
-          break;
-
-        case 'error':
-          logger.error(`[RealtimeSession] OpenAI error: speaker=${this.speakerId}, code=${event.error?.code}, msg=${event.error?.message}`);
+          logger.debug(`[Realtime] Event: ${event.type} for speaker=${this.speakerId}`);
           break;
 
         default:
+          logger.debug(`[Realtime] Unhandled event: ${event.type} for speaker=${this.speakerId}`);
           break;
       }
     } catch (err) {
-      logger.warn(`[RealtimeSession] Parse error: speaker=${this.speakerName}`, err);
+      logger.warn(`[RealtimeSession] Failed to parse message: speaker=${this.speakerName}`, err);
     }
   }
 
   // ── Transcript Persistence ──────────────────────────────
 
-  private async persistAndBroadcast(text: string): Promise<void> {
+  /**
+   * Save a final transcript segment to DB and trigger the
+   * translation/broadcast callback.
+   */
+  private async handleTranscript(text: string): Promise<void> {
     const now = Date.now();
     this.lastTranscriptAt = now;
     this.resetSilenceTimer();
 
-    // Persist to DB
+    logger.info(`[STT_PIPELINE] Transcript persisting: speaker=${this.speakerName}, meeting=${this.meetingId}, text="${text.slice(0, 80)}..."`);
+
+    // ── LAYER 5.1 — Persist to meeting_transcripts table ─
     try {
       const inserted = await db('meeting_transcripts').insert({
         meeting_id: this.meetingId,
@@ -312,10 +369,11 @@ export class RealtimeSession {
         translations: JSON.stringify({}),
         spoken_at: now,
       });
+
       this.transcriptsPersisted++;
-      logger.info(`[RealtimeSession] Saved: id=${inserted?.[0] || '?'}, speaker=${this.speakerName}, total=${this.transcriptsPersisted}`);
+      logger.info(`[DB] Transcript saved: id=${inserted?.[0] || 'unknown'}, meeting=${this.meetingId}, speaker=${this.speakerName}, totalPersisted=${this.transcriptsPersisted}`);
     } catch (dbErr) {
-      logger.error(`[RealtimeSession] DB insert failed: speaker=${this.speakerName}, err=${(dbErr as any)?.message}`);
+      logger.error(`[DB] Transcript insert FAILED: speaker=${this.speakerName}, meeting=${this.meetingId}, error=${(dbErr as any)?.message}`);
     }
 
     // Trigger translation + broadcast callback
@@ -345,9 +403,9 @@ export class RealtimeSession {
 
     if (this.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
       this.reconnectAttempts++;
-      const delay = 2000 * this.reconnectAttempts; // 2s, 4s
-      logger.info(`[RealtimeSession] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}): speaker=${this.speakerName}`);
+      logger.info(`[RealtimeSession] Reconnecting (attempt ${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}): speaker=${this.speakerName}`);
 
+      // Wait 2 seconds before reconnecting
       setTimeout(() => {
         if (!this.closed) {
           this.connect().catch((err) => {
@@ -355,19 +413,22 @@ export class RealtimeSession {
             this.close();
           });
         }
-      }, delay);
+      }, 2000);
     } else {
-      logger.warn(`[RealtimeSession] Max reconnects reached, closing: speaker=${this.speakerName}`);
+      logger.warn(`[RealtimeSession] Max reconnect attempts reached, closing: speaker=${this.speakerName}`);
       this.close();
     }
   }
 
-  // ── Timers ──────────────────────────────────────────────
+  // ── Safety Timers ───────────────────────────────────────
 
   private startTimers(): void {
+    // Silence timer: close session if no transcript for 10 minutes
     this.resetSilenceTimer();
+
+    // Hard limit: close session after 2 hours regardless
     this.maxDurationTimer = setTimeout(() => {
-      logger.warn(`[RealtimeSession] Max duration (2h) reached, closing: speaker=${this.speakerName}`);
+      logger.warn(`[RealtimeSession] Max session duration reached (2h), closing: speaker=${this.speakerName}`);
       this.close();
     }, MAX_SESSION_DURATION_MS);
   }
@@ -375,14 +436,14 @@ export class RealtimeSession {
   private resetSilenceTimer(): void {
     if (this.silenceTimer) clearTimeout(this.silenceTimer);
     this.silenceTimer = setTimeout(() => {
-      logger.warn(`[RealtimeSession] Silence timeout (10 min), closing: speaker=${this.speakerName}`);
+      logger.warn(`[RealtimeSession] No transcript for 10 minutes, closing: speaker=${this.speakerName}`);
       this.close();
     }, SILENCE_TIMEOUT_MS);
   }
 
   // ── Helpers ─────────────────────────────────────────────
 
-  private send(event: Record<string, any>): void {
+  private sendEvent(event: Record<string, any>): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(event));
     }

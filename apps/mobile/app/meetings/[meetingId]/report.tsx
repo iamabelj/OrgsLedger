@@ -127,7 +127,7 @@ export default function MeetingReportScreen() {
             const initials = `${(a.first_name?.[0] || '?').toUpperCase()}${(a.last_name?.[0] || '').toUpperCase()}`;
             return (
               <View key={a.id || a.user_id} style={s.attendeeRow}>
-                <Avatar name={initials} size={32} imageUrl={a.avatar_url} />
+                <Avatar name={initials} size={32} />
                 <Text style={s.attendeeName}>{a.first_name || a.user_id} {a.last_name || ''}</Text>
                 <Badge variant={a.status === 'present' ? 'success' : 'warning'} label={a.status === 'present' ? 'Present' : a.status} />
               </View>

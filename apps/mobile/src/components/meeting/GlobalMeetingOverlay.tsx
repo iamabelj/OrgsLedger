@@ -5,7 +5,7 @@
 // LiveKit connection lives HERE — navigation never unmounts it.
 // ============================================================
 
-import React, { useRef, useCallback, useEffect, useState } from 'react';
+import React, { useRef, useCallback, useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,8 @@ import {
   StyleSheet,
   Platform,
   useWindowDimensions,
+  ScrollView,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../theme';
@@ -24,6 +26,7 @@ import { MeetingSidebar, type SidebarPanel } from './MeetingSidebar';
 import { ChatDrawer } from './ChatDrawer';
 import { MiniMeetingWidget } from './MiniMeetingWidget';
 import LiveTranslation, { type LiveTranslationRef } from '../ui/LiveTranslation';
+import { ALL_LANGUAGES, isTtsSupported } from '../../utils/languages';
 import { socketClient } from '../../api/socket';
 import { showAlert } from '../../utils/alert';
 
@@ -107,21 +110,26 @@ function FullMeetingOverlay() {
   const [activePanel, setActivePanel] = useState<SidebarPanel>('participants');
 
   // ── Translation State ─────────────────────────────────
+  const [translationLang, setTranslationLang] = useState('en');
   const [translationListening, setTranslationListening] = useState(false);
+  const [showLangPicker, setShowLangPicker] = useState(false);
+  const [langSearch, setLangSearch] = useState('');
   const translationRef = useRef<LiveTranslationRef>(null);
-
-  // Sync translation listening state from ref when component mounts
-  // (e.g., user maximizes from minimized — re-read actual state)
-  useEffect(() => {
-    const actual = translationRef.current?.isListening?.() ?? false;
-    setTranslationListening(actual);
-  }, [gm.isMinimized]);
 
   // ── Hand Raised ───────────────────────────────────────
   const [handRaised, setHandRaised] = useState(false);
 
   // ── Recording (local) ─────────────────────────────────
   const [isRecording, setIsRecording] = useState(false);
+
+  // Filtered languages
+  const filteredLangs = useMemo(() => {
+    if (!langSearch.trim()) return ALL_LANGUAGES;
+    const q = langSearch.toLowerCase().trim();
+    return ALL_LANGUAGES.filter(
+      (l) => l.name.toLowerCase().includes(q) || l.nativeName.toLowerCase().includes(q) || l.code.includes(q)
+    );
+  }, [langSearch]);
 
   // ── Connect to LiveKit on overlay mount ───────────────
   useEffect(() => {
@@ -151,27 +159,6 @@ function FullMeetingOverlay() {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [gm.meetingId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Transcription does NOT auto-start ─────────────────
-  // User manually toggles transcription via the Transcribe button.
-  // AI minutes toggle is separate (admin-only, controls post-meeting AI minutes).
-
-  // ── Toggle transcription (manual control) ─────────────
-  const handleToggleTranscription = useCallback(() => {
-    if (translationListening) {
-      // Stop transcription
-      translationRef.current?.stopListening();
-      setTranslationListening(false);
-      console.debug('[GlobalMeetingOverlay] Transcription stopped by user');
-    } else {
-      // Start transcription
-      if (translationRef.current) {
-        translationRef.current.startListening();
-        setTranslationListening(true);
-        console.debug('[GlobalMeetingOverlay] Transcription started by user');
-      }
-    }
-  }, [translationListening]);
 
   // ── Toggle sidebar panel ──────────────────────────────
   const handleToggleSidebar = useCallback((panel?: string) => {
@@ -204,6 +191,19 @@ function FullMeetingOverlay() {
     });
   }, [handRaised, gm.meetingId, gm.userId, gm.userName]);
 
+  // ── Translation Controls ──────────────────────────────
+  const handleSelectLanguage = useCallback((code: string) => {
+    setTranslationLang(code);
+    translationRef.current?.selectLanguage(code);
+    if (!translationListening) {
+      translationRef.current?.startListening();
+      setTranslationListening(true);
+    }
+    translationRef.current?.setAutoTTS(true);
+    setShowLangPicker(false);
+    setLangSearch('');
+  }, [translationListening]);
+
   // ── Recording ─────────────────────────────────────────
   const handleToggleRecording = useCallback(() => {
     if (isRecording) {
@@ -224,27 +224,12 @@ function FullMeetingOverlay() {
   }, [lk, gm]);
 
   // ── End Meeting ───────────────────────────────────────
-  // endMeeting() shows a confirmation dialog. If user confirms,
-  // the HTTP call fires, server broadcasts meeting:ended, and
-  // the reactive cleanup below disconnects LK + stops translation.
   const handleEnd = useCallback(() => {
+    lk.disconnect();
+    translationRef.current?.stopListening();
+    setTranslationListening(false);
     gm.endMeeting();
-  }, [gm]);
-
-  // ── Reactive cleanup when meeting ends ────────────────
-  // Triggered by meeting:ended socket event (status → 'ended') for ALL
-  // participants, not just the admin who clicked End.
-  useEffect(() => {
-    if (gm.meeting?.status === 'ended') {
-      lk.disconnect();
-      translationRef.current?.stopListening();
-      setTranslationListening(false);
-    }
-  }, [gm.meeting?.status]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Auto-cleanup when meeting becomes inactive ────────
-  // When the context resets (isActive→false), unmount triggers
-  // lk.disconnect() via the connect useEffect cleanup.
+  }, [lk, gm]);
 
   // ── Minimize handler ──────────────────────────────────
   const handleMinimize = useCallback(() => {
@@ -321,7 +306,7 @@ function FullMeetingOverlay() {
               <Text style={styles.connectingText}>Connecting to meeting...</Text>
               <Text style={styles.connectingHint}>Setting up your audio and video</Text>
             </View>
-          ) : lk.error && !lk.isConnected && gm.meeting?.status !== 'ended' ? (
+          ) : lk.error && !lk.isConnected ? (
             <View style={styles.connectingOverlay}>
               <Ionicons name="alert-circle" size={40} color={Colors.error} />
               <Text style={[styles.connectingText, { color: Colors.error }]}>Connection Error</Text>
@@ -430,29 +415,90 @@ function FullMeetingOverlay() {
         )}
       </View>
 
+      {/* ═══ LANGUAGE PICKER OVERLAY ═════════════════════════ */}
+      {showLangPicker && (
+        <View style={styles.langPickerOverlay}>
+          <View style={styles.langPickerCard}>
+            <View style={styles.langPickerHeader}>
+              <Ionicons name="language" size={18} color={Colors.highlight} />
+              <Text style={styles.langPickerTitle}>Select Language</Text>
+              <TouchableOpacity onPress={() => { setShowLangPicker(false); setLangSearch(''); }}>
+                <Ionicons name="close" size={20} color={Colors.textLight} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.langSearchWrap}>
+              <Ionicons name="search" size={14} color={Colors.textLight} />
+              <TextInput
+                style={styles.langSearchInput}
+                placeholder="Search language..."
+                placeholderTextColor={Colors.textLight}
+                value={langSearch}
+                onChangeText={setLangSearch}
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+              {langSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setLangSearch('')}>
+                  <Ionicons name="close-circle" size={14} color={Colors.textLight} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <ScrollView style={styles.langList} keyboardShouldPersistTaps="handled">
+              {filteredLangs.length === 0 && (
+                <Text style={styles.langNoResults}>No languages match "{langSearch}"</Text>
+              )}
+              {filteredLangs.map((lang) => {
+                const isCurrentLang = translationLang === lang.code;
+                return (
+                  <TouchableOpacity
+                    key={lang.code}
+                    style={[styles.langItem, isCurrentLang && styles.langItemActive]}
+                    onPress={() => handleSelectLanguage(lang.code)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={{ fontSize: 18 }}>{lang.flag || '🌐'}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.langName, isCurrentLang && { color: Colors.highlight }]}>
+                        {lang.name}
+                      </Text>
+                      {lang.nativeName !== lang.name && (
+                        <Text style={styles.langNative}>{lang.nativeName}</Text>
+                      )}
+                    </View>
+                    {isTtsSupported(lang.code) && (
+                      <Ionicons name="volume-medium-outline" size={12} color={Colors.textLight} />
+                    )}
+                    {isCurrentLang && <Ionicons name="checkmark-circle" size={16} color={Colors.highlight} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
       {/* ═══ CONTROL BAR ═════════════════════════════════════ */}
       <ControlBar
         isMicEnabled={lk.isMicEnabled}
         isCameraEnabled={!gm.isAudioOnly && lk.isCameraEnabled}
         isScreenSharing={lk.isScreenSharing}
+        translationLang={translationLang}
         isTranslationListening={translationListening}
         isRecording={isRecording || gm.isRecordingFromSocket}
         handRaised={handRaised}
         isSidebarOpen={sidebarOpen}
         activeSidebarPanel={activePanel}
         participantCount={lk.participants.length}
-        unreadChatCount={gm.unreadChatCount}
-        isChatOpen={gm.isChatOpen}
         isAdmin={gm.isAdmin}
-        aiEnabled={gm.meeting?.ai_enabled ?? false}
         onToggleMic={lk.toggleMic}
-        onToggleCamera={gm.isAudioOnly ? async () => { gm.toggleAudioOnly(); await lk.toggleCamera(); } : lk.toggleCamera}
+        onToggleCamera={gm.isAudioOnly ? gm.toggleAudioOnly : lk.toggleCamera}
         onToggleScreenShare={lk.toggleScreenShare}
-        onToggleTranscription={handleToggleTranscription}
+        onOpenLanguagePicker={() => setShowLangPicker(true)}
         onToggleRecording={handleToggleRecording}
         onRaiseHand={handleRaiseHand}
         onToggleSidebar={handleToggleSidebar}
-        onToggleAi={gm.toggleAi}
         onLeave={handleLeave}
         onEnd={gm.isAdmin ? handleEnd : undefined}
       />
@@ -464,7 +510,7 @@ function FullMeetingOverlay() {
           meetingId={gm.meetingId!}
           userId={gm.userId}
           hideControls
-          autoTTS={false}
+          autoTTS
         />
       )}
     </View>
@@ -737,5 +783,86 @@ const styles = StyleSheet.create({
     fontSize: FontSize.lg,
     fontWeight: FontWeight.bold,
     color: Colors.textWhite,
+  },
+
+  // Language picker
+  langPickerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(6, 13, 24, 0.7)',
+    zIndex: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+  },
+  langPickerCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.md,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '80%',
+    ...(Shadow.lg as any),
+  },
+  langPickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  langPickerTitle: {
+    flex: 1,
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.semibold,
+    color: Colors.textWhite,
+  },
+  langSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primaryLight,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    marginBottom: Spacing.sm,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  langSearchInput: {
+    flex: 1,
+    color: Colors.textWhite,
+    fontSize: FontSize.sm,
+    padding: 0,
+  },
+  langList: {
+    maxHeight: 400,
+  },
+  langNoResults: {
+    color: Colors.textLight,
+    fontSize: FontSize.xs,
+    textAlign: 'center',
+    paddingVertical: Spacing.md,
+  },
+  langItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.xs + 2,
+    paddingHorizontal: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+  },
+  langItemActive: {
+    backgroundColor: Colors.highlightSubtle,
+  },
+  langName: {
+    color: Colors.textWhite,
+    fontSize: FontSize.sm,
+  },
+  langNative: {
+    color: Colors.textLight,
+    fontSize: 10,
   },
 });

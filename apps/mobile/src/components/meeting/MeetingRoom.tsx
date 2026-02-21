@@ -5,7 +5,7 @@
 // Composes VideoGrid, ControlBar, MeetingSidebar.
 // ============================================================
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,8 @@ import {
   TouchableOpacity,
   Platform,
   useWindowDimensions,
-
+  ScrollView,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../theme';
@@ -22,7 +23,10 @@ import { VideoGrid } from './VideoGrid';
 import { ControlBar } from './ControlBar';
 import { MeetingSidebar, type SidebarPanel } from './MeetingSidebar';
 import LiveTranslation, { type LiveTranslationRef } from '../ui/LiveTranslation';
-
+import {
+  ALL_LANGUAGES,
+  isTtsSupported,
+} from '../../utils/languages';
 import { socketClient } from '../../api/socket';
 import { showAlert } from '../../utils/alert';
 
@@ -118,7 +122,10 @@ export function MeetingRoom(props: MeetingRoomProps) {
   const [activePanel, setActivePanel] = useState<SidebarPanel>('participants');
 
   // ── Translation State ───────────────────────────────────
+  const [translationLang, setTranslationLang] = useState('en');
   const [translationListening, setTranslationListening] = useState(false);
+  const [showLangPicker, setShowLangPicker] = useState(false);
+  const [langSearch, setLangSearch] = useState('');
   const translationRef = useRef<LiveTranslationRef>(null);
 
   // ── Hand Raised ─────────────────────────────────────────
@@ -126,6 +133,15 @@ export function MeetingRoom(props: MeetingRoomProps) {
 
   // ── Recording (local audio) ─────────────────────────────
   const [isRecording, setIsRecording] = useState(false);
+
+  // Filtered languages
+  const filteredLangs = useMemo(() => {
+    if (!langSearch.trim()) return ALL_LANGUAGES;
+    const q = langSearch.toLowerCase().trim();
+    return ALL_LANGUAGES.filter(
+      (l) => l.name.toLowerCase().includes(q) || l.nativeName.toLowerCase().includes(q) || l.code.includes(q)
+    );
+  }, [langSearch]);
 
   // ── Connect to LiveKit on mount ─────────────────────────
   useEffect(() => {
@@ -183,17 +199,22 @@ export function MeetingRoom(props: MeetingRoomProps) {
     });
   }, [handRaised, meetingId, userId, userName]);
 
-  // ── Toggle transcription (manual control) ────────────────
-  const handleToggleTranscription = useCallback(() => {
-    if (translationListening) {
-      translationRef.current?.stopListening();
-      setTranslationListening(false);
-    } else {
-      if (translationRef.current) {
-        translationRef.current.startListening();
-        setTranslationListening(true);
-      }
+  // ── Translation Controls ────────────────────────────────
+  // Selecting a language auto-starts STT and enables voice-to-voice.
+  // The Language button in the picker both configures and toggles.
+
+  const handleSelectLanguage = useCallback((code: string) => {
+    setTranslationLang(code);
+    translationRef.current?.selectLanguage(code);
+    // Auto-start listening when a language is picked
+    if (!translationListening) {
+      translationRef.current?.startListening();
+      setTranslationListening(true);
     }
+    // V2V always on by default (users hear translations spoken)
+    translationRef.current?.setAutoTTS(true);
+    setShowLangPicker(false);
+    setLangSearch('');
   }, [translationListening]);
 
   // ── Recording Controls ──────────────────────────────────
@@ -354,31 +375,90 @@ export function MeetingRoom(props: MeetingRoomProps) {
         )}
       </View>
 
-      {/* Language picker removed — language is now set in Profile settings */}
+      {/* ═══ LANGUAGE PICKER OVERLAY ═════════════════════════ */}
+      {showLangPicker && (
+        <View style={styles.langPickerOverlay}>
+          <View style={styles.langPickerCard}>
+            <View style={styles.langPickerHeader}>
+              <Ionicons name="language" size={18} color={Colors.highlight} />
+              <Text style={styles.langPickerTitle}>Select Language</Text>
+              <TouchableOpacity onPress={() => { setShowLangPicker(false); setLangSearch(''); }}>
+                <Ionicons name="close" size={20} color={Colors.textLight} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.langSearchWrap}>
+              <Ionicons name="search" size={14} color={Colors.textLight} />
+              <TextInput
+                style={styles.langSearchInput}
+                placeholder="Search language..."
+                placeholderTextColor={Colors.textLight}
+                value={langSearch}
+                onChangeText={setLangSearch}
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+              {langSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setLangSearch('')}>
+                  <Ionicons name="close-circle" size={14} color={Colors.textLight} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <ScrollView style={styles.langList} keyboardShouldPersistTaps="handled">
+              {filteredLangs.length === 0 && (
+                <Text style={styles.langNoResults}>No languages match "{langSearch}"</Text>
+              )}
+              {filteredLangs.map((lang) => {
+                const isActive = translationLang === lang.code;
+                return (
+                  <TouchableOpacity
+                    key={lang.code}
+                    style={[styles.langItem, isActive && styles.langItemActive]}
+                    onPress={() => handleSelectLanguage(lang.code)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={{ fontSize: 18 }}>{lang.flag || '🌐'}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.langName, isActive && { color: Colors.highlight }]}>
+                        {lang.name}
+                      </Text>
+                      {lang.nativeName !== lang.name && (
+                        <Text style={styles.langNative}>{lang.nativeName}</Text>
+                      )}
+                    </View>
+                    {isTtsSupported(lang.code) && (
+                      <Ionicons name="volume-medium-outline" size={12} color={Colors.textLight} />
+                    )}
+                    {isActive && <Ionicons name="checkmark-circle" size={16} color={Colors.highlight} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      )}
 
       {/* ═══ CONTROL BAR ═════════════════════════════════════ */}
       <ControlBar
         isMicEnabled={lk.isMicEnabled}
         isCameraEnabled={lk.isCameraEnabled}
         isScreenSharing={lk.isScreenSharing}
+        translationLang={translationLang}
         isTranslationListening={translationListening}
         isRecording={isRecording || isRecordingFromSocket}
         handRaised={handRaised}
         isSidebarOpen={sidebarOpen}
         activeSidebarPanel={activePanel}
         participantCount={lk.participants.length}
-        unreadChatCount={0}
-        isChatOpen={false}
         isAdmin={isAdmin}
-        aiEnabled={meeting?.ai_enabled ?? false}
         onToggleMic={lk.toggleMic}
         onToggleCamera={lk.toggleCamera}
         onToggleScreenShare={lk.toggleScreenShare}
-        onToggleTranscription={handleToggleTranscription}
+        onOpenLanguagePicker={() => setShowLangPicker(true)}
         onToggleRecording={handleToggleRecording}
         onRaiseHand={handleRaiseHand}
         onToggleSidebar={handleToggleSidebar}
-        onToggleAi={() => {}}
         onLeave={handleLeave}
         onEnd={isAdmin ? handleEnd : undefined}
       />

@@ -443,8 +443,7 @@ router.get(
           'meeting_attendance.*',
           'users.first_name',
           'users.last_name',
-          'users.email',
-          'users.avatar_url'
+          'users.email'
         );
 
       const votes = await db('votes')
@@ -574,16 +573,13 @@ router.post(
       // 8. Determine moderator status
       //    - Meeting creator = always moderator
       //    - Org admins/executives = moderator (fallback when creator leaves)
-      //    - Super admins and developers = always moderator (god-mode)
       const membership = await db('memberships')
         .where({ user_id: userId, organization_id: orgId, is_active: true })
         .select('role')
         .first();
       const isCreator = meeting.created_by === userId;
       const isOrgAdmin = membership && ['org_admin', 'executive'].includes(membership.role);
-      const userGlobalRole = req.user?.globalRole;
-      const isSuperUser = userGlobalRole === 'super_admin' || userGlobalRole === 'developer';
-      const isModerator = isCreator || !!isOrgAdmin || isSuperUser;
+      const isModerator = isCreator || !!isOrgAdmin;
 
       // 9. Determine meeting type (allow per-request override to 'audio')
       const meetingType = joinType === 'audio' ? 'audio' : (meeting.meeting_type || 'video');
@@ -603,7 +599,7 @@ router.post(
         return;
       }
 
-      const token = await generateLiveKitToken({
+      const token = generateLiveKitToken({
         room: roomName,
         moderator: isModerator,
         user: {
@@ -763,16 +759,13 @@ router.post(
         io.to(`meeting:${req.params.meetingId}`).emit('meeting:started', payload);
       }
 
-      // Bot disabled — client-side Whisper handles transcription,
-      // translation, TTS, and persistence. The bot was causing
-      // duplicate transcripts and socket broadcasts.
-      // To re-enable, uncomment the block below:
-      // try {
-      //   const botManager = getBotManager();
-      //   botManager.startMeetingBot(req.params.meetingId).catch((err) =>
-      //     logger.warn('[MEETING_START] Transcription bot failed to start', { meetingId: req.params.meetingId, error: err.message })
-      //   );
-      // } catch (_) { /* BotManager not initialized */ }
+      // Start transcription bot (best-effort, don't block response)
+      try {
+        const botManager = getBotManager();
+        botManager.startMeetingBot(req.params.meetingId).catch((err) =>
+          logger.warn('[MEETING_START] Transcription bot failed to start', { meetingId: req.params.meetingId, error: err.message })
+        );
+      } catch (_) { /* BotManager not initialized */ }
 
       await (req as any).audit?.({
         organizationId: req.params.orgId,
@@ -823,13 +816,12 @@ router.post(
         // NOTE: Do NOT force-disconnect sockets immediately.
         // Clients need to remain in the meeting room to receive
         // meeting:minutes:processing / meeting:minutes:ready / meeting:minutes:failed events.
-        // GPT-4o summarization can take 10-30 seconds, so allow 60s before disconnect.
-        // (Clients also receive events via org room, so this is a best-effort grace period.)
+        // Instead, force-disconnect after a delay so minutes events can be delivered.
         setTimeout(() => {
           forceDisconnectMeeting(io, req.params.meetingId).catch((err) =>
             logger.warn('Force disconnect failed', err)
           );
-        }, 60_000); // 60 seconds grace period — GPT-4o needs time
+        }, 5_000); // 5 seconds grace period for minutes events
       }
 
       // Stop transcription bot (best-effort)
@@ -843,7 +835,8 @@ router.post(
         );
       } catch (_) { /* BotManager not initialized */ }
 
-      // Only trigger AI minutes generation if AI is enabled for this meeting
+      // Always trigger AI minutes generation when transcripts exist
+      // (no manual toggle required — pipeline is always-on)
       {
         const hasAudio = !!meeting.audio_storage_url;
         let hasLiveTranscripts = false;
@@ -858,18 +851,13 @@ router.post(
           hasLiveTranscripts = false;
         }
 
-        logger.info('[MINUTES_PIPELINE] AI minutes check', {
+        logger.info('[MINUTES_PIPELINE] Auto-generate check', {
           meetingId: req.params.meetingId,
-          aiEnabled: meeting.ai_enabled,
           hasAudio,
           hasLiveTranscripts,
         });
 
-        if (!meeting.ai_enabled) {
-          logger.info('[MINUTES_PIPELINE] AI is disabled for this meeting — skipping minutes generation', {
-            meetingId: req.params.meetingId,
-          });
-        } else if (hasAudio || hasLiveTranscripts) {
+        if (hasAudio || hasLiveTranscripts) {
           // Notify that processing is starting
           if (io) {
             io.to(`org:${req.params.orgId}`).emit('meeting:minutes:processing', {

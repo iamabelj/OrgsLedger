@@ -10,7 +10,6 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Pressable,
   StyleSheet,
   Platform,
   useWindowDimensions,
@@ -27,6 +26,7 @@ interface ControlBarProps {
   isScreenSharing: boolean;
 
   // Translation
+  translationLang: string;
   isTranslationListening: boolean;
 
   // Recording
@@ -41,26 +41,18 @@ interface ControlBarProps {
 
   // Counts
   participantCount: number;
-  unreadChatCount: number;
-
-  // Chat
-  isChatOpen: boolean;
 
   // Admin
   isAdmin: boolean;
-
-  // AI
-  aiEnabled: boolean;
 
   // Handlers
   onToggleMic: () => void;
   onToggleCamera: () => void;
   onToggleScreenShare: () => void;
-  onToggleTranscription: () => void;
+  onOpenLanguagePicker: () => void;
   onToggleRecording: () => void;
   onRaiseHand: () => void;
   onToggleSidebar: (panel?: string) => void;
-  onToggleAi: () => void;
   onLeave: () => void;
   onEnd?: () => void;
 }
@@ -104,15 +96,11 @@ function ControlBtn({
     : Colors.textSecondary;
 
   return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.controlBtn,
-        compact && styles.controlBtnCompact,
-        pressed && !disabled && { opacity: 0.7 },
-        Platform.OS === 'web' && ({ cursor: disabled ? 'default' : 'pointer' } as any),
-      ]}
+    <TouchableOpacity
+      style={[styles.controlBtn, compact && styles.controlBtnCompact]}
       onPress={onPress}
       disabled={disabled}
+      activeOpacity={0.7}
     >
       <View style={[styles.controlIcon, compact && styles.controlIconCompact, { backgroundColor: bgColor }]}>
         <Ionicons name={icon} size={compact ? 16 : 20} color={iconColor} />
@@ -125,7 +113,7 @@ function ControlBtn({
       <Text style={[styles.controlLabel, { color: labelColor }]} numberOfLines={1}>
         {label}
       </Text>
-    </Pressable>
+    </TouchableOpacity>
   );
 }
 
@@ -142,24 +130,21 @@ function ControlBarInner(props: ControlBarProps) {
     isMicEnabled,
     isCameraEnabled,
     isScreenSharing,
+    translationLang,
     isTranslationListening,
     isRecording,
     handRaised,
     isSidebarOpen,
     activeSidebarPanel,
     participantCount,
-    unreadChatCount,
-    isChatOpen,
     isAdmin,
-    aiEnabled,
     onToggleMic,
     onToggleCamera,
     onToggleScreenShare,
-    onToggleTranscription,
+    onOpenLanguagePicker,
     onToggleRecording,
     onRaiseHand,
     onToggleSidebar,
-    onToggleAi,
     onLeave,
     onEnd,
   } = props;
@@ -222,37 +207,27 @@ function ControlBarInner(props: ControlBarProps) {
         />
 
         <ControlBtn
-          icon="chatbubble-ellipses"
-          label="Chat"
-          active={isChatOpen}
-          badge={unreadChatCount > 0 ? unreadChatCount : undefined}
-          onPress={() => onToggleSidebar('chat')}
+          icon="chatbubbles"
+          label="Transcript"
+          active={isSidebarOpen && activeSidebarPanel === 'transcript'}
+          onPress={() => onToggleSidebar('transcript')}
           compact={isNarrow}
         />
 
-        <Divider />
-
-        {/* Transcription toggle (all users) */}
+        {/* Language / Translation (always available) */}
         <ControlBtn
-          icon={isTranslationListening ? 'mic-circle' as any : 'mic-circle-outline' as any}
-          label={isTranslationListening ? 'Transcribing' : 'Transcribe'}
+          icon="language"
+          label={isTranslationListening ? translationLang.toUpperCase() : 'Language'}
           active={isTranslationListening}
           activeColor="#10B981"
-          onPress={onToggleTranscription}
+          onPress={onOpenLanguagePicker}
           compact={isNarrow}
         />
 
-        {/* AI toggle + Record (admin only) */}
+        {/* Record (admin only) */}
         {isAdmin && (
           <>
-            <ControlBtn
-              icon={aiEnabled ? 'sparkles' as any : 'sparkles' as any}
-              label={aiEnabled ? 'AI On' : 'AI Off'}
-              active={aiEnabled}
-              activeColor="#8B5CF6"
-              onPress={onToggleAi}
-              compact={isNarrow}
-            />
+            <Divider />
             <ControlBtn
               icon={isRecording ? 'stop-circle' : 'radio-button-on'}
               label={isRecording ? 'Stop Rec' : 'Record'}

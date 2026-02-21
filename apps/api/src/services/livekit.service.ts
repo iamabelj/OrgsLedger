@@ -4,7 +4,7 @@
 // LiveKit-based video/audio conferencing.
 // ============================================================
 
-import { AccessToken, TrackSource } from 'livekit-server-sdk';
+import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import { logger } from '../logger';
 
@@ -52,31 +52,22 @@ export function generateRoomName(orgId: string, meetingId: string): string {
 }
 
 // ── LiveKit Token Generation ────────────────────────────────
-// Generates a short-lived access token for LiveKit using the
-// official livekit-server-sdk AccessToken class.
-// This ensures the JWT format is exactly what LiveKit Cloud expects.
+// Generates a short-lived JWT (access token) for LiveKit.
+// LiveKit uses a standard JWT with specific claims for
+// room access and permissions.
 
-export async function generateLiveKitToken(payload: LiveKitTokenPayload): Promise<string> {
+export function generateLiveKitToken(payload: LiveKitTokenPayload): string {
   const { apiKey, apiSecret, tokenExpirySeconds } = config.livekit;
 
   if (!apiSecret || !apiKey) {
     throw new Error('LIVEKIT_API_KEY and LIVEKIT_API_SECRET are not configured. Cannot generate meeting tokens.');
   }
 
-  const token = new AccessToken(apiKey, apiSecret, {
-    identity: payload.user.id,
-    name: payload.user.name,
-    ttl: `${tokenExpirySeconds}s`,
-    metadata: JSON.stringify({
-      userId: payload.user.id,
-      email: payload.user.email,
-      avatar: payload.user.avatar || '',
-      isModerator: payload.moderator,
-    }),
-  });
+  const now = Math.floor(Date.now() / 1000);
 
-  // Build the video grant
-  const grant: Record<string, any> = {
+  // LiveKit access token claims
+  // See: https://docs.livekit.io/realtime/concepts/authentication/
+  const grants: Record<string, any> = {
     roomJoin: true,
     room: payload.room,
     canPublish: true,
@@ -86,30 +77,39 @@ export async function generateLiveKitToken(payload: LiveKitTokenPayload): Promis
 
   // Moderator gets additional admin permissions
   if (payload.moderator) {
-    grant.roomAdmin = true;
-    grant.roomRecord = payload.features?.recording ?? true;
-    grant.canPublishSources = [
-      TrackSource.CAMERA,
-      TrackSource.MICROPHONE,
-      TrackSource.SCREEN_SHARE,
-      TrackSource.SCREEN_SHARE_AUDIO,
-    ];
+    grants.roomAdmin = true;
+    grants.roomRecord = payload.features?.recording ?? true;
+    grants.canPublishSources = ['camera', 'microphone', 'screen_share', 'screen_share_audio'];
   } else {
-    grant.canPublishSources = payload.meetingType === 'audio'
-      ? [TrackSource.MICROPHONE]
-      : [TrackSource.CAMERA, TrackSource.MICROPHONE];
+    grants.canPublishSources = payload.meetingType === 'audio'
+      ? ['microphone']
+      : ['camera', 'microphone'];
   }
 
   // Audio-only mode: restrict to microphone only
   if (payload.meetingType === 'audio' && !payload.moderator) {
-    grant.canPublishSources = [TrackSource.MICROPHONE];
+    grants.canPublishSources = ['microphone'];
   }
 
-  token.addGrant(grant);
+  const jwtPayload: Record<string, any> = {
+    exp: now + tokenExpirySeconds,
+    iat: now,
+    nbf: now - 10,
+    iss: apiKey,
+    sub: payload.user.id,
+    name: payload.user.name,
+    video: grants,
+    metadata: JSON.stringify({
+      userId: payload.user.id,
+      email: payload.user.email,
+      avatar: payload.user.avatar || '',
+      isModerator: payload.moderator,
+    }),
+  };
 
-  const jwt = await token.toJwt();
-  logger.info(`LiveKit token generated for user ${payload.user.id}, room ${payload.room}, moderator=${payload.moderator}, sources=${JSON.stringify(grant.canPublishSources)}`);
-  return jwt;
+  const token = jwt.sign(jwtPayload, apiSecret, { algorithm: 'HS256' });
+  logger.info(`LiveKit token generated for user ${payload.user.id}, room ${payload.room}, moderator=${payload.moderator}`);
+  return token;
 }
 
 // ── Build Full Join Configuration ───────────────────────────

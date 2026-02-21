@@ -26,7 +26,7 @@ export interface LiveKitJoinConfig {
     };
 }
 export declare function generateRoomName(orgId: string, meetingId: string): string;
-export declare function generateLiveKitToken(payload: LiveKitTokenPayload): Promise<string>;
+export declare function generateLiveKitToken(payload: LiveKitTokenPayload): string;
 export declare function buildJoinConfig(params: {
     meetingType: 'video' | 'audio';
     roomName: string;

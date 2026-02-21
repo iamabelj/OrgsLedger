@@ -92,7 +92,6 @@ interface GlobalMeetingState {
   refreshMinutes: () => void;
   generateMinutes: () => void;
   setMeeting: (meeting: any) => void;
-  toggleAi: () => void;
 }
 
 const GlobalMeetingContext = createContext<GlobalMeetingState | null>(null);
@@ -215,31 +214,30 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
       if (data.meetingId !== meetingId) return;
       setMeetingState((prev: any) => prev ? { ...prev, status: 'ended', actual_end: new Date().toISOString() } : prev);
       meetingStore.onMeetingEnded(data);
-      setEndingMeeting(false);
-      // Leave the socket room so we stop receiving TTS/translation events
-      socketClient.leaveMeeting(meetingId);
-      // Keep context alive briefly for minutes:ready events, then auto-reset
+      // Don't immediately reset — keep listeners alive for minutes:ready/failed events.
+      // Minimize the overlay so user can continue navigating.
+      setIsMinimized(true);
+      // Auto-reset after 2 minutes if minutes events don't arrive
       setTimeout(() => {
         setIsActive((active) => {
           if (active) resetMeeting();
           return false;
         });
-      }, 30_000); // 30s grace for minutes events
+      }, 120_000);
     }));
 
     unsubs.push(socketClient.on('meeting:force-disconnect', (data: any) => {
       if (data.meetingId !== meetingId) return;
       meetingStore.setMeetingEndedByModerator(true);
       meetingStore.setStatus('ended');
-      setEndingMeeting(false);
-      socketClient.leaveMeeting(meetingId);
-      // Brief grace period for minutes events, then full reset
+      // Don't immediately reset — keep listeners alive for minutes events.
+      setIsMinimized(true);
       setTimeout(() => {
         setIsActive((active) => {
           if (active) resetMeeting();
           return false;
         });
-      }, 30_000);
+      }, 120_000);
     }));
 
     // Recording
@@ -311,14 +309,13 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
       }
     }));
 
-    // Register history listener BEFORE requesting (avoid race condition)
+    // Load chat history
+    socketClient.requestChatHistory(meetingId);
     unsubs.push(socketClient.on('chat:history', (data: { messages: ChatMessage[] }) => {
       if (data.messages?.length) {
         setChatMessages(data.messages);
       }
     }));
-    // Now request chat history
-    socketClient.requestChatHistory(meetingId);
 
     return () => {
       unsubs.forEach((fn) => fn());
@@ -402,32 +399,24 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
     resetMeeting();
   }, [orgId, meetingId, resetMeeting]);
 
-  const [endingMeeting, setEndingMeeting] = useState(false);
-
   const endMeeting = useCallback(async () => {
-    if (!orgId || !meetingId || endingMeeting) return;
+    if (!orgId || !meetingId) return;
     showAlert('End Meeting', 'Are you sure? All participants will be disconnected.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'End Meeting',
         style: 'destructive',
         onPress: async () => {
-          if (endingMeeting) return; // Guard against double-tap
-          setEndingMeeting(true);
           try {
             await api.meetings.end(orgId, meetingId);
-            // Server broadcasts meeting:ended — the socket handler will
-            // leave the room and schedule resetMeeting.
-            // Mark meeting as ended locally for immediate UI feedback.
-            setMeetingState((prev: any) => prev ? { ...prev, status: 'ended' } : prev);
+            // Socket handler will trigger resetMeeting
           } catch (err: any) {
-            setEndingMeeting(false);
             showAlert('Error', err.response?.data?.error || 'Failed to end meeting');
           }
         },
       },
     ]);
-  }, [orgId, meetingId, endingMeeting]);
+  }, [orgId, meetingId]);
 
   const minimize = useCallback(() => setIsMinimized(true), []);
   const maximize = useCallback(() => setIsMinimized(false), []);
@@ -496,18 +485,6 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
     }
   }, [orgId, meetingId, refreshMinutes]);
 
-  const toggleAi = useCallback(async () => {
-    if (!orgId || !meetingId) return;
-    try {
-      const res = await api.meetings.toggleAi(orgId, meetingId);
-      const newState = res.data?.data?.aiEnabled;
-      setMeetingState((prev: any) => prev ? { ...prev, ai_enabled: newState } : prev);
-      showAlert('AI Minutes', newState ? 'AI minutes enabled' : 'AI minutes disabled');
-    } catch (err: any) {
-      showAlert('Error', err.response?.data?.error || 'Failed to toggle AI');
-    }
-  }, [orgId, meetingId]);
-
   const setMeeting = useCallback((m: any) => {
     setMeetingState(m);
     meetingStore.setMeeting(m);
@@ -551,7 +528,6 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
     refreshMinutes,
     generateMinutes,
     setMeeting,
-    toggleAi,
   };
 
   return (

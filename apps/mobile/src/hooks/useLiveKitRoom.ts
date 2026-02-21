@@ -290,7 +290,6 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
         setIsConnected(false);
         setIsConnecting(false);
         setIsReconnecting(false);
-        setError(null); // Disconnect is not an error — clear any stale error
         setParticipants([]);
         setActiveSpeakerIds([]);
         // Clean up audio elements
@@ -445,7 +444,6 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
     setIsConnected(false);
     setIsConnecting(false);
     setIsReconnecting(false);
-    setError(null); // Clear error on intentional disconnect
     setParticipants([]);
     setActiveSpeakerIds([]);
     setIsMicEnabled(false);

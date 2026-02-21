@@ -12,7 +12,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Pressable,
   ActivityIndicator,
   Platform,
   TextInput,
@@ -127,7 +126,7 @@ function ParticipantModal({
               {participants.map((p, i) => (
                 <View key={p.userId || i} style={z.participantRow}>
                   <View style={[z.participantDot, { backgroundColor: '#34D399' }]} />
-                  <Avatar name={p.name?.[0]?.toUpperCase() || '?'} size={32} imageUrl={p.avatar} />
+                  <Avatar name={p.name?.[0]?.toUpperCase() || '?'} size={32} />
                   <View style={{ flex: 1, marginLeft: Spacing.sm }}>
                     <Text style={z.participantName}>{p.name}</Text>
                     {p.isModerator && <Text style={z.moderatorBadge}>Moderator</Text>}
@@ -150,7 +149,7 @@ function ParticipantModal({
                 return (
                   <View key={a.id || a.user_id} style={z.participantRow}>
                     <View style={[z.participantDot, { backgroundColor: a.status === 'present' ? '#34D399' : Colors.warning }]} />
-                    <Avatar name={initials} size={32} imageUrl={a.avatar_url} />
+                    <Avatar name={initials} size={32} />
                     <Text style={[z.participantName, { flex: 1, marginLeft: Spacing.sm }]}>
                       {a.first_name || a.user_id} {a.last_name || ''}
                     </Text>
@@ -672,11 +671,11 @@ export default function MeetingDetailScreen() {
   };
 
   // ── Join Meeting (LiveKit) ──────────────────────────────
-  const handleJoinMeeting = async () => {
+  const handleJoinMeeting = async (joinType: 'video' | 'audio') => {
     if (!currentOrgId || !meetingId) return;
     setJoinLoading(true);
     try {
-      const res = await api.meetings.join(currentOrgId, meetingId, 'video');
+      const res = await api.meetings.join(currentOrgId, meetingId, joinType);
       const cfg = res.data?.data;
       if (!cfg) throw new Error('No join config returned');
       if (!cfg.token) throw new Error('Meeting token not received. Please contact your administrator.');
@@ -690,9 +689,9 @@ export default function MeetingDetailScreen() {
           url: cfg.url,
           token: cfg.token,
           roomName: cfg.roomName,
-          meetingType: cfg.meetingType || 'video',
+          meetingType: cfg.meetingType || (meeting.meeting_type === 'audio' ? 'audio' : 'video'),
         },
-        joinType: 'video',
+        joinType,
         userId: userId!,
         userName,
         isAdmin: !!isAdmin,
@@ -700,7 +699,7 @@ export default function MeetingDetailScreen() {
 
       // Also set local state for backward compat
       setJoinConfig(cfg);
-      setVideoEnabled(true);
+      setVideoEnabled(joinType === 'video');
       setAudioEnabled(true);
       setShowVideo(true);
     } catch (err: any) {
@@ -1334,14 +1333,14 @@ export default function MeetingDetailScreen() {
           <View style={z.lobbyPreview}>
             <View style={z.lobbyAvatarCircle}>
               <Ionicons
-                name="videocam"
+                name={meeting.meeting_type === 'audio' ? 'mic' : 'videocam'}
                 size={48}
                 color="rgba(129, 140, 248, 0.6)"
               />
             </View>
             <Text style={z.lobbyTitle}>Ready to join?</Text>
             <Text style={z.lobbySubtitle}>
-              Conference is in progress
+              {meeting.meeting_type === 'audio' ? 'Audio conference' : 'Video conference'} is in progress
             </Text>
           </View>
 
@@ -1356,27 +1355,40 @@ export default function MeetingDetailScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Join Button */}
+          {/* Join Buttons */}
           <View style={z.lobbyJoinRow}>
-            <Pressable
-              style={({ pressed }) => [
-                z.lobbyJoinVideoBtn,
-                pressed && !joinLoading && { opacity: 0.7 },
-                joinLoading && { opacity: 0.5 },
-                Platform.OS === 'web' && ({ cursor: joinLoading ? 'default' : 'pointer' } as any),
-              ]}
-              onPress={() => handleJoinMeeting()}
+            {meeting.meeting_type !== 'audio' && (
+              <TouchableOpacity
+                style={z.lobbyJoinVideoBtn}
+                onPress={() => handleJoinMeeting('video')}
+                disabled={joinLoading}
+                activeOpacity={0.7}
+              >
+                {joinLoading ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <>
+                    <Ionicons name="videocam" size={22} color="#FFF" />
+                    <Text style={z.lobbyJoinBtnText}>Join with Video</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={z.lobbyJoinAudioBtn}
+              onPress={() => handleJoinMeeting('audio')}
               disabled={joinLoading}
+              activeOpacity={0.7}
             >
               {joinLoading ? (
                 <ActivityIndicator color="#FFF" />
               ) : (
                 <>
-                  <Ionicons name="videocam" size={22} color="#FFF" />
-                  <Text style={z.lobbyJoinBtnText}>Join Meeting</Text>
+                  <Ionicons name="mic" size={22} color="#FFF" />
+                  <Text style={z.lobbyJoinBtnText}>Join with Audio</Text>
                 </>
               )}
-            </Pressable>
+            </TouchableOpacity>
           </View>
 
           {/* Quick Actions */}
@@ -1484,7 +1496,7 @@ export default function MeetingDetailScreen() {
             const initials = `${(a.first_name?.[0] || '?').toUpperCase()}${(a.last_name?.[0] || '').toUpperCase()}`;
             return (
               <View key={a.id || a.user_id} style={z.attendeeRow}>
-                <Avatar name={initials} size={32} imageUrl={a.avatar_url} />
+                <Avatar name={initials} size={32} />
                 <Text style={z.attendeeName}>{a.first_name || a.user_id} {a.last_name || ''}</Text>
                 <Badge variant={a.status === 'present' ? 'success' : 'warning'} label={a.status === 'present' ? 'Present' : 'Late'} />
               </View>
