@@ -166,12 +166,14 @@ export default function AnnouncementsScreen() {
             )}
           </View>
           {isAdmin && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
-              <TouchableOpacity onPress={() => handleEdit(item)}>
-                <Ionicons name="create-outline" size={18} color={Colors.primary} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.md }}>
+              <TouchableOpacity onPress={() => handleEdit(item)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primary + '18', paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: BorderRadius.sm }}>
+                <Ionicons name="create-outline" size={16} color={Colors.primary} />
+                <Text style={{ fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.semibold as any }}>Edit</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleDelete(item.id)}>
-                <Ionicons name="trash-outline" size={18} color={Colors.error} />
+              <TouchableOpacity onPress={() => handleDelete(item.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.error + '18', paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: BorderRadius.sm }}>
+                <Ionicons name="trash-outline" size={16} color={Colors.error} />
+                <Text style={{ fontSize: FontSize.xs, color: Colors.error, fontWeight: FontWeight.semibold as any }}>Delete</Text>
               </TouchableOpacity>
             </View>
           )}

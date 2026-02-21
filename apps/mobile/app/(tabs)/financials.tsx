@@ -517,8 +517,9 @@ export default function FinancialsScreen() {
                       </Text>
                       <View style={{ flexDirection: 'row', gap: Spacing.xs }}>
                         {isAdmin && (
-                          <TouchableOpacity onPress={() => handleEditDue(due)}>
-                            <Ionicons name="create-outline" size={16} color={Colors.primary} />
+                          <TouchableOpacity onPress={() => handleEditDue(due)} style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: Colors.primary + '18', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                            <Ionicons name="create-outline" size={14} color={Colors.primary} />
+                            <Text style={{ fontSize: 11, color: Colors.primary, fontWeight: '600' }}>Edit</Text>
                           </TouchableOpacity>
                         )}
                         <TouchableOpacity onPress={() => openHistory('due', due)}>
@@ -567,8 +568,9 @@ export default function FinancialsScreen() {
                       </Text>
                       <View style={{ flexDirection: 'row', gap: Spacing.xs }}>
                         {isAdmin && (
-                          <TouchableOpacity onPress={() => handleEditFine(fine)}>
-                            <Ionicons name="create-outline" size={16} color={Colors.primary} />
+                          <TouchableOpacity onPress={() => handleEditFine(fine)} style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: Colors.primary + '18', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                            <Ionicons name="create-outline" size={14} color={Colors.primary} />
+                            <Text style={{ fontSize: 11, color: Colors.primary, fontWeight: '600' }}>Edit</Text>
                           </TouchableOpacity>
                         )}
                         <TouchableOpacity onPress={() => openHistory('fine', fine)}>
@@ -608,8 +610,9 @@ export default function FinancialsScreen() {
                           <Text style={[styles.campTitle, { flex: 1 }]}>{camp.title}</Text>
                           <View style={{ flexDirection: 'row', gap: Spacing.xs, marginLeft: Spacing.sm }}>
                             {isAdmin && (
-                              <TouchableOpacity onPress={() => handleEditCampaign(camp)}>
-                                <Ionicons name="create-outline" size={18} color={Colors.primary} />
+                              <TouchableOpacity onPress={() => handleEditCampaign(camp)} style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: Colors.primary + '18', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                <Ionicons name="create-outline" size={14} color={Colors.primary} />
+                                <Text style={{ fontSize: 11, color: Colors.primary, fontWeight: '600' }}>Edit</Text>
                               </TouchableOpacity>
                             )}
                             <TouchableOpacity onPress={() => openHistory('donation_campaign', camp)}>

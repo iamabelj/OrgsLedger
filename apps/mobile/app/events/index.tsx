@@ -196,8 +196,9 @@ export default function EventsScreen() {
                 </Text>
               </View>
               {isAdmin && !isPast && (
-                <TouchableOpacity onPress={() => handleEdit(item)}>
-                  <Ionicons name="create-outline" size={18} color={Colors.primary} />
+                <TouchableOpacity onPress={() => handleEdit(item)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primary + '18', paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: BorderRadius.sm }}>
+                  <Ionicons name="create-outline" size={16} color={Colors.primary} />
+                  <Text style={{ fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.semibold as any }}>Edit</Text>
                 </TouchableOpacity>
               )}
             </View>
