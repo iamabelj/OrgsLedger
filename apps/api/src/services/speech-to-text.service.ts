@@ -48,6 +48,7 @@ export class SpeechSession {
   private client: SpeechClient;
   private recognizeStream: any = null;
   private closed = false;
+  private fatalError = false;
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private restartCounter = 0;
   private streamStartTime = 0;
@@ -154,11 +155,8 @@ export class SpeechSession {
       }],
     };
 
-    // For LINEAR16, set sampleRateHertz explicitly
-    // For WEBM_OPUS, Google auto-detects from the container header
-    if (this.encoding === 'LINEAR16') {
-      config.sampleRateHertz = this.sampleRateHertz;
-    }
+    // Always set sampleRateHertz — required for both LINEAR16 and WEBM_OPUS
+    config.sampleRateHertz = this.sampleRateHertz;
 
     const request = {
       config,
@@ -195,13 +193,16 @@ export class SpeechSession {
         logger.error(`[STT] Error for ${this.speakerName}: code=${err.code}, message=${err.message}`);
         this.onError?.(err);
 
-        // Try to restart on transient errors
-        if (err.code !== 3 && err.code !== 7) { // Not INVALID_ARGUMENT or PERMISSION_DENIED
-          this.restartStream();
+        // Fatal errors — do NOT restart (would loop forever)
+        if (err.code === 3 || err.code === 7) { // INVALID_ARGUMENT or PERMISSION_DENIED
+          this.fatalError = true;
+          this.close();
+          return;
         }
+        this.restartStream();
       })
       .on('end', () => {
-        if (!this.closed) {
+        if (!this.closed && !this.fatalError) {
           logger.debug(`[STT] Stream ended normally, restarting: speaker=${this.speakerName}`);
           this.restartStream();
         }
