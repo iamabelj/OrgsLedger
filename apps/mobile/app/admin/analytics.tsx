@@ -30,6 +30,8 @@ export default function AnalyticsScreen() {
   const memberships = useAuthStore((s) => s.memberships);
   const currentOrg = memberships.find((m) => m.organization_id === currentOrgId);
   const responsive = useResponsive();
+  const orgCurrency = useOrgCurrency();
+  const formatCurrency = (amount: number) => formatCurrencyUtil(amount, orgCurrency, 0);
 
   const loadAnalytics = useCallback(async () => {
     if (!currentOrgId) return;
@@ -62,9 +64,6 @@ export default function AnalyticsScreen() {
   if (loading) return <LoadingScreen />;
 
   const data = analytics || { members: {}, finances: {}, meetings: {} };
-
-  const orgCurrency = useOrgCurrency();
-  const formatCurrency = (amount: number) => formatCurrencyUtil(amount, orgCurrency, 0);
 
   return (
     <ScrollView
