@@ -924,7 +924,8 @@ router.get('/me', authenticate, async (req: Request, res: Response) => {
         'memberships.role',
         'organizations.id as organizationId',
         'organizations.name as organizationName',
-        'organizations.slug as organizationSlug'
+        'organizations.slug as organizationSlug',
+        'organizations.logo_url as logoUrl'
       );
 
     res.json({

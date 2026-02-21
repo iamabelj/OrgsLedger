@@ -12,6 +12,9 @@ import {
   Switch,
   Modal,
   TextInput,
+  Image,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router } from 'expo-router';
@@ -66,10 +69,13 @@ const GATEWAY_CREDENTIALS: Record<string, { key: string; label: string; placehol
 
 export default function SettingsScreen() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
+  const loadUser = useAuthStore((s) => s.loadUser);
   const syncCurrency = useOrgCurrencyStore((s) => s.setCurrency);
   const [orgName, setOrgName] = useState('');
   const [orgSlug, setOrgSlug] = useState('');
   const [orgDescription, setOrgDescription] = useState('');
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [currency, setCurrency] = useState('USD');
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
   const [defaultLanguage, setDefaultLanguage] = useState('en');
@@ -102,6 +108,7 @@ export default function SettingsScreen() {
       const org = res.data?.data || res.data;
       setOrgName(org?.name || '');
       setOrgSlug(org?.slug || '');
+      setLogoUrl(org?.logo_url || null);
 
       // Parse settings from JSON string stored in DB
       let settings: any = {};
@@ -271,6 +278,69 @@ export default function SettingsScreen() {
     }
   };
 
+  const API_BASE = typeof window !== 'undefined' && window.location
+    ? window.location.origin
+    : 'https://app.orgsledger.com';
+
+  const handleLogoUpload = async () => {
+    if (!currentOrgId) return;
+    try {
+      if (Platform.OS === 'web') {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = async (e: any) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          setUploadingLogo(true);
+          try {
+            const res = await api.orgs.uploadLogo(currentOrgId, file);
+            const newUrl = res.data?.data?.logoUrl || res.data?.logoUrl;
+            setLogoUrl(newUrl);
+            await loadUser(); // Refresh memberships to get new logoUrl
+            showAlert('Success', 'Organization logo updated!');
+          } catch (err: any) {
+            showAlert('Error', err?.response?.data?.error || 'Failed to upload logo');
+          } finally {
+            setUploadingLogo(false);
+          }
+        };
+        input.click();
+        return;
+      }
+
+      // Native: use expo-image-picker
+      const ImagePicker = require('expo-image-picker');
+      const permResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permResult.status !== 'granted') {
+        showAlert('Permission Denied', 'Camera roll access is needed to upload a logo.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      setUploadingLogo(true);
+      const res = await api.orgs.uploadLogo(currentOrgId, {
+        uri: asset.uri,
+        name: asset.fileName || 'logo.jpg',
+        mimeType: asset.mimeType || 'image/jpeg',
+      });
+      const newUrl = res.data?.data?.logoUrl || res.data?.logoUrl;
+      setLogoUrl(newUrl);
+      await loadUser();
+      showAlert('Success', 'Organization logo updated!');
+    } catch (err: any) {
+      showAlert('Error', err?.response?.data?.error || 'Failed to upload logo');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
   if (loading) return <LoadingScreen />;
 
   return (
@@ -283,14 +353,35 @@ export default function SettingsScreen() {
 
         <Card variant="elevated">
           <View style={styles.orgPreview}>
-            <View style={styles.orgAvatar}>
-              <Text style={styles.orgAvatarText}>
-                {orgName ? orgName.charAt(0).toUpperCase() : 'O'}
-              </Text>
-            </View>
-            <View>
+            <TouchableOpacity onPress={handleLogoUpload} activeOpacity={0.7} style={styles.logoUploadWrap}>
+              {uploadingLogo ? (
+                <View style={styles.orgAvatar}>
+                  <ActivityIndicator color={Colors.highlight} />
+                </View>
+              ) : logoUrl ? (
+                <Image
+                  source={{ uri: logoUrl.startsWith('http') ? logoUrl : `${API_BASE}${logoUrl}` }}
+                  style={styles.orgLogoImage}
+                />
+              ) : (
+                <View style={styles.orgAvatar}>
+                  <Text style={styles.orgAvatarText}>
+                    {orgName ? orgName.charAt(0).toUpperCase() : 'O'}
+                  </Text>
+                </View>
+              )}
+              <View style={styles.logoUploadBadge}>
+                <Ionicons name="camera" size={12} color="#FFF" />
+              </View>
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
               <Text style={styles.orgPreviewName}>{orgName || 'Organization'}</Text>
               <Text style={styles.orgPreviewSlug}>/{orgSlug || 'slug'}</Text>
+              <TouchableOpacity onPress={handleLogoUpload} style={styles.changeLogo}>
+                <Text style={styles.changeLogoText}>
+                  {logoUrl ? 'Change Logo' : 'Upload Logo'}
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Card>
@@ -912,5 +1003,36 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     fontSize: FontSize.md,
     marginBottom: Spacing.sm,
+  },
+  logoUploadWrap: {
+    position: 'relative',
+  },
+  orgLogoImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: Colors.highlight,
+  },
+  logoUploadBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: Colors.highlight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.surface,
+  },
+  changeLogo: {
+    marginTop: 4,
+  },
+  changeLogoText: {
+    fontSize: FontSize.xs,
+    color: Colors.highlight,
+    fontWeight: FontWeight.medium,
   },
 });

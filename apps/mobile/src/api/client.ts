@@ -186,6 +186,29 @@ class ApiClient {
       this.client.get(`/organizations/lookup/${slug}`),
     join: (orgId: string) =>
       this.client.post(`/organizations/${orgId}/join`),
+    uploadLogo: async (orgId: string, file: { uri: string; name: string; mimeType: string } | File) => {
+      const formData = new FormData();
+      if (typeof File !== 'undefined' && file instanceof File) {
+        formData.append('logo', file, file.name);
+      } else {
+        const f = file as { uri: string; name: string; mimeType: string };
+        if (typeof window !== 'undefined') {
+          const resp = await fetch(f.uri);
+          const blob = await resp.blob();
+          const webFile = new File([blob], f.name, { type: f.mimeType });
+          formData.append('logo', webFile, f.name);
+        } else {
+          formData.append('logo', {
+            uri: f.uri,
+            name: f.name,
+            type: f.mimeType,
+          } as any);
+        }
+      }
+      return this.client.post(`/organizations/${orgId}/logo`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    },
   };
 
   // ── Chat ──────────────────────────────────────────────

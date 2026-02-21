@@ -125,6 +125,9 @@ export function NavigationDrawer() {
 
   const currentMembership = memberships.find((m) => m.organization_id === currentOrgId);
   const userRole = currentMembership?.role || 'member';
+  const orgLogoUrl = currentMembership?.logoUrl
+    ? (currentMembership.logoUrl.startsWith('http') ? currentMembership.logoUrl : `${API_BASE}${currentMembership.logoUrl}`)
+    : null;
   const globalRole = user?.globalRole;
   const isDeveloper = globalRole === 'developer';
   const isSuperAdmin = globalRole === 'super_admin' || isDeveloper;
@@ -225,9 +228,13 @@ export function NavigationDrawer() {
         {!isCollapsed ? (
           <View style={styles.brandRow}>
             <View style={styles.logoWrap}>
-              <Image source={LOGO} style={styles.logoImg} resizeMode="contain" />
+              {orgLogoUrl ? (
+                <Image source={{ uri: orgLogoUrl }} style={styles.logoImg} resizeMode="cover" />
+              ) : (
+                <Image source={LOGO} style={styles.logoImg} resizeMode="contain" />
+              )}
             </View>
-            <Text style={styles.appName}>OrgsLedger</Text>
+            <Text style={styles.appName}>{currentMembership?.organizationName || 'OrgsLedger'}</Text>
             {isDesktop && (
               <TouchableOpacity
                 style={styles.collapseBtn}
@@ -252,7 +259,11 @@ export function NavigationDrawer() {
             style={styles.collapsedLogoBtn}
             onPress={toggle}
           >
-            <Image source={LOGO} style={{ width: 24, height: 24 }} resizeMode="contain" />
+            {orgLogoUrl ? (
+              <Image source={{ uri: orgLogoUrl }} style={{ width: 24, height: 24, borderRadius: 6 }} resizeMode="cover" />
+            ) : (
+              <Image source={LOGO} style={{ width: 24, height: 24 }} resizeMode="contain" />
+            )}
           </TouchableOpacity>
         )}
       </View>

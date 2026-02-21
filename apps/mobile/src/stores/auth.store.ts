@@ -24,6 +24,7 @@ interface Membership {
   organizationId: string;
   organizationName: string;
   organizationSlug: string;
+  logoUrl?: string | null;
 }
 
 interface AuthState {
