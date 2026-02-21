@@ -28,18 +28,6 @@ export default function SaasDashboard() {
   const globalRole = useAuthStore((s) => s.user?.globalRole);
   const canAccess = globalRole === 'developer';
 
-  if (!canAccess) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background }}>
-        <Text style={{ fontSize: 48, marginBottom: 16 }}>{String.fromCodePoint(0x1F512)}</Text>
-        <Text style={{ color: Colors.text, fontSize: 18, fontWeight: '600' as const }}>Super Admin Access Only</Text>
-        <Text style={{ color: Colors.textLight, fontSize: 14, marginTop: 8, textAlign: 'center' as const, paddingHorizontal: 32 }}>
-          This dashboard is restricted to super admins and developers.
-        </Text>
-      </View>
-    );
-  }
-
   const responsive = useResponsive();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -96,6 +84,19 @@ export default function SaasDashboard() {
   }, []);
 
   useEffect(() => { if (canAccess) loadData(); }, [canAccess, loadData]);
+
+  if (!canAccess) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background }}>
+        <Text style={{ fontSize: 48, marginBottom: 16 }}>{String.fromCodePoint(0x1F512)}</Text>
+        <Text style={{ color: Colors.text, fontSize: 18, fontWeight: '600' as const }}>Super Admin Access Only</Text>
+        <Text style={{ color: Colors.textLight, fontSize: 14, marginTop: 8, textAlign: 'center' as const, paddingHorizontal: 32 }}>
+          This dashboard is restricted to super admins and developers.
+        </Text>
+      </View>
+    );
+  }
+
   const onRefresh = () => { setRefreshing(true); loadData(); };
 
   const handleSuspend = (org: any) => {
