@@ -22,7 +22,7 @@ import { mountLandingGateway, mountWebFrontend, mountSpaFallback } from './middl
 import { setupSocketIO, meetingLanguages } from './socket';
 import { AIService } from './services/ai.service';
 import { services } from './services/registry';
-import { initBotManager } from './services/bot';
+
 import { RATE_LIMITS, PAGINATION, APP_VERSION } from './constants';
 
 // Observability
@@ -76,11 +76,7 @@ const aiService = new AIService(io);
 app.set('aiService', aiService);          // backwards compat
 services.register('aiService', aiService);
 
-// ── Transcription Bot Manager ─────────────────────────────
-// Bot disabled — client-side Whisper handles all transcription.
-// BotManager is NOT initialized to prevent any bot from joining meetings.
-// const botManager = initBotManager({ io, meetingLanguages });
-// services.register('botManager', botManager);
+
 
 // ── Global Middleware ─────────────────────────────────────
 app.use(helmet({

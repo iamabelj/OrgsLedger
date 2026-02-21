@@ -21,7 +21,6 @@ const translation_service_1 = require("../services/translation.service");
 const subscription_service_1 = require("../services/subscription.service");
 const livekit_service_1 = require("../services/livekit.service");
 const socket_1 = require("../socket");
-const bot_1 = require("../services/bot");
 const router = (0, express_1.Router)();
 // ── Multer for audio uploads ────────────────────────────────
 const audioStorage = multer_1.default.diskStorage({
@@ -655,12 +654,6 @@ router.post('/:orgId/:meetingId/start', middleware_1.authenticate, middleware_1.
             io.to(`org:${req.params.orgId}`).emit('meeting:started', payload);
             io.to(`meeting:${req.params.meetingId}`).emit('meeting:started', payload);
         }
-        // Start transcription bot (best-effort, don't block response)
-        try {
-            const botManager = (0, bot_1.getBotManager)();
-            botManager.startMeetingBot(req.params.meetingId).catch((err) => logger_1.logger.warn('[MEETING_START] Transcription bot failed to start', { meetingId: req.params.meetingId, error: err.message }));
-        }
-        catch (_) { /* BotManager not initialized */ }
         await req.audit?.({
             organizationId: req.params.orgId,
             action: 'update',
@@ -705,15 +698,6 @@ router.post('/:orgId/:meetingId/end', middleware_1.authenticate, middleware_1.lo
                 (0, socket_1.forceDisconnectMeeting)(io, req.params.meetingId).catch((err) => logger_1.logger.warn('Force disconnect failed', err));
             }, 5_000); // 5 seconds grace period for minutes events
         }
-        // Stop transcription bot (best-effort)
-        try {
-            const botManager = (0, bot_1.getBotManager)();
-            const bot = botManager.getBot(req.params.meetingId);
-            const sessionCount = bot?.activeSessionCount || 0;
-            logger_1.logger.info(`[MEETING_END] Stopping transcription bot: meeting=${req.params.meetingId}, activeSessions=${sessionCount}`);
-            botManager.stopMeetingBot(req.params.meetingId).catch((err) => logger_1.logger.warn('[MEETING_END] Transcription bot failed to stop', { meetingId: req.params.meetingId, error: err.message }));
-        }
-        catch (_) { /* BotManager not initialized */ }
         // Always trigger AI minutes generation when transcripts exist
         // (no manual toggle required — pipeline is always-on)
         {

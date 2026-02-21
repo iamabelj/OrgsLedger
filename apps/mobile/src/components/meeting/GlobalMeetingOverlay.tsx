@@ -149,6 +149,13 @@ function FullMeetingOverlay() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Disconnect LiveKit when meeting ends ────────────────
+  useEffect(() => {
+    if (gm.meeting?.status === 'ended') {
+      lk.disconnect();
+    }
+  }, [gm.meeting?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Graceful exit on tab close / page refresh ─────────
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -224,12 +231,14 @@ function FullMeetingOverlay() {
   }, [lk, gm]);
 
   // ── End Meeting ───────────────────────────────────────
+  // Do NOT disconnect LiveKit before calling the API — the socket
+  // must remain connected to receive meeting:ended and minutes events.
+  // LiveKit disconnects reactively when meeting status becomes 'ended'.
   const handleEnd = useCallback(() => {
-    lk.disconnect();
     translationRef.current?.stopListening();
     setTranslationListening(false);
     gm.endMeeting();
-  }, [lk, gm]);
+  }, [gm]);
 
   // ── Minimize handler ──────────────────────────────────
   const handleMinimize = useCallback(() => {
@@ -510,7 +519,7 @@ function FullMeetingOverlay() {
           meetingId={gm.meetingId!}
           userId={gm.userId}
           hideControls
-          autoTTS
+          autoTTS={false}
         />
       )}
     </View>

@@ -214,30 +214,29 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
       if (data.meetingId !== meetingId) return;
       setMeetingState((prev: any) => prev ? { ...prev, status: 'ended', actual_end: new Date().toISOString() } : prev);
       meetingStore.onMeetingEnded(data);
-      // Don't immediately reset — keep listeners alive for minutes:ready/failed events.
-      // Minimize the overlay so user can continue navigating.
-      setIsMinimized(true);
-      // Auto-reset after 2 minutes if minutes events don't arrive
+      // Leave the socket room cleanly
+      socketClient.leaveMeeting(meetingId);
+      // Auto-reset after 30s if minutes events don't arrive
       setTimeout(() => {
         setIsActive((active) => {
           if (active) resetMeeting();
           return false;
         });
-      }, 120_000);
+      }, 30_000);
     }));
 
     unsubs.push(socketClient.on('meeting:force-disconnect', (data: any) => {
       if (data.meetingId !== meetingId) return;
       meetingStore.setMeetingEndedByModerator(true);
       meetingStore.setStatus('ended');
-      // Don't immediately reset — keep listeners alive for minutes events.
-      setIsMinimized(true);
+      socketClient.leaveMeeting(meetingId);
+      // Auto-reset after 30s if minutes events don't arrive
       setTimeout(() => {
         setIsActive((active) => {
           if (active) resetMeeting();
           return false;
         });
-      }, 120_000);
+      }, 30_000);
     }));
 
     // Recording
@@ -409,7 +408,8 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
         onPress: async () => {
           try {
             await api.meetings.end(orgId, meetingId);
-            // Socket handler will trigger resetMeeting
+            // Set ended locally for immediate UI feedback
+            setMeetingState((prev: any) => prev ? { ...prev, status: 'ended' } : prev);
           } catch (err: any) {
             showAlert('Error', err.response?.data?.error || 'Failed to end meeting');
           }

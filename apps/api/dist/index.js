@@ -74,11 +74,6 @@ registry_1.services.register('io', io); // preferred — use services.get('io') 
 const aiService = new ai_service_1.AIService(io);
 app.set('aiService', aiService); // backwards compat
 registry_1.services.register('aiService', aiService);
-// ── Transcription Bot Manager ─────────────────────────────
-// Bot disabled — client-side Whisper handles all transcription.
-// BotManager is NOT initialized to prevent any bot from joining meetings.
-// const botManager = initBotManager({ io, meetingLanguages });
-// services.register('botManager', botManager);
 // ── Global Middleware ─────────────────────────────────────
 app.use((0, helmet_1.default)({
     contentSecurityPolicy: {

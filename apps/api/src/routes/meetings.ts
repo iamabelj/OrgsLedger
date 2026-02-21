@@ -17,7 +17,6 @@ import { translateText, LANGUAGES, SPEECH_CODES, ALL_LANGUAGES } from '../servic
 import { getAiWallet, getOrgSubscription } from '../services/subscription.service';
 import { generateRoomName, generateLiveKitToken, buildJoinConfig } from '../services/livekit.service';
 import { forceDisconnectMeeting } from '../socket';
-import { getBotManager } from '../services/bot';
 
 const router = Router();
 
@@ -759,13 +758,7 @@ router.post(
         io.to(`meeting:${req.params.meetingId}`).emit('meeting:started', payload);
       }
 
-      // Start transcription bot (best-effort, don't block response)
-      try {
-        const botManager = getBotManager();
-        botManager.startMeetingBot(req.params.meetingId).catch((err) =>
-          logger.warn('[MEETING_START] Transcription bot failed to start', { meetingId: req.params.meetingId, error: err.message })
-        );
-      } catch (_) { /* BotManager not initialized */ }
+
 
       await (req as any).audit?.({
         organizationId: req.params.orgId,
@@ -824,16 +817,7 @@ router.post(
         }, 5_000); // 5 seconds grace period for minutes events
       }
 
-      // Stop transcription bot (best-effort)
-      try {
-        const botManager = getBotManager();
-        const bot = botManager.getBot(req.params.meetingId);
-        const sessionCount = bot?.activeSessionCount || 0;
-        logger.info(`[MEETING_END] Stopping transcription bot: meeting=${req.params.meetingId}, activeSessions=${sessionCount}`);
-        botManager.stopMeetingBot(req.params.meetingId).catch((err) =>
-          logger.warn('[MEETING_END] Transcription bot failed to stop', { meetingId: req.params.meetingId, error: err.message })
-        );
-      } catch (_) { /* BotManager not initialized */ }
+
 
       // Always trigger AI minutes generation when transcripts exist
       // (no manual toggle required — pipeline is always-on)

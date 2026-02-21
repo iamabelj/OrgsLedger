@@ -6,12 +6,10 @@
 
 import type { Server as SocketIOServer } from 'socket.io';
 import type { AIService } from '../services/ai.service';
-import type { BotManager } from '../services/bot';
 
 interface ServiceMap {
   io: SocketIOServer;
   aiService: AIService;
-  botManager: BotManager;
 }
 
 class ServiceRegistry {
