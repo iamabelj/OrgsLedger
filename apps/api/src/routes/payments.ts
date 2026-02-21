@@ -17,14 +17,45 @@ import { toSubunits } from '../utils/formatters';
 
 const router = Router();
 
-// ── Initialize Stripe ───────────────────────────────────────
-let stripe: any = null;
-async function getStripe() {
-  if (!stripe && config.stripe.secretKey) {
-    const Stripe = (await import('stripe')).default;
-    stripe = new Stripe(config.stripe.secretKey);
+// ── Per-org gateway credential helper ───────────────────────
+// Fetches the org's payment_methods from settings JSON.
+// Returns per-gateway secret keys so payments go to the org's own account.
+interface OrgGatewayCredentials {
+  stripeSecretKey?: string;
+  paystackSecretKey?: string;
+  flutterwaveSecretKey?: string;
+  flutterwaveWebhookHash?: string;
+}
+
+async function getOrgGatewayCredentials(orgId: string): Promise<OrgGatewayCredentials> {
+  try {
+    const org = await db('organizations').where({ id: orgId }).select('settings').first();
+    if (!org?.settings) return {};
+    const settings = typeof org.settings === 'string' ? JSON.parse(org.settings) : org.settings;
+    const pm = settings.payment_methods || {};
+    return {
+      stripeSecretKey: pm.stripe?.secret_key || settings.stripeSecretKey || undefined,
+      paystackSecretKey: pm.paystack?.secret_key || settings.paystackSecretKey || undefined,
+      flutterwaveSecretKey: pm.flutterwave?.secret_key || settings.flutterwaveSecretKey || undefined,
+      flutterwaveWebhookHash: pm.flutterwave?.webhook_hash || undefined,
+    };
+  } catch {
+    return {};
   }
-  return stripe;
+}
+
+// ── Initialize Stripe ───────────────────────────────────────
+// Global Stripe instance (env-var key) — used as fallback
+let globalStripe: any = null;
+async function getStripe(orgSecretKey?: string) {
+  const key = orgSecretKey || config.stripe.secretKey;
+  if (!key) return null;
+  const Stripe = (await import('stripe')).default;
+  // Org-level keys always get a fresh instance
+  if (orgSecretKey) return new Stripe(orgSecretKey);
+  // Global singleton
+  if (!globalStripe) globalStripe = new Stripe(key);
+  return globalStripe;
 }
 
 // ── Schemas ─────────────────────────────────────────────────
@@ -76,9 +107,12 @@ router.post(
 
       const user = await db('users').where({ id: req.user!.userId }).select('email', 'first_name', 'last_name').first();
 
+      // Fetch per-org gateway credentials (payments go to org's own account)
+      const orgCreds = await getOrgGatewayCredentials(req.params.orgId);
+
       // ─── STRIPE ─────────────────────────────────────────
       if (gateway === 'stripe') {
-        const stripeClient = await getStripe();
+        const stripeClient = await getStripe(orgCreds.stripeSecretKey);
 
         if (stripeClient && paymentMethodId) {
           const paymentIntent = await stripeClient.paymentIntents.create({
@@ -131,7 +165,7 @@ router.post(
 
       // ─── PAYSTACK ───────────────────────────────────────
       if (gateway === 'paystack') {
-        if (!paystackService.isConfigured()) {
+        if (!paystackService.isConfigured(orgCreds.paystackSecretKey)) {
           await devModeFallback(req, transaction);
           res.json({
             success: true,
@@ -151,6 +185,7 @@ router.post(
             organizationId: req.params.orgId,
             userId: req.user!.userId,
           },
+          orgSecretKey: orgCreds.paystackSecretKey,
         });
 
         // Store reference for verification
@@ -173,7 +208,7 @@ router.post(
 
       // ─── FLUTTERWAVE ───────────────────────────────────
       if (gateway === 'flutterwave') {
-        if (!flutterwaveService.isConfigured()) {
+        if (!flutterwaveService.isConfigured(orgCreds.flutterwaveSecretKey)) {
           await devModeFallback(req, transaction);
           res.json({
             success: true,
@@ -195,6 +230,7 @@ router.post(
             userId: req.user!.userId,
           },
           description: transaction.description,
+          orgSecretKey: orgCreds.flutterwaveSecretKey,
         });
 
         await db('transactions')
@@ -375,7 +411,8 @@ router.post(
   loadMembership,
   async (req: Request, res: Response) => {
     try {
-      const stripeClient = await getStripe();
+      const orgCreds = await getOrgGatewayCredentials(req.params.orgId);
+      const stripeClient = await getStripe(orgCreds.stripeSecretKey);
       if (!stripeClient) {
         res.status(503).json({ success: false, error: 'Stripe not configured' });
         return;
@@ -431,12 +468,15 @@ router.post(
       let gatewayRefundId = null;
       const paymentMethod = transaction.payment_method || '';
 
+      // Fetch per-org credentials for refunds too
+      const orgCreds = await getOrgGatewayCredentials(req.params.orgId);
+
       if (paymentMethod.includes('bank_transfer') || paymentMethod === 'dev_mode' || paymentMethod === 'manual') {
         // Manual/bank transfer refund — record only, no gateway call
         gatewayRefundId = null;
       } else if (paymentMethod.startsWith('stripe') || (!paymentMethod.startsWith('paystack') && !paymentMethod.startsWith('flutterwave'))) {
         // Stripe refund
-        const stripeClient = await getStripe();
+        const stripeClient = await getStripe(orgCreds.stripeSecretKey);
         if (stripeClient && transaction.payment_gateway_id) {
           const refund = await stripeClient.refunds.create({
             payment_intent: transaction.payment_gateway_id,
@@ -446,21 +486,23 @@ router.post(
         }
       } else if (paymentMethod.startsWith('paystack')) {
         // Paystack refund
-        if (paystackService.isConfigured() && transaction.payment_gateway_id) {
+        if (paystackService.isConfigured(orgCreds.paystackSecretKey) && transaction.payment_gateway_id) {
           const result = await paystackService.createRefund({
             transactionReference: transaction.payment_gateway_id,
             amount: toSubunits(refundAmount),
             reason: reason || 'Admin refund',
+            orgSecretKey: orgCreds.paystackSecretKey,
           });
           gatewayRefundId = result.refundId;
         }
       } else if (paymentMethod.startsWith('flutterwave')) {
         // Flutterwave refund
-        if (flutterwaveService.isConfigured() && transaction.payment_gateway_id) {
+        if (flutterwaveService.isConfigured(orgCreds.flutterwaveSecretKey) && transaction.payment_gateway_id) {
           const result = await flutterwaveService.createRefund({
             transactionId: transaction.payment_gateway_id,
             amount: refundAmount,
             reason: reason || 'Admin refund',
+            orgSecretKey: orgCreds.flutterwaveSecretKey,
           });
           gatewayRefundId = result.refundId;
         }
@@ -633,12 +675,21 @@ router.post('/webhooks/paystack', async (req: Request, res: Response) => {
     const sig = req.headers['x-paystack-signature'] as string;
     const rawBody = typeof req.body === 'string' ? req.body : Buffer.isBuffer(req.body) ? req.body.toString('utf8') : JSON.stringify(req.body);
 
-    if (!paystackService.validateWebhook(rawBody, sig)) {
+    // Parse event loosely to extract orgId for per-org key lookup
+    const event = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    const orgId = event?.data?.metadata?.organizationId;
+    let orgCreds: OrgGatewayCredentials = {};
+    if (orgId) orgCreds = await getOrgGatewayCredentials(orgId);
+
+    // Try org-level key first, then platform-level key
+    const validOrg = orgCreds.paystackSecretKey
+      ? paystackService.validateWebhook(rawBody, sig, orgCreds.paystackSecretKey)
+      : false;
+    const validPlatform = !validOrg ? paystackService.validateWebhook(rawBody, sig) : false;
+    if (!validOrg && !validPlatform) {
       res.status(400).send('Invalid signature');
       return;
     }
-
-    const event = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
 
     if (event.event === 'charge.success') {
       const paymentData = event.data;
@@ -723,7 +774,12 @@ router.get('/paystack/callback', async (req: Request, res: Response) => {
       return;
     }
 
-    const result = await paystackService.verifyTransaction(reference);
+    // Look up org from the pending transaction to get per-org credentials
+    const pendingTx = await db('transactions').where({ payment_gateway_id: reference }).first();
+    let orgCreds: OrgGatewayCredentials = {};
+    if (pendingTx?.organization_id) orgCreds = await getOrgGatewayCredentials(pendingTx.organization_id);
+
+    const result = await paystackService.verifyTransaction(reference, orgCreds.paystackSecretKey);
 
     if (result.status === 'success') {
       // Find transaction by gateway_id
@@ -769,12 +825,25 @@ router.get('/paystack/callback', async (req: Request, res: Response) => {
 router.post('/webhooks/flutterwave', async (req: Request, res: Response) => {
   try {
     const secretHash = req.headers['verif-hash'] as string;
-    if (!flutterwaveService.validateWebhook(secretHash)) {
+    const payload = req.body;
+
+    // Attempt to look up org from the transaction to use per-org webhook hash
+    const txRef = payload?.data?.tx_ref;
+    let orgCreds: OrgGatewayCredentials = {};
+    if (txRef) {
+      const tx = await db('transactions').where({ payment_gateway_id: txRef }).select('organization_id').first();
+      if (tx?.organization_id) orgCreds = await getOrgGatewayCredentials(tx.organization_id);
+    }
+
+    // Try org-level hash first, then platform-level hash
+    const validOrg = orgCreds.flutterwaveWebhookHash
+      ? flutterwaveService.validateWebhook(secretHash, orgCreds.flutterwaveWebhookHash)
+      : false;
+    const validPlatform = !validOrg ? flutterwaveService.validateWebhook(secretHash) : false;
+    if (!validOrg && !validPlatform) {
       res.status(401).send('Invalid hash');
       return;
     }
-
-    const payload = req.body;
 
     if (payload.event === 'charge.completed' && payload.data?.status === 'successful') {
       const txRef = payload.data.tx_ref;
@@ -857,7 +926,12 @@ router.get('/flutterwave/callback', async (req: Request, res: Response) => {
       return;
     }
 
-    const result = await flutterwaveService.verifyTransaction(flwTransactionId);
+    // Look up org from the pending transaction to get per-org credentials
+    const pendingTx = await db('transactions').where({ payment_gateway_id: txRef }).first();
+    let orgCreds: OrgGatewayCredentials = {};
+    if (pendingTx?.organization_id) orgCreds = await getOrgGatewayCredentials(pendingTx.organization_id);
+
+    const result = await flutterwaveService.verifyTransaction(flwTransactionId, orgCreds.flutterwaveSecretKey);
 
     if (result.status === 'successful') {
       const tx = await db('transactions')

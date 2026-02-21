@@ -12,24 +12,41 @@ import { timingSafeCompare } from '../utils/validators';
 const PAYSTACK_BASE = 'https://api.paystack.co';
 
 class PaystackService {
-  private client: AxiosInstance | null = null;
+  /** Global singleton client (env-var keys) */
+  private globalClient: AxiosInstance | null = null;
 
-  private getClient(): AxiosInstance | null {
-    if (!config.paystack.secretKey) return null;
-    if (!this.client) {
-      this.client = axios.create({
-        baseURL: PAYSTACK_BASE,
-        headers: {
-          Authorization: `Bearer ${config.paystack.secretKey}`,
-          'Content-Type': 'application/json',
-        },
-      });
-    }
-    return this.client;
+  /** Build an authenticated Axios client for a given secret key. */
+  private buildClient(secretKey: string): AxiosInstance {
+    return axios.create({
+      baseURL: PAYSTACK_BASE,
+      headers: {
+        Authorization: `Bearer ${secretKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
   }
 
-  isConfigured(): boolean {
-    return !!config.paystack.secretKey;
+  /**
+   * Get an Axios client.
+   * If an org-level secret key is provided it takes priority;
+   * otherwise falls back to the platform-level env-var key.
+   */
+  getClient(orgSecretKey?: string): AxiosInstance | null {
+    const key = orgSecretKey || config.paystack.secretKey;
+    if (!key) return null;
+
+    // Org-level keys always get a fresh client (different orgs = different keys)
+    if (orgSecretKey) return this.buildClient(orgSecretKey);
+
+    // Global singleton
+    if (!this.globalClient) {
+      this.globalClient = this.buildClient(key);
+    }
+    return this.globalClient;
+  }
+
+  isConfigured(orgSecretKey?: string): boolean {
+    return !!(orgSecretKey || config.paystack.secretKey);
   }
 
   /**
@@ -38,18 +55,19 @@ class PaystackService {
    */
   async initializeTransaction(params: {
     email: string;
-    amount: number; // in the smallest currency unit (kobo for NGN, cents for USD, etc.)
+    amount: number;
     currency: string;
     reference: string;
     callbackUrl?: string;
     metadata?: Record<string, any>;
+    orgSecretKey?: string;
   }) {
-    const client = this.getClient();
+    const client = this.getClient(params.orgSecretKey);
     if (!client) throw new Error('Paystack not configured');
 
     const { data } = await client.post('/transaction/initialize', {
       email: params.email,
-      amount: params.amount, // already in subunit
+      amount: params.amount,
       currency: params.currency.toUpperCase(),
       reference: params.reference,
       callback_url: params.callbackUrl || `${config.apiUrl}/api/payments/paystack/callback`,
@@ -68,8 +86,8 @@ class PaystackService {
   /**
    * Verify a transaction by reference.
    */
-  async verifyTransaction(reference: string) {
-    const client = this.getClient();
+  async verifyTransaction(reference: string, orgSecretKey?: string) {
+    const client = this.getClient(orgSecretKey);
     if (!client) throw new Error('Paystack not configured');
 
     const { data } = await client.get(`/transaction/verify/${encodeURIComponent(reference)}`);
@@ -77,13 +95,13 @@ class PaystackService {
     if (!data.status) throw new Error(data.message || 'Verification failed');
 
     return {
-      status: data.data.status as string, // 'success', 'failed', 'abandoned'
+      status: data.data.status as string,
       reference: data.data.reference as string,
       amount: data.data.amount as number,
       currency: data.data.currency as string,
       gatewayResponse: data.data.gateway_response as string,
       paidAt: data.data.paid_at as string | null,
-      channel: data.data.channel as string, // 'card', 'bank', 'ussd', etc.
+      channel: data.data.channel as string,
       metadata: data.data.metadata,
     };
   }
@@ -93,10 +111,11 @@ class PaystackService {
    */
   async createRefund(params: {
     transactionReference: string;
-    amount?: number; // partial refund in subunit; omit for full refund
+    amount?: number;
     reason?: string;
+    orgSecretKey?: string;
   }) {
-    const client = this.getClient();
+    const client = this.getClient(params.orgSecretKey);
     if (!client) throw new Error('Paystack not configured');
 
     const { data } = await client.post('/refund', {
@@ -109,17 +128,20 @@ class PaystackService {
 
     return {
       refundId: data.data.id,
-      status: data.data.status, // 'pending', 'processed'
+      status: data.data.status,
       amount: data.data.amount,
     };
   }
 
   /**
    * Validate a Paystack webhook signature.
+   * Supports per-org secret keys for multi-tenant webhook verification.
    */
-  validateWebhook(body: string | Buffer, signature: string): boolean {
+  validateWebhook(body: string | Buffer, signature: string, orgSecretKey?: string): boolean {
+    const key = orgSecretKey || config.paystack.secretKey;
+    if (!key) return false;
     const hash = crypto
-      .createHmac('sha512', config.paystack.secretKey)
+      .createHmac('sha512', key)
       .update(body)
       .digest('hex');
     return timingSafeCompare(hash, signature);

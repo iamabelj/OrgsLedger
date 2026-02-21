@@ -115,21 +115,33 @@ export default function SettingsScreen() {
       setCurrency(settings.currency || org?.currency || 'USD');
       setDefaultLanguage(settings.defaultLanguage || 'en');
       setEnabledGateways(settings.enabledGateways || ['stripe']);
-      // Load gateway credentials
+      // Load gateway credentials from payment_methods structure (canonical source)
       const creds: Record<string, string> = {};
+      const pm = settings.payment_methods || {};
+      // Stripe
+      if (pm.stripe?.public_key) creds.stripePublicKey = pm.stripe.public_key;
+      if (pm.stripe?.secret_key) creds.stripeSecretKey = pm.stripe.secret_key;
+      // Paystack
+      if (pm.paystack?.public_key) creds.paystackPublicKey = pm.paystack.public_key;
+      if (pm.paystack?.secret_key) creds.paystackSecretKey = pm.paystack.secret_key;
+      // Flutterwave
+      if (pm.flutterwave?.public_key) creds.flutterwavePublicKey = pm.flutterwave.public_key;
+      if (pm.flutterwave?.secret_key) creds.flutterwaveSecretKey = pm.flutterwave.secret_key;
+      // Bank transfer
+      if (pm.bank_transfer?.bank_name) creds.bankName = pm.bank_transfer.bank_name;
+      if (pm.bank_transfer?.account_name) creds.bankAccountName = pm.bank_transfer.account_name;
+      if (pm.bank_transfer?.account_number) creds.bankAccountNumber = pm.bank_transfer.account_number;
+      if (pm.bank_transfer?.sort_code) creds.bankRoutingCode = pm.bank_transfer.sort_code;
+      // Fallback: also check flat keys & legacy bankDetails
       for (const fields of Object.values(GATEWAY_CREDENTIALS)) {
         for (const field of fields) {
-          if (settings[field.key]) creds[field.key] = settings[field.key];
+          if (!creds[field.key] && settings[field.key]) creds[field.key] = settings[field.key];
         }
       }
-      // Also load legacy bankDetails object
-      if (settings.bankDetails && typeof settings.bankDetails === 'object') {
-        const bd = settings.bankDetails;
-        if (bd.bankName) creds.bankName = bd.bankName;
-        if (bd.accountName) creds.bankAccountName = bd.accountName;
-        if (bd.accountNumber) creds.bankAccountNumber = bd.accountNumber;
-        if (bd.routingCode) creds.bankRoutingCode = bd.routingCode;
-      }
+      if (!creds.bankName && settings.bankDetails?.bankName) creds.bankName = settings.bankDetails.bankName;
+      if (!creds.bankAccountName && settings.bankDetails?.accountName) creds.bankAccountName = settings.bankDetails.accountName;
+      if (!creds.bankAccountNumber && settings.bankDetails?.accountNumber) creds.bankAccountNumber = settings.bankDetails.accountNumber;
+      if (!creds.bankRoutingCode && settings.bankDetails?.routingCode) creds.bankRoutingCode = settings.bankDetails.routingCode;
       setGatewayCredentials(creds);
       if (settings.notifications) {
         setEmailNotifications(settings.notifications.emailNotifications !== false);
@@ -160,9 +172,38 @@ export default function SettingsScreen() {
           currency,
           defaultLanguage,
           enabledGateways,
-          // Spread gateway credentials (stripePublicKey, paystackSecretKey, etc.)
-          ...gatewayCredentials,
-          // Also save bankDetails as structured object for backward compatibility
+          // Canonical payment_methods structure — used by the API when
+          // processing payments so each org's credentials are isolated.
+          payment_methods: {
+            stripe: {
+              enabled: enabledGateways.includes('stripe'),
+              label: 'Pay with Card (Stripe)',
+              public_key: gatewayCredentials.stripePublicKey || '',
+              secret_key: gatewayCredentials.stripeSecretKey || '',
+            },
+            paystack: {
+              enabled: enabledGateways.includes('paystack'),
+              label: 'Pay with Paystack',
+              public_key: gatewayCredentials.paystackPublicKey || '',
+              secret_key: gatewayCredentials.paystackSecretKey || '',
+            },
+            flutterwave: {
+              enabled: enabledGateways.includes('flutterwave'),
+              label: 'Pay with Flutterwave',
+              public_key: gatewayCredentials.flutterwavePublicKey || '',
+              secret_key: gatewayCredentials.flutterwaveSecretKey || '',
+            },
+            bank_transfer: {
+              enabled: enabledGateways.includes('bank_transfer'),
+              label: 'Bank Transfer',
+              bank_name: gatewayCredentials.bankName || '',
+              account_name: gatewayCredentials.bankAccountName || '',
+              account_number: gatewayCredentials.bankAccountNumber || '',
+              sort_code: gatewayCredentials.bankRoutingCode || '',
+              instructions: 'Please transfer to the above account and submit proof of payment.',
+            },
+          },
+          // Also keep bankDetails for backward compatibility
           bankDetails: {
             bankName: gatewayCredentials.bankName || '',
             accountName: gatewayCredentials.bankAccountName || '',

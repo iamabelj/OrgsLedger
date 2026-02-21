@@ -258,7 +258,9 @@ router.put(
         'enableBankTransfer', 'bankDetails', 'primaryColor', 'accentColor',
         'currency', 'defaultLanguage', 'timezone', 'locale', 'aiEnabled', 'features',
         'notifications', 'enabledGateways', 'description',
-        // Gateway credentials
+        // Per-org payment gateway credentials (canonical structure)
+        'payment_methods',
+        // Gateway credentials (flat keys — legacy / fallback)
         'stripePublicKey', 'stripeSecretKey',
         'paystackPublicKey', 'paystackSecretKey',
         'flutterwavePublicKey', 'flutterwaveSecretKey',
