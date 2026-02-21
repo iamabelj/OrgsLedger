@@ -145,43 +145,26 @@ function FullMeetingOverlay() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [gm.meetingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Auto-start speech recognition once connected ──────
-  // Start speech recognition when connected. Transcription only runs
-  // while the user's mic is unmuted to avoid phantom transcripts.
-  useEffect(() => {
-    if (!lk.isConnected) return;
-    if (translationListening) return; // already started
-    if (!lk.isMicEnabled) return; // don't start if mic is muted
-    // Small delay to let LiveTranslation mount and attach ref
-    const timer = setTimeout(() => {
-      if (translationRef.current && !translationListening) {
-        translationRef.current.startListening();
-        setTranslationListening(true);
-        console.debug('[GlobalMeetingOverlay] Auto-started speech recognition for transcription');
-      }
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [lk.isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ── Transcription does NOT auto-start ─────────────────
+  // User manually toggles transcription via the Transcribe button.
+  // AI minutes toggle is separate (admin-only, controls post-meeting AI minutes).
 
-  // ── Sync transcription with mic mute state ────────────
-  // Pause/resume audio capture when mic is toggled to prevent
-  // phantom transcription from ambient noise or silence.
-  useEffect(() => {
-    if (!lk.isConnected) return;
-    if (lk.isMicEnabled && !translationListening) {
-      // Mic unmuted → start transcription
+  // ── Toggle transcription (manual control) ─────────────
+  const handleToggleTranscription = useCallback(() => {
+    if (translationListening) {
+      // Stop transcription
+      translationRef.current?.stopListening();
+      setTranslationListening(false);
+      console.debug('[GlobalMeetingOverlay] Transcription stopped by user');
+    } else {
+      // Start transcription
       if (translationRef.current) {
         translationRef.current.startListening();
         setTranslationListening(true);
-        console.debug('[GlobalMeetingOverlay] Mic unmuted — resumed transcription');
+        console.debug('[GlobalMeetingOverlay] Transcription started by user');
       }
-    } else if (!lk.isMicEnabled && translationListening) {
-      // Mic muted → stop transcription
-      translationRef.current?.stopListening();
-      setTranslationListening(false);
-      console.debug('[GlobalMeetingOverlay] Mic muted — paused transcription');
     }
-  }, [lk.isMicEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [translationListening]);
 
   // ── Toggle sidebar panel ──────────────────────────────
   const handleToggleSidebar = useCallback((panel?: string) => {
@@ -454,6 +437,7 @@ function FullMeetingOverlay() {
         onToggleMic={lk.toggleMic}
         onToggleCamera={gm.isAudioOnly ? gm.toggleAudioOnly : lk.toggleCamera}
         onToggleScreenShare={lk.toggleScreenShare}
+        onToggleTranscription={handleToggleTranscription}
         onToggleRecording={handleToggleRecording}
         onRaiseHand={handleRaiseHand}
         onToggleSidebar={handleToggleSidebar}

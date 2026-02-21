@@ -56,6 +56,7 @@ interface ControlBarProps {
   onToggleMic: () => void;
   onToggleCamera: () => void;
   onToggleScreenShare: () => void;
+  onToggleTranscription: () => void;
   onToggleRecording: () => void;
   onRaiseHand: () => void;
   onToggleSidebar: (panel?: string) => void;
@@ -154,6 +155,7 @@ function ControlBarInner(props: ControlBarProps) {
     onToggleMic,
     onToggleCamera,
     onToggleScreenShare,
+    onToggleTranscription,
     onToggleRecording,
     onRaiseHand,
     onToggleSidebar,
@@ -228,10 +230,21 @@ function ControlBarInner(props: ControlBarProps) {
           compact={isNarrow}
         />
 
+        <Divider />
+
+        {/* Transcription toggle (all users) */}
+        <ControlBtn
+          icon={isTranslationListening ? 'mic-circle' as any : 'mic-circle-outline' as any}
+          label={isTranslationListening ? 'Transcribing' : 'Transcribe'}
+          active={isTranslationListening}
+          activeColor="#10B981"
+          onPress={onToggleTranscription}
+          compact={isNarrow}
+        />
+
         {/* AI toggle + Record (admin only) */}
         {isAdmin && (
           <>
-            <Divider />
             <ControlBtn
               icon={aiEnabled ? 'sparkles' as any : 'sparkles' as any}
               label={aiEnabled ? 'AI On' : 'AI Off'}
