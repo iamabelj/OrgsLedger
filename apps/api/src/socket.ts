@@ -316,7 +316,7 @@ async function handleSpeechText(
             }
             try {
               logger.debug(`[TTS] Generating audio: lang=${lang}, textLen=${ttsText.length}, text="${ttsText.slice(0, 60)}..."`);
-              const audioBuffer = await generateTTSAudio(ttsText);
+              const audioBuffer = await generateTTSAudio(ttsText, { language: lang });
               const audioBase64 = audioBuffer.toString('base64');
               logger.info(`[TTS] ✓ Generated ${(audioBuffer.length / 1024).toFixed(1)}KB mp3 for lang=${lang}`);
               for (const uid of userIds) {

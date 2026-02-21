@@ -1,14 +1,14 @@
 // ============================================================
-// OrgsLedger — OpenAI Whisper STT + TTS Service
-// Replaces Google Cloud Speech-to-Text with Whisper for better
-// multilingual accuracy. Adds server-side TTS via OpenAI.
+// OrgsLedger — OpenAI Whisper STT + Google Cloud TTS Service
+// Whisper for STT, Google Cloud for TTS.
 //
 // Whisper: Excellent at 50+ languages, $0.006/min
-// TTS: tts-1 model, server-generated mp3, consistent cross-platform
+// Google TTS: WaveNet/Standard voices, reliable, many languages
 // ============================================================
 
 import { config } from '../config';
 import { logger } from '../logger';
+import path from 'path';
 
 // ── Singleton OpenAI client ─────────────────────────────
 
@@ -39,7 +39,7 @@ export function getWhisperDiagnostics() {
       ? config.ai.openaiApiKey.slice(0, 10) + '...'
       : '(not set)',
     engine: 'openai-whisper-1',
-    ttsModel: 'tts-1',
+    ttsEngine: 'google-cloud-tts',
   };
 }
 
@@ -93,42 +93,152 @@ export async function transcribeAudio(
   return { text };
 }
 
-// ── OpenAI Text-to-Speech ───────────────────────────────
+// ── Google Cloud Text-to-Speech ─────────────────────────
+
+// Map ISO-639-1 language codes to Google Cloud TTS language codes + voice names
+// Google TTS uses BCP-47 codes (e.g., 'en-US', 'es-ES', 'fr-FR')
+const GOOGLE_TTS_VOICES: Record<string, { languageCode: string; voiceName: string }> = {
+  en: { languageCode: 'en-US', voiceName: 'en-US-Neural2-F' },
+  es: { languageCode: 'es-ES', voiceName: 'es-ES-Neural2-A' },
+  fr: { languageCode: 'fr-FR', voiceName: 'fr-FR-Neural2-A' },
+  de: { languageCode: 'de-DE', voiceName: 'de-DE-Neural2-A' },
+  it: { languageCode: 'it-IT', voiceName: 'it-IT-Neural2-A' },
+  pt: { languageCode: 'pt-BR', voiceName: 'pt-BR-Neural2-A' },
+  ja: { languageCode: 'ja-JP', voiceName: 'ja-JP-Neural2-B' },
+  ko: { languageCode: 'ko-KR', voiceName: 'ko-KR-Neural2-A' },
+  zh: { languageCode: 'cmn-CN', voiceName: 'cmn-CN-Wavenet-A' },
+  ar: { languageCode: 'ar-XA', voiceName: 'ar-XA-Wavenet-A' },
+  hi: { languageCode: 'hi-IN', voiceName: 'hi-IN-Neural2-A' },
+  ru: { languageCode: 'ru-RU', voiceName: 'ru-RU-Wavenet-A' },
+  nl: { languageCode: 'nl-NL', voiceName: 'nl-NL-Wavenet-A' },
+  pl: { languageCode: 'pl-PL', voiceName: 'pl-PL-Wavenet-A' },
+  tr: { languageCode: 'tr-TR', voiceName: 'tr-TR-Wavenet-A' },
+  sv: { languageCode: 'sv-SE', voiceName: 'sv-SE-Wavenet-A' },
+  da: { languageCode: 'da-DK', voiceName: 'da-DK-Wavenet-A' },
+  no: { languageCode: 'nb-NO', voiceName: 'nb-NO-Wavenet-A' },
+  fi: { languageCode: 'fi-FI', voiceName: 'fi-FI-Wavenet-A' },
+  el: { languageCode: 'el-GR', voiceName: 'el-GR-Wavenet-A' },
+  cs: { languageCode: 'cs-CZ', voiceName: 'cs-CZ-Wavenet-A' },
+  ro: { languageCode: 'ro-RO', voiceName: 'ro-RO-Wavenet-A' },
+  hu: { languageCode: 'hu-HU', voiceName: 'hu-HU-Wavenet-A' },
+  uk: { languageCode: 'uk-UA', voiceName: 'uk-UA-Wavenet-A' },
+  id: { languageCode: 'id-ID', voiceName: 'id-ID-Wavenet-A' },
+  ms: { languageCode: 'ms-MY', voiceName: 'ms-MY-Wavenet-A' },
+  th: { languageCode: 'th-TH', voiceName: 'th-TH-Standard-A' },
+  vi: { languageCode: 'vi-VN', voiceName: 'vi-VN-Wavenet-A' },
+  bg: { languageCode: 'bg-BG', voiceName: 'bg-BG-Standard-A' },
+  sk: { languageCode: 'sk-SK', voiceName: 'sk-SK-Wavenet-A' },
+  fil: { languageCode: 'fil-PH', voiceName: 'fil-PH-Wavenet-A' },
+  he: { languageCode: 'he-IL', voiceName: 'he-IL-Wavenet-A' },
+  bn: { languageCode: 'bn-IN', voiceName: 'bn-IN-Wavenet-A' },
+  ta: { languageCode: 'ta-IN', voiceName: 'ta-IN-Wavenet-A' },
+  te: { languageCode: 'te-IN', voiceName: 'te-IN-Standard-A' },
+  mr: { languageCode: 'mr-IN', voiceName: 'mr-IN-Wavenet-A' },
+  gu: { languageCode: 'gu-IN', voiceName: 'gu-IN-Wavenet-A' },
+  kn: { languageCode: 'kn-IN', voiceName: 'kn-IN-Wavenet-A' },
+  ml: { languageCode: 'ml-IN', voiceName: 'ml-IN-Wavenet-A' },
+  pa: { languageCode: 'pa-IN', voiceName: 'pa-IN-Wavenet-A' },
+  af: { languageCode: 'af-ZA', voiceName: 'af-ZA-Standard-A' },
+  ca: { languageCode: 'ca-ES', voiceName: 'ca-ES-Standard-A' },
+  eu: { languageCode: 'eu-ES', voiceName: 'eu-ES-Standard-A' },
+  gl: { languageCode: 'gl-ES', voiceName: 'gl-ES-Standard-A' },
+  is: { languageCode: 'is-IS', voiceName: 'is-IS-Standard-A' },
+  lv: { languageCode: 'lv-LV', voiceName: 'lv-LV-Standard-A' },
+  lt: { languageCode: 'lt-LT', voiceName: 'lt-LT-Standard-A' },
+  sr: { languageCode: 'sr-RS', voiceName: 'sr-RS-Standard-A' },
+  cy: { languageCode: 'cy-GB', voiceName: 'cy-GB-Standard-A' },
+  yue: { languageCode: 'yue-HK', voiceName: 'yue-HK-Standard-A' },
+};
 
 /**
- * Generate speech audio from text using OpenAI TTS.
+ * Get the Google TTS language config for an ISO code.
+ * Falls back to Standard voice if no mapping exists.
+ */
+function getGoogleTTSVoice(langCode: string): { languageCode: string; voiceName: string } | null {
+  if (GOOGLE_TTS_VOICES[langCode]) return GOOGLE_TTS_VOICES[langCode];
+  // For unknown languages, return null — Google TTS may not support it
+  return null;
+}
+
+let googleTTSClient: any = null;
+
+function getGoogleTTSClient() {
+  if (!googleTTSClient) {
+    const credentialsPath = config.ai.googleCredentials ||
+      path.resolve(__dirname, '../../google-credentials.json');
+    try {
+      const tts = require('@google-cloud/text-to-speech');
+      googleTTSClient = new tts.TextToSpeechClient({
+        keyFilename: credentialsPath,
+      });
+      logger.info('[TTS] Google Cloud TTS client initialized');
+    } catch (e: any) {
+      logger.error('[TTS] Failed to initialize Google Cloud TTS:', e.message);
+      throw e;
+    }
+  }
+  return googleTTSClient;
+}
+
+/**
+ * Generate speech audio from text using Google Cloud TTS.
  * Returns mp3 audio as a Buffer.
  *
  * @param text - Text to speak
- * @param options.voice - Voice selection (default: 'nova' — warm, natural)
+ * @param options.language - ISO-639-1 language code (default: 'en')
  * @param options.speed - Playback speed 0.25–4.0 (default: 1.0)
  */
 export async function generateTTSAudio(
   text: string,
   options: {
-    voice?: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
+    language?: string;
     speed?: number;
   } = {}
 ): Promise<Buffer> {
-  const client = getClient();
+  const client = getGoogleTTSClient();
+  const langCode = options.language || 'en';
 
   // Truncate very long text to prevent excessive TTS costs
   const truncated = text.length > 500 ? text.slice(0, 500) : text;
 
+  // Resolve voice config for requested language
+  const voiceConfig = getGoogleTTSVoice(langCode);
+  const languageCode = voiceConfig?.languageCode || `${langCode}-${langCode.toUpperCase()}`;
+  const voiceName = voiceConfig?.voiceName || undefined; // Let Google pick default
+
   const startMs = Date.now();
-  const response = await client.audio.speech.create({
-    model: 'tts-1',
-    input: truncated,
-    voice: options.voice || 'nova',
-    response_format: 'mp3',
-    speed: options.speed || 1.0,
-  });
 
-  const arrayBuffer = await response.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  const elapsed = Date.now() - startMs;
+  const request: any = {
+    input: { text: truncated },
+    voice: {
+      languageCode,
+      ...(voiceName ? { name: voiceName } : {}),
+    },
+    audioConfig: {
+      audioEncoding: 'MP3',
+      speakingRate: options.speed || 1.0,
+      pitch: 0,
+    },
+  };
 
-  logger.debug(`[TTS] Generated: "${truncated.slice(0, 40)}..." (voice=${options.voice || 'nova'}, ${elapsed}ms, ${(buffer.length / 1024).toFixed(1)}KB)`);
+  try {
+    const [response] = await client.synthesizeSpeech(request);
+    const audioContent = response.audioContent;
 
-  return buffer;
+    if (!audioContent) {
+      throw new Error('Google TTS returned empty audio content');
+    }
+
+    const buffer = Buffer.isBuffer(audioContent)
+      ? audioContent
+      : Buffer.from(audioContent);
+    const elapsed = Date.now() - startMs;
+
+    logger.debug(`[TTS] Google TTS generated: "${truncated.slice(0, 40)}..." (lang=${languageCode}, ${elapsed}ms, ${(buffer.length / 1024).toFixed(1)}KB)`);
+
+    return buffer;
+  } catch (err: any) {
+    logger.error(`[TTS] Google Cloud TTS failed for lang=${languageCode}: ${err.message}`);
+    throw err;
+  }
 }

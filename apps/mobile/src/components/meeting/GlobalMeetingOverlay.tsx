@@ -146,11 +146,12 @@ function FullMeetingOverlay() {
   }, [gm.meetingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-start speech recognition once connected ──────
-  // Always start speech recognition so that live translation works.
-  // AI minutes generation is gated server-side on meeting.ai_enabled.
+  // Start speech recognition when connected. Transcription only runs
+  // while the user's mic is unmuted to avoid phantom transcripts.
   useEffect(() => {
     if (!lk.isConnected) return;
     if (translationListening) return; // already started
+    if (!lk.isMicEnabled) return; // don't start if mic is muted
     // Small delay to let LiveTranslation mount and attach ref
     const timer = setTimeout(() => {
       if (translationRef.current && !translationListening) {
@@ -161,6 +162,26 @@ function FullMeetingOverlay() {
     }, 1500);
     return () => clearTimeout(timer);
   }, [lk.isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Sync transcription with mic mute state ────────────
+  // Pause/resume audio capture when mic is toggled to prevent
+  // phantom transcription from ambient noise or silence.
+  useEffect(() => {
+    if (!lk.isConnected) return;
+    if (lk.isMicEnabled && !translationListening) {
+      // Mic unmuted → start transcription
+      if (translationRef.current) {
+        translationRef.current.startListening();
+        setTranslationListening(true);
+        console.debug('[GlobalMeetingOverlay] Mic unmuted — resumed transcription');
+      }
+    } else if (!lk.isMicEnabled && translationListening) {
+      // Mic muted → stop transcription
+      translationRef.current?.stopListening();
+      setTranslationListening(false);
+      console.debug('[GlobalMeetingOverlay] Mic muted — paused transcription');
+    }
+  }, [lk.isMicEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Toggle sidebar panel ──────────────────────────────
   const handleToggleSidebar = useCallback((panel?: string) => {
