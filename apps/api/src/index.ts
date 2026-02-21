@@ -77,8 +77,10 @@ app.set('aiService', aiService);          // backwards compat
 services.register('aiService', aiService);
 
 // ── Transcription Bot Manager ─────────────────────────────
-const botManager = initBotManager({ io, meetingLanguages });
-services.register('botManager', botManager);
+// Bot disabled — client-side Whisper handles all transcription.
+// BotManager is NOT initialized to prevent any bot from joining meetings.
+// const botManager = initBotManager({ io, meetingLanguages });
+// services.register('botManager', botManager);
 
 // ── Global Middleware ─────────────────────────────────────
 app.use(helmet({
