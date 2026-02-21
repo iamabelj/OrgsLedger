@@ -52,16 +52,21 @@ async function generateLiveKitToken(payload) {
     if (payload.moderator) {
         grant.roomAdmin = true;
         grant.roomRecord = payload.features?.recording ?? true;
-        grant.canPublishSources = ['camera', 'microphone', 'screen_share', 'screen_share_audio'];
+        grant.canPublishSources = [
+            livekit_server_sdk_1.TrackSource.CAMERA,
+            livekit_server_sdk_1.TrackSource.MICROPHONE,
+            livekit_server_sdk_1.TrackSource.SCREEN_SHARE,
+            livekit_server_sdk_1.TrackSource.SCREEN_SHARE_AUDIO,
+        ];
     }
     else {
         grant.canPublishSources = payload.meetingType === 'audio'
-            ? ['microphone']
-            : ['camera', 'microphone'];
+            ? [livekit_server_sdk_1.TrackSource.MICROPHONE]
+            : [livekit_server_sdk_1.TrackSource.CAMERA, livekit_server_sdk_1.TrackSource.MICROPHONE];
     }
     // Audio-only mode: restrict to microphone only
     if (payload.meetingType === 'audio' && !payload.moderator) {
-        grant.canPublishSources = ['microphone'];
+        grant.canPublishSources = [livekit_server_sdk_1.TrackSource.MICROPHONE];
     }
     token.addGrant(grant);
     const jwt = await token.toJwt();

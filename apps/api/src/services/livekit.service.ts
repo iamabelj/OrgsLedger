@@ -4,7 +4,7 @@
 // LiveKit-based video/audio conferencing.
 // ============================================================
 
-import { AccessToken } from 'livekit-server-sdk';
+import { AccessToken, TrackSource } from 'livekit-server-sdk';
 import { config } from '../config';
 import { logger } from '../logger';
 
@@ -88,16 +88,21 @@ export async function generateLiveKitToken(payload: LiveKitTokenPayload): Promis
   if (payload.moderator) {
     grant.roomAdmin = true;
     grant.roomRecord = payload.features?.recording ?? true;
-    grant.canPublishSources = ['camera', 'microphone', 'screen_share', 'screen_share_audio'];
+    grant.canPublishSources = [
+      TrackSource.CAMERA,
+      TrackSource.MICROPHONE,
+      TrackSource.SCREEN_SHARE,
+      TrackSource.SCREEN_SHARE_AUDIO,
+    ];
   } else {
     grant.canPublishSources = payload.meetingType === 'audio'
-      ? ['microphone']
-      : ['camera', 'microphone'];
+      ? [TrackSource.MICROPHONE]
+      : [TrackSource.CAMERA, TrackSource.MICROPHONE];
   }
 
   // Audio-only mode: restrict to microphone only
   if (payload.meetingType === 'audio' && !payload.moderator) {
-    grant.canPublishSources = ['microphone'];
+    grant.canPublishSources = [TrackSource.MICROPHONE];
   }
 
   token.addGrant(grant);
