@@ -18,6 +18,8 @@ import { useAuthStore } from '../../../src/stores/auth.store';
 import { api } from '../../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../../src/theme';
 import { showAlert } from '../../../src/utils/alert';
+import { useOrgCurrency } from '../../../src/hooks/useOrgCurrency';
+import { getCurrencySymbol } from '../../../src/utils/currency';
 import {
   Card,
   Button,
@@ -366,7 +368,7 @@ export default function MemberDetailScreen() {
                       </View>
                     </View>
                     <View style={styles.finItemRight}>
-                      <Text style={styles.finItemAmount}>${due.amount.toFixed(2)}</Text>
+                      <Text style={styles.finItemAmount}>{currencySymbol}{due.amount.toFixed(2)}</Text>
                       <Badge
                         label={due.status}
                         variant={due.status === 'paid' ? 'success' : 'warning'}
@@ -397,7 +399,7 @@ export default function MemberDetailScreen() {
                     </View>
                     <View style={styles.finItemRight}>
                       <Text style={[styles.finItemAmount, { color: Colors.error }]}>
-                        ${fine.amount.toFixed(2)}
+                        {currencySymbol}{fine.amount.toFixed(2)}
                       </Text>
                       <Badge
                         label={fine.status}
@@ -428,7 +430,7 @@ export default function MemberDetailScreen() {
                       </View>
                     </View>
                     <Text style={[styles.finItemAmount, { color: Colors.success }]}>
-                      ${don.amount.toFixed(2)}
+                      {currencySymbol}{don.amount.toFixed(2)}
                     </Text>
                   </View>
                 </Card>

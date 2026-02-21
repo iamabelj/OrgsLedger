@@ -34,6 +34,8 @@ import {
   ResponsiveScrollView,
 } from '../../src/components/ui';
 import { useResponsive } from '../../src/hooks/useResponsive';
+import { useOrgCurrency } from '../../src/hooks/useOrgCurrency';
+import { getCurrencySymbol } from '../../src/utils/currency';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -61,6 +63,8 @@ interface IncomeBreakdown {
 export default function ReportsScreen() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const responsive = useResponsive();
+  const orgCurrency = useOrgCurrency();
+  const currencySymbol = getCurrencySymbol(orgCurrency);
   const [period, setPeriod] = useState<Period>('3m');
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<FinancialSummary>({
@@ -175,7 +179,7 @@ export default function ReportsScreen() {
           <Ionicons name={item.icon as any} size={16} color={item.color} />
           <Text style={styles.breakdownLabel}>{item.category}</Text>
         </View>
-        <Text style={styles.breakdownAmount}>${item.amount.toLocaleString()}</Text>
+        <Text style={styles.breakdownAmount}>{currencySymbol}{item.amount.toLocaleString()}</Text>
       </View>
       <View style={styles.breakdownBarBg}>
         <View
@@ -211,7 +215,7 @@ export default function ReportsScreen() {
               { color: netBalance >= 0 ? Colors.success : Colors.error },
             ]}
           >
-            {netBalance >= 0 ? '+' : ''}${Math.abs(netBalance).toLocaleString()}
+            {netBalance >= 0 ? '+' : ''}{currencySymbol}{Math.abs(netBalance).toLocaleString()}
           </Text>
           <View style={styles.heroRow}>
             <View style={styles.heroItem}>
@@ -219,7 +223,7 @@ export default function ReportsScreen() {
               <View>
                 <Text style={styles.heroItemLabel}>Income</Text>
                 <Text style={[styles.heroItemAmount, { color: Colors.success }]}>
-                  ${summary.totalIncome.toLocaleString()}
+                  {currencySymbol}{summary.totalIncome.toLocaleString()}
                 </Text>
               </View>
             </View>
@@ -229,7 +233,7 @@ export default function ReportsScreen() {
               <View>
                 <Text style={styles.heroItemLabel}>Expenses</Text>
                 <Text style={[styles.heroItemAmount, { color: Colors.error }]}>
-                  ${summary.totalExpenses.toLocaleString()}
+                  {currencySymbol}{summary.totalExpenses.toLocaleString()}
                 </Text>
               </View>
             </View>
@@ -242,19 +246,19 @@ export default function ReportsScreen() {
         <View style={styles.statsGrid}>
           <StatCard
             title="Dues Collected"
-            value={`$${summary.duesCollected.toLocaleString()}`}
+            value={`${currencySymbol}${summary.duesCollected.toLocaleString()}`}
             icon="receipt"
             trend="neutral"
           />
           <StatCard
             title="Fines Collected"
-            value={`$${summary.finesCollected.toLocaleString()}`}
+            value={`${currencySymbol}${summary.finesCollected.toLocaleString()}`}
             icon="warning"
             trend="neutral"
           />
           <StatCard
             title="Donations"
-            value={`$${summary.donationsReceived.toLocaleString()}`}
+            value={`${currencySymbol}${summary.donationsReceived.toLocaleString()}`}
             icon="heart"
             trend="neutral"
           />
@@ -286,7 +290,7 @@ export default function ReportsScreen() {
             </View>
             <Text style={styles.outstandingLabel}>Outstanding Dues</Text>
             <Text style={[styles.outstandingAmount, { color: Colors.warning }]}>
-              ${summary.outstandingDues.toLocaleString()}
+              {currencySymbol}{summary.outstandingDues.toLocaleString()}
             </Text>
           </Card>
 
@@ -296,7 +300,7 @@ export default function ReportsScreen() {
             </View>
             <Text style={styles.outstandingLabel}>Outstanding Fines</Text>
             <Text style={[styles.outstandingAmount, { color: Colors.error }]}>
-              ${summary.outstandingFines.toLocaleString()}
+              {currencySymbol}{summary.outstandingFines.toLocaleString()}
             </Text>
           </Card>
         </View>
@@ -338,7 +342,7 @@ export default function ReportsScreen() {
             icon="share-outline"
             onPress={async () => {
               try {
-                const reportText = `Financial Report\n\nTotal Income: ${summary.totalIncome.toLocaleString()}\nTotal Expenses: ${summary.totalExpenses.toLocaleString()}\nNet Balance: ${(summary.totalIncome - summary.totalExpenses).toLocaleString()}\nDues Collected: ${summary.duesCollected.toLocaleString()}\nFines Collected: ${summary.finesCollected.toLocaleString()}\nDonations: ${summary.donationsReceived.toLocaleString()}\nPayment Rate: ${summary.memberPaymentRate}%`;
+                const reportText = `Financial Report\n\nTotal Income: ${currencySymbol}${summary.totalIncome.toLocaleString()}\nTotal Expenses: ${currencySymbol}${summary.totalExpenses.toLocaleString()}\nNet Balance: ${currencySymbol}${(summary.totalIncome - summary.totalExpenses).toLocaleString()}\nDues Collected: ${currencySymbol}${summary.duesCollected.toLocaleString()}\nFines Collected: ${currencySymbol}${summary.finesCollected.toLocaleString()}\nDonations: ${currencySymbol}${summary.donationsReceived.toLocaleString()}\nPayment Rate: ${summary.memberPaymentRate}%`;
                 await Share.share({ message: reportText, title: 'Financial Report' });
               } catch {
                 // User cancelled share

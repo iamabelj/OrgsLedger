@@ -20,6 +20,8 @@ import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius } from '../../src/theme';
 import { Card, Badge, SectionHeader, Button, Input, ResponsiveScrollView } from '../../src/components/ui';
 import { CrossPlatformDateTimePicker } from '../../src/components/ui';
+import { useOrgCurrency } from '../../src/hooks/useOrgCurrency';
+import { getCurrencySymbol } from '../../src/utils/currency';
 import { showAlert } from '../../src/utils/alert';
 
 interface Expense {
@@ -39,6 +41,8 @@ type ViewMode = 'list' | 'create';
 
 export default function ExpensesScreen() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
+  const orgCurrency = useOrgCurrency();
+  const currencySymbol = getCurrencySymbol(orgCurrency);
 
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -130,7 +134,7 @@ export default function ExpensesScreen() {
           <Text style={styles.expenseDescription}>{item.description}</Text>
           <Text style={styles.expenseCategory}>{item.category}</Text>
         </View>
-        <Text style={styles.expenseAmount}>-${Number(item.amount || 0).toFixed(2)}</Text>
+        <Text style={styles.expenseAmount}>-{currencySymbol}{Number(item.amount || 0).toFixed(2)}</Text>
       </View>
       <View style={styles.expenseMeta}>
         <View style={styles.metaItem}>

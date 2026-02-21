@@ -19,6 +19,8 @@ import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius } from '../../src/theme';
 import { Card, Button, Input, SectionHeader, Badge, CrossPlatformDateTimePicker, ResponsiveScrollView } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
+import { useOrgCurrency } from '../../src/hooks/useOrgCurrency';
+import { getCurrencySymbol, formatCurrency } from '../../src/utils/currency';
 
 const RECURRENCE_OPTIONS = [
   { label: 'One-time', value: '' },
@@ -30,6 +32,8 @@ const RECURRENCE_OPTIONS = [
 
 export default function CreateDueScreen() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
+  const orgCurrency = useOrgCurrency();
+  const currencySymbol = getCurrencySymbol(orgCurrency);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
@@ -65,7 +69,7 @@ export default function CreateDueScreen() {
         isRecurring,
         recurrenceRule: isRecurring && recurrenceRule ? recurrenceRule : undefined,
       });
-      showAlert('Success', `Due "${title}" created for $${numAmount.toFixed(2)}`, [
+      showAlert('Success', `Due "${title}" created for ${formatCurrency(numAmount, orgCurrency)}`, [
         { text: 'OK', onPress: () => router.replace('/(tabs)/financials' as any) },
       ]);
     } catch (err: any) {
@@ -86,7 +90,7 @@ export default function CreateDueScreen() {
           <Text style={styles.previewTitle}>{title || 'New Due'}</Text>
         </View>
         <Text style={styles.previewAmount}>
-          {amount ? `$${parseFloat(amount || '0').toFixed(2)}` : '$0.00'}
+          {amount ? `${currencySymbol}${parseFloat(amount || '0').toFixed(2)}` : `${currencySymbol}0.00`}
         </Text>
         {dateChosen && (
           <Text style={styles.previewDate}>Due: {format(dueDate, 'MMM dd, yyyy')}</Text>
@@ -115,7 +119,7 @@ export default function CreateDueScreen() {
         />
 
         <Input
-          label="AMOUNT ($)"
+          label="AMOUNT"
           placeholder="0.00"
           value={amount}
           onChangeText={setAmount}

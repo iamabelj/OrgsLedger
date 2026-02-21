@@ -18,9 +18,13 @@ import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
 import { Card, Button, Input, Badge, SectionHeader, CrossPlatformDateTimePicker, ResponsiveScrollView } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
+import { useOrgCurrency } from '../../src/hooks/useOrgCurrency';
+import { getCurrencySymbol, formatCurrency } from '../../src/utils/currency';
 
 export default function CreateCampaignScreen() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
+  const orgCurrency = useOrgCurrency();
+  const currencySymbol = getCurrencySymbol(orgCurrency);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [goalAmount, setGoalAmount] = useState('');
@@ -96,9 +100,9 @@ export default function CreateCampaignScreen() {
             <View style={[styles.goalFill, { width: `${progress}%` }]} />
           </View>
           <View style={styles.goalRow}>
-            <Text style={styles.goalRaised}>$0.00 raised</Text>
+            <Text style={styles.goalRaised}>{currencySymbol}0.00 raised</Text>
             <Text style={styles.goalTarget}>
-              of ${goalNum > 0 ? goalNum.toLocaleString() : '0'}
+              of {currencySymbol}{goalNum > 0 ? goalNum.toLocaleString() : '0'}
             </Text>
           </View>
         </View>
@@ -136,7 +140,7 @@ export default function CreateCampaignScreen() {
         />
 
         <Input
-          label="GOAL AMOUNT ($)"
+          label="GOAL AMOUNT"
           placeholder="10,000.00"
           value={goalAmount}
           onChangeText={setGoalAmount}

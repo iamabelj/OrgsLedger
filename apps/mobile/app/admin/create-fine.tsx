@@ -176,7 +176,7 @@ export default function CreateFineScreen() {
             : 'Select members below'}
         </Text>
         {amount && (
-          <Text style={styles.previewAmount}>${parseFloat(amount || '0').toFixed(2)}</Text>
+          <Text style={styles.previewAmount}>{currencySymbol}{parseFloat(amount || '0').toFixed(2)}</Text>
         )}
       </Card>
 
@@ -190,7 +190,7 @@ export default function CreateFineScreen() {
         />
 
         <Input
-          label="AMOUNT ($)"
+          label="AMOUNT"
           placeholder="0.00"
           value={amount}
           onChangeText={setAmount}

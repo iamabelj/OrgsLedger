@@ -879,8 +879,8 @@ export default function HomeScreen() {
                   </View>
                 </View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, flexWrap: 'wrap' }}>
-                  <Text style={[styles.finCardLabel, { flexShrink: 1 }]}>${raised.toFixed(0)} raised</Text>
-                  <Text style={[styles.finCardLabel, { flexShrink: 1 }]}>Goal: ${goal.toFixed(0)}</Text>
+                  <Text style={[styles.finCardLabel, { flexShrink: 1 }]}>{formatCurrencyWhole(raised, orgCurrency)} raised</Text>
+                  <Text style={[styles.finCardLabel, { flexShrink: 1 }]}>Goal: {formatCurrencyWhole(goal, orgCurrency)}</Text>
                 </View>
               </Card>
             );
