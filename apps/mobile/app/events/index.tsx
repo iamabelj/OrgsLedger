@@ -20,6 +20,7 @@ import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
 import { Card, Button, Input, LoadingScreen } from '../../src/components/ui';
 import CrossPlatformDateTimePicker from '../../src/components/ui/CrossPlatformDateTimePicker';
+import EditHistoryModal from '../../src/components/EditHistoryModal';
 import { useResponsive } from '../../src/hooks/useResponsive';
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -43,6 +44,20 @@ export default function EventsScreen() {
   const [endDate, setEndDate] = useState(new Date());
   const [category, setCategory] = useState('general');
   const [creating, setCreating] = useState(false);
+
+  // Edit state
+  const [editItem, setEditItem] = useState<any>(null);
+  const [showEdit, setShowEdit] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editLocation, setEditLocation] = useState('');
+  const [editStartDate, setEditStartDate] = useState(new Date());
+  const [editEndDate, setEditEndDate] = useState(new Date());
+  const [editCategory, setEditCategory] = useState('general');
+  const [saving, setSaving] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyEntityId, setHistoryEntityId] = useState<string | undefined>();
+  const [historyLabel, setHistoryLabel] = useState<string | undefined>();
 
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const memberships = useAuthStore((s) => s.memberships);
@@ -112,6 +127,53 @@ export default function EventsScreen() {
     }
   };
 
+  const handleEdit = (item: any) => {
+    setEditItem(item);
+    setEditTitle(item.title);
+    setEditDescription(item.description || '');
+    setEditLocation(item.location || '');
+    setEditStartDate(new Date(item.start_date));
+    setEditEndDate(new Date(item.end_date));
+    setEditCategory(item.category || 'general');
+    setShowEdit(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editTitle.trim()) {
+      showAlert('Error', 'Title is required');
+      return;
+    }
+    if (editEndDate < editStartDate) {
+      showAlert('Error', 'End date must be after start date');
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.events.update(currentOrgId!, editItem.id, {
+        title: editTitle,
+        description: editDescription,
+        location: editLocation,
+        startDate: editStartDate.toISOString(),
+        endDate: editEndDate.toISOString(),
+        category: editCategory,
+      });
+      showAlert('Success', 'Event updated');
+      setShowEdit(false);
+      setEditItem(null);
+      loadEvents();
+    } catch (err: any) {
+      showAlert('Error', err.response?.data?.error || 'Failed to update');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openHistory = (item?: any) => {
+    setHistoryEntityId(item?.id);
+    setHistoryLabel(item?.title || 'All Events');
+    setShowHistory(true);
+  };
+
   const renderEvent = ({ item }: { item: any }) => {
     const catColor = CATEGORY_COLORS[item.category] || Colors.primary;
     const eventDate = new Date(item.start_date);
@@ -127,10 +189,17 @@ export default function EventsScreen() {
             <Text style={styles.dateDay}>{eventDate.getDate()}</Text>
           </View>
           <View style={styles.eventInfo}>
-            <View style={[styles.categoryBadge, { backgroundColor: catColor + '20' }]}>
-              <Text style={[styles.categoryText, { color: catColor }]}>
-                {item.category.charAt(0).toUpperCase() + item.category.slice(1)}
-              </Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <View style={[styles.categoryBadge, { backgroundColor: catColor + '20' }]}>
+                <Text style={[styles.categoryText, { color: catColor }]}>
+                  {item.category.charAt(0).toUpperCase() + item.category.slice(1)}
+                </Text>
+              </View>
+              {isAdmin && !isPast && (
+                <TouchableOpacity onPress={() => handleEdit(item)}>
+                  <Ionicons name="create-outline" size={18} color={Colors.primary} />
+                </TouchableOpacity>
+              )}
             </View>
             <Text style={styles.eventTitle}>{item.title}</Text>
             {item.location && (
@@ -156,6 +225,10 @@ export default function EventsScreen() {
           <View style={styles.rsvpInfo}>
             <Ionicons name="people-outline" size={16} color={Colors.textLight} />
             <Text style={styles.rsvpCount}>{item.rsvpCount || 0} attending</Text>
+            <TouchableOpacity onPress={() => openHistory(item)} style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: Spacing.sm }}>
+              <Ionicons name="time-outline" size={14} color={Colors.textLight} />
+              <Text style={{ fontSize: 12, color: Colors.primary }}>History</Text>
+            </TouchableOpacity>
           </View>
           {!isPast && (
             <View style={styles.rsvpActions}>
@@ -288,6 +361,54 @@ export default function EventsScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Edit Event Modal */}
+      <Modal visible={showEdit} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxWidth: responsive.contentMaxWidth }]}>
+            <ScrollView>
+              <Text style={styles.modalTitle}>Edit Event</Text>
+
+              <Input label="TITLE" placeholder="Event title" value={editTitle} onChangeText={setEditTitle} />
+              <Input label="DESCRIPTION" placeholder="Describe the event..." value={editDescription} onChangeText={setEditDescription} multiline numberOfLines={3} />
+              <Input label="LOCATION" placeholder="Event location" value={editLocation} onChangeText={setEditLocation} />
+
+              <CrossPlatformDateTimePicker label="START DATE" value={editStartDate} mode="date" hasValue={true} onChange={(d) => { const u = new Date(editStartDate); u.setFullYear(d.getFullYear(), d.getMonth(), d.getDate()); setEditStartDate(u); }} />
+              <CrossPlatformDateTimePicker label="START TIME" value={editStartDate} mode="time" hasValue={true} onChange={(d) => { const u = new Date(editStartDate); u.setHours(d.getHours(), d.getMinutes(), 0, 0); setEditStartDate(u); }} />
+              <CrossPlatformDateTimePicker label="END DATE" value={editEndDate} mode="date" hasValue={true} onChange={(d) => { const u = new Date(editEndDate); u.setFullYear(d.getFullYear(), d.getMonth(), d.getDate()); setEditEndDate(u); }} />
+              <CrossPlatformDateTimePicker label="END TIME" value={editEndDate} mode="time" hasValue={true} onChange={(d) => { const u = new Date(editEndDate); u.setHours(d.getHours(), d.getMinutes(), 0, 0); setEditEndDate(u); }} />
+
+              <Text style={styles.fieldLabel}>CATEGORY</Text>
+              <View style={styles.categoryPicker}>
+                {Object.keys(CATEGORY_COLORS).map((cat) => (
+                  <TouchableOpacity
+                    key={cat}
+                    style={[styles.categoryOption, editCategory === cat && { backgroundColor: CATEGORY_COLORS[cat], borderColor: CATEGORY_COLORS[cat] }]}
+                    onPress={() => setEditCategory(cat)}
+                  >
+                    <Text style={[styles.categoryOptText, editCategory === cat && { color: '#FFF' }]}>
+                      {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.modalActions}>
+                <Button title="Cancel" onPress={() => setShowEdit(false)} variant="outline" style={{ flex: 1, marginRight: Spacing.sm }} />
+                <Button title="Save" onPress={handleSaveEdit} loading={saving} icon="checkmark-outline" style={{ flex: 1 }} />
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <EditHistoryModal
+        visible={showHistory}
+        onClose={() => setShowHistory(false)}
+        entityType="event"
+        entityId={historyEntityId}
+        entityLabel={historyLabel}
+      />
     </View>
   );
 }

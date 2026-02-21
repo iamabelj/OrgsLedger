@@ -24,6 +24,18 @@ const createEventSchema = z.object({
   rsvpRequired: z.boolean().default(false),
 });
 
+const updateEventSchema = z.object({
+  title: z.string().min(1).max(300).optional(),
+  description: z.string().max(5000).optional().nullable(),
+  location: z.string().max(500).optional().nullable(),
+  startDate: z.string().datetime().optional(),
+  endDate: z.string().datetime().optional().nullable(),
+  allDay: z.boolean().optional(),
+  category: z.enum(['social', 'fundraiser', 'community', 'workshop', 'general']).optional(),
+  maxAttendees: z.number().int().min(0).optional().nullable(),
+  rsvpRequired: z.boolean().optional(),
+});
+
 // ── Create Event ────────────────────────────────────────────
 router.post(
   '/:orgId',
@@ -214,6 +226,70 @@ router.post(
       res.json({ success: true, status });
     } catch (err) {
       res.status(500).json({ success: false, error: 'Failed to RSVP' });
+    }
+  }
+);
+
+// ── Edit Event ──────────────────────────────────────────────
+router.put(
+  '/:orgId/:eventId',
+  authenticate,
+  loadMembership,
+  requireRole('org_admin', 'executive'),
+  validate(updateEventSchema),
+  async (req: Request, res: Response) => {
+    try {
+      const existing = await db('events')
+        .where({ id: req.params.eventId, organization_id: req.params.orgId })
+        .first();
+
+      if (!existing) {
+        res.status(404).json({ success: false, error: 'Event not found' });
+        return;
+      }
+
+      const fieldMap: Record<string, string> = {
+        title: 'title', description: 'description', location: 'location',
+        startDate: 'start_date', endDate: 'end_date', allDay: 'all_day',
+        category: 'category', maxAttendees: 'max_attendees', rsvpRequired: 'rsvp_required',
+      };
+
+      const updates: Record<string, any> = {};
+      const changes: Record<string, { from: any; to: any }> = {};
+
+      for (const [camel, snake] of Object.entries(fieldMap)) {
+        if (req.body[camel] !== undefined) {
+          const newVal = req.body[camel];
+          if (newVal !== existing[snake]) {
+            updates[snake] = newVal;
+            changes[camel] = { from: existing[snake], to: newVal };
+          }
+        }
+      }
+
+      if (!Object.keys(updates).length) {
+        res.json({ success: true, data: existing, message: 'No changes' });
+        return;
+      }
+
+      updates.updated_at = db.fn.now();
+      await db('events').where({ id: existing.id }).update(updates);
+
+      const updated = await db('events').where({ id: existing.id }).first();
+
+      await (req as any).audit?.({
+        organizationId: req.params.orgId,
+        action: 'update',
+        entityType: 'event',
+        entityId: existing.id,
+        previousValue: changes,
+        newValue: updates,
+      });
+
+      res.json({ success: true, data: updated });
+    } catch (err) {
+      logger.error('Update event error', err);
+      res.status(500).json({ success: false, error: 'Failed to update event' });
     }
   }
 );

@@ -779,6 +779,65 @@ router.get(
   }
 );
 
+// ── Edit History (visible to ALL members) ───────────────────
+// Returns audit log entries for edit (update) actions only,
+// so all members can see what was changed and by whom.
+router.get(
+  '/:orgId/edit-history',
+  authenticate,
+  loadMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = Math.min(100, parseInt(req.query.limit as string) || 30);
+      const entityType = req.query.entityType as string;
+      const entityId = req.query.entityId as string;
+
+      let query = db('audit_logs')
+        .where({ 'audit_logs.organization_id': req.params.orgId, 'audit_logs.action': 'update' })
+        .leftJoin('users', 'audit_logs.user_id', 'users.id')
+        .select(
+          'audit_logs.id',
+          'audit_logs.action',
+          'audit_logs.entity_type',
+          'audit_logs.entity_id',
+          'audit_logs.previous_value',
+          'audit_logs.new_value',
+          'audit_logs.created_at',
+          'users.first_name',
+          'users.last_name'
+        );
+
+      if (entityType) query = query.where({ 'audit_logs.entity_type': entityType });
+      if (entityId) query = query.where({ 'audit_logs.entity_id': entityId });
+
+      const total = await query.clone().clear('select').count('audit_logs.id as count').first();
+      const logs = await query
+        .orderBy('audit_logs.created_at', 'desc')
+        .offset((page - 1) * limit)
+        .limit(limit);
+
+      // Parse JSONB columns for the response
+      const parsed = logs.map((log: any) => ({
+        ...log,
+        previous_value: typeof log.previous_value === 'string'
+          ? JSON.parse(log.previous_value) : log.previous_value,
+        new_value: typeof log.new_value === 'string'
+          ? JSON.parse(log.new_value) : log.new_value,
+        editedBy: `${log.first_name || ''} ${log.last_name || ''}`.trim() || 'Unknown',
+      }));
+
+      res.json({
+        success: true,
+        data: parsed,
+        meta: { page, limit, total: parseInt(total?.count as string) || 0 },
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, error: 'Failed to get edit history' });
+    }
+  }
+);
+
 // ── Organization Audit Log (for compliance dashboard) ───────
 router.get(
   '/:orgId/audit-logs',

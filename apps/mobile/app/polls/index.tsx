@@ -19,6 +19,7 @@ import { useAuthStore } from '../../src/stores/auth.store';
 import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
 import { Card, Button, Input, LoadingScreen } from '../../src/components/ui';
+import EditHistoryModal from '../../src/components/EditHistoryModal';
 import { useResponsive } from '../../src/hooks/useResponsive';
 
 export default function PollsScreen() {
@@ -31,6 +32,16 @@ export default function PollsScreen() {
   const [options, setOptions] = useState(['', '']);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Edit state (limited: title, description, expiresAt only)
+  const [editItem, setEditItem] = useState<any>(null);
+  const [showEdit, setShowEdit] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyEntityId, setHistoryEntityId] = useState<string | undefined>();
+  const [historyLabel, setHistoryLabel] = useState<string | undefined>();
 
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const memberships = useAuthStore((s) => s.memberships);
@@ -97,6 +108,41 @@ export default function PollsScreen() {
     }
   };
 
+  const handleEdit = (item: any) => {
+    setEditItem(item);
+    setEditTitle(item.title);
+    setEditDescription(item.description || '');
+    setShowEdit(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editTitle.trim()) {
+      showAlert('Error', 'Title is required');
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.polls.update(currentOrgId!, editItem.id, {
+        title: editTitle,
+        description: editDescription,
+      });
+      showAlert('Success', 'Poll updated');
+      setShowEdit(false);
+      setEditItem(null);
+      loadPolls();
+    } catch (err: any) {
+      showAlert('Error', err.response?.data?.error || 'Failed to update');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openHistory = (item?: any) => {
+    setHistoryEntityId(item?.id);
+    setHistoryLabel(item?.title || 'All Polls');
+    setShowHistory(true);
+  };
+
   const addOption = () => setOptions([...options, '']);
   const updateOption = (index: number, value: string) => {
     const updated = [...options];
@@ -121,7 +167,11 @@ export default function PollsScreen() {
             </Text>
           </View>
           {isAdmin && isActive && (
-            <TouchableOpacity onPress={() => {
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+              <TouchableOpacity onPress={() => handleEdit(item)}>
+                <Ionicons name="create-outline" size={20} color={Colors.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => {
               showAlert('Close Poll', 'This will permanently close the poll and no more votes can be cast. Continue?', [
                 { text: 'Cancel' },
                 {
@@ -138,6 +188,7 @@ export default function PollsScreen() {
             }}>
               <Ionicons name="close-circle-outline" size={20} color={Colors.textLight} />
             </TouchableOpacity>
+            </View>
           )}
         </View>
 
@@ -168,7 +219,13 @@ export default function PollsScreen() {
 
         <View style={styles.pollFooter}>
           <Text style={styles.totalVotes}>{totalVotes} vote{totalVotes !== 1 ? 's' : ''}</Text>
-          {item.userVoted && <Text style={styles.votedText}>✓ You voted</Text>}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+            <TouchableOpacity onPress={() => openHistory(item)} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+              <Ionicons name="time-outline" size={14} color={Colors.textLight} />
+              <Text style={{ fontSize: 12, color: Colors.primary }}>History</Text>
+            </TouchableOpacity>
+            {item.userVoted && <Text style={styles.votedText}>✓ You voted</Text>}
+          </View>
         </View>
       </Card>
     );
@@ -239,6 +296,36 @@ export default function PollsScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Edit Poll Modal */}
+      <Modal visible={showEdit} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxWidth: responsive.contentMaxWidth }]}>
+            <ScrollView>
+              <Text style={styles.modalTitle}>Edit Poll</Text>
+              <Text style={{ fontSize: 12, color: Colors.textLight, marginBottom: Spacing.md }}>
+                Note: Options cannot be changed after creation to preserve vote integrity.
+              </Text>
+
+              <Input label="QUESTION" placeholder="What would you like to ask?" value={editTitle} onChangeText={setEditTitle} />
+              <Input label="DESCRIPTION (optional)" placeholder="More context..." value={editDescription} onChangeText={setEditDescription} multiline />
+
+              <View style={styles.modalActions}>
+                <Button title="Cancel" onPress={() => setShowEdit(false)} variant="outline" style={{ flex: 1, marginRight: Spacing.sm }} />
+                <Button title="Save" onPress={handleSaveEdit} loading={saving} icon="checkmark-outline" style={{ flex: 1 }} />
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <EditHistoryModal
+        visible={showHistory}
+        onClose={() => setShowHistory(false)}
+        entityType="poll"
+        entityId={historyEntityId}
+        entityLabel={historyLabel}
+      />
     </View>
   );
 }

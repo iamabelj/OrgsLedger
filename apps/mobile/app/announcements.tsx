@@ -19,6 +19,7 @@ import { useAuthStore } from '../src/stores/auth.store';
 import { api } from '../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../src/theme';
 import { Card, Button, Input, Badge, LoadingScreen } from '../src/components/ui';
+import EditHistoryModal from '../src/components/EditHistoryModal';
 import { useResponsive } from '../src/hooks/useResponsive';
 
 const PRIORITY_CONFIG: Record<string, { color: string; icon: string }> = {
@@ -38,6 +39,16 @@ export default function AnnouncementsScreen() {
   const [priority, setPriority] = useState<string>('normal');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editItem, setEditItem] = useState<any>(null);
+  const [showEdit, setShowEdit] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editBody, setEditBody] = useState('');
+  const [editPriority, setEditPriority] = useState('normal');
+  const [editPinned, setEditPinned] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyEntityId, setHistoryEntityId] = useState<string | undefined>();
+  const [historyLabel, setHistoryLabel] = useState<string | undefined>();
 
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const memberships = useAuthStore((s) => s.memberships);
@@ -101,6 +112,45 @@ export default function AnnouncementsScreen() {
     ]);
   };
 
+  const handleEdit = (item: any) => {
+    setEditItem(item);
+    setEditTitle(item.title);
+    setEditBody(item.body);
+    setEditPriority(item.priority || 'normal');
+    setEditPinned(!!item.pinned);
+    setShowEdit(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editTitle.trim() || !editBody.trim()) {
+      showAlert('Error', 'Title and body are required');
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.announcements.update(currentOrgId!, editItem.id, {
+        title: editTitle,
+        body: editBody,
+        priority: editPriority,
+        pinned: editPinned,
+      });
+      showAlert('Success', 'Announcement updated');
+      setShowEdit(false);
+      setEditItem(null);
+      loadAnnouncements();
+    } catch (err: any) {
+      showAlert('Error', err.response?.data?.error || 'Failed to update');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openHistory = (item?: any) => {
+    setHistoryEntityId(item?.id);
+    setHistoryLabel(item?.title || 'All Announcements');
+    setShowHistory(true);
+  };
+
   const renderAnnouncement = ({ item }: { item: any }) => {
     const cfg = PRIORITY_CONFIG[item.priority] || PRIORITY_CONFIG.normal;
     return (
@@ -116,9 +166,14 @@ export default function AnnouncementsScreen() {
             )}
           </View>
           {isAdmin && (
-            <TouchableOpacity onPress={() => handleDelete(item.id)}>
-              <Ionicons name="trash-outline" size={18} color={Colors.error} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+              <TouchableOpacity onPress={() => handleEdit(item)}>
+                <Ionicons name="create-outline" size={18} color={Colors.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleDelete(item.id)}>
+                <Ionicons name="trash-outline" size={18} color={Colors.error} />
+              </TouchableOpacity>
+            </View>
           )}
         </View>
         <Text style={styles.announcementTitle}>{item.title}</Text>
@@ -127,9 +182,15 @@ export default function AnnouncementsScreen() {
           <Text style={styles.metaText}>
             {item.author_first_name} {item.author_last_name}
           </Text>
-          <Text style={styles.metaText}>
-            {new Date(item.created_at).toLocaleDateString()}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+            <TouchableOpacity onPress={() => openHistory(item)} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+              <Ionicons name="time-outline" size={14} color={Colors.textLight} />
+              <Text style={[styles.metaText, { color: Colors.primary }]}>History</Text>
+            </TouchableOpacity>
+            <Text style={styles.metaText}>
+              {new Date(item.created_at).toLocaleDateString()}
+            </Text>
+          </View>
         </View>
       </Card>
     );
@@ -231,6 +292,55 @@ export default function AnnouncementsScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Edit Modal */}
+      <Modal visible={showEdit} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxWidth: responsive.contentMaxWidth }]}>
+            <ScrollView>
+              <Text style={styles.modalTitle}>Edit Announcement</Text>
+
+              <Input label="TITLE" placeholder="Announcement title" value={editTitle} onChangeText={setEditTitle} />
+              <Input label="BODY" placeholder="Write your announcement..." value={editBody} onChangeText={setEditBody} multiline numberOfLines={5} style={{ minHeight: 120, textAlignVertical: 'top' }} />
+
+              <Text style={styles.fieldLabel}>PRIORITY</Text>
+              <View style={styles.priorityPicker}>
+                {['low', 'normal', 'high', 'urgent'].map((p) => (
+                  <TouchableOpacity
+                    key={p}
+                    style={[styles.priorityOption, editPriority === p && styles.priorityOptionActive]}
+                    onPress={() => setEditPriority(p)}
+                  >
+                    <Ionicons name={PRIORITY_CONFIG[p].icon as any} size={16} color={editPriority === p ? '#FFF' : PRIORITY_CONFIG[p].color} />
+                    <Text style={[styles.priorityLabel, editPriority === p && { color: '#FFF' }]}>{p.charAt(0).toUpperCase() + p.slice(1)}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TouchableOpacity
+                style={[styles.priorityOption, { marginTop: Spacing.md, flexDirection: 'row', alignSelf: 'flex-start', paddingHorizontal: Spacing.md }, editPinned && styles.priorityOptionActive]}
+                onPress={() => setEditPinned(!editPinned)}
+              >
+                <Ionicons name="pin" size={16} color={editPinned ? '#FFF' : Colors.highlight} />
+                <Text style={[styles.priorityLabel, editPinned && { color: '#FFF' }]}>Pinned</Text>
+              </TouchableOpacity>
+
+              <View style={styles.modalActions}>
+                <Button title="Cancel" onPress={() => setShowEdit(false)} variant="outline" style={{ flex: 1, marginRight: Spacing.sm }} />
+                <Button title="Save" onPress={handleSaveEdit} loading={saving} icon="checkmark-outline" style={{ flex: 1 }} />
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <EditHistoryModal
+        visible={showHistory}
+        onClose={() => setShowHistory(false)}
+        entityType="announcement"
+        entityId={historyEntityId}
+        entityLabel={historyLabel}
+      />
     </View>
   );
 }

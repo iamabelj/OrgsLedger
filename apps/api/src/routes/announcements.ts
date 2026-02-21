@@ -19,6 +19,13 @@ const createAnnouncementSchema = z.object({
   pinned: z.boolean().default(false),
 });
 
+const updateAnnouncementSchema = z.object({
+  title: z.string().min(1).max(300).optional(),
+  body: z.string().min(1).max(10000).optional(),
+  priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
+  pinned: z.boolean().optional(),
+});
+
 // ── Create Announcement ─────────────────────────────────────
 router.post(
   '/:orgId',
@@ -158,6 +165,61 @@ router.delete(
       res.json({ success: true, message: 'Announcement deleted' });
     } catch (err) {
       res.status(500).json({ success: false, error: 'Failed to delete announcement' });
+    }
+  }
+);
+
+// ── Edit Announcement ───────────────────────────────────────
+router.put(
+  '/:orgId/:announcementId',
+  authenticate,
+  loadMembership,
+  requireRole('org_admin', 'executive'),
+  validate(updateAnnouncementSchema),
+  async (req: Request, res: Response) => {
+    try {
+      const existing = await db('announcements')
+        .where({ id: req.params.announcementId, organization_id: req.params.orgId })
+        .first();
+
+      if (!existing) {
+        res.status(404).json({ success: false, error: 'Announcement not found' });
+        return;
+      }
+
+      const updates: Record<string, any> = {};
+      const changes: Record<string, { from: any; to: any }> = {};
+
+      for (const field of ['title', 'body', 'priority', 'pinned'] as const) {
+        if (req.body[field] !== undefined && req.body[field] !== existing[field]) {
+          updates[field] = req.body[field];
+          changes[field] = { from: existing[field], to: req.body[field] };
+        }
+      }
+
+      if (!Object.keys(updates).length) {
+        res.json({ success: true, data: existing, message: 'No changes' });
+        return;
+      }
+
+      updates.updated_at = db.fn.now();
+      await db('announcements').where({ id: existing.id }).update(updates);
+
+      const updated = await db('announcements').where({ id: existing.id }).first();
+
+      await (req as any).audit?.({
+        organizationId: req.params.orgId,
+        action: 'update',
+        entityType: 'announcement',
+        entityId: existing.id,
+        previousValue: changes,
+        newValue: updates,
+      });
+
+      res.json({ success: true, data: updated });
+    } catch (err) {
+      logger.error('Update announcement error', err);
+      res.status(500).json({ success: false, error: 'Failed to update announcement' });
     }
   }
 );

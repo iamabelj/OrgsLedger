@@ -21,6 +21,12 @@ const createPollSchema = z.object({
   expiresAt: z.string().datetime().optional(),
 });
 
+const updatePollSchema = z.object({
+  title: z.string().min(1).max(300).optional(),
+  description: z.string().max(5000).optional().nullable(),
+  expiresAt: z.string().datetime().optional().nullable(),
+});
+
 // ── Create Poll ─────────────────────────────────────────────
 router.post(
   '/:orgId',
@@ -301,6 +307,68 @@ router.post(
       res.json({ success: true, message: 'Vote recorded' });
     } catch (err) {
       res.status(500).json({ success: false, error: 'Failed to vote' });
+    }
+  }
+);
+
+// ── Edit Poll ───────────────────────────────────────────────
+router.put(
+  '/:orgId/:pollId',
+  authenticate,
+  loadMembership,
+  requireRole('org_admin', 'executive'),
+  validate(updatePollSchema),
+  async (req: Request, res: Response) => {
+    try {
+      const existing = await db('polls')
+        .where({ id: req.params.pollId, organization_id: req.params.orgId })
+        .first();
+
+      if (!existing) {
+        res.status(404).json({ success: false, error: 'Poll not found' });
+        return;
+      }
+
+      const fieldMap: Record<string, string> = {
+        title: 'title', description: 'description', expiresAt: 'expires_at',
+      };
+
+      const updates: Record<string, any> = {};
+      const changes: Record<string, { from: any; to: any }> = {};
+
+      for (const [camel, snake] of Object.entries(fieldMap)) {
+        if (req.body[camel] !== undefined) {
+          const newVal = req.body[camel];
+          if (newVal !== existing[snake]) {
+            updates[snake] = newVal;
+            changes[camel] = { from: existing[snake], to: newVal };
+          }
+        }
+      }
+
+      if (!Object.keys(updates).length) {
+        res.json({ success: true, data: existing, message: 'No changes' });
+        return;
+      }
+
+      updates.updated_at = db.fn.now();
+      await db('polls').where({ id: existing.id }).update(updates);
+
+      const updated = await db('polls').where({ id: existing.id }).first();
+
+      await (req as any).audit?.({
+        organizationId: req.params.orgId,
+        action: 'update',
+        entityType: 'poll',
+        entityId: existing.id,
+        previousValue: changes,
+        newValue: updates,
+      });
+
+      res.json({ success: true, data: updated });
+    } catch (err) {
+      logger.error('Update poll error', err);
+      res.status(500).json({ success: false, error: 'Failed to update poll' });
     }
   }
 );

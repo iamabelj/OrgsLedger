@@ -14,6 +14,7 @@ import {
   Platform,
   ActionSheetIOS,
   AppState,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -31,8 +32,9 @@ import {
 } from '../../src/theme';
 import {
   Card, Badge, StatCard, EmptyState, LoadingScreen,
-  SectionHeader, Divider, ResponsiveScrollView,
+  SectionHeader, Divider, ResponsiveScrollView, Input, Button,
 } from '../../src/components/ui';
+import EditHistoryModal from '../../src/components/EditHistoryModal';
 
 type TabKey = 'ledger' | 'dues' | 'fines' | 'donations';
 
@@ -73,6 +75,17 @@ export default function FinancialsScreen() {
   const [donationCampaigns, setDonationCampaigns] = useState<any[]>([]);
 
   const orgCurrency = useOrgCurrency();
+
+  // Edit state
+  const [editType, setEditType] = useState<'due' | 'fine' | 'campaign' | null>(null);
+  const [editItem, setEditItem] = useState<any>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editFields, setEditFields] = useState<Record<string, any>>({});
+  const [saving, setSaving] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyEntityType, setHistoryEntityType] = useState('');
+  const [historyEntityId, setHistoryEntityId] = useState<string | undefined>();
+  const [historyLabel, setHistoryLabel] = useState<string | undefined>();
 
   const isAdmin = globalRole === 'super_admin' || globalRole === 'developer' || (membership &&
     ['org_admin', 'executive'].includes(membership.role));
@@ -266,6 +279,78 @@ export default function FinancialsScreen() {
     [transactions, userId]
   );
 
+  const handleEditDue = (due: any) => {
+    setEditType('due');
+    setEditItem(due);
+    setEditFields({
+      title: due.title || '',
+      description: due.description || '',
+      amount: String(due.amount || ''),
+      dueDate: due.due_date || '',
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditFine = (fine: any) => {
+    setEditType('fine');
+    setEditItem(fine);
+    setEditFields({
+      amount: String(fine.amount || ''),
+      reason: fine.reason || '',
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditCampaign = (camp: any) => {
+    setEditType('campaign');
+    setEditItem(camp);
+    setEditFields({
+      title: camp.title || '',
+      description: camp.description || '',
+      goalAmount: String(camp.goal_amount || ''),
+    });
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async () => {
+    setSaving(true);
+    try {
+      if (editType === 'due') {
+        await api.financials.updateDue(currentOrgId!, editItem.id, {
+          title: editFields.title,
+          description: editFields.description || undefined,
+          amount: parseFloat(editFields.amount),
+          dueDate: editFields.dueDate || undefined,
+        });
+      } else if (editType === 'fine') {
+        await api.financials.updateFine(currentOrgId!, editItem.id, {
+          amount: parseFloat(editFields.amount),
+          reason: editFields.reason,
+        });
+      } else if (editType === 'campaign') {
+        await api.financials.updateCampaign(currentOrgId!, editItem.id, {
+          title: editFields.title,
+          description: editFields.description || undefined,
+          goalAmount: parseFloat(editFields.goalAmount),
+        });
+      }
+      showAlert('Success', `${editType === 'due' ? 'Due' : editType === 'fine' ? 'Fine' : 'Campaign'} updated`);
+      setShowEditModal(false);
+      await loadAll();
+    } catch (err: any) {
+      showAlert('Error', err.response?.data?.error || 'Failed to update');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openHistory = (entityType: string, item?: any) => {
+    setHistoryEntityType(entityType);
+    setHistoryEntityId(item?.id);
+    setHistoryLabel(item?.title || item?.reason || `All ${entityType}s`);
+    setShowHistory(true);
+  };
+
   const tabs: { key: TabKey; label: string; icon: React.ComponentProps<typeof Ionicons>['name']; count?: number }[] = [
     { key: 'ledger', label: 'Ledger', icon: 'book-outline' },
     { key: 'dues', label: 'Dues', icon: 'receipt-outline', count: dues.length },
@@ -426,9 +511,21 @@ export default function FinancialsScreen() {
                         Due: {format(new Date(due.due_date), 'MMM d, yyyy')}
                       </Text>
                     </View>
-                    <Text style={styles.dueAmount}>
-                      {formatCurrency(due.amount, orgCurrency)}
-                    </Text>
+                    <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                      <Text style={styles.dueAmount}>
+                        {formatCurrency(due.amount, orgCurrency)}
+                      </Text>
+                      <View style={{ flexDirection: 'row', gap: Spacing.xs }}>
+                        {isAdmin && (
+                          <TouchableOpacity onPress={() => handleEditDue(due)}>
+                            <Ionicons name="create-outline" size={16} color={Colors.primary} />
+                          </TouchableOpacity>
+                        )}
+                        <TouchableOpacity onPress={() => openHistory('due', due)}>
+                          <Ionicons name="time-outline" size={16} color={Colors.textLight} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
                   </View>
                   {due.is_recurring && (
                     <View style={styles.recurringBadge}>
@@ -464,9 +561,21 @@ export default function FinancialsScreen() {
                         {format(new Date(fine.created_at), 'MMM d, yyyy')}
                       </Text>
                     </View>
-                    <Text style={[styles.dueAmount, { color: Colors.error }]}>
-                      {formatCurrency(fine.amount, orgCurrency)}
-                    </Text>
+                    <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                      <Text style={[styles.dueAmount, { color: Colors.error }]}>
+                        {formatCurrency(fine.amount, orgCurrency)}
+                      </Text>
+                      <View style={{ flexDirection: 'row', gap: Spacing.xs }}>
+                        {isAdmin && (
+                          <TouchableOpacity onPress={() => handleEditFine(fine)}>
+                            <Ionicons name="create-outline" size={16} color={Colors.primary} />
+                          </TouchableOpacity>
+                        )}
+                        <TouchableOpacity onPress={() => openHistory('fine', fine)}>
+                          <Ionicons name="time-outline" size={16} color={Colors.textLight} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
                   </View>
                 </Card>
               ))
@@ -495,7 +604,19 @@ export default function FinancialsScreen() {
                         <Ionicons name="heart" size={20} color={Colors.success} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.campTitle}>{camp.title}</Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <Text style={[styles.campTitle, { flex: 1 }]}>{camp.title}</Text>
+                          <View style={{ flexDirection: 'row', gap: Spacing.xs, marginLeft: Spacing.sm }}>
+                            {isAdmin && (
+                              <TouchableOpacity onPress={() => handleEditCampaign(camp)}>
+                                <Ionicons name="create-outline" size={18} color={Colors.primary} />
+                              </TouchableOpacity>
+                            )}
+                            <TouchableOpacity onPress={() => openHistory('donation_campaign', camp)}>
+                              <Ionicons name="time-outline" size={18} color={Colors.textLight} />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
                         {camp.description && (
                           <Text style={styles.campDesc} numberOfLines={2}>
                             {camp.description}
@@ -569,6 +690,55 @@ export default function FinancialsScreen() {
           )}
         </TouchableOpacity>
       )}
+
+      {/* Edit Financial Item Modal */}
+      <Modal visible={showEditModal} animationType="slide" transparent>
+        <View style={styles.editModalOverlay}>
+          <View style={styles.editModalContent}>
+            <ScrollView>
+              <Text style={styles.editModalTitle}>
+                Edit {editType === 'due' ? 'Due' : editType === 'fine' ? 'Fine' : 'Campaign'}
+              </Text>
+
+              {editType === 'due' && (
+                <>
+                  <Input label="TITLE" placeholder="Due title" value={editFields.title} onChangeText={(v) => setEditFields({ ...editFields, title: v })} />
+                  <Input label="DESCRIPTION" placeholder="Description" value={editFields.description} onChangeText={(v) => setEditFields({ ...editFields, description: v })} multiline />
+                  <Input label="AMOUNT" placeholder="0.00" value={editFields.amount} onChangeText={(v) => setEditFields({ ...editFields, amount: v })} keyboardType="numeric" />
+                </>
+              )}
+
+              {editType === 'fine' && (
+                <>
+                  <Input label="REASON" placeholder="Fine reason" value={editFields.reason} onChangeText={(v) => setEditFields({ ...editFields, reason: v })} multiline />
+                  <Input label="AMOUNT" placeholder="0.00" value={editFields.amount} onChangeText={(v) => setEditFields({ ...editFields, amount: v })} keyboardType="numeric" />
+                </>
+              )}
+
+              {editType === 'campaign' && (
+                <>
+                  <Input label="TITLE" placeholder="Campaign title" value={editFields.title} onChangeText={(v) => setEditFields({ ...editFields, title: v })} />
+                  <Input label="DESCRIPTION" placeholder="Description" value={editFields.description} onChangeText={(v) => setEditFields({ ...editFields, description: v })} multiline />
+                  <Input label="GOAL AMOUNT" placeholder="0.00" value={editFields.goalAmount} onChangeText={(v) => setEditFields({ ...editFields, goalAmount: v })} keyboardType="numeric" />
+                </>
+              )}
+
+              <View style={styles.editModalActions}>
+                <Button title="Cancel" onPress={() => setShowEditModal(false)} variant="outline" style={{ flex: 1, marginRight: Spacing.sm }} />
+                <Button title="Save" onPress={handleSaveEdit} loading={saving} icon="checkmark-outline" style={{ flex: 1 }} />
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <EditHistoryModal
+        visible={showHistory}
+        onClose={() => setShowHistory(false)}
+        entityType={historyEntityType}
+        entityId={historyEntityId}
+        entityLabel={historyLabel}
+      />
     </View>
   );
 }
@@ -877,5 +1047,30 @@ const styles = StyleSheet.create({
     color: Colors.textWhite,
     fontSize: 10,
     fontWeight: FontWeight.bold as any,
+  },
+  editModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: Spacing.md,
+  },
+  editModalContent: {
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '85%',
+  },
+  editModalTitle: {
+    fontSize: FontSize.xl,
+    fontWeight: FontWeight.bold as any,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.lg,
+  },
+  editModalActions: {
+    flexDirection: 'row',
+    marginTop: Spacing.lg,
   },
 });

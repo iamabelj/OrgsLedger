@@ -178,6 +178,8 @@ class ApiClient {
       this.client.get(`/organizations/${orgId}/members/${userId}/activity`, { params }),
     getAuditLogs: (orgId: string, params?: { page?: number; limit?: number; action?: string; entityType?: string }) =>
       this.client.get(`/organizations/${orgId}/audit-logs`, { params }),
+    getEditHistory: (orgId: string, params?: { page?: number; limit?: number; entityType?: string; entityId?: string }) =>
+      this.client.get(`/organizations/${orgId}/edit-history`, { params }),
     getSubscription: (orgId: string) =>
       this.client.get(`/organizations/${orgId}/subscription`),
     lookupBySlug: (slug: string) =>
@@ -300,13 +302,19 @@ class ApiClient {
     getDues: (orgId: string) => this.client.get(`/financials/${orgId}/dues`),
     createDue: (orgId: string, data: any) =>
       this.client.post(`/financials/${orgId}/dues`, data),
+    updateDue: (orgId: string, dueId: string, data: any) =>
+      this.client.put(`/financials/${orgId}/dues/${dueId}`, data),
     getFines: (orgId: string) => this.client.get(`/financials/${orgId}/fines`),
     createFine: (orgId: string, data: any) =>
       this.client.post(`/financials/${orgId}/fines`, data),
+    updateFine: (orgId: string, fineId: string, data: any) =>
+      this.client.put(`/financials/${orgId}/fines/${fineId}`, data),
     getCampaigns: (orgId: string) =>
       this.client.get(`/financials/${orgId}/donation-campaigns`),
     createCampaign: (orgId: string, data: any) =>
       this.client.post(`/financials/${orgId}/donation-campaigns`, data),
+    updateCampaign: (orgId: string, campaignId: string, data: any) =>
+      this.client.put(`/financials/${orgId}/donation-campaigns/${campaignId}`, data),
     makeDonation: (orgId: string, data: any) =>
       this.client.post(`/financials/${orgId}/donations`, data),
     getLedger: (orgId: string, params?: any) =>
@@ -498,6 +506,8 @@ class ApiClient {
       this.client.get(`/announcements/${orgId}/${announcementId}`),
     create: (orgId: string, data: any) =>
       this.client.post(`/announcements/${orgId}`, data),
+    update: (orgId: string, announcementId: string, data: any) =>
+      this.client.put(`/announcements/${orgId}/${announcementId}`, data),
     delete: (orgId: string, announcementId: string) =>
       this.client.delete(`/announcements/${orgId}/${announcementId}`),
     togglePin: (orgId: string, announcementId: string) =>
@@ -512,6 +522,8 @@ class ApiClient {
       this.client.get(`/events/${orgId}/${eventId}`),
     create: (orgId: string, data: any) =>
       this.client.post(`/events/${orgId}`, data),
+    update: (orgId: string, eventId: string, data: any) =>
+      this.client.put(`/events/${orgId}/${eventId}`, data),
     delete: (orgId: string, eventId: string) =>
       this.client.delete(`/events/${orgId}/${eventId}`),
     rsvp: (orgId: string, eventId: string, data: { status: string }) =>
@@ -526,6 +538,8 @@ class ApiClient {
       this.client.get(`/polls/${orgId}/${pollId}`),
     create: (orgId: string, data: any) =>
       this.client.post(`/polls/${orgId}`, data),
+    update: (orgId: string, pollId: string, data: any) =>
+      this.client.put(`/polls/${orgId}/${pollId}`, data),
     vote: (orgId: string, pollId: string, data: { optionId: string }) =>
       this.client.post(`/polls/${orgId}/${pollId}/vote`, data),
     close: (orgId: string, pollId: string) =>
