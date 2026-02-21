@@ -33,6 +33,7 @@ import {
 import { showAlert } from '../../src/utils/alert';
 import { CURRENCIES } from '../../src/utils/currency';
 import { useOrgCurrencyStore } from '../../src/hooks/useOrgCurrency';
+import { ALL_LANGUAGES, getLanguage } from '../../src/utils/languages';
 
 const PAYMENT_GATEWAYS = [
   { id: 'stripe', name: 'Stripe', icon: 'card-outline' as const, available: true },
@@ -48,6 +49,9 @@ export default function SettingsScreen() {
   const [orgDescription, setOrgDescription] = useState('');
   const [currency, setCurrency] = useState('USD');
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+  const [defaultLanguage, setDefaultLanguage] = useState('en');
+  const [showLanguagePicker, setShowLanguagePicker] = useState(false);
+  const [langSearch, setLangSearch] = useState('');
   const [enabledGateways, setEnabledGateways] = useState<string[]>(['stripe']);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -85,6 +89,7 @@ export default function SettingsScreen() {
       // description lives inside settings JSON (no top-level DB column)
       setOrgDescription(org?.description || settings.description || '');
       setCurrency(settings.currency || org?.currency || 'USD');
+      setDefaultLanguage(settings.defaultLanguage || 'en');
       setEnabledGateways(settings.enabledGateways || ['stripe']);
       if (settings.notifications) {
         setEmailNotifications(settings.notifications.emailNotifications !== false);
@@ -113,6 +118,7 @@ export default function SettingsScreen() {
           slug: orgSlug.trim(),
           description: orgDescription.trim(),
           currency,
+          defaultLanguage,
           enabledGateways,
           notifications: {
             emailNotifications,
@@ -139,6 +145,7 @@ export default function SettingsScreen() {
   };
 
   const selectedCurrency = CURRENCIES.find((c) => c.code === currency) || CURRENCIES[0];
+  const selectedLanguage = getLanguage(defaultLanguage);
 
   const handleDangerZone = (action: 'transfer' | 'delete') => {
     if (action === 'transfer') {
@@ -241,6 +248,29 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Default Language */}
+      <View style={styles.section}>
+        <SectionHeader title="Default Language" />
+
+        <TouchableOpacity
+          style={styles.currencySelector}
+          onPress={() => { setLangSearch(''); setShowLanguagePicker(true); }}
+        >
+          <View style={styles.currencyLeft}>
+            <Text style={{ fontSize: 24 }}>{selectedLanguage?.flag || '🌐'}</Text>
+            <View>
+              <Text style={styles.currencyName}>{selectedLanguage?.name || defaultLanguage}</Text>
+              <Text style={styles.currencyCode}>
+                {selectedLanguage?.nativeName !== selectedLanguage?.name
+                  ? selectedLanguage?.nativeName
+                  : defaultLanguage.toUpperCase()}
+              </Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-down" size={20} color={Colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+
       {/* Payment Gateways */}
       <View style={styles.section}>
         <SectionHeader title="Payment Gateways" />
@@ -248,13 +278,15 @@ export default function SettingsScreen() {
         {PAYMENT_GATEWAYS.map((gateway) => {
           const isEnabled = enabledGateways.includes(gateway.id);
           return (
-            <TouchableOpacity
+            <View
               key={gateway.id}
               style={[styles.gatewayItem, isEnabled && styles.gatewayItemActive]}
-              onPress={() => toggleGateway(gateway.id)}
-              activeOpacity={0.7}
             >
-              <View style={styles.gatewayLeft}>
+              <TouchableOpacity
+                style={styles.gatewayLeft}
+                onPress={() => toggleGateway(gateway.id)}
+                activeOpacity={0.7}
+              >
                 <View
                   style={[
                     styles.gatewayIcon,
@@ -273,14 +305,14 @@ export default function SettingsScreen() {
                     {isEnabled ? 'Enabled' : 'Disabled'}
                   </Text>
                 </View>
-              </View>
+              </TouchableOpacity>
               <Switch
                 value={isEnabled}
                 onValueChange={() => toggleGateway(gateway.id)}
                 trackColor={{ false: Colors.accent, true: Colors.highlight }}
                 thumbColor={Colors.textWhite}
               />
-            </TouchableOpacity>
+            </View>
           );
         })}
       </View>
@@ -393,6 +425,60 @@ export default function SettingsScreen() {
                     </View>
                   </View>
                   {currency === c.code && (
+                    <Ionicons name="checkmark-circle" size={22} color={Colors.highlight} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Language Picker Modal */}
+      <Modal visible={showLanguagePicker} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHandle} />
+            <SectionHeader title="Select Language" />
+
+            <TextInput
+              style={styles.langSearchInput}
+              placeholder="Search languages…"
+              placeholderTextColor={Colors.textLight}
+              value={langSearch}
+              onChangeText={setLangSearch}
+              autoCapitalize="none"
+            />
+
+            <ScrollView style={styles.currencyList} keyboardShouldPersistTaps="handled">
+              {ALL_LANGUAGES
+                .filter((l) => {
+                  if (!langSearch) return true;
+                  const q = langSearch.toLowerCase();
+                  return l.name.toLowerCase().includes(q) || l.nativeName.toLowerCase().includes(q) || l.code.includes(q);
+                })
+                .map((lang) => (
+                <TouchableOpacity
+                  key={lang.code}
+                  style={[
+                    styles.currencyOption,
+                    defaultLanguage === lang.code && styles.currencyOptionActive,
+                  ]}
+                  onPress={() => {
+                    setDefaultLanguage(lang.code);
+                    setShowLanguagePicker(false);
+                  }}
+                >
+                  <View style={styles.currencyOptionLeft}>
+                    <Text style={{ fontSize: 22 }}>{lang.flag}</Text>
+                    <View>
+                      <Text style={styles.currencyOptionName}>{lang.name}</Text>
+                      {lang.nativeName !== lang.name && (
+                        <Text style={styles.currencyOptionCode}>{lang.nativeName}</Text>
+                      )}
+                    </View>
+                  </View>
+                  {defaultLanguage === lang.code && (
                     <Ionicons name="checkmark-circle" size={22} color={Colors.highlight} />
                   )}
                 </TouchableOpacity>
@@ -667,5 +753,14 @@ const styles = StyleSheet.create({
   currencyOptionCode: {
     fontSize: FontSize.xs,
     color: Colors.textLight,
+  },
+  langSearchInput: {
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+    color: Colors.textPrimary,
+    fontSize: FontSize.md,
+    marginBottom: Spacing.sm,
   },
 });

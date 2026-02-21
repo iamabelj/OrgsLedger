@@ -255,19 +255,27 @@ export default function HomeScreen() {
             <Text style={styles.greeting}>{getGreeting()},</Text>
             <Text style={styles.userName}>{user?.firstName || 'User'}</Text>
           </View>
-          <TouchableOpacity
-            style={styles.notifBtn}
-            onPress={() => router.push('/notifications')}
-          >
-            <Ionicons name="notifications-outline" size={22} color={Colors.textPrimary} />
-            {unreadNotifications > 0 && (
-              <View style={styles.notifBadge}>
-                <Text style={styles.notifBadgeText}>
-                  {unreadNotifications > 9 ? '9+' : unreadNotifications}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              style={styles.notifBtn}
+              onPress={() => router.push('/(tabs)/profile')}
+            >
+              <Ionicons name="settings-outline" size={22} color={Colors.textPrimary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.notifBtn}
+              onPress={() => router.push('/notifications')}
+            >
+              <Ionicons name="notifications-outline" size={22} color={Colors.textPrimary} />
+              {unreadNotifications > 0 && (
+                <View style={styles.notifBadge}>
+                  <Text style={styles.notifBadgeText}>
+                    {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
         {orgDetails && (
           <TouchableOpacity onPress={handleOrgSwitch} style={styles.orgPill} activeOpacity={0.7}>
@@ -1044,6 +1052,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   headerLeft: { flex: 1 },
+  headerRight: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 4 },
   greeting: {
     fontSize: FontSize.sm,
     color: Colors.textSecondary,
