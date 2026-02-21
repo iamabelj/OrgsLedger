@@ -168,9 +168,9 @@ export default function PollsScreen() {
           </View>
           {isAdmin && isActive && (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
-              <TouchableOpacity onPress={() => handleEdit(item)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primary + '18', paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: BorderRadius.sm }}>
-                <Ionicons name="create-outline" size={16} color={Colors.primary} />
-                <Text style={{ fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.semibold as any }}>Edit</Text>
+              <TouchableOpacity onPress={() => handleEdit(item)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#2563EB', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 6 }}>
+                <Ionicons name="create-outline" size={16} color="#FFFFFF" />
+                <Text style={{ fontSize: 13, color: '#FFFFFF', fontWeight: '700' }}>Edit</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => {
               showAlert('Close Poll', 'This will permanently close the poll and no more votes can be cast. Continue?', [
@@ -245,6 +245,7 @@ export default function PollsScreen() {
         data={polls}
         renderItem={renderPoll}
         keyExtractor={(item) => item.id}
+        extraData={isAdmin}
         contentContainerStyle={[styles.list, { maxWidth: responsive.contentMaxWidth, alignSelf: 'center', width: '100%' }]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadPolls(); }} />

@@ -165,19 +165,26 @@ export default function AnnouncementsScreen() {
               </View>
             )}
           </View>
-          {isAdmin && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.md }}>
-              <TouchableOpacity onPress={() => handleEdit(item)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primary + '18', paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: BorderRadius.sm }}>
-                <Ionicons name="create-outline" size={16} color={Colors.primary} />
-                <Text style={{ fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.semibold as any }}>Edit</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleDelete(item.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.error + '18', paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: BorderRadius.sm }}>
-                <Ionicons name="trash-outline" size={16} color={Colors.error} />
-                <Text style={{ fontSize: FontSize.xs, color: Colors.error, fontWeight: FontWeight.semibold as any }}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          )}
         </View>
+        {/* Admin action bar — always full-width below header */}
+        {isAdmin && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8, paddingTop: 4 }}>
+            <TouchableOpacity
+              onPress={() => handleEdit(item)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#2563EB', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 6 }}
+            >
+              <Ionicons name="create-outline" size={16} color="#FFFFFF" />
+              <Text style={{ fontSize: 13, color: '#FFFFFF', fontWeight: '700' }}>Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => handleDelete(item.id)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#DC2626', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 6 }}
+            >
+              <Ionicons name="trash-outline" size={16} color="#FFFFFF" />
+              <Text style={{ fontSize: 13, color: '#FFFFFF', fontWeight: '700' }}>Delete</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         <Text style={styles.announcementTitle}>{item.title}</Text>
         <Text style={styles.announcementBody}>{item.body}</Text>
         <View style={styles.metaRow}>
@@ -203,7 +210,7 @@ export default function AnnouncementsScreen() {
       {/* DEBUG: Remove after confirming edit works */}
       <View style={{ backgroundColor: '#1a1a2e', padding: 8, borderBottomWidth: 1, borderBottomColor: '#333' }}>
         <Text style={{ color: '#0f0', fontSize: 11, fontFamily: 'monospace' }}>
-          globalRole: {JSON.stringify(globalRole)} | membership.role: {JSON.stringify(membership?.role)} | orgId: {currentOrgId ? currentOrgId.slice(0, 8) : 'none'} | isAdmin: {String(isAdmin)}
+          globalRole: {JSON.stringify(globalRole)} | membership.role: {JSON.stringify(membership?.role)} | orgId: {currentOrgId ? currentOrgId.slice(0, 8) : 'none'} | isAdmin: {String(isAdmin)} | items: {announcements.length}
         </Text>
       </View>
       <View style={[styles.header, { maxWidth: responsive.contentMaxWidth, alignSelf: 'center', width: '100%' }]}>
@@ -222,6 +229,7 @@ export default function AnnouncementsScreen() {
         data={announcements}
         renderItem={renderAnnouncement}
         keyExtractor={(item) => item.id}
+        extraData={isAdmin}
         contentContainerStyle={[
           styles.list,
           { maxWidth: responsive.contentMaxWidth, alignSelf: 'center', width: '100%' },
