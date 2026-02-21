@@ -256,7 +256,7 @@ router.put(
         'allowPublicJoin', 'requireApproval', 'defaultRole',
         'billingCurrency', 'paymentMethods', 'enablePaystack', 'enableStripe', 'enableFlutterwave',
         'enableBankTransfer', 'bankDetails', 'primaryColor', 'accentColor',
-        'currency', 'timezone', 'locale', 'aiEnabled', 'features',
+        'currency', 'defaultLanguage', 'timezone', 'locale', 'aiEnabled', 'features',
         'notifications', 'enabledGateways', 'description',
       ];
 

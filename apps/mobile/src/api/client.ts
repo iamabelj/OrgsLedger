@@ -129,13 +129,20 @@ class ApiClient {
       this.client.get(`/auth/language-preference/${orgId}`),
     setLanguagePreference: (orgId: string, data: { language: string; receiveVoice?: boolean }) =>
       this.client.put(`/auth/language-preference/${orgId}`, data),
-    uploadAvatar: (file: { uri: string; name: string; mimeType: string }) => {
+    uploadAvatar: (file: { uri: string; name: string; mimeType: string } | File) => {
       const formData = new FormData();
-      formData.append('avatar', {
-        uri: file.uri,
-        name: file.name,
-        type: file.mimeType,
-      } as any);
+      if (typeof File !== 'undefined' && file instanceof File) {
+        // Web: append native File object directly
+        formData.append('avatar', file, file.name);
+      } else {
+        // React Native: URI-based upload
+        const f = file as { uri: string; name: string; mimeType: string };
+        formData.append('avatar', {
+          uri: f.uri,
+          name: f.name,
+          type: f.mimeType,
+        } as any);
+      }
       return this.client.post('/auth/upload-avatar', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
@@ -192,14 +199,19 @@ class ApiClient {
       this.client.delete(`/chat/${orgId}/channels/${channelId}/messages/${messageId}`),
     markRead: (orgId: string, channelId: string) =>
       this.client.post(`/chat/${orgId}/channels/${channelId}/mark-read`),
-    uploadFiles: (orgId: string, channelId: string, files: { uri: string; name: string; mimeType: string }[]) => {
+    uploadFiles: (orgId: string, channelId: string, files: ({ uri: string; name: string; mimeType: string } | File)[]) => {
       const formData = new FormData();
       files.forEach((file) => {
-        formData.append('files', {
-          uri: file.uri,
-          name: file.name,
-          type: file.mimeType,
-        } as any);
+        if (typeof File !== 'undefined' && file instanceof File) {
+          formData.append('files', file, file.name);
+        } else {
+          const f = file as { uri: string; name: string; mimeType: string };
+          formData.append('files', {
+            uri: f.uri,
+            name: f.name,
+            type: f.mimeType,
+          } as any);
+        }
       });
       return this.client.post(`/chat/${orgId}/channels/${channelId}/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },

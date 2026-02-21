@@ -177,9 +177,7 @@ export default function ProfileScreen() {
             if (!file) return;
             setUploadingAvatar(true);
             try {
-              const formData = new FormData();
-              formData.append('avatar', file);
-              await api.auth.uploadAvatar({ uri: URL.createObjectURL(file), name: file.name, mimeType: file.type });
+              await api.auth.uploadAvatar(file);
               await loadUser();
               showAlert('Success', 'Profile photo updated!');
             } catch (err: any) {

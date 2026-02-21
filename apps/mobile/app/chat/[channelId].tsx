@@ -87,13 +87,7 @@ export default function ChannelMessagesScreen() {
       input.onchange = async (e: any) => {
         const files = Array.from(e.target.files || []) as File[];
         if (!files.length) return;
-        await uploadFiles(
-          files.map((f) => ({
-            uri: URL.createObjectURL(f),
-            name: f.name,
-            mimeType: f.type || 'image/jpeg',
-          }))
-        );
+        await uploadFiles(files);
       };
       input.click();
       return;
@@ -127,13 +121,7 @@ export default function ChannelMessagesScreen() {
       input.onchange = async (e: any) => {
         const files = Array.from(e.target.files || []) as File[];
         if (!files.length) return;
-        await uploadFiles(
-          files.map((f) => ({
-            uri: URL.createObjectURL(f),
-            name: f.name,
-            mimeType: f.type || 'application/octet-stream',
-          }))
-        );
+        await uploadFiles(files);
       };
       input.click();
       return;
@@ -155,18 +143,24 @@ export default function ChannelMessagesScreen() {
   };
 
   const uploadFiles = async (
-    files: { uri: string; name: string; mimeType: string }[]
+    files: ({ uri: string; name: string; mimeType: string } | File)[]
   ) => {
     if (!currentOrgId || !channelId) return;
     setUploading(true);
     try {
       const { data } = await api.chat.uploadFiles(currentOrgId, channelId, files);
-      const uploaded = data.data.map((att: any, i: number) => ({
-        id: att.id,
-        name: att.file_name,
-        uri: files[i].uri,
-        mimeType: att.mime_type,
-      }));
+      const uploaded = data.data.map((att: any, i: number) => {
+        const f = files[i];
+        const uri = typeof File !== 'undefined' && f instanceof File
+          ? URL.createObjectURL(f)
+          : (f as { uri: string }).uri;
+        return {
+          id: att.id,
+          name: att.file_name,
+          uri,
+          mimeType: att.mime_type,
+        };
+      });
       setPendingAttachments((prev) => [...prev, ...uploaded]);
     } catch {
       showAlert('Upload failed', 'Could not upload files. Try again.');

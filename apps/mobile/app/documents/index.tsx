@@ -131,6 +131,33 @@ export default function DocumentsScreen() {
 
   const handleUpload = async () => {
     try {
+      // Web: use native file input
+      if (Platform.OS === 'web') {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '*/*';
+        input.onchange = async (e: any) => {
+          const webFile = e.target.files[0] as File;
+          if (!webFile) return;
+          setUploading(true);
+          try {
+            const formData = new FormData();
+            formData.append('file', webFile, webFile.name);
+            formData.append('title', webFile.name);
+            formData.append('category', 'general');
+            await api.documents.upload(currentOrgId!, formData);
+            loadDocuments();
+            showAlert('Success', 'Document uploaded successfully');
+          } catch {
+            showAlert('Upload Failed', 'Could not upload the document. Please try again.');
+          } finally {
+            setUploading(false);
+          }
+        };
+        input.click();
+        return;
+      }
+
       const result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
         copyToCacheDirectory: true,
