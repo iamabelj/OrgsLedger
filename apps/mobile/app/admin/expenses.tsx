@@ -146,7 +146,7 @@ export default function ExpensesScreen() {
         <View style={styles.metaItem}>
           <Ionicons name="person-outline" size={14} color={Colors.textLight} />
           <Text style={styles.metaText}>
-            {item.createdBy.firstName} {item.createdBy.lastName}
+            {item.createdBy?.firstName || 'Unknown'} {item.createdBy?.lastName || ''}
           </Text>
         </View>
       </View>
