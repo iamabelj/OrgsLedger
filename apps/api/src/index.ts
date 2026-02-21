@@ -190,6 +190,28 @@ app.get('/health', (_req, res) => {
   });
 });
 
+// ── Build Verification ────────────────────────────────────
+app.get('/api/version', (_req, res) => {
+  const webDir = path.resolve(__dirname, '../web');
+  const webExists = fs.existsSync(webDir);
+  let jsFiles: string[] = [];
+  try {
+    const expoDir = path.join(webDir, '_expo', 'static', 'js', 'web');
+    if (fs.existsSync(expoDir)) jsFiles = fs.readdirSync(expoDir);
+  } catch {}
+  res.setHeader('Cache-Control', 'no-cache');
+  res.json({
+    build: '2026-02-21-edit-feature',
+    version: APP_VERSION,
+    webDir,
+    webExists,
+    jsFiles,
+    nodeEnv: process.env.NODE_ENV,
+    cwd: process.cwd(),
+    dirname: __dirname,
+  });
+});
+
 // ── Pipeline Diagnostic Endpoint ──────────────────────────
 // GET /health/pipeline — check if all services for minutes/TTS are configured
 app.get('/health/pipeline', async (_req, res) => {

@@ -132,6 +132,12 @@ export function mountWebFrontend(app: express.Application): void {
   // Static file serving (skip landing domain)
   app.use((req, res, next) => {
     if (isLandingHost(req.headers.host || '')) return next();
+    // Prevent caching of HTML files
+    if (req.path === '/' || req.path.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
     express.static(webDir)(req, res, next);
   });
 
@@ -153,6 +159,10 @@ export function mountSpaFallback(app: express.Application): void {
       res.redirect(301, '/');
       return;
     }
+    // Prevent caching of SPA fallback HTML
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(path.join(webDir, 'index.html'));
   });
 }

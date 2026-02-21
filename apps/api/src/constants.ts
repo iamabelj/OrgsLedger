@@ -137,4 +137,4 @@ export const DEEP_LINK_SCHEME = 'orgsledger://';
 
 // ── Misc ────────────────────────────────────────────────────
 export const APP_NAME = 'OrgsLedger';
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = '1.1.0-edit';
