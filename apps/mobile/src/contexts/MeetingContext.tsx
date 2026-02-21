@@ -214,30 +214,23 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
       if (data.meetingId !== meetingId) return;
       setMeetingState((prev: any) => prev ? { ...prev, status: 'ended', actual_end: new Date().toISOString() } : prev);
       meetingStore.onMeetingEnded(data);
-      // Don't immediately reset — keep listeners alive for minutes:ready/failed events.
-      // Minimize the overlay so user can continue navigating.
-      setIsMinimized(true);
-      // Auto-reset after 2 minutes if minutes events don't arrive
+      // Leave the socket meeting room immediately (stop receiving translations/TTS)
+      socketClient.leaveMeeting(meetingId);
+      // Reset meeting state after a short delay (allow minutes:ready to arrive via org room)
       setTimeout(() => {
-        setIsActive((active) => {
-          if (active) resetMeeting();
-          return false;
-        });
-      }, 120_000);
+        resetMeeting();
+      }, 5_000);
     }));
 
     unsubs.push(socketClient.on('meeting:force-disconnect', (data: any) => {
       if (data.meetingId !== meetingId) return;
       meetingStore.setMeetingEndedByModerator(true);
       meetingStore.setStatus('ended');
-      // Don't immediately reset — keep listeners alive for minutes events.
-      setIsMinimized(true);
+      // Leave the socket meeting room and clean up immediately
+      socketClient.leaveMeeting(meetingId);
       setTimeout(() => {
-        setIsActive((active) => {
-          if (active) resetMeeting();
-          return false;
-        });
-      }, 120_000);
+        resetMeeting();
+      }, 3_000);
     }));
 
     // Recording

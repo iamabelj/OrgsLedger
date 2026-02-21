@@ -183,9 +183,9 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
         setHasChosenLanguage(true);
         setShowLanguagePicker(false);
         storeSetMyLanguage(data.language);
-        if (data.receiveVoice !== undefined) {
-          setSpeakEnabled(data.receiveVoice);
-        }
+        // Don't auto-enable TTS from server preferences — keep it off unless
+        // user explicitly enables it via the volume toggle button.
+        // This prevents unwanted voice playback during meetings.
       }
     });
 

@@ -216,7 +216,7 @@ function FullMeetingOverlay() {
       translationRef.current?.startListening();
       setTranslationListening(true);
     }
-    translationRef.current?.setAutoTTS(true);
+    // Don't auto-enable TTS — user can toggle it explicitly via volume button
     setShowLangPicker(false);
     setLangSearch('');
   }, [translationListening]);
@@ -241,12 +241,13 @@ function FullMeetingOverlay() {
   }, [lk, gm]);
 
   // ── End Meeting ───────────────────────────────────────
+  // Note: Do NOT disconnect from LiveKit or stop listening here.
+  // gm.endMeeting() shows a confirmation dialog first. The actual
+  // cleanup happens in the meeting:ended socket handler after the
+  // API confirms the meeting is ended.
   const handleEnd = useCallback(() => {
-    lk.disconnect();
-    translationRef.current?.stopListening();
-    setTranslationListening(false);
     gm.endMeeting();
-  }, [lk, gm]);
+  }, [gm]);
 
   // ── Minimize handler ──────────────────────────────────
   const handleMinimize = useCallback(() => {
@@ -527,7 +528,7 @@ function FullMeetingOverlay() {
           meetingId={gm.meetingId!}
           userId={gm.userId}
           hideControls
-          autoTTS
+          autoTTS={false}
         />
       )}
     </View>
