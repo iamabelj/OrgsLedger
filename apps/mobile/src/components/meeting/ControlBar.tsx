@@ -2,7 +2,7 @@
 // OrgsLedger — ControlBar Component
 // Zoom-class bottom control bar for meeting rooms.
 // Clean layout: Mic | Camera | Share || Hand | People | Chat
-//   | Language | Record || Leave | End
+//   | Transcript | Record || Leave | End
 // ============================================================
 
 import React, { memo } from 'react';
@@ -25,9 +25,9 @@ interface ControlBarProps {
   isCameraEnabled: boolean;
   isScreenSharing: boolean;
 
-  // Translation
-  translationLang: string;
-  isTranslationListening: boolean;
+  // Chat
+  isChatOpen: boolean;
+  unreadChatCount: number;
 
   // Recording
   isRecording: boolean;
@@ -49,7 +49,7 @@ interface ControlBarProps {
   onToggleMic: () => void;
   onToggleCamera: () => void;
   onToggleScreenShare: () => void;
-  onOpenLanguagePicker: () => void;
+  onToggleChat: () => void;
   onToggleRecording: () => void;
   onRaiseHand: () => void;
   onToggleSidebar: (panel?: string) => void;
@@ -130,8 +130,8 @@ function ControlBarInner(props: ControlBarProps) {
     isMicEnabled,
     isCameraEnabled,
     isScreenSharing,
-    translationLang,
-    isTranslationListening,
+    isChatOpen,
+    unreadChatCount,
     isRecording,
     handRaised,
     isSidebarOpen,
@@ -141,7 +141,7 @@ function ControlBarInner(props: ControlBarProps) {
     onToggleMic,
     onToggleCamera,
     onToggleScreenShare,
-    onOpenLanguagePicker,
+    onToggleChat,
     onToggleRecording,
     onRaiseHand,
     onToggleSidebar,
@@ -207,20 +207,19 @@ function ControlBarInner(props: ControlBarProps) {
         />
 
         <ControlBtn
-          icon="chatbubbles"
-          label="Transcript"
-          active={isSidebarOpen && activeSidebarPanel === 'transcript'}
-          onPress={() => onToggleSidebar('transcript')}
+          icon="chatbubble-ellipses"
+          label="Chat"
+          active={isChatOpen}
+          badge={unreadChatCount > 0 ? unreadChatCount : undefined}
+          onPress={onToggleChat}
           compact={isNarrow}
         />
 
-        {/* Language / Translation (always available) */}
         <ControlBtn
-          icon="language"
-          label={isTranslationListening ? translationLang.toUpperCase() : 'Language'}
-          active={isTranslationListening}
-          activeColor="#10B981"
-          onPress={onOpenLanguagePicker}
+          icon="document-text"
+          label="Transcript"
+          active={isSidebarOpen && activeSidebarPanel === 'transcript'}
+          onPress={() => onToggleSidebar('transcript')}
           compact={isNarrow}
         />
 

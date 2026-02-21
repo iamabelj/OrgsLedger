@@ -5,7 +5,7 @@
 // LiveKit connection lives HERE — navigation never unmounts it.
 // ============================================================
 
-import React, { useRef, useCallback, useEffect, useState, useMemo } from 'react';
+import React, { useRef, useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -13,8 +13,6 @@ import {
   StyleSheet,
   Platform,
   useWindowDimensions,
-  ScrollView,
-  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../theme';
@@ -26,7 +24,6 @@ import { MeetingSidebar, type SidebarPanel } from './MeetingSidebar';
 import { ChatDrawer } from './ChatDrawer';
 import { MiniMeetingWidget } from './MiniMeetingWidget';
 import LiveTranslation, { type LiveTranslationRef } from '../ui/LiveTranslation';
-import { ALL_LANGUAGES, isTtsSupported } from '../../utils/languages';
 import { socketClient } from '../../api/socket';
 import { showAlert } from '../../utils/alert';
 
@@ -110,10 +107,7 @@ function FullMeetingOverlay() {
   const [activePanel, setActivePanel] = useState<SidebarPanel>('participants');
 
   // ── Translation State ─────────────────────────────────
-  const [translationLang, setTranslationLang] = useState('en');
   const [translationListening, setTranslationListening] = useState(false);
-  const [showLangPicker, setShowLangPicker] = useState(false);
-  const [langSearch, setLangSearch] = useState('');
   const translationRef = useRef<LiveTranslationRef>(null);
 
   // ── Hand Raised ───────────────────────────────────────
@@ -121,15 +115,6 @@ function FullMeetingOverlay() {
 
   // ── Recording (local) ─────────────────────────────────
   const [isRecording, setIsRecording] = useState(false);
-
-  // Filtered languages
-  const filteredLangs = useMemo(() => {
-    if (!langSearch.trim()) return ALL_LANGUAGES;
-    const q = langSearch.toLowerCase().trim();
-    return ALL_LANGUAGES.filter(
-      (l) => l.name.toLowerCase().includes(q) || l.nativeName.toLowerCase().includes(q) || l.code.includes(q)
-    );
-  }, [langSearch]);
 
   // ── Connect to LiveKit on overlay mount ───────────────
   useEffect(() => {
@@ -207,19 +192,6 @@ function FullMeetingOverlay() {
       raised: newState,
     });
   }, [handRaised, gm.meetingId, gm.userId, gm.userName]);
-
-  // ── Translation Controls ──────────────────────────────
-  const handleSelectLanguage = useCallback((code: string) => {
-    setTranslationLang(code);
-    translationRef.current?.selectLanguage(code);
-    if (!translationListening) {
-      translationRef.current?.startListening();
-      setTranslationListening(true);
-    }
-    // Don't auto-enable TTS — user can toggle it explicitly via volume button
-    setShowLangPicker(false);
-    setLangSearch('');
-  }, [translationListening]);
 
   // ── Recording ─────────────────────────────────────────
   const handleToggleRecording = useCallback(() => {
@@ -433,77 +405,13 @@ function FullMeetingOverlay() {
         )}
       </View>
 
-      {/* ═══ LANGUAGE PICKER OVERLAY ═════════════════════════ */}
-      {showLangPicker && (
-        <View style={styles.langPickerOverlay}>
-          <View style={styles.langPickerCard}>
-            <View style={styles.langPickerHeader}>
-              <Ionicons name="language" size={18} color={Colors.highlight} />
-              <Text style={styles.langPickerTitle}>Select Language</Text>
-              <TouchableOpacity onPress={() => { setShowLangPicker(false); setLangSearch(''); }}>
-                <Ionicons name="close" size={20} color={Colors.textLight} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.langSearchWrap}>
-              <Ionicons name="search" size={14} color={Colors.textLight} />
-              <TextInput
-                style={styles.langSearchInput}
-                placeholder="Search language..."
-                placeholderTextColor={Colors.textLight}
-                value={langSearch}
-                onChangeText={setLangSearch}
-                autoCorrect={false}
-                autoCapitalize="none"
-              />
-              {langSearch.length > 0 && (
-                <TouchableOpacity onPress={() => setLangSearch('')}>
-                  <Ionicons name="close-circle" size={14} color={Colors.textLight} />
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <ScrollView style={styles.langList} keyboardShouldPersistTaps="handled">
-              {filteredLangs.length === 0 && (
-                <Text style={styles.langNoResults}>No languages match "{langSearch}"</Text>
-              )}
-              {filteredLangs.map((lang) => {
-                const isCurrentLang = translationLang === lang.code;
-                return (
-                  <TouchableOpacity
-                    key={lang.code}
-                    style={[styles.langItem, isCurrentLang && styles.langItemActive]}
-                    onPress={() => handleSelectLanguage(lang.code)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={{ fontSize: 18 }}>{lang.flag || '🌐'}</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.langName, isCurrentLang && { color: Colors.highlight }]}>
-                        {lang.name}
-                      </Text>
-                      {lang.nativeName !== lang.name && (
-                        <Text style={styles.langNative}>{lang.nativeName}</Text>
-                      )}
-                    </View>
-                    {isTtsSupported(lang.code) && (
-                      <Ionicons name="volume-medium-outline" size={12} color={Colors.textLight} />
-                    )}
-                    {isCurrentLang && <Ionicons name="checkmark-circle" size={16} color={Colors.highlight} />}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-        </View>
-      )}
-
       {/* ═══ CONTROL BAR ═════════════════════════════════════ */}
       <ControlBar
         isMicEnabled={lk.isMicEnabled}
         isCameraEnabled={!gm.isAudioOnly && lk.isCameraEnabled}
         isScreenSharing={lk.isScreenSharing}
-        translationLang={translationLang}
-        isTranslationListening={translationListening}
+        isChatOpen={gm.isChatOpen}
+        unreadChatCount={gm.unreadChatCount}
         isRecording={isRecording || gm.isRecordingFromSocket}
         handRaised={handRaised}
         isSidebarOpen={sidebarOpen}
@@ -513,7 +421,7 @@ function FullMeetingOverlay() {
         onToggleMic={lk.toggleMic}
         onToggleCamera={gm.isAudioOnly ? gm.toggleAudioOnly : lk.toggleCamera}
         onToggleScreenShare={lk.toggleScreenShare}
-        onOpenLanguagePicker={() => setShowLangPicker(true)}
+        onToggleChat={gm.toggleChat}
         onToggleRecording={handleToggleRecording}
         onRaiseHand={handleRaiseHand}
         onToggleSidebar={handleToggleSidebar}
@@ -801,86 +709,5 @@ const styles = StyleSheet.create({
     fontSize: FontSize.lg,
     fontWeight: FontWeight.bold,
     color: Colors.textWhite,
-  },
-
-  // Language picker
-  langPickerOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(6, 13, 24, 0.7)',
-    zIndex: 200,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.xl,
-  },
-  langPickerCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.md,
-    width: '100%',
-    maxWidth: 400,
-    maxHeight: '80%',
-    ...(Shadow.lg as any),
-  },
-  langPickerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  langPickerTitle: {
-    flex: 1,
-    fontSize: FontSize.md,
-    fontWeight: FontWeight.semibold,
-    color: Colors.textWhite,
-  },
-  langSearchWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primaryLight,
-    borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    marginBottom: Spacing.sm,
-    gap: 6,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  langSearchInput: {
-    flex: 1,
-    color: Colors.textWhite,
-    fontSize: FontSize.sm,
-    padding: 0,
-  },
-  langList: {
-    maxHeight: 400,
-  },
-  langNoResults: {
-    color: Colors.textLight,
-    fontSize: FontSize.xs,
-    textAlign: 'center',
-    paddingVertical: Spacing.md,
-  },
-  langItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    paddingVertical: Spacing.xs + 2,
-    paddingHorizontal: Spacing.xs,
-    borderRadius: BorderRadius.sm,
-  },
-  langItemActive: {
-    backgroundColor: Colors.highlightSubtle,
-  },
-  langName: {
-    color: Colors.textWhite,
-    fontSize: FontSize.sm,
-  },
-  langNative: {
-    color: Colors.textLight,
-    fontSize: 10,
   },
 });

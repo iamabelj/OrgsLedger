@@ -1355,28 +1355,11 @@ export default function MeetingDetailScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Join Buttons */}
+          {/* Join Button */}
           <View style={z.lobbyJoinRow}>
-            {meeting.meeting_type !== 'audio' && (
-              <TouchableOpacity
-                style={z.lobbyJoinVideoBtn}
-                onPress={() => handleJoinMeeting('video')}
-                disabled={joinLoading}
-                activeOpacity={0.7}
-              >
-                {joinLoading ? (
-                  <ActivityIndicator color="#FFF" />
-                ) : (
-                  <>
-                    <Ionicons name="videocam" size={22} color="#FFF" />
-                    <Text style={z.lobbyJoinBtnText}>Join with Video</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            )}
             <TouchableOpacity
-              style={z.lobbyJoinAudioBtn}
-              onPress={() => handleJoinMeeting('audio')}
+              style={z.lobbyJoinVideoBtn}
+              onPress={() => handleJoinMeeting('video')}
               disabled={joinLoading}
               activeOpacity={0.7}
             >
@@ -1384,8 +1367,8 @@ export default function MeetingDetailScreen() {
                 <ActivityIndicator color="#FFF" />
               ) : (
                 <>
-                  <Ionicons name="mic" size={22} color="#FFF" />
-                  <Text style={z.lobbyJoinBtnText}>Join with Audio</Text>
+                  <Ionicons name="videocam" size={22} color="#FFF" />
+                  <Text style={z.lobbyJoinBtnText}>Join Meeting</Text>
                 </>
               )}
             </TouchableOpacity>
