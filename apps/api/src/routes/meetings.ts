@@ -17,6 +17,7 @@ import { translateText, LANGUAGES, SPEECH_CODES, ALL_LANGUAGES } from '../servic
 import { getAiWallet, getOrgSubscription } from '../services/subscription.service';
 import { generateRoomName, generateLiveKitToken, buildJoinConfig } from '../services/livekit.service';
 import { forceDisconnectMeeting } from '../socket';
+import { getBotManager } from '../services/bot';
 
 const router = Router();
 
@@ -758,7 +759,13 @@ router.post(
         io.to(`meeting:${req.params.meetingId}`).emit('meeting:started', payload);
       }
 
-
+      // Start transcription bot (best-effort, don't block response)
+      try {
+        const botManager = getBotManager();
+        botManager.startMeetingBot(req.params.meetingId).catch((err) =>
+          logger.warn('[MEETING_START] Transcription bot failed to start', { meetingId: req.params.meetingId, error: err.message })
+        );
+      } catch (_) { /* BotManager not initialized */ }
 
       await (req as any).audit?.({
         organizationId: req.params.orgId,
@@ -809,15 +816,25 @@ router.post(
         // NOTE: Do NOT force-disconnect sockets immediately.
         // Clients need to remain in the meeting room to receive
         // meeting:minutes:processing / meeting:minutes:ready / meeting:minutes:failed events.
-        // Instead, force-disconnect after a delay so minutes events can be delivered.
+        // GPT-4o summarization can take 10-30 seconds, so allow 60s before disconnect.
+        // (Clients also receive events via org room, so this is a best-effort grace period.)
         setTimeout(() => {
           forceDisconnectMeeting(io, req.params.meetingId).catch((err) =>
             logger.warn('Force disconnect failed', err)
           );
-        }, 5_000); // 5 seconds grace period for minutes events
+        }, 60_000); // 60 seconds grace period — GPT-4o needs time
       }
 
-
+      // Stop transcription bot (best-effort)
+      try {
+        const botManager = getBotManager();
+        const bot = botManager.getBot(req.params.meetingId);
+        const sessionCount = bot?.activeSessionCount || 0;
+        logger.info(`[MEETING_END] Stopping transcription bot: meeting=${req.params.meetingId}, activeSessions=${sessionCount}`);
+        botManager.stopMeetingBot(req.params.meetingId).catch((err) =>
+          logger.warn('[MEETING_END] Transcription bot failed to stop', { meetingId: req.params.meetingId, error: err.message })
+        );
+      } catch (_) { /* BotManager not initialized */ }
 
       // Always trigger AI minutes generation when transcripts exist
       // (no manual toggle required — pipeline is always-on)

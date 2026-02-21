@@ -239,11 +239,18 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
       }
     });
 
+    const unsubAudioError = socketClient.on('audio:error', (data: any) => {
+      if (data.meetingId === meetingId) {
+        console.warn('[STT] Server audio error:', data.error);
+      }
+    });
+
     return () => {
       unsubParticipants();
       unsubRestored();
       unsubResult();
       unsubInterim();
+      unsubAudioError();
     };
   }, [meetingId, userId]);
 
@@ -284,91 +291,81 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
     return () => clearTimeout(timer);
   }, [meetingId]);
 
-  // ── Web Speech Recognition ─────────────────────────────
-  const startListening = useCallback(() => {
-    if (Platform.OS !== 'web') {
-      showAlert('Web Only', 'Voice recognition is available in web browsers. Use the meeting video call for native audio.');
-      return;
-    }
+  // ── Server-Side STT via Audio Streaming ─────────────────
+  // Web: MediaRecorder → audio/webm;codecs=opus → server → Google STT
+  // Mobile: Future native audio module support
+  const startListening = useCallback(async () => {
+    if (Platform.OS === 'web') {
+      try {
+        // Request microphone access
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
 
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      showAlert('Not Supported', 'Your browser does not support speech recognition. Try Chrome or Edge.');
-      return;
-    }
+        // Check for MediaRecorder + webm support
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : 'audio/webm';
 
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = getBcp47(myLanguage) || 'en-US';
-    recognition.maxAlternatives = 1;
+        const recorder = new MediaRecorder(stream, { mimeType });
 
-    console.debug(`[TRANSLATION] Starting STT with forced language: ${recognition.lang} (code: ${myLanguage})`);
+        // Tell server to start a Google STT session for this user
+        socketClient.startAudioStream(meetingId, myLanguageRef.current, 'WEBM_OPUS');
 
-    recognition.onresult = (event: any) => {
-      let interim = '';
-      let final = '';
+        recorder.ondataavailable = (e: any) => {
+          if (e.data && e.data.size > 0) {
+            e.data.arrayBuffer().then((buffer: ArrayBuffer) => {
+              socketClient.sendAudioChunk(meetingId, buffer);
+            });
+          }
+        };
 
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          final += transcript;
+        recorder.onerror = (e: any) => {
+          console.warn('[AUDIO] MediaRecorder error:', e);
+        };
+
+        // Send audio chunks every 250ms
+        recorder.start(250);
+        recognitionRef.current = { recorder, stream };
+        setIsListening(true);
+
+        console.debug(`[AUDIO] Started audio capture: mimeType=${mimeType}, meeting=${meetingId}`);
+      } catch (err: any) {
+        if (err?.name === 'NotAllowedError') {
+          showAlert('Microphone Blocked', 'Please allow microphone access in your browser settings.');
         } else {
-          interim += transcript;
+          console.warn('[AUDIO] Failed to start audio capture:', err);
+          showAlert('Audio Error', 'Could not access microphone. Check browser permissions.');
         }
       }
+      return;
+    }
 
-      if (interim) {
-        setInterimText(interim);
-        // Debounce interim emissions to reduce server load (max 1 per 300ms)
-        if (interimDebounceRef.current) clearTimeout(interimDebounceRef.current);
-        interimDebounceRef.current = setTimeout(() => {
-          socketClient.sendSpeechForTranslation(meetingId, interim, myLanguageRef.current, false);
-        }, 300);
-      }
-
-      if (final.trim()) {
-        console.debug('[TRANSLATION] Final STT result:', final.trim().slice(0, 100), `(lang=${myLanguageRef.current})`);
-        setInterimText('');
-        socketClient.sendSpeechForTranslation(meetingId, final.trim(), myLanguageRef.current, true);
-      }
-    };
-
-    recognition.onerror = (event: any) => {
-      if (event.error === 'not-allowed') {
-        showAlert('Microphone Blocked', 'Please allow microphone access in your browser settings.');
-      } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        console.warn('[TRANSLATION] Speech recognition error:', event.error);
-      }
-    };
-
-    recognition.onend = () => {
-      // Auto-restart if still supposed to be listening
-      if (recognitionRef.current) {
-        try {
-          recognition.start();
-        } catch (e) {
-          setIsListening(false);
-        }
-      }
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
-    setIsListening(true);
+    // Native mobile (React Native) — future: integrate native audio module
+    showAlert('Coming Soon', 'Native audio transcription is being developed. Use the web version for now.');
   }, [meetingId, myLanguage]);
 
   const stopListening = useCallback(() => {
-    if (recognitionRef.current) {
-      const rec = recognitionRef.current;
-      recognitionRef.current = null; // Clear ref first to prevent auto-restart
-      try {
-        rec.stop();
-      } catch (e) {}
+    const ref = recognitionRef.current;
+    recognitionRef.current = null;
+
+    if (ref) {
+      if (Platform.OS === 'web' && ref.recorder) {
+        try { ref.recorder.stop(); } catch (_) {}
+        try { ref.stream?.getTracks().forEach((t: any) => t.stop()); } catch (_) {}
+      }
+      // Tell server to stop the STT session
+      socketClient.stopAudioStream(meetingId);
     }
+
     setIsListening(false);
     setInterimText('');
-  }, []);
+  }, [meetingId]);
 
   // ── Expose control API to parent via ref ────────────────
   React.useImperativeHandle(ref, () => ({

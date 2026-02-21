@@ -149,13 +149,6 @@ function FullMeetingOverlay() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Disconnect LiveKit when meeting ends ────────────────
-  useEffect(() => {
-    if (gm.meeting?.status === 'ended') {
-      lk.disconnect();
-    }
-  }, [gm.meeting?.status]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // ── Graceful exit on tab close / page refresh ─────────
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -166,6 +159,23 @@ function FullMeetingOverlay() {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [gm.meetingId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Auto-start speech recognition once connected ──────
+  // Start transcription automatically so transcripts are captured
+  // without requiring the user to manually select a language.
+  useEffect(() => {
+    if (!lk.isConnected) return;
+    if (translationListening) return; // already started
+    // Small delay to let LiveTranslation mount and attach ref
+    const timer = setTimeout(() => {
+      if (translationRef.current && !translationListening) {
+        translationRef.current.startListening();
+        setTranslationListening(true);
+        console.debug('[GlobalMeetingOverlay] Auto-started speech recognition for transcription');
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [lk.isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Toggle sidebar panel ──────────────────────────────
   const handleToggleSidebar = useCallback((panel?: string) => {
@@ -231,14 +241,12 @@ function FullMeetingOverlay() {
   }, [lk, gm]);
 
   // ── End Meeting ───────────────────────────────────────
-  // Do NOT disconnect LiveKit before calling the API — the socket
-  // must remain connected to receive meeting:ended and minutes events.
-  // LiveKit disconnects reactively when meeting status becomes 'ended'.
   const handleEnd = useCallback(() => {
+    lk.disconnect();
     translationRef.current?.stopListening();
     setTranslationListening(false);
     gm.endMeeting();
-  }, [gm]);
+  }, [lk, gm]);
 
   // ── Minimize handler ──────────────────────────────────
   const handleMinimize = useCallback(() => {
@@ -519,7 +527,7 @@ function FullMeetingOverlay() {
           meetingId={gm.meetingId!}
           userId={gm.userId}
           hideControls
-          autoTTS={false}
+          autoTTS
         />
       )}
     </View>
