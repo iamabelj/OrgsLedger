@@ -39,7 +39,30 @@ const PAYMENT_GATEWAYS = [
   { id: 'stripe', name: 'Stripe', icon: 'card-outline' as const, available: true },
   { id: 'paystack', name: 'Paystack', icon: 'wallet-outline' as const, available: true },
   { id: 'flutterwave', name: 'Flutterwave', icon: 'flash-outline' as const, available: true },
+  { id: 'bank_transfer', name: 'Bank Transfer', icon: 'business-outline' as const, available: true },
 ];
+
+// Credential field definitions per gateway
+const GATEWAY_CREDENTIALS: Record<string, { key: string; label: string; placeholder: string; secure?: boolean }[]> = {
+  stripe: [
+    { key: 'stripePublicKey', label: 'Publishable Key', placeholder: 'pk_live_...' },
+    { key: 'stripeSecretKey', label: 'Secret Key', placeholder: 'sk_live_...', secure: true },
+  ],
+  paystack: [
+    { key: 'paystackPublicKey', label: 'Public Key', placeholder: 'pk_live_...' },
+    { key: 'paystackSecretKey', label: 'Secret Key', placeholder: 'sk_live_...', secure: true },
+  ],
+  flutterwave: [
+    { key: 'flutterwavePublicKey', label: 'Public Key', placeholder: 'FLWPUBK-...' },
+    { key: 'flutterwaveSecretKey', label: 'Secret Key', placeholder: 'FLWSECK-...', secure: true },
+  ],
+  bank_transfer: [
+    { key: 'bankName', label: 'Bank Name', placeholder: 'e.g. First National Bank' },
+    { key: 'bankAccountName', label: 'Account Name', placeholder: 'e.g. My Organization Ltd' },
+    { key: 'bankAccountNumber', label: 'Account Number', placeholder: 'e.g. 1234567890' },
+    { key: 'bankRoutingCode', label: 'Routing / Sort Code', placeholder: 'e.g. 012345' },
+  ],
+};
 
 export default function SettingsScreen() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
@@ -53,6 +76,7 @@ export default function SettingsScreen() {
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [langSearch, setLangSearch] = useState('');
   const [enabledGateways, setEnabledGateways] = useState<string[]>(['stripe']);
+  const [gatewayCredentials, setGatewayCredentials] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +115,22 @@ export default function SettingsScreen() {
       setCurrency(settings.currency || org?.currency || 'USD');
       setDefaultLanguage(settings.defaultLanguage || 'en');
       setEnabledGateways(settings.enabledGateways || ['stripe']);
+      // Load gateway credentials
+      const creds: Record<string, string> = {};
+      for (const fields of Object.values(GATEWAY_CREDENTIALS)) {
+        for (const field of fields) {
+          if (settings[field.key]) creds[field.key] = settings[field.key];
+        }
+      }
+      // Also load legacy bankDetails object
+      if (settings.bankDetails && typeof settings.bankDetails === 'object') {
+        const bd = settings.bankDetails;
+        if (bd.bankName) creds.bankName = bd.bankName;
+        if (bd.accountName) creds.bankAccountName = bd.accountName;
+        if (bd.accountNumber) creds.bankAccountNumber = bd.accountNumber;
+        if (bd.routingCode) creds.bankRoutingCode = bd.routingCode;
+      }
+      setGatewayCredentials(creds);
       if (settings.notifications) {
         setEmailNotifications(settings.notifications.emailNotifications !== false);
         setPushNotifications(settings.notifications.pushNotifications !== false);
@@ -120,6 +160,15 @@ export default function SettingsScreen() {
           currency,
           defaultLanguage,
           enabledGateways,
+          // Spread gateway credentials (stripePublicKey, paystackSecretKey, etc.)
+          ...gatewayCredentials,
+          // Also save bankDetails as structured object for backward compatibility
+          bankDetails: {
+            bankName: gatewayCredentials.bankName || '',
+            accountName: gatewayCredentials.bankAccountName || '',
+            accountNumber: gatewayCredentials.bankAccountNumber || '',
+            routingCode: gatewayCredentials.bankRoutingCode || '',
+          },
           notifications: {
             emailNotifications,
             pushNotifications,
@@ -142,6 +191,10 @@ export default function SettingsScreen() {
     setEnabledGateways((prev) =>
       prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]
     );
+  };
+
+  const updateCredential = (key: string, value: string) => {
+    setGatewayCredentials((prev) => ({ ...prev, [key]: value }));
   };
 
   const selectedCurrency = CURRENCIES.find((c) => c.code === currency) || CURRENCIES[0];
@@ -277,41 +330,64 @@ export default function SettingsScreen() {
 
         {PAYMENT_GATEWAYS.map((gateway) => {
           const isEnabled = enabledGateways.includes(gateway.id);
+          const credentialFields = GATEWAY_CREDENTIALS[gateway.id] || [];
           return (
-            <View
-              key={gateway.id}
-              style={[styles.gatewayItem, isEnabled && styles.gatewayItemActive]}
-            >
-              <TouchableOpacity
-                style={styles.gatewayLeft}
-                onPress={() => toggleGateway(gateway.id)}
-                activeOpacity={0.7}
+            <View key={gateway.id} style={{ marginBottom: Spacing.sm }}>
+              <View
+                style={[styles.gatewayItem, isEnabled && styles.gatewayItemActive, { marginBottom: 0 }]}
               >
-                <View
-                  style={[
-                    styles.gatewayIcon,
-                    isEnabled && styles.gatewayIconActive,
-                  ]}
+                <TouchableOpacity
+                  style={styles.gatewayLeft}
+                  onPress={() => toggleGateway(gateway.id)}
+                  activeOpacity={0.7}
                 >
-                  <Ionicons
-                    name={gateway.icon}
-                    size={20}
-                    color={isEnabled ? Colors.highlight : Colors.textSecondary}
-                  />
+                  <View
+                    style={[
+                      styles.gatewayIcon,
+                      isEnabled && styles.gatewayIconActive,
+                    ]}
+                  >
+                    <Ionicons
+                      name={gateway.icon}
+                      size={20}
+                      color={isEnabled ? Colors.highlight : Colors.textSecondary}
+                    />
+                  </View>
+                  <View>
+                    <Text style={styles.gatewayName}>{gateway.name}</Text>
+                    <Text style={styles.gatewayStatus}>
+                      {isEnabled ? 'Enabled' : 'Disabled'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                <Switch
+                  value={isEnabled}
+                  onValueChange={() => toggleGateway(gateway.id)}
+                  trackColor={{ false: Colors.accent, true: Colors.highlight }}
+                  thumbColor={Colors.textWhite}
+                />
+              </View>
+
+              {/* Credential fields — shown when gateway is enabled */}
+              {isEnabled && credentialFields.length > 0 && (
+                <View style={styles.credentialContainer}>
+                  {credentialFields.map((field) => (
+                    <View key={field.key} style={styles.credentialField}>
+                      <Text style={styles.credentialLabel}>{field.label}</Text>
+                      <TextInput
+                        style={styles.credentialInput}
+                        value={gatewayCredentials[field.key] || ''}
+                        onChangeText={(v) => updateCredential(field.key, v)}
+                        placeholder={field.placeholder}
+                        placeholderTextColor={Colors.textLight}
+                        secureTextEntry={!!field.secure}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                      />
+                    </View>
+                  ))}
                 </View>
-                <View>
-                  <Text style={styles.gatewayName}>{gateway.name}</Text>
-                  <Text style={styles.gatewayStatus}>
-                    {isEnabled ? 'Enabled' : 'Disabled'}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-              <Switch
-                value={isEnabled}
-                onValueChange={() => toggleGateway(gateway.id)}
-                trackColor={{ false: Colors.accent, true: Colors.highlight }}
-                thumbColor={Colors.textWhite}
-              />
+              )}
             </View>
           );
         })}
@@ -650,6 +726,39 @@ const styles = StyleSheet.create({
   gatewayStatus: {
     fontSize: FontSize.xs,
     color: Colors.textLight,
+  },
+
+  credentialContainer: {
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderTopWidth: 0,
+    borderColor: Colors.borderLight,
+    borderBottomLeftRadius: BorderRadius.md,
+    borderBottomRightRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.xs,
+  },
+  credentialField: {
+    marginBottom: Spacing.sm,
+  },
+  credentialLabel: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.semibold,
+    color: Colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  credentialInput: {
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 8,
+    fontSize: FontSize.sm,
+    color: Colors.textPrimary,
+    backgroundColor: Colors.background,
   },
 
   notifRow: {

@@ -163,35 +163,32 @@ export default function ProfileScreen() {
   // ── Avatar Upload ─────────────────────────────────────
   const handleAvatarUpload = async () => {
     try {
-      let ImagePicker: any;
-      try {
-        ImagePicker = require('expo-image-picker');
-      } catch {
-        // Fallback for web: use file input
-        if (Platform.OS === 'web') {
-          const input = document.createElement('input');
-          input.type = 'file';
-          input.accept = 'image/*';
-          input.onchange = async (e: any) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            setUploadingAvatar(true);
-            try {
-              await api.auth.uploadAvatar(file);
-              await loadUser();
-              showAlert('Success', 'Profile photo updated!');
-            } catch (err: any) {
-              showAlert('Error', err?.response?.data?.error || 'Failed to upload photo');
-            } finally {
-              setUploadingAvatar(false);
-            }
-          };
-          input.click();
-          return;
-        }
-        showAlert('Error', 'Image picker not available');
+      // Web: always use native file input (expo-image-picker URI objects
+      // don't serialise correctly into browser FormData)
+      if (Platform.OS === 'web') {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = async (e: any) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          setUploadingAvatar(true);
+          try {
+            await api.auth.uploadAvatar(file);
+            await loadUser();
+            showAlert('Success', 'Profile photo updated!');
+          } catch (err: any) {
+            showAlert('Error', err?.response?.data?.error || 'Failed to upload photo');
+          } finally {
+            setUploadingAvatar(false);
+          }
+        };
+        input.click();
         return;
       }
+
+      // Native: use expo-image-picker
+      const ImagePicker = require('expo-image-picker');
 
       const permResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (permResult.status !== 'granted') {

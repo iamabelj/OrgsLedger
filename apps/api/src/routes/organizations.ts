@@ -258,6 +258,12 @@ router.put(
         'enableBankTransfer', 'bankDetails', 'primaryColor', 'accentColor',
         'currency', 'defaultLanguage', 'timezone', 'locale', 'aiEnabled', 'features',
         'notifications', 'enabledGateways', 'description',
+        // Gateway credentials
+        'stripePublicKey', 'stripeSecretKey',
+        'paystackPublicKey', 'paystackSecretKey',
+        'flutterwavePublicKey', 'flutterwaveSecretKey',
+        // Bank transfer details (flat keys)
+        'bankName', 'bankAccountName', 'bankAccountNumber', 'bankRoutingCode',
       ];
 
       const updates: Record<string, any> = {};
