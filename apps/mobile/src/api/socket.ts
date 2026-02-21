@@ -135,8 +135,8 @@ class SocketClient {
 
   // ── Translation ─────────────────────────────────────────
 
-  setTranslationLanguage(meetingId: string, language: string, receiveVoice: boolean = true): void {
-    this.socket?.emit('translation:set-language', { meetingId, language, receiveVoice });
+  setTranslationLanguage(meetingId: string, language: string, receiveVoice: boolean = true, platform: string = 'web'): void {
+    this.socket?.emit('translation:set-language', { meetingId, language, receiveVoice, platform });
   }
 
   sendSpeechForTranslation(meetingId: string, text: string, sourceLang: string, isFinal: boolean): void {
