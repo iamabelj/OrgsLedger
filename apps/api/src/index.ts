@@ -157,6 +157,11 @@ app.use(metricsMiddleware);
 app.use(requestLogger);
 
 // Serve uploaded files (require valid JWT)
+// Public paths: avatars and logos (displayed in <Image> tags that can't send headers)
+app.use('/uploads/avatars', express.static(path.resolve(config.upload.dir, 'avatars')));
+app.use('/uploads/logos', express.static(path.resolve(config.upload.dir, 'logos')));
+
+// All other uploads require JWT
 app.use('/uploads', (req, res, next) => {
   const token = req.query.token as string || req.headers.authorization?.split(' ')[1];
   if (!token) {
