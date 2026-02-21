@@ -188,12 +188,14 @@ router.put(
       }
 
       const updates: Record<string, any> = {};
-      const changes: Record<string, { from: any; to: any }> = {};
+      const oldValues: Record<string, any> = {};
+      const newValues: Record<string, any> = {};
 
       for (const field of ['title', 'body', 'priority', 'pinned'] as const) {
         if (req.body[field] !== undefined && req.body[field] !== existing[field]) {
           updates[field] = req.body[field];
-          changes[field] = { from: existing[field], to: req.body[field] };
+          oldValues[field] = existing[field];
+          newValues[field] = req.body[field];
         }
       }
 
@@ -212,8 +214,8 @@ router.put(
         action: 'update',
         entityType: 'announcement',
         entityId: existing.id,
-        previousValue: changes,
-        newValue: updates,
+        previousValue: oldValues,
+        newValue: newValues,
       });
 
       res.json({ success: true, data: updated });

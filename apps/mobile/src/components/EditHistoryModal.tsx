@@ -62,6 +62,14 @@ const FIELD_LABELS: Record<string, string> = {
 function formatValue(val: any): string {
   if (val === null || val === undefined) return '—';
   if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+  if (typeof val === 'object') {
+    // Handle {from, to} format from old audit logs
+    if (val.from !== undefined || val.to !== undefined) {
+      return formatValue(val.from ?? val.to);
+    }
+    return JSON.stringify(val);
+  }
+  if (typeof val === 'number') return String(val);
   if (typeof val === 'string') {
     // Try to parse as date
     const d = new Date(val);

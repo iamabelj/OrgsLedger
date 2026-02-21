@@ -269,14 +269,16 @@ router.put(
       };
 
       const updates: Record<string, any> = {};
-      const changes: Record<string, { from: any; to: any }> = {};
+      const oldValues: Record<string, any> = {};
+      const newValues: Record<string, any> = {};
 
       for (const [camel, snake] of Object.entries(fieldMap)) {
         if (req.body[camel] !== undefined) {
           const newVal = req.body[camel];
           if (newVal !== existing[snake]) {
             updates[snake] = newVal;
-            changes[camel] = { from: existing[snake], to: newVal };
+            oldValues[snake] = existing[snake];
+            newValues[snake] = newVal;
           }
         }
       }
@@ -296,8 +298,8 @@ router.put(
         action: 'update',
         entityType: 'due',
         entityId: existing.id,
-        previousValue: changes,
-        newValue: updates,
+        previousValue: oldValues,
+        newValue: newValues,
       });
 
       res.json({ success: true, data: updated });
@@ -461,12 +463,14 @@ router.put(
       }
 
       const updates: Record<string, any> = {};
-      const changes: Record<string, { from: any; to: any }> = {};
+      const oldValues: Record<string, any> = {};
+      const newValues: Record<string, any> = {};
 
       for (const field of ['amount', 'reason', 'status'] as const) {
         if (req.body[field] !== undefined && req.body[field] !== existing[field]) {
           updates[field] = req.body[field];
-          changes[field] = { from: existing[field], to: req.body[field] };
+          oldValues[field] = existing[field];
+          newValues[field] = req.body[field];
         }
       }
 
@@ -485,8 +489,8 @@ router.put(
         action: 'update',
         entityType: 'fine',
         entityId: existing.id,
-        previousValue: changes,
-        newValue: updates,
+        previousValue: oldValues,
+        newValue: newValues,
       });
 
       res.json({ success: true, data: updated });
@@ -554,14 +558,16 @@ router.put(
       };
 
       const updates: Record<string, any> = {};
-      const changes: Record<string, { from: any; to: any }> = {};
+      const oldValues: Record<string, any> = {};
+      const newValues: Record<string, any> = {};
 
       for (const [camel, snake] of Object.entries(fieldMap)) {
         if (req.body[camel] !== undefined) {
           const newVal = req.body[camel];
           if (newVal !== existing[snake]) {
             updates[snake] = newVal;
-            changes[camel] = { from: existing[snake], to: newVal };
+            oldValues[snake] = existing[snake];
+            newValues[snake] = newVal;
           }
         }
       }
@@ -581,8 +587,8 @@ router.put(
         action: 'update',
         entityType: 'donation_campaign',
         entityId: existing.id,
-        previousValue: changes,
-        newValue: updates,
+        previousValue: oldValues,
+        newValue: newValues,
       });
 
       res.json({ success: true, data: updated });
