@@ -29,8 +29,10 @@ echo "📦 Installing landing gateway dependencies..."
 cd landing && npm install --omit=dev && cd ..
 
 # 6. Build web frontend
+echo "🌐 Installing mobile dependencies..."
+cd apps/mobile && npm install
 echo "🌐 Building web frontend..."
-cd apps/mobile && npx expo export --platform web && cd ../..
+npx expo export --platform web && cd ../..
 
 # 7. Copy web build into API serving directory
 echo "📋 Copying web build to API web directory..."
