@@ -603,7 +603,7 @@ router.post(
         return;
       }
 
-      const token = generateLiveKitToken({
+      const token = await generateLiveKitToken({
         room: roomName,
         moderator: isModerator,
         user: {

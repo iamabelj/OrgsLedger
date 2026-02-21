@@ -521,7 +521,7 @@ router.post('/:orgId/:meetingId/join', middleware_1.authenticate, middleware_1.l
             });
             return;
         }
-        const token = (0, livekit_service_1.generateLiveKitToken)({
+        const token = await (0, livekit_service_1.generateLiveKitToken)({
             room: roomName,
             moderator: isModerator,
             user: {
