@@ -110,6 +110,13 @@ function FullMeetingOverlay() {
   const [translationListening, setTranslationListening] = useState(false);
   const translationRef = useRef<LiveTranslationRef>(null);
 
+  // Sync translation listening state from ref when component mounts
+  // (e.g., user maximizes from minimized — re-read actual state)
+  useEffect(() => {
+    const actual = translationRef.current?.isListening?.() ?? false;
+    setTranslationListening(actual);
+  }, [gm.isMinimized]);
+
   // ── Hand Raised ───────────────────────────────────────
   const [handRaised, setHandRaised] = useState(false);
 
@@ -217,9 +224,9 @@ function FullMeetingOverlay() {
   }, [lk, gm]);
 
   // ── End Meeting ───────────────────────────────────────
-  // Don't disconnect LK or stop translation here — endMeeting() shows
-  // a confirmation dialog first. If user cancels, they stay connected.
-  // Cleanup happens reactively when meeting:ended event sets status='ended'.
+  // endMeeting() shows a confirmation dialog. If user confirms,
+  // the HTTP call fires, server broadcasts meeting:ended, and
+  // the reactive cleanup below disconnects LK + stops translation.
   const handleEnd = useCallback(() => {
     gm.endMeeting();
   }, [gm]);
@@ -234,6 +241,10 @@ function FullMeetingOverlay() {
       setTranslationListening(false);
     }
   }, [gm.meeting?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Auto-cleanup when meeting becomes inactive ────────
+  // When the context resets (isActive→false), unmount triggers
+  // lk.disconnect() via the connect useEffect cleanup.
 
   // ── Minimize handler ──────────────────────────────────
   const handleMinimize = useCallback(() => {
@@ -453,7 +464,7 @@ function FullMeetingOverlay() {
           meetingId={gm.meetingId!}
           userId={gm.userId}
           hideControls
-          autoTTS
+          autoTTS={false}
         />
       )}
     </View>

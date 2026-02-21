@@ -215,30 +215,31 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
       if (data.meetingId !== meetingId) return;
       setMeetingState((prev: any) => prev ? { ...prev, status: 'ended', actual_end: new Date().toISOString() } : prev);
       meetingStore.onMeetingEnded(data);
-      // Don't immediately reset — keep listeners alive for minutes:ready/failed events.
-      // Minimize the overlay so user can continue navigating.
-      setIsMinimized(true);
-      // Auto-reset after 2 minutes if minutes events don't arrive
+      setEndingMeeting(false);
+      // Leave the socket room so we stop receiving TTS/translation events
+      socketClient.leaveMeeting(meetingId);
+      // Keep context alive briefly for minutes:ready events, then auto-reset
       setTimeout(() => {
         setIsActive((active) => {
           if (active) resetMeeting();
           return false;
         });
-      }, 120_000);
+      }, 30_000); // 30s grace for minutes events
     }));
 
     unsubs.push(socketClient.on('meeting:force-disconnect', (data: any) => {
       if (data.meetingId !== meetingId) return;
       meetingStore.setMeetingEndedByModerator(true);
       meetingStore.setStatus('ended');
-      // Don't immediately reset — keep listeners alive for minutes events.
-      setIsMinimized(true);
+      setEndingMeeting(false);
+      socketClient.leaveMeeting(meetingId);
+      // Brief grace period for minutes events, then full reset
       setTimeout(() => {
         setIsActive((active) => {
           if (active) resetMeeting();
           return false;
         });
-      }, 120_000);
+      }, 30_000);
     }));
 
     // Recording
@@ -415,7 +416,10 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
           setEndingMeeting(true);
           try {
             await api.meetings.end(orgId, meetingId);
-            // Socket handler will trigger resetMeeting
+            // Server broadcasts meeting:ended — the socket handler will
+            // leave the room and schedule resetMeeting.
+            // Mark meeting as ended locally for immediate UI feedback.
+            setMeetingState((prev: any) => prev ? { ...prev, status: 'ended' } : prev);
           } catch (err: any) {
             setEndingMeeting(false);
             showAlert('Error', err.response?.data?.error || 'Failed to end meeting');
