@@ -50,6 +50,26 @@ const makeDonationSchema = zod_1.z.object({
     isAnonymous: zod_1.z.boolean().default(false),
     message: zod_1.z.string().max(1000).optional(),
 });
+const updateDueSchema = zod_1.z.object({
+    title: zod_1.z.string().min(1).max(300).optional(),
+    description: zod_1.z.string().max(2000).optional().nullable(),
+    amount: zod_1.z.number().positive().optional(),
+    dueDate: zod_1.z.string().datetime().optional(),
+    lateFeeAmount: zod_1.z.number().min(0).optional().nullable(),
+    lateFeeGraceDays: zod_1.z.number().int().min(0).optional().nullable(),
+});
+const updateFineSchema = zod_1.z.object({
+    amount: zod_1.z.number().positive().optional(),
+    reason: zod_1.z.string().min(1).max(2000).optional(),
+    status: zod_1.z.enum(['unpaid', 'paid', 'waived']).optional(),
+});
+const updateCampaignSchema = zod_1.z.object({
+    title: zod_1.z.string().min(1).max(300).optional(),
+    description: zod_1.z.string().max(5000).optional().nullable(),
+    goalAmount: zod_1.z.number().positive().optional().nullable(),
+    isActive: zod_1.z.boolean().optional(),
+    endDate: zod_1.z.string().datetime().optional().nullable(),
+});
 // ══════════════════════════════════════════════════════════════
 // DUES
 // ══════════════════════════════════════════════════════════════
@@ -183,6 +203,56 @@ router.get('/:orgId/dues', middleware_1.authenticate, middleware_1.loadMembershi
         res.status(500).json({ success: false, error: 'Failed to list dues' });
     }
 });
+// ── Edit Due ─────────────────────────────────────────────────
+router.put('/:orgId/dues/:dueId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(updateDueSchema), async (req, res) => {
+    try {
+        const existing = await (0, db_1.default)('dues')
+            .where({ id: req.params.dueId, organization_id: req.params.orgId })
+            .first();
+        if (!existing) {
+            res.status(404).json({ success: false, error: 'Due not found' });
+            return;
+        }
+        const fieldMap = {
+            title: 'title', description: 'description', amount: 'amount',
+            dueDate: 'due_date', lateFeeAmount: 'late_fee_amount',
+            lateFeeGraceDays: 'late_fee_grace_days',
+        };
+        const updates = {};
+        const oldValues = {};
+        const newValues = {};
+        for (const [camel, snake] of Object.entries(fieldMap)) {
+            if (req.body[camel] !== undefined) {
+                const newVal = req.body[camel];
+                if (newVal !== existing[snake]) {
+                    updates[snake] = newVal;
+                    oldValues[snake] = existing[snake];
+                    newValues[snake] = newVal;
+                }
+            }
+        }
+        if (!Object.keys(updates).length) {
+            res.json({ success: true, data: existing, message: 'No changes' });
+            return;
+        }
+        updates.updated_at = db_1.default.fn.now();
+        await (0, db_1.default)('dues').where({ id: existing.id }).update(updates);
+        const updated = await (0, db_1.default)('dues').where({ id: existing.id }).first();
+        await req.audit?.({
+            organizationId: req.params.orgId,
+            action: 'update',
+            entityType: 'due',
+            entityId: existing.id,
+            previousValue: oldValues,
+            newValue: newValues,
+        });
+        res.json({ success: true, data: updated });
+    }
+    catch (err) {
+        logger_1.logger.error('Update due error', err);
+        res.status(500).json({ success: false, error: 'Failed to update due' });
+    }
+});
 // ══════════════════════════════════════════════════════════════
 // FINES
 // ══════════════════════════════════════════════════════════════
@@ -286,6 +356,48 @@ router.get('/:orgId/fines', middleware_1.authenticate, middleware_1.loadMembersh
         res.status(500).json({ success: false, error: 'Failed to list fines' });
     }
 });
+// ── Edit Fine ────────────────────────────────────────────────
+router.put('/:orgId/fines/:fineId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(updateFineSchema), async (req, res) => {
+    try {
+        const existing = await (0, db_1.default)('fines')
+            .where({ id: req.params.fineId, organization_id: req.params.orgId })
+            .first();
+        if (!existing) {
+            res.status(404).json({ success: false, error: 'Fine not found' });
+            return;
+        }
+        const updates = {};
+        const oldValues = {};
+        const newValues = {};
+        for (const field of ['amount', 'reason', 'status']) {
+            if (req.body[field] !== undefined && req.body[field] !== existing[field]) {
+                updates[field] = req.body[field];
+                oldValues[field] = existing[field];
+                newValues[field] = req.body[field];
+            }
+        }
+        if (!Object.keys(updates).length) {
+            res.json({ success: true, data: existing, message: 'No changes' });
+            return;
+        }
+        updates.updated_at = db_1.default.fn.now();
+        await (0, db_1.default)('fines').where({ id: existing.id }).update(updates);
+        const updated = await (0, db_1.default)('fines').where({ id: existing.id }).first();
+        await req.audit?.({
+            organizationId: req.params.orgId,
+            action: 'update',
+            entityType: 'fine',
+            entityId: existing.id,
+            previousValue: oldValues,
+            newValue: newValues,
+        });
+        res.json({ success: true, data: updated });
+    }
+    catch (err) {
+        logger_1.logger.error('Update fine error', err);
+        res.status(500).json({ success: false, error: 'Failed to update fine' });
+    }
+});
 // ══════════════════════════════════════════════════════════════
 // DONATIONS
 // ══════════════════════════════════════════════════════════════
@@ -308,6 +420,55 @@ router.post('/:orgId/donation-campaigns', middleware_1.authenticate, middleware_
     }
     catch (err) {
         res.status(500).json({ success: false, error: 'Failed to create campaign' });
+    }
+});
+// ── Edit Donation Campaign ──────────────────────────────────
+router.put('/:orgId/donation-campaigns/:campaignId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(updateCampaignSchema), async (req, res) => {
+    try {
+        const existing = await (0, db_1.default)('donation_campaigns')
+            .where({ id: req.params.campaignId, organization_id: req.params.orgId })
+            .first();
+        if (!existing) {
+            res.status(404).json({ success: false, error: 'Campaign not found' });
+            return;
+        }
+        const fieldMap = {
+            title: 'title', description: 'description', goalAmount: 'goal_amount',
+            isActive: 'is_active', endDate: 'end_date',
+        };
+        const updates = {};
+        const oldValues = {};
+        const newValues = {};
+        for (const [camel, snake] of Object.entries(fieldMap)) {
+            if (req.body[camel] !== undefined) {
+                const newVal = req.body[camel];
+                if (newVal !== existing[snake]) {
+                    updates[snake] = newVal;
+                    oldValues[snake] = existing[snake];
+                    newValues[snake] = newVal;
+                }
+            }
+        }
+        if (!Object.keys(updates).length) {
+            res.json({ success: true, data: existing, message: 'No changes' });
+            return;
+        }
+        updates.updated_at = db_1.default.fn.now();
+        await (0, db_1.default)('donation_campaigns').where({ id: existing.id }).update(updates);
+        const updated = await (0, db_1.default)('donation_campaigns').where({ id: existing.id }).first();
+        await req.audit?.({
+            organizationId: req.params.orgId,
+            action: 'update',
+            entityType: 'donation_campaign',
+            entityId: existing.id,
+            previousValue: oldValues,
+            newValue: newValues,
+        });
+        res.json({ success: true, data: updated });
+    }
+    catch (err) {
+        logger_1.logger.error('Update campaign error', err);
+        res.status(500).json({ success: false, error: 'Failed to update campaign' });
     }
 });
 router.get('/:orgId/donation-campaigns', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {

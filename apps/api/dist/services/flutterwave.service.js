@@ -13,29 +13,42 @@ const crypto_1 = __importDefault(require("crypto"));
 const config_1 = require("../config");
 const FLW_BASE = 'https://api.flutterwave.com/v3';
 class FlutterwaveService {
-    client = null;
-    getClient() {
-        if (!config_1.config.flutterwave.secretKey)
-            return null;
-        if (!this.client) {
-            this.client = axios_1.default.create({
-                baseURL: FLW_BASE,
-                headers: {
-                    Authorization: `Bearer ${config_1.config.flutterwave.secretKey}`,
-                    'Content-Type': 'application/json',
-                },
-            });
-        }
-        return this.client;
+    /** Global singleton client (env-var keys) */
+    globalClient = null;
+    /** Build an authenticated Axios client for a given secret key. */
+    buildClient(secretKey) {
+        return axios_1.default.create({
+            baseURL: FLW_BASE,
+            headers: {
+                Authorization: `Bearer ${secretKey}`,
+                'Content-Type': 'application/json',
+            },
+        });
     }
-    isConfigured() {
-        return !!config_1.config.flutterwave.secretKey;
+    /**
+     * Get an Axios client.
+     * If an org-level secret key is provided it takes priority;
+     * otherwise falls back to the platform-level env-var key.
+     */
+    getClient(orgSecretKey) {
+        const key = orgSecretKey || config_1.config.flutterwave.secretKey;
+        if (!key)
+            return null;
+        if (orgSecretKey)
+            return this.buildClient(orgSecretKey);
+        if (!this.globalClient) {
+            this.globalClient = this.buildClient(key);
+        }
+        return this.globalClient;
+    }
+    isConfigured(orgSecretKey) {
+        return !!(orgSecretKey || config_1.config.flutterwave.secretKey);
     }
     /**
      * Initialize a standard payment — returns a hosted payment link.
      */
     async initializePayment(params) {
-        const client = this.getClient();
+        const client = this.getClient(params.orgSecretKey);
         if (!client)
             throw new Error('Flutterwave not configured');
         const payload = {
@@ -65,8 +78,8 @@ class FlutterwaveService {
     /**
      * Verify a transaction by its Flutterwave transaction ID.
      */
-    async verifyTransaction(transactionId) {
-        const client = this.getClient();
+    async verifyTransaction(transactionId, orgSecretKey) {
+        const client = this.getClient(orgSecretKey);
         if (!client)
             throw new Error('Flutterwave not configured');
         const { data } = await client.get(`/transactions/${transactionId}/verify`);
@@ -74,7 +87,7 @@ class FlutterwaveService {
             throw new Error(data.message || 'Verification failed');
         }
         return {
-            status: data.data.status, // 'successful', 'failed', 'pending'
+            status: data.data.status,
             txRef: data.data.tx_ref,
             flwRef: data.data.flw_ref,
             amount: data.data.amount,
@@ -89,7 +102,7 @@ class FlutterwaveService {
      * Initiate a refund.
      */
     async createRefund(params) {
-        const client = this.getClient();
+        const client = this.getClient(params.orgSecretKey);
         if (!client)
             throw new Error('Flutterwave not configured');
         const { data } = await client.post('/refunds', {
@@ -102,23 +115,24 @@ class FlutterwaveService {
         }
         return {
             refundId: data.data.id,
-            status: data.data.status, // 'completed', 'pending'
+            status: data.data.status,
             amountRefunded: data.data.amount_refunded,
         };
     }
     /**
      * Validate a Flutterwave webhook request.
-     * Checks the verif-hash header using timing-safe comparison against the configured webhook hash.
+     * Supports per-org webhook hash for multi-tenant verification.
      */
-    validateWebhook(secretHash) {
-        if (!config_1.config.flutterwave.webhookHash || !secretHash)
+    validateWebhook(secretHash, orgWebhookHash) {
+        const expected = orgWebhookHash || config_1.config.flutterwave.webhookHash;
+        if (!expected || !secretHash)
             return false;
         try {
-            const expected = Buffer.from(config_1.config.flutterwave.webhookHash, 'utf-8');
-            const received = Buffer.from(secretHash, 'utf-8');
-            if (expected.length !== received.length)
+            const expectedBuf = Buffer.from(expected, 'utf-8');
+            const receivedBuf = Buffer.from(secretHash, 'utf-8');
+            if (expectedBuf.length !== receivedBuf.length)
                 return false;
-            return crypto_1.default.timingSafeEqual(expected, received);
+            return crypto_1.default.timingSafeEqual(expectedBuf, receivedBuf);
         }
         catch {
             return false;

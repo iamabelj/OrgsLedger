@@ -129,6 +129,12 @@ function mountWebFrontend(app) {
     app.use((req, res, next) => {
         if ((0, constants_1.isLandingHost)(req.headers.host || ''))
             return next();
+        // Prevent caching of HTML files
+        if (req.path === '/' || req.path.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+        }
         express_1.default.static(webDir)(req, res, next);
     });
     logger_1.logger.info(`Serving web frontend from ${webDir}`);
@@ -147,6 +153,10 @@ function mountSpaFallback(app) {
             res.redirect(301, '/');
             return;
         }
+        // Prevent caching of SPA fallback HTML
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
         res.sendFile(path_1.default.join(webDir, 'index.html'));
     });
 }

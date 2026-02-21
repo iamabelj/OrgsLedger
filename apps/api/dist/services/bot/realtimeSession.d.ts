@@ -50,6 +50,7 @@ export declare class RealtimeSession {
     /**
      * Send session.update to configure OpenAI Realtime for
      * transcription-only mode with server-side VAD.
+     * We disable model responses entirely — only Whisper transcription is used.
      */
     private configureSession;
     /** Send a base64-encoded PCM16 audio chunk to OpenAI. */

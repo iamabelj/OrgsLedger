@@ -146,6 +146,10 @@ app.use(metrics_service_1.metricsMiddleware);
 // ── Full Request Logging (temporary observability) ────────
 app.use(request_logger_1.requestLogger);
 // Serve uploaded files (require valid JWT)
+// Public paths: avatars and logos (displayed in <Image> tags that can't send headers)
+app.use('/uploads/avatars', express_1.default.static(path_1.default.resolve(config_1.config.upload.dir, 'avatars')));
+app.use('/uploads/logos', express_1.default.static(path_1.default.resolve(config_1.config.upload.dir, 'logos')));
+// All other uploads require JWT
 app.use('/uploads', (req, res, next) => {
     const token = req.query.token || req.headers.authorization?.split(' ')[1];
     if (!token) {
@@ -171,6 +175,29 @@ app.get('/health', (_req, res) => {
             rss: +(process.memoryUsage().rss / 1048576).toFixed(1),
             heapUsed: +(process.memoryUsage().heapUsed / 1048576).toFixed(1),
         },
+    });
+});
+// ── Build Verification ────────────────────────────────────
+app.get('/api/version', (_req, res) => {
+    const webDir = path_1.default.resolve(__dirname, '../web');
+    const webExists = fs_1.default.existsSync(webDir);
+    let jsFiles = [];
+    try {
+        const expoDir = path_1.default.join(webDir, '_expo', 'static', 'js', 'web');
+        if (fs_1.default.existsSync(expoDir))
+            jsFiles = fs_1.default.readdirSync(expoDir);
+    }
+    catch { }
+    res.setHeader('Cache-Control', 'no-cache');
+    res.json({
+        build: '2026-02-21-edit-feature',
+        version: constants_1.APP_VERSION,
+        webDir,
+        webExists,
+        jsFiles,
+        nodeEnv: process.env.NODE_ENV,
+        cwd: process.cwd(),
+        dirname: __dirname,
     });
 });
 // ── Pipeline Diagnostic Endpoint ──────────────────────────

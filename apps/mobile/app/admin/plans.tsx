@@ -37,7 +37,11 @@ export default function PlansScreen() {
   const [aiTopUpHours, setAiTopUpHours] = useState('1');
   const [transTopUpHours, setTransTopUpHours] = useState('1');
   const [tab, setTab] = useState<'plans' | 'ai' | 'translation'>('plans');
+  const [currency, setCurrency] = useState<'usd' | 'ngn'>('usd');
   const [error, setError] = useState<string | null>(null);
+
+  const isNgn = currency === 'ngn';
+  const currencySymbol = isNgn ? '₦' : '$';
 
   const loadData = useCallback(async () => {
     if (!currentOrgId) return;
@@ -203,8 +207,30 @@ export default function PlansScreen() {
           <SectionHeader title="Subscription Plans" />
           <Text style={styles.subtitle}>Annual subscription — all core features included</Text>
 
+          {/* Currency Toggle */}
+          <View style={styles.currencyToggle}>
+            <TouchableOpacity
+              style={[styles.currencyBtn, currency === 'usd' && styles.currencyBtnActive]}
+              onPress={() => setCurrency('usd')}
+            >
+              <Text style={[styles.currencyBtnText, currency === 'usd' && styles.currencyBtnTextActive]}>🌍 USD</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.currencyBtn, currency === 'ngn' && styles.currencyBtnActive]}
+              onPress={() => setCurrency('ngn')}
+            >
+              <Text style={[styles.currencyBtnText, currency === 'ngn' && styles.currencyBtnTextActive]}>🇳🇬 NGN</Text>
+            </TouchableOpacity>
+          </View>
+
           {plans.map((plan) => {
             const isCurrent = plan.slug === currentPlanSlug;
+            const primaryPrice = isNgn
+              ? (parseFloat(plan.price_ngn_annual) || 0).toLocaleString()
+              : parseFloat(plan.price_usd_annual).toLocaleString();
+            const secondaryPrice = isNgn
+              ? `$${parseFloat(plan.price_usd_annual).toLocaleString()}/year`
+              : `₦${(parseFloat(plan.price_ngn_annual) || 0).toLocaleString()}/year`;
             return (
               <Card key={plan.id} style={[styles.planCard, isCurrent && styles.planCardActive]}>
                 {isCurrent && (
@@ -215,11 +241,11 @@ export default function PlansScreen() {
                 <Text style={styles.planName}>{plan.name}</Text>
                 <Text style={styles.planDesc}>{plan.description}</Text>
                 <View style={styles.priceRow}>
-                  <Text style={styles.priceUsd}>${parseFloat(plan.price_usd_annual).toLocaleString()}</Text>
+                  <Text style={styles.priceUsd}>{currencySymbol}{primaryPrice}</Text>
                   <Text style={styles.priceInterval}>/year</Text>
                 </View>
                 <Text style={styles.priceNgn}>
-                  or ₦{(parseFloat(plan.price_ngn_annual) || 0).toLocaleString()}/year
+                  or {secondaryPrice}
                 </Text>
                 <View style={styles.features}>
                   <FeatureRow icon="people" text={`Up to ${plan.max_members} members`} />
@@ -405,6 +431,13 @@ const styles = StyleSheet.create({
   tabActive: { backgroundColor: Colors.primaryLight },
   tabText: { fontSize: FontSize.sm, color: Colors.textLight },
   tabTextActive: { color: Colors.highlight, fontWeight: FontWeight.semibold as any },
+
+  // Currency toggle
+  currencyToggle: { flexDirection: 'row', backgroundColor: Colors.surface, borderRadius: BorderRadius.md, padding: 4, marginBottom: Spacing.lg },
+  currencyBtn: { flex: 1, paddingVertical: 10, borderRadius: BorderRadius.sm, alignItems: 'center' },
+  currencyBtnActive: { backgroundColor: Colors.primaryLight },
+  currencyBtnText: { fontSize: FontSize.sm, color: Colors.textLight, fontWeight: FontWeight.semibold as any },
+  currencyBtnTextActive: { color: Colors.highlight },
 
   // Plan cards
   planCard: { marginBottom: Spacing.md, borderWidth: 1, borderColor: Colors.border },

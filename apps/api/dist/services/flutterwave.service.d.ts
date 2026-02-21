@@ -1,7 +1,16 @@
+import { AxiosInstance } from 'axios';
 declare class FlutterwaveService {
-    private client;
-    private getClient;
-    isConfigured(): boolean;
+    /** Global singleton client (env-var keys) */
+    private globalClient;
+    /** Build an authenticated Axios client for a given secret key. */
+    private buildClient;
+    /**
+     * Get an Axios client.
+     * If an org-level secret key is provided it takes priority;
+     * otherwise falls back to the platform-level env-var key.
+     */
+    getClient(orgSecretKey?: string): AxiosInstance | null;
+    isConfigured(orgSecretKey?: string): boolean;
     /**
      * Initialize a standard payment — returns a hosted payment link.
      */
@@ -15,6 +24,7 @@ declare class FlutterwaveService {
         meta?: Record<string, any>;
         title?: string;
         description?: string;
+        orgSecretKey?: string;
     }): Promise<{
         paymentLink: string;
         txRef: string;
@@ -22,7 +32,7 @@ declare class FlutterwaveService {
     /**
      * Verify a transaction by its Flutterwave transaction ID.
      */
-    verifyTransaction(transactionId: string | number): Promise<{
+    verifyTransaction(transactionId: string | number, orgSecretKey?: string): Promise<{
         status: string;
         txRef: string;
         flwRef: string;
@@ -40,6 +50,7 @@ declare class FlutterwaveService {
         transactionId: number | string;
         amount?: number;
         reason?: string;
+        orgSecretKey?: string;
     }): Promise<{
         refundId: any;
         status: any;
@@ -47,9 +58,9 @@ declare class FlutterwaveService {
     }>;
     /**
      * Validate a Flutterwave webhook request.
-     * Checks the verif-hash header using timing-safe comparison against the configured webhook hash.
+     * Supports per-org webhook hash for multi-tenant verification.
      */
-    validateWebhook(secretHash: string): boolean;
+    validateWebhook(secretHash: string, orgWebhookHash?: string): boolean;
 }
 export declare const flutterwaveService: FlutterwaveService;
 export {};

@@ -22,6 +22,11 @@ const createPollSchema = zod_1.z.object({
     anonymous: zod_1.z.boolean().default(false),
     expiresAt: zod_1.z.string().datetime().optional(),
 });
+const updatePollSchema = zod_1.z.object({
+    title: zod_1.z.string().min(1).max(300).optional(),
+    description: zod_1.z.string().max(5000).optional().nullable(),
+    expiresAt: zod_1.z.string().datetime().optional().nullable(),
+});
 // ── Create Poll ─────────────────────────────────────────────
 router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createPollSchema), async (req, res) => {
     try {
@@ -248,6 +253,54 @@ router.post('/:orgId/:pollId/vote', middleware_1.authenticate, middleware_1.load
     }
     catch (err) {
         res.status(500).json({ success: false, error: 'Failed to vote' });
+    }
+});
+// ── Edit Poll ───────────────────────────────────────────────
+router.put('/:orgId/:pollId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(updatePollSchema), async (req, res) => {
+    try {
+        const existing = await (0, db_1.default)('polls')
+            .where({ id: req.params.pollId, organization_id: req.params.orgId })
+            .first();
+        if (!existing) {
+            res.status(404).json({ success: false, error: 'Poll not found' });
+            return;
+        }
+        const fieldMap = {
+            title: 'title', description: 'description', expiresAt: 'expires_at',
+        };
+        const updates = {};
+        const oldValues = {};
+        const newValues = {};
+        for (const [camel, snake] of Object.entries(fieldMap)) {
+            if (req.body[camel] !== undefined) {
+                const newVal = req.body[camel];
+                if (newVal !== existing[snake]) {
+                    updates[snake] = newVal;
+                    oldValues[snake] = existing[snake];
+                    newValues[snake] = newVal;
+                }
+            }
+        }
+        if (!Object.keys(updates).length) {
+            res.json({ success: true, data: existing, message: 'No changes' });
+            return;
+        }
+        updates.updated_at = db_1.default.fn.now();
+        await (0, db_1.default)('polls').where({ id: existing.id }).update(updates);
+        const updated = await (0, db_1.default)('polls').where({ id: existing.id }).first();
+        await req.audit?.({
+            organizationId: req.params.orgId,
+            action: 'update',
+            entityType: 'poll',
+            entityId: existing.id,
+            previousValue: oldValues,
+            newValue: newValues,
+        });
+        res.json({ success: true, data: updated });
+    }
+    catch (err) {
+        logger_1.logger.error('Update poll error', err);
+        res.status(500).json({ success: false, error: 'Failed to update poll' });
     }
 });
 // ── Close Poll ──────────────────────────────────────────────

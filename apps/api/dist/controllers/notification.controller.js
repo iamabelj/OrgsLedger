@@ -21,11 +21,23 @@ class NotificationController {
         if (unreadOnly)
             query = query.where({ is_read: false });
         const total = await query.clone().clear('select').count('id as count').first();
-        const notifications = await query
+        const rows = await query
             .select('*')
             .orderBy('created_at', 'desc')
             .offset(offset)
             .limit(limit);
+        // Map snake_case DB columns → camelCase for frontend
+        const notifications = rows.map((r) => ({
+            id: r.id,
+            type: r.type,
+            title: r.title,
+            message: r.body,
+            read: r.is_read,
+            createdAt: r.created_at,
+            data: typeof r.data === 'string' ? JSON.parse(r.data) : r.data,
+            userId: r.user_id,
+            organizationId: r.organization_id,
+        }));
         const unreadCount = await (0, db_1.default)('notifications')
             .where({ user_id: userId, is_read: false })
             .count('id as count')

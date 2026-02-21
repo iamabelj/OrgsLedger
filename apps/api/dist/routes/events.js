@@ -25,6 +25,17 @@ const createEventSchema = zod_1.z.object({
     maxAttendees: zod_1.z.number().int().min(0).optional(),
     rsvpRequired: zod_1.z.boolean().default(false),
 });
+const updateEventSchema = zod_1.z.object({
+    title: zod_1.z.string().min(1).max(300).optional(),
+    description: zod_1.z.string().max(5000).optional().nullable(),
+    location: zod_1.z.string().max(500).optional().nullable(),
+    startDate: zod_1.z.string().datetime().optional(),
+    endDate: zod_1.z.string().datetime().optional().nullable(),
+    allDay: zod_1.z.boolean().optional(),
+    category: zod_1.z.enum(['social', 'fundraiser', 'community', 'workshop', 'general']).optional(),
+    maxAttendees: zod_1.z.number().int().min(0).optional().nullable(),
+    rsvpRequired: zod_1.z.boolean().optional(),
+});
 // ── Create Event ────────────────────────────────────────────
 router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createEventSchema), async (req, res) => {
     try {
@@ -176,6 +187,56 @@ router.post('/:orgId/:eventId/rsvp', middleware_1.authenticate, middleware_1.loa
     }
     catch (err) {
         res.status(500).json({ success: false, error: 'Failed to RSVP' });
+    }
+});
+// ── Edit Event ──────────────────────────────────────────────
+router.put('/:orgId/:eventId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(updateEventSchema), async (req, res) => {
+    try {
+        const existing = await (0, db_1.default)('events')
+            .where({ id: req.params.eventId, organization_id: req.params.orgId })
+            .first();
+        if (!existing) {
+            res.status(404).json({ success: false, error: 'Event not found' });
+            return;
+        }
+        const fieldMap = {
+            title: 'title', description: 'description', location: 'location',
+            startDate: 'start_date', endDate: 'end_date', allDay: 'all_day',
+            category: 'category', maxAttendees: 'max_attendees', rsvpRequired: 'rsvp_required',
+        };
+        const updates = {};
+        const oldValues = {};
+        const newValues = {};
+        for (const [camel, snake] of Object.entries(fieldMap)) {
+            if (req.body[camel] !== undefined) {
+                const newVal = req.body[camel];
+                if (newVal !== existing[snake]) {
+                    updates[snake] = newVal;
+                    oldValues[snake] = existing[snake];
+                    newValues[snake] = newVal;
+                }
+            }
+        }
+        if (!Object.keys(updates).length) {
+            res.json({ success: true, data: existing, message: 'No changes' });
+            return;
+        }
+        updates.updated_at = db_1.default.fn.now();
+        await (0, db_1.default)('events').where({ id: existing.id }).update(updates);
+        const updated = await (0, db_1.default)('events').where({ id: existing.id }).first();
+        await req.audit?.({
+            organizationId: req.params.orgId,
+            action: 'update',
+            entityType: 'event',
+            entityId: existing.id,
+            previousValue: oldValues,
+            newValue: newValues,
+        });
+        res.json({ success: true, data: updated });
+    }
+    catch (err) {
+        logger_1.logger.error('Update event error', err);
+        res.status(500).json({ success: false, error: 'Failed to update event' });
     }
 });
 // ── Delete Event ────────────────────────────────────────────

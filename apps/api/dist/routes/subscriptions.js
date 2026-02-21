@@ -69,7 +69,7 @@ const topUpSchema = zod_1.z.object({
 });
 const createInviteSchema = zod_1.z.object({
     role: zod_1.z.enum(['member', 'executive', 'org_admin']).default('member'),
-    maxUses: zod_1.z.number().int().min(1).max(1000).default(50),
+    maxUses: zod_1.z.number().int().min(1).max(1000).default(1),
     expiresAt: zod_1.z.string().optional(),
     description: zod_1.z.string().max(500).optional(),
 });
@@ -352,7 +352,7 @@ router.get('/:orgId/wallet/translation/history', middleware_1.authenticate, midd
 router.post('/:orgId/invite', middleware_1.authenticate, middleware_1.loadMembership, (0, middleware_1.requireRole)('org_admin'), (0, middleware_1.validate)(createInviteSchema), async (req, res) => {
     try {
         const { role, maxUses, expiresAt, description } = req.body;
-        const invite = await subSvc.createInviteLink(req.params.orgId, req.user.userId, role || 'member', maxUses || 50, expiresAt, description);
+        const invite = await subSvc.createInviteLink(req.params.orgId, req.user.userId, role || 'member', maxUses || 1, expiresAt, description);
         res.json({ success: true, data: invite });
     }
     catch (err) {

@@ -1,7 +1,16 @@
+import { AxiosInstance } from 'axios';
 declare class PaystackService {
-    private client;
-    private getClient;
-    isConfigured(): boolean;
+    /** Global singleton client (env-var keys) */
+    private globalClient;
+    /** Build an authenticated Axios client for a given secret key. */
+    private buildClient;
+    /**
+     * Get an Axios client.
+     * If an org-level secret key is provided it takes priority;
+     * otherwise falls back to the platform-level env-var key.
+     */
+    getClient(orgSecretKey?: string): AxiosInstance | null;
+    isConfigured(orgSecretKey?: string): boolean;
     /**
      * Initialize a transaction — returns an authorization URL
      * for the user to complete payment in a WebView/browser.
@@ -13,6 +22,7 @@ declare class PaystackService {
         reference: string;
         callbackUrl?: string;
         metadata?: Record<string, any>;
+        orgSecretKey?: string;
     }): Promise<{
         authorizationUrl: string;
         accessCode: string;
@@ -21,7 +31,7 @@ declare class PaystackService {
     /**
      * Verify a transaction by reference.
      */
-    verifyTransaction(reference: string): Promise<{
+    verifyTransaction(reference: string, orgSecretKey?: string): Promise<{
         status: string;
         reference: string;
         amount: number;
@@ -38,6 +48,7 @@ declare class PaystackService {
         transactionReference: string;
         amount?: number;
         reason?: string;
+        orgSecretKey?: string;
     }): Promise<{
         refundId: any;
         status: any;
@@ -45,8 +56,9 @@ declare class PaystackService {
     }>;
     /**
      * Validate a Paystack webhook signature.
+     * Supports per-org secret keys for multi-tenant webhook verification.
      */
-    validateWebhook(body: string | Buffer, signature: string): boolean;
+    validateWebhook(body: string | Buffer, signature: string, orgSecretKey?: string): boolean;
 }
 export declare const paystackService: PaystackService;
 export {};

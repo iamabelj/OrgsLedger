@@ -20,6 +20,12 @@ const createAnnouncementSchema = zod_1.z.object({
     priority: zod_1.z.enum(['low', 'normal', 'high', 'urgent']).default('normal'),
     pinned: zod_1.z.boolean().default(false),
 });
+const updateAnnouncementSchema = zod_1.z.object({
+    title: zod_1.z.string().min(1).max(300).optional(),
+    body: zod_1.z.string().min(1).max(10000).optional(),
+    priority: zod_1.z.enum(['low', 'normal', 'high', 'urgent']).optional(),
+    pinned: zod_1.z.boolean().optional(),
+});
 // ── Create Announcement ─────────────────────────────────────
 router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(createAnnouncementSchema), async (req, res) => {
     try {
@@ -119,6 +125,48 @@ router.delete('/:orgId/:announcementId', middleware_1.authenticate, middleware_1
     }
     catch (err) {
         res.status(500).json({ success: false, error: 'Failed to delete announcement' });
+    }
+});
+// ── Edit Announcement ───────────────────────────────────────
+router.put('/:orgId/:announcementId', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), (0, middleware_1.validate)(updateAnnouncementSchema), async (req, res) => {
+    try {
+        const existing = await (0, db_1.default)('announcements')
+            .where({ id: req.params.announcementId, organization_id: req.params.orgId })
+            .first();
+        if (!existing) {
+            res.status(404).json({ success: false, error: 'Announcement not found' });
+            return;
+        }
+        const updates = {};
+        const oldValues = {};
+        const newValues = {};
+        for (const field of ['title', 'body', 'priority', 'pinned']) {
+            if (req.body[field] !== undefined && req.body[field] !== existing[field]) {
+                updates[field] = req.body[field];
+                oldValues[field] = existing[field];
+                newValues[field] = req.body[field];
+            }
+        }
+        if (!Object.keys(updates).length) {
+            res.json({ success: true, data: existing, message: 'No changes' });
+            return;
+        }
+        updates.updated_at = db_1.default.fn.now();
+        await (0, db_1.default)('announcements').where({ id: existing.id }).update(updates);
+        const updated = await (0, db_1.default)('announcements').where({ id: existing.id }).first();
+        await req.audit?.({
+            organizationId: req.params.orgId,
+            action: 'update',
+            entityType: 'announcement',
+            entityId: existing.id,
+            previousValue: oldValues,
+            newValue: newValues,
+        });
+        res.json({ success: true, data: updated });
+    }
+    catch (err) {
+        logger_1.logger.error('Update announcement error', err);
+        res.status(500).json({ success: false, error: 'Failed to update announcement' });
     }
 });
 // ── Toggle Pin ──────────────────────────────────────────────

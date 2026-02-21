@@ -382,7 +382,7 @@ router.get('/:orgId/:meetingId', middleware_1.authenticate, middleware_1.loadMem
         const attendance = await (0, db_1.default)('meeting_attendance')
             .join('users', 'meeting_attendance.user_id', 'users.id')
             .where({ meeting_id: meeting.id })
-            .select('meeting_attendance.*', 'users.first_name', 'users.last_name', 'users.email');
+            .select('meeting_attendance.*', 'users.first_name', 'users.last_name', 'users.email', 'users.avatar_url');
         const votes = await (0, db_1.default)('votes')
             .where({ meeting_id: meeting.id })
             .select('*');

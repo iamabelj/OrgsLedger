@@ -97,5 +97,5 @@ export declare const SOCKET_EVENTS: {
 };
 export declare const DEEP_LINK_SCHEME = "orgsledger://";
 export declare const APP_NAME = "OrgsLedger";
-export declare const APP_VERSION = "1.0.0";
+export declare const APP_VERSION = "1.1.0-edit";
 //# sourceMappingURL=constants.d.ts.map

@@ -118,5 +118,5 @@ exports.SOCKET_EVENTS = {
 exports.DEEP_LINK_SCHEME = 'orgsledger://';
 // ── Misc ────────────────────────────────────────────────────
 exports.APP_NAME = 'OrgsLedger';
-exports.APP_VERSION = '1.0.0';
+exports.APP_VERSION = '1.1.0-edit';
 //# sourceMappingURL=constants.js.map

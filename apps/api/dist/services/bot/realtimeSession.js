@@ -153,6 +153,7 @@ class RealtimeSession {
     /**
      * Send session.update to configure OpenAI Realtime for
      * transcription-only mode with server-side VAD.
+     * We disable model responses entirely — only Whisper transcription is used.
      */
     configureSession() {
         this.sendEvent({
@@ -160,9 +161,10 @@ class RealtimeSession {
             session: {
                 // Text modality only — we don't want AI-generated audio back
                 modalities: ['text'],
-                instructions: 'You are a transcription assistant. Repeat back exactly what the speaker says. Do not add commentary, do not translate, do not summarize. Output the verbatim spoken text only.',
+                // Instruct the model NOT to respond — we only want Whisper transcription
+                instructions: 'Do not respond. Do not output any text. You are only used for audio transcription via the input_audio_transcription feature. Stay completely silent.',
                 input_audio_format: 'pcm16',
-                // Enable Whisper transcription of input audio (PRIMARY source)
+                // Enable Whisper transcription of input audio (PRIMARY and ONLY source)
                 input_audio_transcription: {
                     model: 'whisper-1',
                 },
@@ -173,9 +175,9 @@ class RealtimeSession {
                     prefix_padding_ms: 300,
                     silence_duration_ms: 500,
                 },
-                // Allow enough tokens for model fallback transcription
+                // Minimize model output — we don't want any AI responses
                 temperature: 0.0,
-                max_response_output_tokens: 500,
+                max_response_output_tokens: 1,
             },
         });
         // ── LAYER 3.2 — Confirm session.update sent ────────
@@ -227,34 +229,11 @@ class RealtimeSession {
                         logger_1.logger.debug(`[Realtime] Empty Whisper transcript for speaker=${this.speakerId} (total=${this.transcriptsReceived})`);
                     }
                     break;
-                // ── FALLBACK — Model-generated text response ───────────────
+                // ── DISABLED — Model-generated text responses are IGNORED ──
+                // The bot is a silent member: only Whisper transcription is used.
+                // Model responses were causing the bot to "discuss without users."
                 case 'response.done': {
-                    let modelText = '';
-                    if (event.response?.output?.length) {
-                        for (const item of event.response.output) {
-                            if (item.content?.length) {
-                                for (const content of item.content) {
-                                    if (content.type === 'text' && content.text) {
-                                        modelText += content.text;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    modelText = modelText.trim();
-                    if (modelText && modelText.length >= 3) {
-                        // Only use model text if Whisper didn't already provide a transcript
-                        // for this turn (check via timing — if last transcript was >2s ago)
-                        const sinceLastTranscript = Date.now() - this.lastTranscriptAt;
-                        if (sinceLastTranscript > 2000) {
-                            logger_1.logger.info(`[Realtime] Using model text as fallback transcript for ${this.speakerId}: "${modelText.slice(0, 80)}..." (sinceLastTranscript=${sinceLastTranscript}ms)`);
-                            this.transcriptsReceived++;
-                            this.handleTranscript(modelText);
-                        }
-                        else {
-                            logger_1.logger.debug(`[Realtime] Ignoring model text (Whisper already delivered): speaker=${this.speakerId}`);
-                        }
-                    }
+                    logger_1.logger.debug(`[Realtime] Ignoring model response for ${this.speakerId} (bot is silent member — Whisper only)`);
                     break;
                 }
                 case 'input_audio_buffer.speech_started':

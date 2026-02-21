@@ -208,8 +208,16 @@ router.put('/:orgId/settings', middleware_1.authenticate, middleware_1.loadMembe
             'allowPublicJoin', 'requireApproval', 'defaultRole',
             'billingCurrency', 'paymentMethods', 'enablePaystack', 'enableStripe', 'enableFlutterwave',
             'enableBankTransfer', 'bankDetails', 'primaryColor', 'accentColor',
-            'currency', 'timezone', 'locale', 'aiEnabled', 'features',
+            'currency', 'defaultLanguage', 'timezone', 'locale', 'aiEnabled', 'features',
             'notifications', 'enabledGateways', 'description',
+            // Per-org payment gateway credentials (canonical structure)
+            'payment_methods',
+            // Gateway credentials (flat keys — legacy / fallback)
+            'stripePublicKey', 'stripeSecretKey',
+            'paystackPublicKey', 'paystackSecretKey',
+            'flutterwavePublicKey', 'flutterwaveSecretKey',
+            // Bank transfer details (flat keys)
+            'bankName', 'bankAccountName', 'bankAccountNumber', 'bankRoutingCode',
         ];
         const updates = {};
         if (name && typeof name === 'string' && name.trim().length > 0 && name.length <= 200) {
@@ -611,6 +619,47 @@ router.get('/platform/all', middleware_1.authenticate, (0, middleware_1.requireD
     }
     catch (err) {
         res.status(500).json({ success: false, error: 'Failed to list all organizations' });
+    }
+});
+// ── Edit History (visible to ALL members) ───────────────────
+// Returns audit log entries for edit (update) actions only,
+// so all members can see what was changed and by whom.
+router.get('/:orgId/edit-history', middleware_1.authenticate, middleware_1.loadMembership, async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = Math.min(100, parseInt(req.query.limit) || 30);
+        const entityType = req.query.entityType;
+        const entityId = req.query.entityId;
+        let query = (0, db_1.default)('audit_logs')
+            .where({ 'audit_logs.organization_id': req.params.orgId, 'audit_logs.action': 'update' })
+            .leftJoin('users', 'audit_logs.user_id', 'users.id')
+            .select('audit_logs.id', 'audit_logs.action', 'audit_logs.entity_type', 'audit_logs.entity_id', 'audit_logs.previous_value', 'audit_logs.new_value', 'audit_logs.created_at', 'users.first_name', 'users.last_name');
+        if (entityType)
+            query = query.where({ 'audit_logs.entity_type': entityType });
+        if (entityId)
+            query = query.where({ 'audit_logs.entity_id': entityId });
+        const total = await query.clone().clear('select').count('audit_logs.id as count').first();
+        const logs = await query
+            .orderBy('audit_logs.created_at', 'desc')
+            .offset((page - 1) * limit)
+            .limit(limit);
+        // Parse JSONB columns for the response
+        const parsed = logs.map((log) => ({
+            ...log,
+            previous_value: typeof log.previous_value === 'string'
+                ? JSON.parse(log.previous_value) : log.previous_value,
+            new_value: typeof log.new_value === 'string'
+                ? JSON.parse(log.new_value) : log.new_value,
+            editedBy: `${log.first_name || ''} ${log.last_name || ''}`.trim() || 'Unknown',
+        }));
+        res.json({
+            success: true,
+            data: parsed,
+            meta: { page, limit, total: parseInt(total?.count) || 0 },
+        });
+    }
+    catch (err) {
+        res.status(500).json({ success: false, error: 'Failed to get edit history' });
     }
 });
 // ── Organization Audit Log (for compliance dashboard) ───────

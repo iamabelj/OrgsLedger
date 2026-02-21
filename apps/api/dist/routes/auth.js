@@ -849,7 +849,7 @@ router.get('/me', middleware_1.authenticate, async (req, res) => {
         const memberships = await (0, db_1.default)('memberships')
             .join('organizations', 'memberships.organization_id', 'organizations.id')
             .where({ 'memberships.user_id': req.user.userId, 'memberships.is_active': true })
-            .select('memberships.id', 'memberships.role', 'organizations.id as organizationId', 'organizations.name as organizationName', 'organizations.slug as organizationSlug');
+            .select('memberships.id', 'memberships.role', 'organizations.id as organizationId', 'organizations.name as organizationName', 'organizations.slug as organizationSlug', 'organizations.logo_url as logoUrl');
         res.json({
             success: true,
             data: {

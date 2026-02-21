@@ -48,17 +48,34 @@ router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAndS
         const status = req.query.status;
         const category = req.query.category;
         let query = (0, db_1.default)('expenses')
-            .where({ organization_id: req.params.orgId })
-            .select('*');
+            .where({ 'expenses.organization_id': req.params.orgId })
+            .leftJoin('users', 'expenses.created_by', 'users.id')
+            .select('expenses.*', 'users.first_name as creator_first_name', 'users.last_name as creator_last_name');
         if (status)
-            query = query.where({ status });
+            query = query.where({ 'expenses.status': status });
         if (category)
-            query = query.where({ category });
-        const total = await query.clone().clear('select').count('id as count').first();
-        const expenses = await query
-            .orderBy('created_at', 'desc')
+            query = query.where({ 'expenses.category': category });
+        const total = await query.clone().clear('select').clear('join').count('expenses.id as count').first();
+        const rows = await query
+            .orderBy('expenses.created_at', 'desc')
             .offset((page - 1) * limit)
             .limit(limit);
+        // Map to camelCase with nested createdBy for frontend
+        const expenses = rows.map((r) => ({
+            id: r.id,
+            title: r.title,
+            description: r.description,
+            amount: r.amount,
+            category: r.category,
+            date: r.date,
+            status: r.status,
+            receipt_url: r.receipt_url,
+            createdAt: r.created_at,
+            createdBy: {
+                firstName: r.creator_first_name || 'Unknown',
+                lastName: r.creator_last_name || '',
+            },
+        }));
         res.json({
             success: true,
             data: expenses,

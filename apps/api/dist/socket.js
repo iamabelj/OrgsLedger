@@ -306,7 +306,7 @@ async function handleSpeechText(io, socket, userId, meetingId, text, sourceLang,
                         }
                         try {
                             logger_1.logger.debug(`[TTS] Generating audio: lang=${lang}, textLen=${ttsText.length}, text="${ttsText.slice(0, 60)}..."`);
-                            const audioBuffer = await (0, whisper_service_1.generateTTSAudio)(ttsText);
+                            const audioBuffer = await (0, whisper_service_1.generateTTSAudio)(ttsText, { language: lang });
                             const audioBase64 = audioBuffer.toString('base64');
                             logger_1.logger.info(`[TTS] ✓ Generated ${(audioBuffer.length / 1024).toFixed(1)}KB mp3 for lang=${lang}`);
                             for (const uid of userIds) {

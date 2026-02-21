@@ -3,7 +3,7 @@ export declare function getWhisperDiagnostics(): {
     openaiKeyConfigured: boolean;
     openaiKeyPrefix: string;
     engine: string;
-    ttsModel: string;
+    ttsEngine: string;
 };
 /**
  * Transcribe an audio segment using OpenAI Whisper.
@@ -21,15 +21,15 @@ export declare function transcribeAudio(audioBuffer: Buffer, options?: {
     text: string;
 }>;
 /**
- * Generate speech audio from text using OpenAI TTS.
+ * Generate speech audio from text using Google Cloud TTS.
  * Returns mp3 audio as a Buffer.
  *
  * @param text - Text to speak
- * @param options.voice - Voice selection (default: 'nova' — warm, natural)
+ * @param options.language - ISO-639-1 language code (default: 'en')
  * @param options.speed - Playback speed 0.25–4.0 (default: 1.0)
  */
 export declare function generateTTSAudio(text: string, options?: {
-    voice?: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
+    language?: string;
     speed?: number;
 }): Promise<Buffer>;
 //# sourceMappingURL=whisper.service.d.ts.map
