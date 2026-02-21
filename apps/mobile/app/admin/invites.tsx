@@ -62,7 +62,7 @@ export default function InvitesScreen() {
     if (!currentOrgId) return;
     setCreating(true);
     try {
-      const res = await api.subscriptions.createInvite(currentOrgId, { role: 'member', maxUses: 50 });
+      const res = await api.subscriptions.createInvite(currentOrgId, { role: 'member', maxUses: 1 });
       doAlert('Success', `Invite link created: ${res.data.data.inviteUrl}`);
       load();
     } catch (e: any) {

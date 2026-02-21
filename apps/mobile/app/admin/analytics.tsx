@@ -16,6 +16,8 @@ import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
 import { Card, SectionHeader, StatCard, LoadingScreen, PoweredByFooter } from '../../src/components/ui';
 import { useResponsive } from '../../src/hooks/useResponsive';
+import { useOrgCurrency } from '../../src/hooks/useOrgCurrency';
+import { formatCurrency as formatCurrencyUtil } from '../../src/utils/currency';
 
 export default function AnalyticsScreen() {
   const [analytics, setAnalytics] = useState<any>(null);
@@ -61,9 +63,8 @@ export default function AnalyticsScreen() {
 
   const data = analytics || { members: {}, finances: {}, meetings: {} };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', minimumFractionDigits: 0 }).format(amount);
-  };
+  const orgCurrency = useOrgCurrency();
+  const formatCurrency = (amount: number) => formatCurrencyUtil(amount, orgCurrency, 0);
 
   return (
     <ScrollView

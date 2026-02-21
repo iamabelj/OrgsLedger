@@ -19,6 +19,8 @@ import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
 import { Card, Button, Input, Avatar, Badge, SearchBar, SectionHeader, ResponsiveScrollView } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
+import { useOrgCurrency } from '../../src/hooks/useOrgCurrency';
+import { getCurrencySymbol } from '../../src/utils/currency';
 
 interface Member {
   id: string;
@@ -29,6 +31,8 @@ interface Member {
 
 export default function CreateFineScreen() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
+  const orgCurrency = useOrgCurrency();
+  const currencySymbol = getCurrencySymbol(orgCurrency);
   const [reason, setReason] = useState('');
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
@@ -108,7 +112,7 @@ export default function CreateFineScreen() {
           userId,
           type: 'other',
           amount: numAmount,
-          currency: 'USD',
+          currency: orgCurrency,
           reason: reason.trim(),
         })
       );
@@ -116,7 +120,8 @@ export default function CreateFineScreen() {
       const memberCount = selectedMembers.length;
       showAlert(
         'Success',
-        `Fine of $${numAmount.toFixed(2)} issued to ${memberCount} member${memberCount > 1 ? 's' : ''}`,
+        `Fine of ${currencySymbol}${numAmount.toFixed(2)} issued to ${memberCount} member${memberCount > 1 ? 's' : ''}`,
+
         [{ text: 'OK', onPress: () => router.replace('/(tabs)/financials' as any) }]
       );
     } catch (err: any) {

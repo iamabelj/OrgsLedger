@@ -98,7 +98,7 @@ export default function MemberDirectoryScreen() {
     if (!currentOrgId) return;
     setCreatingInvite(true);
     try {
-      await api.subscriptions.createInvite(currentOrgId, { role: inviteRole, maxUses: 50 });
+      await api.subscriptions.createInvite(currentOrgId, { role: inviteRole, maxUses: 1 });
       await loadInvites();
     } catch (err: any) {
       const msg = err?.response?.data?.error || 'Failed to create invite';

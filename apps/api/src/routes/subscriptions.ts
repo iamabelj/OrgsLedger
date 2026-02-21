@@ -37,7 +37,7 @@ const topUpSchema = z.object({
 
 const createInviteSchema = z.object({
   role: z.enum(['member', 'executive', 'org_admin']).default('member'),
-  maxUses: z.number().int().min(1).max(1000).default(50),
+  maxUses: z.number().int().min(1).max(1000).default(1),
   expiresAt: z.string().optional(),
   description: z.string().max(500).optional(),
 });
@@ -337,7 +337,7 @@ router.post('/:orgId/invite', authenticate, loadMembership, requireRole('org_adm
       req.params.orgId,
       req.user!.userId,
       role || 'member',
-      maxUses || 50,
+      maxUses || 1,
       expiresAt,
       description,
     );
