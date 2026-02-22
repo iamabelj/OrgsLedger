@@ -8,7 +8,40 @@
 
 import { SpeechClient } from '@google-cloud/speech';
 import path from 'path';
+import fs from 'fs';
 import { logger } from '../logger';
+
+// ── Credential Validation ────────────────────────────────
+
+const CRED_PATH = path.resolve(__dirname, '../../google-credentials.json');
+let credentialsValid = false;
+
+try {
+  if (fs.existsSync(CRED_PATH)) {
+    const raw = fs.readFileSync(CRED_PATH, 'utf-8');
+    const parsed = JSON.parse(raw);
+    credentialsValid = !!(parsed.private_key && parsed.client_email);
+    logger.info(`[STT] Google credentials file found: ${CRED_PATH} (valid=${credentialsValid}, email=${parsed.client_email})`);
+  } else {
+    logger.error(`[STT] ❌ Google credentials file NOT FOUND at ${CRED_PATH} — Speech-to-Text will NOT work!`);
+  }
+} catch (err: any) {
+  logger.error(`[STT] ❌ Failed to read credentials: ${err.message}`);
+}
+
+/** Check if STT credentials are available */
+export function isSttAvailable(): boolean {
+  return credentialsValid;
+}
+
+/** Get credential diagnostic info */
+export function getSttDiagnostics() {
+  return {
+    credentialsPath: CRED_PATH,
+    credentialsExist: fs.existsSync(CRED_PATH),
+    credentialsValid,
+  };
+}
 
 // ── Types ────────────────────────────────────────────────
 
@@ -35,9 +68,11 @@ let sharedClient: SpeechClient | null = null;
 
 function getClient(): SpeechClient {
   if (!sharedClient) {
-    const credPath = path.resolve(__dirname, '../../google-credentials.json');
-    sharedClient = new SpeechClient({ keyFilename: credPath });
-    logger.info(`[STT] Google Speech client initialized (credentials: ${credPath})`);
+    if (!credentialsValid) {
+      throw new Error('Google STT credentials not found or invalid — check google-credentials.json');
+    }
+    sharedClient = new SpeechClient({ keyFilename: CRED_PATH });
+    logger.info(`[STT] Google Speech client initialized (credentials: ${CRED_PATH})`);
   }
   return sharedClient;
 }
@@ -48,7 +83,6 @@ export class SpeechSession {
   private client: SpeechClient;
   private recognizeStream: any = null;
   private closed = false;
-  private fatalError = false;
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private restartCounter = 0;
   private streamStartTime = 0;
@@ -102,9 +136,16 @@ export class SpeechSession {
     this.bytesSent += buf.length;
 
     try {
-      this.recognizeStream.write(buf);
+      if (this.recognizeStream && !this.recognizeStream.destroyed) {
+        this.recognizeStream.write(buf);
+      } else {
+        logger.debug(`[STT] Stream not writable for ${this.speakerName}, restarting`);
+        this.restartStream();
+        return;
+      }
     } catch (err) {
       logger.debug(`[STT] Write failed for ${this.speakerName}, restarting stream`);
+      this.recognizeStream = null;
       this.restartStream();
     }
 
@@ -155,7 +196,8 @@ export class SpeechSession {
       }],
     };
 
-    // Always set sampleRateHertz — required for both LINEAR16 and WEBM_OPUS
+    // Always set sampleRateHertz explicitly — Google may fail to auto-detect
+    // from the WebM/Opus container header (returns 0), so be explicit.
     config.sampleRateHertz = this.sampleRateHertz;
 
     const request = {
@@ -191,18 +233,19 @@ export class SpeechSession {
         }
 
         logger.error(`[STT] Error for ${this.speakerName}: code=${err.code}, message=${err.message}`);
+
+        // Immediately null out the stream to prevent "write after destroyed" errors
+        this.recognizeStream = null;
+
         this.onError?.(err);
 
-        // Fatal errors — do NOT restart (would loop forever)
-        if (err.code === 3 || err.code === 7) { // INVALID_ARGUMENT or PERMISSION_DENIED
-          this.fatalError = true;
-          this.close();
-          return;
+        // Try to restart on transient errors
+        if (err.code !== 3 && err.code !== 7) { // Not INVALID_ARGUMENT or PERMISSION_DENIED
+          this.restartStream();
         }
-        this.restartStream();
       })
       .on('end', () => {
-        if (!this.closed && !this.fatalError) {
+        if (!this.closed) {
           logger.debug(`[STT] Stream ended normally, restarting: speaker=${this.speakerName}`);
           this.restartStream();
         }

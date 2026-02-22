@@ -212,15 +212,7 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
 
     unsubs.push(socketClient.on('meeting:ended', (data: any) => {
       if (data.meetingId !== meetingId) return;
-      // Update status (idempotent — may already be 'ended' if admin ended locally)
-      setMeetingState((prev: any) => {
-        if (!prev || prev.status === 'ended') return prev;
-        return { ...prev, status: 'ended', actual_end: new Date().toISOString() };
-      });
-      if (elapsedRef.current) {
-        clearInterval(elapsedRef.current);
-        elapsedRef.current = null;
-      }
+      setMeetingState((prev: any) => prev ? { ...prev, status: 'ended', actual_end: new Date().toISOString() } : prev);
       meetingStore.onMeetingEnded(data);
       // Leave the socket meeting room immediately (stop receiving translations/TTS)
       socketClient.leaveMeeting(meetingId);
@@ -396,10 +388,6 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
     } catch {
       // Non-critical
     }
-    if (elapsedRef.current) {
-      clearInterval(elapsedRef.current);
-      elapsedRef.current = null;
-    }
     socketClient.leaveMeeting(meetingId);
     resetMeeting();
   }, [orgId, meetingId, resetMeeting]);
@@ -414,23 +402,14 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
         onPress: async () => {
           try {
             await api.meetings.end(orgId, meetingId);
-            // Immediately update local state (don't rely solely on socket event)
-            setMeetingState((prev: any) => prev ? { ...prev, status: 'ended', actual_end: new Date().toISOString() } : prev);
-            if (elapsedRef.current) {
-              clearInterval(elapsedRef.current);
-              elapsedRef.current = null;
-            }
-            meetingStore.onMeetingEnded({ meetingId, status: 'ended' });
-            socketClient.leaveMeeting(meetingId);
-            // Reset after delay to allow minutes processing events to arrive via org room
-            setTimeout(() => resetMeeting(), 5_000);
+            // Socket handler will trigger resetMeeting
           } catch (err: any) {
             showAlert('Error', err.response?.data?.error || 'Failed to end meeting');
           }
         },
       },
     ]);
-  }, [orgId, meetingId, resetMeeting]);
+  }, [orgId, meetingId]);
 
   const minimize = useCallback(() => setIsMinimized(true), []);
   const maximize = useCallback(() => setIsMinimized(false), []);

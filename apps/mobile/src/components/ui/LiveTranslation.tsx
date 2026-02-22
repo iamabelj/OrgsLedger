@@ -241,16 +241,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
 
     const unsubAudioError = socketClient.on('audio:error', (data: any) => {
       if (data.meetingId === meetingId) {
-        audioErrorCountRef.current++;
-        // Only log the first few errors to avoid flooding
-        if (audioErrorCountRef.current <= 3) {
-          console.warn('[STT] Server audio error:', data.error);
-        }
-        // Stop sending audio after too many consecutive errors
-        if (audioErrorCountRef.current >= 5 && isListeningRef.current) {
-          console.warn('[STT] Too many server errors, stopping audio stream');
-          stopListening();
-        }
+        console.warn('[STT] Server audio error:', data.error);
       }
     });
 
@@ -266,11 +257,8 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
   // Refs for latest values inside callbacks
   const myLanguageRef = useRef(myLanguage);
   const speakEnabledRef = useRef(speakEnabled);
-  const audioErrorCountRef = useRef(0);
-  const isListeningRef = useRef(false);
   useEffect(() => { myLanguageRef.current = myLanguage; }, [myLanguage]);
   useEffect(() => { speakEnabledRef.current = speakEnabled; }, [speakEnabled]);
-  useEffect(() => { isListeningRef.current = isListening; }, [isListening]);
 
   // ── Set language and notify server ─────────────────────
   const selectLanguage = useCallback((lang: string) => {
@@ -328,7 +316,6 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
 
         // Tell server to start a Google STT session for this user
         socketClient.startAudioStream(meetingId, myLanguageRef.current, 'WEBM_OPUS');
-        audioErrorCountRef.current = 0; // Reset error counter on new stream
 
         recorder.ondataavailable = (e: any) => {
           if (e.data && e.data.size > 0) {

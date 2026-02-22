@@ -149,46 +149,19 @@ function FullMeetingOverlay() {
   // ── Auto-start speech recognition once connected ──────
   // Start transcription automatically so transcripts are captured
   // without requiring the user to manually select a language.
-  // Uses a retry loop in case the LiveTranslation ref isn't ready yet.
   useEffect(() => {
     if (!lk.isConnected) return;
     if (translationListening) return; // already started
-
-    let cancelled = false;
-    let attempt = 0;
-    const maxAttempts = 5;
-
-    const tryStart = () => {
-      if (cancelled || translationListening) return;
-      attempt++;
-      if (translationRef.current) {
+    // Small delay to let LiveTranslation mount and attach ref
+    const timer = setTimeout(() => {
+      if (translationRef.current && !translationListening) {
         translationRef.current.startListening();
         setTranslationListening(true);
-        console.debug('[GlobalMeetingOverlay] Auto-started speech recognition (attempt ' + attempt + ')');
-      } else if (attempt < maxAttempts) {
-        // Retry — ref may not be attached yet
-        setTimeout(tryStart, 1000);
-      } else {
-        console.warn('[GlobalMeetingOverlay] Failed to auto-start speech recognition after', maxAttempts, 'attempts');
+        console.debug('[GlobalMeetingOverlay] Auto-started speech recognition for transcription');
       }
-    };
-
-    // Initial delay to let LiveTranslation mount
-    const timer = setTimeout(tryStart, 1500);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
+    }, 1500);
+    return () => clearTimeout(timer);
   }, [lk.isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Stop transcription when meeting ends ──────────────
-  useEffect(() => {
-    if (gm.meeting?.status === 'ended' && translationListening) {
-      translationRef.current?.stopListening();
-      setTranslationListening(false);
-      lk.disconnect();
-    }
-  }, [gm.meeting?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Toggle sidebar panel ──────────────────────────────
   const handleToggleSidebar = useCallback((panel?: string) => {
