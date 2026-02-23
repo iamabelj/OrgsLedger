@@ -844,6 +844,12 @@ router.post(
         }, 60_000); // 60 seconds grace period — GPT-4o needs time
       }
 
+      // ── Respond immediately so the client UI updates fast ──
+      res.json({ success: true, message: 'Meeting ended' });
+
+      // ── Everything below runs AFTER the response is sent ──
+      // (best-effort: bot stop, transcript check, AI minutes, audit)
+
       // Stop transcription bot (best-effort)
       try {
         const botManager = getBotManager();
@@ -932,15 +938,13 @@ router.post(
         }
       }
 
-      await (req as any).audit?.({
+      (req as any).audit?.({
         organizationId: req.params.orgId,
         action: 'update',
         entityType: 'meeting',
         entityId: req.params.meetingId,
         newValue: { status: 'ended' },
-      });
-
-      res.json({ success: true, message: 'Meeting ended' });
+      }).catch(() => {});
     } catch (err) {
       res.status(500).json({ success: false, error: 'Failed to end meeting' });
     }

@@ -89,10 +89,18 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
   Future<void> _endMeeting() async {
     final orgId = ref.read(authProvider).currentOrgId;
     if (orgId == null) return;
+    // Optimistic: update UI immediately so buttons hide and status shows 'ended'
+    if (mounted) {
+      setState(() {
+        _meeting = _meeting?.copyWith(status: 'ended');
+      });
+    }
     try {
       await api.endMeeting(orgId, widget.meetingId);
+    } catch (_) {
+      // Revert on failure
       _loadMeeting();
-    } catch (_) {}
+    }
   }
 
   @override

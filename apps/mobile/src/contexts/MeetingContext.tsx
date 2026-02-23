@@ -400,6 +400,11 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
         text: 'End Meeting',
         style: 'destructive',
         onPress: async () => {
+          // Optimistic: update status immediately so UI reflects 'ended' instantly
+          setMeetingState((prev: any) => prev ? { ...prev, status: 'ended', actual_end: new Date().toISOString() } : prev);
+          meetingStore.setStatus('ended');
+          if (elapsedRef.current) { clearInterval(elapsedRef.current); elapsedRef.current = null; }
+
           try {
             await api.meetings.end(orgId, meetingId);
             // Socket handler will trigger resetMeeting

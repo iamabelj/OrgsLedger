@@ -403,6 +403,23 @@ export default function MeetingDetailScreen() {
     return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
   }, [meeting?.status, meeting?.scheduled_start]);
 
+  // ── Sync from GlobalMeetingContext when it handles meeting:ended ──
+  // When gm.isActive, the local socket listeners are skipped (GlobalMeetingProvider handles them).
+  // But the context updates its own state, not our local `meeting`. Sync here.
+  useEffect(() => {
+    if (gm.isActive && gm.meeting && meeting) {
+      if (gm.meeting.status === 'ended' && meeting.status !== 'ended') {
+        setMeeting((prev: any) => prev ? { ...prev, status: 'ended', actual_end: gm.meeting?.actual_end || new Date().toISOString() } : prev);
+        meetingStore.setStatus('ended');
+        if (elapsedRef.current) { clearInterval(elapsedRef.current); elapsedRef.current = null; }
+        if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null; }
+        setShowVideo(false);
+        setJoinConfig(null);
+        setHandRaised(false);
+      }
+    }
+  }, [gm.isActive, gm.meeting?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Bandwidth Detection ─────────────────────────────────
   useEffect(() => {
     if (!bandwidthChecked) {
@@ -592,17 +609,21 @@ export default function MeetingDetailScreen() {
         text: 'End Meeting',
         style: 'destructive',
         onPress: async () => {
-          setActionLoading(true);
+          // Optimistic: update UI immediately so timer stops and buttons hide
+          setMeeting((prev: any) => prev ? { ...prev, status: 'ended', actual_end: new Date().toISOString() } : prev);
+          meetingStore.setStatus('ended');
+          if (elapsedRef.current) { clearInterval(elapsedRef.current); elapsedRef.current = null; }
+          if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null; }
+          setShowVideo(false);
+          setJoinConfig(null);
+          setHandRaised(false);
+
           try {
             await api.meetings.end(currentOrgId, meetingId);
-            // Server emits meeting:ended + force-disconnect;
-            // socket handlers update local state automatically.
-            setMeeting((prev: any) => prev ? { ...prev, status: 'ended', actual_end: new Date().toISOString() } : prev);
-            meetingStore.setStatus('ended');
           } catch (err: any) {
+            // Revert optimistic update on failure
             showAlert('Error', err.response?.data?.error || 'Failed to end meeting');
-          } finally {
-            setActionLoading(false);
+            loadMeeting();
           }
         },
       },
