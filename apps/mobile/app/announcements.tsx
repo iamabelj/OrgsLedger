@@ -207,12 +207,6 @@ export default function AnnouncementsScreen() {
 
   return (
     <View style={styles.container}>
-      {/* DEBUG: Remove after confirming edit works */}
-      <View style={{ backgroundColor: '#1a1a2e', padding: 8, borderBottomWidth: 1, borderBottomColor: '#333' }}>
-        <Text style={{ color: '#0f0', fontSize: 11, fontFamily: 'monospace' }}>
-          globalRole: {JSON.stringify(globalRole)} | membership.role: {JSON.stringify(membership?.role)} | orgId: {currentOrgId ? currentOrgId.slice(0, 8) : 'none'} | isAdmin: {String(isAdmin)} | items: {announcements.length}
-        </Text>
-      </View>
       <View style={[styles.header, { maxWidth: responsive.contentMaxWidth, alignSelf: 'center', width: '100%' }]}>
         <Text style={styles.screenTitle}>Announcements</Text>
         {isAdmin && (
