@@ -10,7 +10,7 @@ import crypto from 'crypto';
 
 // ── Sensitive Data Masking ────────────────────────────────
 // Masks PII and secrets in log output to prevent accidental leakage.
-const SENSITIVE_PATTERNS: Array<{ regex: RegExp; replacement: string }> = [
+const SENSITIVE_PATTERNS: Array<{ regex: RegExp; replacement: string | ((match: string) => string) }> = [
   // JWT tokens (header.payload.signature)
   { regex: /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, replacement: '[REDACTED_JWT]' },
   // Email addresses
