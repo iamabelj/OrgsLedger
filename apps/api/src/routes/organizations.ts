@@ -19,6 +19,7 @@ import {
 } from '../middleware';
 import { logger } from '../logger';
 import { config } from '../config';
+import { cacheAside, cacheDel } from '../services/cache.service';
 import {
   getOrgSubscription,
   createSubscription,
@@ -163,6 +164,9 @@ router.post(
         newValue: { name, slug },
       });
 
+      // Invalidate org list cache for this user
+      await cacheDel(`orgs:list:${req.user!.userId}:*`).catch(() => {});
+
       logger.info(`Organization created: ${name} (${slug})`);
 
       res.status(201).json({ success: true, data: org });
@@ -190,10 +194,14 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 100));
     const offset = (page - 1) * limit;
 
-    const total = await query.clone().clear('select').count('id as count').first();
-    const orgs = await query.select('*').orderBy('name').limit(limit).offset(offset);
+    const cacheKey = `orgs:list:${req.user!.userId}:p${page}:l${limit}`;
+    const result = await cacheAside(cacheKey, 30, async () => {
+      const total = await query.clone().clear('select').count('id as count').first();
+      const orgs = await query.select('*').orderBy('name').limit(limit).offset(offset);
+      return { data: orgs, meta: { page, limit, total: parseInt(total?.count as string) || 0 } };
+    });
 
-    res.json({ success: true, data: orgs, meta: { page, limit, total: parseInt(total?.count as string) || 0 } });
+    res.json({ success: true, ...result });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Failed to list organizations' });
   }

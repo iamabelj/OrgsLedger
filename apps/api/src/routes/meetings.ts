@@ -18,6 +18,8 @@ import { getAiWallet, getOrgSubscription } from '../services/subscription.servic
 import { generateRoomName, generateLiveKitToken, buildJoinConfig } from '../services/livekit.service';
 import { forceDisconnectMeeting } from '../socket';
 import { getBotManager } from '../services/bot';
+import { withTransaction } from '../utils/transaction';
+import { cacheAside, cacheDel } from '../services/cache.service';
 
 const router = Router();
 
@@ -100,61 +102,65 @@ router.post(
         }
       }
 
-      // Insert meeting first to get ID, then generate deterministic room name
-      // Build insert payload — only include columns confirmed in DB schema
+      // Insert meeting + agenda in a single DB transaction for atomicity
       // Detect column name: migration 024 renames jitsi_room_id → room_id
       const hasRoomId = await db.schema.hasColumn('meetings', 'room_id');
       const roomCol = hasRoomId ? 'room_id' : 'jitsi_room_id';
-      const meetingInsert: Record<string, any> = {
-        organization_id: req.params.orgId,
-        title,
-        description: description || null,
-        location: location || null,
-        scheduled_start: scheduledStart,
-        scheduled_end: scheduledEnd || null,
-        created_by: req.user!.userId,
-        ai_enabled: aiEnabled,
-        [roomCol]: 'pending', // placeholder, updated below
-      };
-      // Columns from migration 003
-      meetingInsert.recurring_pattern = recurringPattern || 'none';
-      meetingInsert.recurring_end_date = recurringEndDate || null;
-      // Columns from migration 005
-      meetingInsert.translation_enabled = translationEnabled || false;
-      // Columns from migration 020 (may not exist on older DBs)
-      try {
-        const hasMeetingType = await db.schema.hasColumn('meetings', 'meeting_type');
-        if (hasMeetingType) {
-          meetingInsert.meeting_type = meetingType || 'video';
-          meetingInsert.max_participants = maxParticipants || 0;
-          meetingInsert.duration_limit_minutes = durationLimitMinutes || 0;
-          meetingInsert.lobby_enabled = lobbyEnabled || false;
+
+      const meeting = await withTransaction(async (trx) => {
+        const meetingInsert: Record<string, any> = {
+          organization_id: req.params.orgId,
+          title,
+          description: description || null,
+          location: location || null,
+          scheduled_start: scheduledStart,
+          scheduled_end: scheduledEnd || null,
+          created_by: req.user!.userId,
+          ai_enabled: aiEnabled,
+          [roomCol]: 'pending', // placeholder, updated below
+        };
+        // Columns from migration 003
+        meetingInsert.recurring_pattern = recurringPattern || 'none';
+        meetingInsert.recurring_end_date = recurringEndDate || null;
+        // Columns from migration 005
+        meetingInsert.translation_enabled = translationEnabled || false;
+        // Columns from migration 020 (may not exist on older DBs)
+        try {
+          const hasMeetingType = await db.schema.hasColumn('meetings', 'meeting_type');
+          if (hasMeetingType) {
+            meetingInsert.meeting_type = meetingType || 'video';
+            meetingInsert.max_participants = maxParticipants || 0;
+            meetingInsert.duration_limit_minutes = durationLimitMinutes || 0;
+            meetingInsert.lobby_enabled = lobbyEnabled || false;
+          }
+        } catch { /* schema check failed — skip optional columns */ }
+
+        const [inserted] = await trx('meetings')
+          .insert(meetingInsert)
+          .returning('*');
+
+        // Generate tenant-isolated room name: org_<orgId>_meeting_<meetingId>
+        const roomId = generateRoomName(req.params.orgId, inserted.id);
+        await trx('meetings').where({ id: inserted.id }).update({ [roomCol]: roomId });
+        inserted.room_id = roomId;
+        inserted.jitsi_room_id = roomId; // back-compat until migration 024 runs
+
+        // Create agenda items inside the same transaction
+        if (agendaItems?.length) {
+          await trx('agenda_items').insert(
+            agendaItems.map((item: any, idx: number) => ({
+              meeting_id: inserted.id,
+              title: item.title,
+              description: item.description || null,
+              order: idx + 1,
+              duration_minutes: item.durationMinutes || null,
+              presenter_user_id: item.presenterUserId || null,
+            }))
+          );
         }
-      } catch { /* schema check failed — skip optional columns */ }
 
-      const [meeting] = await db('meetings')
-        .insert(meetingInsert)
-        .returning('*');
-
-      // Generate tenant-isolated room name: org_<orgId>_meeting_<meetingId>
-      const roomId = generateRoomName(req.params.orgId, meeting.id);
-      await db('meetings').where({ id: meeting.id }).update({ [roomCol]: roomId });
-      meeting.room_id = roomId;
-      meeting.jitsi_room_id = roomId; // back-compat until migration 024 runs
-
-      // Create agenda items
-      if (agendaItems?.length) {
-        await db('agenda_items').insert(
-          agendaItems.map((item: any, idx: number) => ({
-            meeting_id: meeting.id,
-            title: item.title,
-            description: item.description || null,
-            order: idx + 1,
-            duration_minutes: item.durationMinutes || null,
-            presenter_user_id: item.presenterUserId || null,
-          }))
-        );
-      }
+        return inserted;
+      });
 
       await (req as any).audit?.({
         organizationId: req.params.orgId,
@@ -163,6 +169,9 @@ router.post(
         entityId: meeting.id,
         newValue: { title, scheduledStart },
       });
+
+      // Invalidate meeting list cache for this org
+      await cacheDel(`meetings:list:${req.params.orgId}:*`).catch(() => {});
 
       // Notify all org members
       const members = await db('memberships')
@@ -185,6 +194,12 @@ router.post(
         body: `${title} — ${new Date(scheduledStart).toLocaleString()}`,
         data: { meetingId: meeting.id, type: 'meeting' },
       }, req.user!.userId).catch(err => logger.warn('Push notification failed (new meeting)', err));
+
+      // Emit real-time socket event so meeting lists refresh
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`org:${req.params.orgId}`).emit('meeting:scheduled', meeting);
+      }
 
       res.status(201).json({ success: true, data: meeting });
     } catch (err) {
@@ -375,35 +390,39 @@ router.get(
         query = query.where({ status });
       }
 
-      const total = await query.clone().clear('select').count('id as count').first();
-      const meetings = await query
-        .orderBy('scheduled_start', 'desc')
-        .offset((page - 1) * limit)
-        .limit(limit);
+      const statusKey = status || 'all';
+      const cacheKey = `meetings:list:${req.params.orgId}:${statusKey}:p${page}:l${limit}`;
+      const result = await cacheAside(cacheKey, 15, async () => {
+        const total = await query.clone().clear('select').count('id as count').first();
+        const meetings = await query
+          .orderBy('scheduled_start', 'desc')
+          .offset((page - 1) * limit)
+          .limit(limit);
 
-      // Batch: attendance counts for all meetings in one query (GROUP BY)
-      let enriched = meetings;
-      if (meetings.length) {
-        const meetingIds = meetings.map((m: any) => m.id);
-        const attendanceCounts = await db('meeting_attendance')
-          .whereIn('meeting_id', meetingIds)
-          .select('meeting_id')
-          .count('id as count')
-          .groupBy('meeting_id');
+        // Batch: attendance counts for all meetings in one query (GROUP BY)
+        let enriched = meetings;
+        if (meetings.length) {
+          const meetingIds = meetings.map((m: any) => m.id);
+          const attendanceCounts = await db('meeting_attendance')
+            .whereIn('meeting_id', meetingIds)
+            .select('meeting_id')
+            .count('id as count')
+            .groupBy('meeting_id');
 
-        const attendanceMap: Record<string, number> = {};
-        attendanceCounts.forEach((ac: any) => { attendanceMap[ac.meeting_id] = parseInt(ac.count as string) || 0; });
+          const attendanceMap: Record<string, number> = {};
+          attendanceCounts.forEach((ac: any) => { attendanceMap[ac.meeting_id] = parseInt(ac.count as string) || 0; });
 
-        enriched = meetings.map((m: any) => ({
-          ...m,
-          attendeeCount: attendanceMap[m.id] || 0,
-        }));
-      }
+          enriched = meetings.map((m: any) => ({
+            ...m,
+            attendeeCount: attendanceMap[m.id] || 0,
+          }));
+        }
+        return { data: enriched, meta: { page, limit, total: parseInt(total?.count as string) || 0 } };
+      });
 
       res.json({
         success: true,
-        data: enriched,
-        meta: { page, limit, total: parseInt(total?.count as string) || 0 },
+        ...result,
       });
     } catch (err) {
       res.status(500).json({ success: false, error: 'Failed to list meetings' });

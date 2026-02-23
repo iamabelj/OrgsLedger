@@ -102,6 +102,13 @@ export const RATE_LIMITS = {
   WEBHOOK: { windowMs: 60 * 1000, max: 60 },
 } as const;
 
+// ── Account Lockout ─────────────────────────────────────────
+export const ACCOUNT_LOCKOUT = {
+  MAX_ATTEMPTS: 5,                     // Lock after 5 failed login attempts
+  LOCKOUT_DURATION_MIN: 15,            // Lock for 15 minutes
+  LOCKOUT_DURATION_MS: 15 * 60 * 1000, // 15 minutes in ms
+} as const;
+
 // ── Upload Defaults ─────────────────────────────────────────
 export const UPLOAD = {
   AVATAR_MAX_SIZE: 5 * 1024 * 1024, // 5 MB

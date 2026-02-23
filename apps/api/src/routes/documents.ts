@@ -11,6 +11,7 @@ import db from '../db';
 import { authenticate, loadMembershipAndSub as loadMembership, requireRole, validate } from '../middleware';
 import { logger } from '../logger';
 import { config } from '../config';
+import { verifyMagicBytes, sanitizeFilename, validateMimeExtension } from '../utils/file-validation';
 
 const router = Router();
 
@@ -69,16 +70,44 @@ router.post(
         return;
       }
 
+      // ── Server-side file validation ──
+      // 1. Verify magic bytes match claimed MIME type (prevents MIME spoofing)
+      if (!verifyMagicBytes(req.file.path, req.file.mimetype)) {
+        // Delete the suspicious file
+        try { fs.unlinkSync(req.file.path); } catch {}
+        logger.warn('[UPLOAD] Magic bytes mismatch', {
+          originalname: req.file.originalname,
+          mimetype: req.file.mimetype,
+          userId: req.user!.userId,
+        });
+        res.status(400).json({ success: false, error: 'File content does not match its type' });
+        return;
+      }
+
+      // 2. Verify extension matches MIME type
+      if (!validateMimeExtension(req.file.originalname, req.file.mimetype)) {
+        try { fs.unlinkSync(req.file.path); } catch {}
+        logger.warn('[UPLOAD] Extension/MIME mismatch', {
+          originalname: req.file.originalname,
+          mimetype: req.file.mimetype,
+        });
+        res.status(400).json({ success: false, error: 'File extension does not match its type' });
+        return;
+      }
+
+      // 3. Sanitize original filename for storage metadata
+      const safeFilename = sanitizeFilename(req.file.originalname);
+
       const { title, description, category, folderId } = req.body;
 
       const [doc] = await db('documents')
         .insert({
           organization_id: req.params.orgId,
-          title: title || req.file.originalname,
+          title: title || safeFilename,
           description: description || null,
           category: category || 'general',
           folder_id: folderId || null,
-          file_name: req.file.originalname,
+          file_name: safeFilename,
           file_path: `/uploads/documents/${req.file.filename}`,
           file_size: req.file.size,
           mime_type: req.file.mimetype,

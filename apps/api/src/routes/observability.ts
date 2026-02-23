@@ -5,7 +5,7 @@
 // ============================================================
 
 import { Router, Request, Response } from 'express';
-import { getMetricsSnapshot } from '../services/metrics.service';
+import { getMetricsSnapshot, getPrometheusMetrics } from '../services/metrics.service';
 import { getRecentErrors, getErrorStats, getErrorFrequency } from '../services/error-monitor.service';
 import {
   getAnalyticsSnapshot,
@@ -24,6 +24,14 @@ router.use(authenticate, requireDeveloper());
 // ── Metrics Dashboard ─────────────────────────────────────
 router.get('/metrics', (_req: Request, res: Response) => {
   res.json({ success: true, data: getMetricsSnapshot() });
+});
+
+// ── Prometheus Scrape Endpoint ────────────────────────────
+// Returns metrics in Prometheus text exposition format.
+// Scrape target: /api/admin/observability/metrics/prometheus
+router.get('/metrics/prometheus', (_req: Request, res: Response) => {
+  res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+  res.send(getPrometheusMetrics());
 });
 
 // ── Error Monitoring ──────────────────────────────────────

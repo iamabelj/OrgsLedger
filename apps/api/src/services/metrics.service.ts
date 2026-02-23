@@ -288,3 +288,78 @@ export const MetricsHelper = {
   trackWsDisconnect() { metrics.wsConnectionsActive.inc(-1); },
   trackWsMessage() { metrics.wsMessagesTotal.inc(); },
 };
+
+// ── Prometheus Text Format Export ─────────────────────────
+// Outputs metrics in OpenMetrics / Prometheus exposition format.
+// Scraped by Prometheus at /api/admin/observability/metrics/prometheus
+export function getPrometheusMetrics(): string {
+  const lines: string[] = [];
+
+  function gauge(name: string, help: string, value: number) {
+    lines.push(`# HELP ${name} ${help}`);
+    lines.push(`# TYPE ${name} gauge`);
+    lines.push(`${name} ${value}`);
+  }
+
+  function counter(name: string, help: string, value: number) {
+    lines.push(`# HELP ${name} ${help}`);
+    lines.push(`# TYPE ${name} counter`);
+    lines.push(`${name} ${value}`);
+  }
+
+  // System
+  const mem = process.memoryUsage();
+  gauge('process_resident_memory_bytes', 'Resident memory size in bytes', mem.rss);
+  gauge('process_heap_used_bytes', 'Heap used in bytes', mem.heapUsed);
+  gauge('process_heap_total_bytes', 'Heap total in bytes', mem.heapTotal);
+  gauge('process_uptime_seconds', 'Process uptime in seconds', process.uptime());
+  gauge('nodejs_active_handles_total', 'Active handles', (process as any)._getActiveHandles?.()?.length || 0);
+  gauge('nodejs_active_requests_total', 'Active requests', (process as any)._getActiveRequests?.()?.length || 0);
+
+  // HTTP
+  counter('http_requests_total', 'Total HTTP requests', metrics.httpRequestsTotal.value);
+  counter('http_responses_2xx_total', '2xx responses', metrics.httpResponsesByStatus['2xx']?.value || 0);
+  counter('http_responses_4xx_total', '4xx responses', metrics.httpResponsesByStatus['4xx']?.value || 0);
+  counter('http_responses_5xx_total', '5xx responses', metrics.httpResponsesByStatus['5xx']?.value || 0);
+
+  // Response time histogram with Prometheus-standard buckets
+  const BUCKETS = [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
+  const rtValues = metrics.httpResponseTime.values;
+  const totalSum = rtValues.reduce((a, b) => a + b, 0);
+  lines.push('# HELP http_request_duration_ms HTTP request duration in milliseconds');
+  lines.push('# TYPE http_request_duration_ms histogram');
+  let cumulative = 0;
+  for (const le of BUCKETS) {
+    cumulative = rtValues.filter(v => v <= le).length;
+    lines.push(`http_request_duration_ms_bucket{le="${le}"} ${cumulative}`);
+  }
+  lines.push(`http_request_duration_ms_bucket{le="+Inf"} ${rtValues.length}`);
+  lines.push(`http_request_duration_ms_sum ${+totalSum.toFixed(2)}`);
+  lines.push(`http_request_duration_ms_count ${rtValues.length}`);
+
+  // Response time percentiles (summary gauges for convenience)
+  gauge('http_response_time_p50_ms', 'HTTP response time p50', +metrics.httpResponseTime.percentile(50).toFixed(2));
+  gauge('http_response_time_p95_ms', 'HTTP response time p95', +metrics.httpResponseTime.percentile(95).toFixed(2));
+  gauge('http_response_time_p99_ms', 'HTTP response time p99', +metrics.httpResponseTime.percentile(99).toFixed(2));
+
+  // Auth
+  counter('auth_login_attempts_total', 'Login attempts', metrics.authLoginAttempts.value);
+  counter('auth_login_success_total', 'Successful logins', metrics.authLoginSuccess.value);
+  counter('auth_login_failures_total', 'Failed logins', metrics.authLoginFailures.value);
+  counter('auth_token_refreshes_total', 'Token refreshes', metrics.authTokenRefreshes.value);
+
+  // Business
+  counter('meetings_created_total', 'Meetings created', metrics.meetingsCreated.value);
+  gauge('meetings_active', 'Currently active meetings', metrics.meetingsActive.value);
+  counter('meetings_completed_total', 'Meetings completed', metrics.meetingsCompleted.value);
+  counter('wallet_operations_total', 'Wallet operations', metrics.walletOperations.value);
+  counter('payments_initiated_total', 'Payments initiated', metrics.paymentsInitiated.value);
+  counter('payments_completed_total', 'Payments completed', metrics.paymentsCompleted.value);
+  counter('payments_failed_total', 'Payments failed', metrics.paymentsFailed.value);
+
+  // WebSocket
+  gauge('ws_connections_active', 'Active WebSocket connections', metrics.wsConnectionsActive.value);
+  counter('ws_messages_total', 'WebSocket messages processed', metrics.wsMessagesTotal.value);
+
+  return lines.join('\n') + '\n';
+}

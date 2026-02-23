@@ -18,6 +18,7 @@ import { logger } from '../logger';
 import { checkMemberLimit } from '../services/subscription.service';
 import { sendEmail } from '../services/email.service';
 import { timingSafeCompare } from '../utils/validators';
+import { ACCOUNT_LOCKOUT } from '../constants';
 
 const router = Router();
 
@@ -95,6 +96,98 @@ function generateTokens(userId: string, email: string, globalRole: string) {
     { expiresIn: config.jwt.refreshExpiresIn as any }
   );
   return { accessToken, refreshToken };
+}
+
+/**
+ * Store a refresh token hash in the DB for rotation/revocation.
+ * Returns silently on failure (non-fatal — login still works).
+ */
+async function storeRefreshToken(
+  userId: string,
+  refreshToken: string,
+  opts: { ip?: string; userAgent?: string } = {}
+): Promise<void> {
+  try {
+    const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+    // Parse expiry from JWT config (e.g. "7d" → 7 days)
+    const expiresIn = config.jwt.refreshExpiresIn || '7d';
+    const match = expiresIn.match(/^(\d+)([smhd])$/);
+    let expiresMs = 7 * 24 * 60 * 60 * 1000; // default 7 days
+    if (match) {
+      const val = parseInt(match[1]);
+      const unit = match[2];
+      const multipliers: Record<string, number> = { s: 1000, m: 60000, h: 3600000, d: 86400000 };
+      expiresMs = val * (multipliers[unit] || 86400000);
+    }
+    const expiresAt = new Date(Date.now() + expiresMs);
+
+    // Check if table exists (may not be migrated yet)
+    const hasTable = await db.schema.hasTable('refresh_tokens');
+    if (!hasTable) return;
+
+    await db('refresh_tokens').insert({
+      user_id: userId,
+      token_hash: tokenHash,
+      ip_address: opts.ip || null,
+      user_agent: opts.userAgent ? opts.userAgent.slice(0, 512) : null,
+      expires_at: expiresAt,
+    });
+
+    // Clean up expired tokens for this user (keep table lean)
+    await db('refresh_tokens')
+      .where({ user_id: userId })
+      .where('expires_at', '<', new Date())
+      .delete();
+  } catch (err) {
+    logger.warn('[AUTH] Failed to store refresh token (non-fatal)', err);
+  }
+}
+
+/**
+ * Revoke a refresh token (delete its hash from DB).
+ * Returns true if the token was found and revoked.
+ */
+async function revokeRefreshToken(refreshToken: string): Promise<boolean> {
+  try {
+    const hasTable = await db.schema.hasTable('refresh_tokens');
+    if (!hasTable) return true; // Table not migrated — skip check
+    const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+    const deleted = await db('refresh_tokens').where({ token_hash: tokenHash }).delete();
+    return deleted > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if a refresh token exists in the DB (not revoked).
+ */
+async function isRefreshTokenValid(refreshToken: string): Promise<boolean> {
+  try {
+    const hasTable = await db.schema.hasTable('refresh_tokens');
+    if (!hasTable) return true; // Table not migrated — allow fallback
+    const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+    const row = await db('refresh_tokens')
+      .where({ token_hash: tokenHash })
+      .where('expires_at', '>', new Date())
+      .first();
+    return !!row;
+  } catch {
+    return true; // On error, don't block auth
+  }
+}
+
+/**
+ * Revoke all refresh tokens for a user (e.g. on password change or logout-all).
+ */
+async function revokeAllRefreshTokens(userId: string): Promise<void> {
+  try {
+    const hasTable = await db.schema.hasTable('refresh_tokens');
+    if (!hasTable) return;
+    await db('refresh_tokens').where({ user_id: userId }).delete();
+  } catch (err) {
+    logger.warn('[AUTH] Failed to revoke all refresh tokens', err);
+  }
 }
 
 // ── Register ────────────────────────────────────────────────
@@ -684,18 +777,48 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
       return;
     }
 
+    // ── Account Lockout Check ──
+    if (user.locked_until && new Date(user.locked_until) > new Date()) {
+      const remainingMs = new Date(user.locked_until).getTime() - Date.now();
+      const remainingMin = Math.ceil(remainingMs / 60_000);
+      logger.warn('[AUTH] Login blocked - account locked', { email, ip: req.ip, lockedUntil: user.locked_until });
+      res.status(423).json({
+        success: false,
+        error: `Account temporarily locked. Try again in ${remainingMin} minute${remainingMin !== 1 ? 's' : ''}.`,
+      });
+      return;
+    }
+
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
-      logger.warn('[AUTH] Login failed - wrong password', { email, ip: req.ip, userId: user.id });
+      // Increment failed attempts and possibly lock
+      const attempts = (user.failed_login_attempts || 0) + 1;
+      const updateFields: Record<string, any> = { failed_login_attempts: attempts };
+      if (attempts >= ACCOUNT_LOCKOUT.MAX_ATTEMPTS) {
+        updateFields.locked_until = new Date(Date.now() + ACCOUNT_LOCKOUT.LOCKOUT_DURATION_MS);
+        logger.warn('[AUTH] Account locked after max failed attempts', { email, ip: req.ip, attempts });
+      }
+      await db('users').where({ id: user.id }).update(updateFields);
+      logger.warn('[AUTH] Login failed - wrong password', { email, ip: req.ip, userId: user.id, attempts });
       res.status(401).json({ success: false, error: 'Invalid credentials' });
       return;
     }
 
-    // Update last login
-    await db('users').where({ id: user.id }).update({ last_login_at: db.fn.now() });
+    // ── Successful login — reset lockout counters ──
+    await db('users').where({ id: user.id }).update({
+      last_login_at: db.fn.now(),
+      failed_login_attempts: 0,
+      locked_until: null,
+    });
     logger.info('[AUTH] Login success', { email, userId: user.id, role: user.global_role, ip: req.ip });
 
     const tokens = generateTokens(user.id, user.email, user.global_role);
+
+    // Store refresh token for rotation/revocation
+    await storeRefreshToken(user.id, tokens.refreshToken, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
 
     await writeAuditLog({
       userId: user.id,
@@ -863,6 +986,16 @@ router.post('/refresh', async (req: Request, res: Response) => {
       return;
     }
 
+    // ── Token Rotation: verify the token hasn't been revoked ──
+    const tokenStillValid = await isRefreshTokenValid(refreshToken);
+    if (!tokenStillValid) {
+      // Possible token reuse attack — revoke ALL tokens for this user
+      logger.warn('[AUTH] Refresh token reuse detected — revoking all tokens', { userId: payload.userId, ip: req.ip });
+      await revokeAllRefreshTokens(payload.userId);
+      res.status(401).json({ success: false, error: 'Token has been revoked — please log in again' });
+      return;
+    }
+
     const user = await db('users').where({ id: payload.userId, is_active: true }).first();
     if (!user) {
       res.status(401).json({ success: false, error: 'User not found' });
@@ -878,10 +1011,52 @@ router.post('/refresh', async (req: Request, res: Response) => {
       }
     }
 
+    // ── Rotate: revoke old token, issue new pair ──
+    await revokeRefreshToken(refreshToken);
     const tokens = generateTokens(user.id, user.email, user.global_role);
+    await storeRefreshToken(user.id, tokens.refreshToken, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
     res.json({ success: true, data: tokens });
   } catch {
     res.status(401).json({ success: false, error: 'Invalid refresh token' });
+  }
+});
+
+// ── Logout ──────────────────────────────────────────────────
+// Revokes the provided refresh token (single device logout).
+// POST /auth/logout  body: { refreshToken }
+router.post('/logout', async (req: Request, res: Response) => {
+  try {
+    const { refreshToken } = req.body;
+    if (refreshToken) {
+      await revokeRefreshToken(refreshToken);
+    }
+    res.json({ success: true, message: 'Logged out successfully' });
+  } catch {
+    // Always return success — don't leak info about token validity
+    res.json({ success: true, message: 'Logged out successfully' });
+  }
+});
+
+// ── Logout All Devices ──────────────────────────────────────
+// Revokes ALL refresh tokens for the authenticated user.
+router.post('/logout-all', authenticate, async (req: Request, res: Response) => {
+  try {
+    await revokeAllRefreshTokens(req.user!.userId);
+    await writeAuditLog({
+      userId: req.user!.userId,
+      action: 'logout_all_devices',
+      entityType: 'user',
+      entityId: req.user!.userId,
+      ipAddress: req.ip || '',
+      userAgent: req.headers['user-agent'] || '',
+    });
+    res.json({ success: true, message: 'All sessions revoked' });
+  } catch {
+    res.status(500).json({ success: false, error: 'Failed to revoke sessions' });
   }
 });
 
@@ -1110,6 +1285,9 @@ router.post('/reset-password', validate(resetPasswordSchema), async (req: Reques
       password_changed_at: new Date(),
     });
 
+    // Revoke all refresh tokens on password reset
+    await revokeAllRefreshTokens(user.id);
+
     await writeAuditLog({
       userId: user.id,
       action: 'password_reset',
@@ -1253,8 +1431,17 @@ router.put('/change-password', authenticate, validate(changePasswordSchema), asy
       password_changed_at: new Date(),
     });
 
+    // Revoke all existing refresh tokens (forces re-login on other devices)
+    await revokeAllRefreshTokens(user.id);
+
     // Generate new tokens so the user stays logged in with fresh tokens
     const tokens = generateTokens(user.id, user.email, user.global_role);
+
+    // Store the new refresh token
+    await storeRefreshToken(user.id, tokens.refreshToken, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
 
     res.json({ success: true, message: 'Password changed successfully', data: tokens });
   } catch (err) {

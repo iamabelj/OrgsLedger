@@ -13,19 +13,20 @@ module.exports = {
     'src/middleware/auth.ts',
     'src/middleware/rbac.ts',
     'src/middleware/index.ts',
+    'src/utils/file-validation.ts',
   ],
   coverageThreshold: {
     './src/middleware/': {
-      branches: 80,
-      functions: 50,
+      branches: 85,
+      functions: 60,
       lines: 95,
       statements: 95,
     },
     './src/services/subscription.service.ts': {
-      branches: 50,
-      functions: 50,
-      lines: 70,
-      statements: 70,
+      branches: 60,
+      functions: 60,
+      lines: 75,
+      statements: 75,
     },
   },
   transform: {

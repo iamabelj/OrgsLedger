@@ -98,10 +98,22 @@ export const config = {
   },
 };
 
-// Warn about critical config in production/staging environments
-if (config.env !== 'development' && config.env !== 'test') {
+// ── Config Validation ───────────────────────────────────────
+// Hard-fail in production/staging; warn in development.
+const _isDev = config.env === 'development' || config.env === 'test';
+
+if (!_isDev) {
+  // Production / staging — fatal errors
   if (config.jwt.secret === 'CHANGE_ME_IN_PRODUCTION') {
     console.error(`[CONFIG] FATAL: JWT_SECRET is using the default value in ${config.env} — set JWT_SECRET in env.js or environment variables`);
+    process.exit(1);
+  }
+  if (config.jwt.secret.length < 32) {
+    console.error(`[CONFIG] FATAL: JWT_SECRET must be at least 32 characters in ${config.env} (current: ${config.jwt.secret.length})`);
+    process.exit(1);
+  }
+  if (config.jwt.refreshSecret.length < 32) {
+    console.error(`[CONFIG] FATAL: JWT_REFRESH_SECRET must be at least 32 characters in ${config.env} (current: ${config.jwt.refreshSecret.length})`);
     process.exit(1);
   }
   if (config.jwt.secret === config.jwt.refreshSecret) {
@@ -111,5 +123,13 @@ if (config.env !== 'development' && config.env !== 'test') {
   if (!process.env.DATABASE_URL && config.db.password === 'orgsledger_dev') {
     console.error(`[CONFIG] FATAL: DB_PASSWORD is using the default value in ${config.env} — set DB_PASSWORD in env.js or environment variables`);
     process.exit(1);
+  }
+} else {
+  // Development — non-fatal warnings
+  if (config.jwt.secret === 'CHANGE_ME_IN_PRODUCTION') {
+    console.warn('[CONFIG] WARNING: Using default JWT_SECRET — set JWT_SECRET env var before deploying');
+  }
+  if (config.jwt.secret === config.jwt.refreshSecret) {
+    console.warn('[CONFIG] WARNING: JWT_SECRET and JWT_REFRESH_SECRET are identical — set separate values');
   }
 }
