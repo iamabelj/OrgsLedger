@@ -398,23 +398,33 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
       const enableAudio = options?.audio !== false;
       const enableVideo = options?.video !== false;
 
-      try {
-        if (enableAudio) {
-          await room.localParticipant.setMicrophoneEnabled(true);
-          console.debug('[LiveKit] Microphone enabled');
+      // Enable mic and camera with retry — first attempt sometimes fails
+      // due to browser autoplay policy or transient permission gate.
+      const enableWithRetry = async (label: string, fn: () => Promise<void>, retries = 2) => {
+        for (let attempt = 1; attempt <= retries; attempt++) {
+          try {
+            await fn();
+            console.debug(`[LiveKit] ${label} enabled (attempt ${attempt})`);
+            return;
+          } catch (err: any) {
+            console.warn(`[LiveKit] ${label} enable failed (attempt ${attempt}/${retries}):`, err.message);
+            if (attempt < retries) {
+              // Brief pause then retry — gives browser time to settle permission prompt
+              await new Promise((r) => setTimeout(r, 500));
+            } else {
+              // Final attempt failed — surface a visible but non-blocking error
+              setError(`${label} access denied. Check your browser permissions and try the toggle button.`);
+            }
+          }
         }
-      } catch (micErr: any) {
-        console.warn('[LiveKit] Microphone enable failed (permission denied?):', micErr.message);
-        // Don't set global error — just log, user can try again via toggle
+      };
+
+      if (enableAudio) {
+        await enableWithRetry('Microphone', () => room.localParticipant.setMicrophoneEnabled(true));
       }
 
-      try {
-        if (enableVideo) {
-          await room.localParticipant.setCameraEnabled(true);
-          console.debug('[LiveKit] Camera enabled');
-        }
-      } catch (camErr: any) {
-        console.warn('[LiveKit] Camera enable failed (permission denied?):', camErr.message);
+      if (enableVideo) {
+        await enableWithRetry('Camera', () => room.localParticipant.setCameraEnabled(true));
       }
 
       rebuildParticipants();
@@ -461,30 +471,42 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
   // ── Toggle Microphone ───────────────────────────────────
   const toggleMic = useCallback(async () => {
     const room = roomRef.current;
-    if (!room?.localParticipant) return;
+    if (!room?.localParticipant) {
+      console.warn('[LiveKit] toggleMic called but no room/localParticipant');
+      setError('Not connected to meeting. Please rejoin.');
+      return;
+    }
     try {
       const next = !room.localParticipant.isMicrophoneEnabled;
       await room.localParticipant.setMicrophoneEnabled(next);
       setIsMicEnabled(next);
+      // Clear any previous mic error on successful toggle
+      setError(null);
       rebuildParticipants();
     } catch (e: any) {
       console.error('[LiveKit] Toggle mic failed:', e);
-      setError(`Microphone error: ${e.message}`);
+      setError(`Microphone error: ${e.message}. Check browser permissions.`);
     }
   }, [rebuildParticipants]);
 
   // ── Toggle Camera ───────────────────────────────────────
   const toggleCamera = useCallback(async () => {
     const room = roomRef.current;
-    if (!room?.localParticipant) return;
+    if (!room?.localParticipant) {
+      console.warn('[LiveKit] toggleCamera called but no room/localParticipant');
+      setError('Not connected to meeting. Please rejoin.');
+      return;
+    }
     try {
       const next = !room.localParticipant.isCameraEnabled;
       await room.localParticipant.setCameraEnabled(next);
       setIsCameraEnabled(next);
+      // Clear any previous camera error on successful toggle
+      setError(null);
       rebuildParticipants();
     } catch (e: any) {
       console.error('[LiveKit] Toggle camera failed:', e);
-      setError(`Camera error: ${e.message}`);
+      setError(`Camera error: ${e.message}. Check browser permissions.`);
     }
   }, [rebuildParticipants]);
 

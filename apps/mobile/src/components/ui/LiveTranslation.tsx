@@ -296,51 +296,64 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
   // Mobile: Future native audio module support
   const startListening = useCallback(async () => {
     if (Platform.OS === 'web') {
-      try {
-        // Request microphone access
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            channelCount: 1,
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        });
+      // Retry logic — the first getUserMedia may fail if LiveKit is
+      // still acquiring the mic. A short retry avoids showing a
+      // scary permission error when the device is just temporarily busy.
+      const MAX_RETRIES = 3;
+      const RETRY_DELAY = 1000; // ms
 
-        // Check for MediaRecorder + webm support
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-          ? 'audio/webm;codecs=opus'
-          : 'audio/webm';
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          // Request microphone access
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              channelCount: 1,
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          });
 
-        const recorder = new MediaRecorder(stream, { mimeType });
+          // Check for MediaRecorder + webm support
+          const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+            ? 'audio/webm;codecs=opus'
+            : 'audio/webm';
 
-        // Tell server to start a Google STT session for this user
-        socketClient.startAudioStream(meetingId, myLanguageRef.current, 'WEBM_OPUS');
+          const recorder = new MediaRecorder(stream, { mimeType });
 
-        recorder.ondataavailable = (e: any) => {
-          if (e.data && e.data.size > 0) {
-            e.data.arrayBuffer().then((buffer: ArrayBuffer) => {
-              socketClient.sendAudioChunk(meetingId, buffer);
-            });
+          // Tell server to start a Google STT session for this user
+          socketClient.startAudioStream(meetingId, myLanguageRef.current, 'WEBM_OPUS');
+
+          recorder.ondataavailable = (e: any) => {
+            if (e.data && e.data.size > 0) {
+              e.data.arrayBuffer().then((buffer: ArrayBuffer) => {
+                socketClient.sendAudioChunk(meetingId, buffer);
+              });
+            }
+          };
+
+          recorder.onerror = (e: any) => {
+            console.warn('[AUDIO] MediaRecorder error:', e);
+          };
+
+          // Send audio chunks every 250ms
+          recorder.start(250);
+          recognitionRef.current = { recorder, stream };
+          setIsListening(true);
+
+          console.debug(`[AUDIO] Started audio capture (attempt ${attempt}): mimeType=${mimeType}, meeting=${meetingId}`);
+          return; // success — exit the retry loop
+        } catch (err: any) {
+          console.warn(`[AUDIO] Mic capture attempt ${attempt}/${MAX_RETRIES} failed:`, err.message);
+          if (attempt < MAX_RETRIES) {
+            // Wait before retrying — give LiveKit time to settle
+            await new Promise((r) => setTimeout(r, RETRY_DELAY));
+          } else {
+            // All retries exhausted — log but don't show a blocking alert.
+            // The mic is already captured by LiveKit for meeting audio;
+            // this only affects server-side STT transcription.
+            console.warn('[AUDIO] Could not start transcription audio capture after retries. LiveKit meeting audio is unaffected.');
           }
-        };
-
-        recorder.onerror = (e: any) => {
-          console.warn('[AUDIO] MediaRecorder error:', e);
-        };
-
-        // Send audio chunks every 250ms
-        recorder.start(250);
-        recognitionRef.current = { recorder, stream };
-        setIsListening(true);
-
-        console.debug(`[AUDIO] Started audio capture: mimeType=${mimeType}, meeting=${meetingId}`);
-      } catch (err: any) {
-        if (err?.name === 'NotAllowedError') {
-          showAlert('Microphone Blocked', 'Please allow microphone access in your browser settings.');
-        } else {
-          console.warn('[AUDIO] Failed to start audio capture:', err);
-          showAlert('Audio Error', 'Could not access microphone. Check browser permissions.');
         }
       }
       return;
