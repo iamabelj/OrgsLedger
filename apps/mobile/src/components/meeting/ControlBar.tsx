@@ -48,6 +48,10 @@ interface ControlBarProps {
   // Admin
   isAdmin: boolean;
 
+  // Transcription state
+  isTranscribing?: boolean;
+  transcriptCount?: number;
+
   // Handlers
   onToggleMic: () => void;
   onToggleCamera: () => void;
@@ -143,6 +147,8 @@ function ControlBarInner(props: ControlBarProps) {
     activeSidebarPanel,
     participantCount,
     isAdmin,
+    isTranscribing,
+    transcriptCount,
     onToggleMic,
     onToggleCamera,
     onToggleScreenShare,
@@ -223,9 +229,9 @@ function ControlBarInner(props: ControlBarProps) {
 
         <ControlBtn
           icon={isAiEnabled ? 'sparkles' : 'sparkles-outline'}
-          label={isAiEnabled ? 'AI On' : 'AI Off'}
+          label={isTranscribing ? 'Transcribing' : isAiEnabled ? 'AI On' : 'AI Off'}
           active={isAiEnabled}
-          activeColor="#8B5CF6"
+          activeColor={isTranscribing ? '#10B981' : '#8B5CF6'}
           onPress={onToggleAi}
           compact={isNarrow}
         />
@@ -234,6 +240,7 @@ function ControlBarInner(props: ControlBarProps) {
           icon="document-text"
           label="Transcript"
           active={isSidebarOpen && activeSidebarPanel === 'transcript'}
+          badge={(transcriptCount && transcriptCount > 0) ? transcriptCount : undefined}
           onPress={() => onToggleSidebar('transcript')}
           compact={isNarrow}
         />

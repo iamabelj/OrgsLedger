@@ -177,12 +177,16 @@ function MinutesPanelInner(props: MinutesPanelProps) {
       <Ionicons name="document-text-outline" size={32} color={Colors.textLight} />
       <Text style={styles.stateText}>No minutes generated yet</Text>
       <Text style={styles.stateHint}>
-        Minutes auto-generate when the meeting ends.
+        {meetingStatus === 'live'
+          ? aiEnabled
+            ? `${transcriptCount} transcript segment${transcriptCount !== 1 ? 's' : ''} captured so far.\nMinutes will auto-generate when the meeting ends.`
+            : 'Enable AI (sparkles icon) to start transcription.\nMinutes will auto-generate when the meeting ends.'
+          : 'Minutes auto-generate when the meeting ends.'}
       </Text>
-      {isAdmin && meetingStatus === 'ended' && transcriptCount > 0 && (
+      {isAdmin && transcriptCount > 0 && (
         <TouchableOpacity style={styles.retryBtn} onPress={onGenerate} disabled={generateLoading}>
           <Text style={styles.retryText}>
-            {generateLoading ? 'Generating...' : 'Generate from Transcript'}
+            {generateLoading ? 'Generating...' : meetingStatus === 'live' ? 'Generate Interim Minutes' : 'Generate from Transcript'}
           </Text>
         </TouchableOpacity>
       )}

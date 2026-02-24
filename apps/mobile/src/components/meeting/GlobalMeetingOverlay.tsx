@@ -23,7 +23,6 @@ import { ControlBar } from './ControlBar';
 import { MeetingSidebar, type SidebarPanel } from './MeetingSidebar';
 import { ChatDrawer } from './ChatDrawer';
 import { MiniMeetingWidget } from './MiniMeetingWidget';
-import LiveTranslation, { type LiveTranslationRef } from '../ui/LiveTranslation';
 import { socketClient } from '../../api/socket';
 import { api } from '../../api/client';
 import { showAlert } from '../../utils/alert';
@@ -145,9 +144,10 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
   const [sidebarOpen, setSidebarOpen] = useState(!isNarrow);
   const [activePanel, setActivePanel] = useState<SidebarPanel>('participants');
 
-  // ── Translation State ─────────────────────────────────
-  const [translationListening, setTranslationListening] = useState(false);
-  const translationRef = useRef<LiveTranslationRef>(null);
+  // ── Transcription State (uses LiveKit mic track — no extra getUserMedia) ──
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const recorderRef = useRef<any>(null);
+  const transcriptionStreamRef = useRef<MediaStream | null>(null);
 
   // ── Hand Raised ───────────────────────────────────────
   const [handRaised, setHandRaised] = useState(false);
@@ -155,12 +155,95 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
   // ── Recording (local) ─────────────────────────────────
   const [isRecording, setIsRecording] = useState(false);
 
-  // ── Speech recognition for transcription ──────────────
-  // NOTE: Auto-start DISABLED. LiveTranslation opens its own
-  // getUserMedia() stream which conflicts with LiveKit's mic
-  // capture on many browsers, causing one or both to fail.
-  // Transcription is started manually by the user via the AI
-  // toggle or sidebar, which is the safer pattern.
+  // ── Start/stop transcription using LiveKit's mic track ──
+  // Streams audio via MediaRecorder → socketClient → server → Google STT.
+  // Uses LiveKit's EXISTING mic MediaStreamTrack — no second getUserMedia().
+  const startTranscription = useCallback(() => {
+    if (Platform.OS !== 'web' || isTranscribing || !lk.isConnected) return;
+    const room = lk.room;
+    if (!room?.localParticipant) return;
+
+    // Get LiveKit's local audio track
+    let mediaStreamTrack: MediaStreamTrack | null = null;
+    for (const [, pub] of room.localParticipant.trackPublications) {
+      if (pub.track && pub.source === 'microphone' && pub.track.mediaStreamTrack) {
+        mediaStreamTrack = pub.track.mediaStreamTrack;
+        break;
+      }
+    }
+    if (!mediaStreamTrack) {
+      console.warn('[TRANSCRIPTION] No local mic track found — mic may be muted');
+      return;
+    }
+
+    try {
+      const stream = new MediaStream([mediaStreamTrack]);
+      transcriptionStreamRef.current = stream;
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : 'audio/webm';
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+
+      // Tell server to start Google STT session
+      socketClient.startAudioStream(gm.meetingId!, 'en', 'WEBM_OPUS');
+
+      recorder.ondataavailable = (e: any) => {
+        if (e.data && e.data.size > 0) {
+          e.data.arrayBuffer().then((buffer: ArrayBuffer) => {
+            socketClient.sendAudioChunk(gm.meetingId!, buffer);
+          });
+        }
+      };
+
+      recorder.onerror = (e: any) => {
+        console.warn('[TRANSCRIPTION] MediaRecorder error:', e);
+      };
+
+      // Send chunks every 250ms for near-real-time transcription
+      recorder.start(250);
+      recorderRef.current = recorder;
+      setIsTranscribing(true);
+      console.debug(`[TRANSCRIPTION] Started (using LiveKit mic track, mimeType=${mimeType})`);
+    } catch (err: any) {
+      console.warn('[TRANSCRIPTION] Failed to start:', err.message);
+    }
+  }, [isTranscribing, lk.isConnected, lk.room, gm.meetingId]);
+
+  const stopTranscription = useCallback(() => {
+    if (recorderRef.current) {
+      try { recorderRef.current.stop(); } catch (_) {}
+      recorderRef.current = null;
+    }
+    transcriptionStreamRef.current = null;
+    if (gm.meetingId) socketClient.stopAudioStream(gm.meetingId);
+    setIsTranscribing(false);
+    console.debug('[TRANSCRIPTION] Stopped');
+  }, [gm.meetingId]);
+
+  // ── Auto-start transcription when AI enabled + LK connected + mic on ──
+  useEffect(() => {
+    if (!aiEnabled || !lk.isConnected || !lk.isMicEnabled || isTranscribing) return;
+    // Small delay to let LiveKit's mic track fully publish
+    const timer = setTimeout(() => startTranscription(), 1500);
+    return () => clearTimeout(timer);
+  }, [aiEnabled, lk.isConnected, lk.isMicEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Stop transcription when AI disabled or mic muted ──
+  useEffect(() => {
+    if (isTranscribing && (!aiEnabled || !lk.isMicEnabled)) {
+      stopTranscription();
+    }
+  }, [aiEnabled, lk.isMicEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Restart transcription when mic is re-enabled (track changes) ──
+  useEffect(() => {
+    if (aiEnabled && lk.isConnected && lk.isMicEnabled && !isTranscribing) {
+      const timer = setTimeout(() => startTranscription(), 800);
+      return () => clearTimeout(timer);
+    }
+  }, [lk.isMicEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Toggle sidebar panel ──────────────────────────────
   const handleToggleSidebar = useCallback((panel?: string) => {
@@ -215,31 +298,25 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
       // Update the local meeting object so UI reflects the change
       gm.setMeeting({ ...gm.meeting, ai_enabled: newState });
 
-      // Start/stop speech recognition accordingly
-      if (newState) {
-        if (translationRef.current && !translationListening) {
-          translationRef.current.startListening();
-          setTranslationListening(true);
-        }
-      } else {
-        if (translationRef.current && translationListening) {
-          translationRef.current.stopListening();
-          setTranslationListening(false);
-        }
+      // Start/stop transcription accordingly
+      // (auto-start effect will pick this up, but start immediately for responsiveness)
+      if (newState && lk.isConnected && lk.isMicEnabled && !isTranscribing) {
+        setTimeout(() => startTranscription(), 500);
+      } else if (!newState && isTranscribing) {
+        stopTranscription();
       }
     } catch (err: any) {
       const msg = err.response?.data?.error || 'Failed to toggle AI';
       showAlert('AI Toggle', msg);
     }
-  }, [gm, aiEnabled, translationListening]);
+  }, [gm, aiEnabled, lk.isConnected, lk.isMicEnabled, isTranscribing, startTranscription, stopTranscription]);
 
   // ── Leave handler ─────────────────────────────────────
   const handleLeave = useCallback(() => {
+    stopTranscription();
     lk.disconnect();
-    translationRef.current?.stopListening();
-    setTranslationListening(false);
     gm.leaveMeeting();
-  }, [lk, gm]);
+  }, [lk, gm, stopTranscription]);
 
   // ── End Meeting ───────────────────────────────────────
   // Note: Do NOT disconnect from LiveKit or stop listening here.
@@ -483,18 +560,9 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
         onToggleSidebar={handleToggleSidebar}
         onLeave={handleLeave}
         onEnd={gm.isAdmin ? handleEnd : undefined}
+        isTranscribing={isTranscribing}
+        transcriptCount={gm.transcripts.length}
       />
-
-      {/* ═══ HIDDEN LIVE TRANSLATION CONTROLLER ══════════════ */}
-      {gm.userId && (
-        <LiveTranslation
-          ref={translationRef}
-          meetingId={gm.meetingId!}
-          userId={gm.userId}
-          hideControls
-          autoTTS={false}
-        />
-      )}
     </View>
   );
 }
