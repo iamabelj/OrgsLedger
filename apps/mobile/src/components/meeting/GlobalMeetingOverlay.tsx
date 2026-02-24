@@ -47,24 +47,63 @@ export function GlobalMeetingOverlay() {
   // Don't render anything if no active meeting
   if (!gm.isActive || !gm.joinConfig) return null;
 
-  // Delegate to either the full meeting room or the mini widget
+  // Render the inner wrapper which owns the LiveKit hook.
+  // This component stays mounted for the entire meeting duration,
+  // so the LiveKit connection persists across minimize/maximize.
+  return <ActiveMeetingOverlay />;
+}
+
+// ── Active Meeting Wrapper (owns LiveKit connection) ──────
+// This component mounts once when a meeting becomes active and
+// stays mounted until the meeting ends. The useLiveKitRoom hook
+// lives here so minimize/maximize doesn't destroy the connection.
+
+function ActiveMeetingOverlay() {
+  const gm = useGlobalMeeting();
+  const lk = useLiveKitRoom();
+
+  // ── Connect to LiveKit on mount ─────────────────────────
+  useEffect(() => {
+    if (gm.joinConfig?.url && gm.joinConfig?.token && !lk.isConnected && !lk.isConnecting) {
+      const enableVideo = gm.joinType === 'video' && !gm.isAudioOnly;
+      lk.connect(gm.joinConfig.url, gm.joinConfig.token, {
+        audio: true,
+        video: enableVideo,
+      }).catch((err) => {
+        console.error('[ActiveMeetingOverlay] Failed to connect:', err);
+      });
+    }
+    // Cleanup: disconnect from LiveKit when meeting ends (component unmounts)
+    return () => {
+      lk.disconnect();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Graceful exit on tab close / page refresh ─────────
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const handleBeforeUnload = () => {
+      lk.disconnect();
+      if (gm.meetingId) socketClient.leaveMeeting(gm.meetingId);
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [gm.meetingId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (gm.isMinimized) {
-    return <MinimizedOverlay />;
+    return <MinimizedOverlay lk={lk} />;
   }
 
-  return <FullMeetingOverlay />;
+  return <FullMeetingOverlay lk={lk} />;
 }
 
 // ── Minimized Overlay (floating widget) ───────────────────
 
-function MinimizedOverlay() {
+function MinimizedOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
   const gm = useGlobalMeeting();
-  const lk = useLiveKitRoom();
 
-  // When minimized, we keep the LiveKit connection alive in the
-  // global context but don't render heavy video elements.
-  // The useLiveKitRoom hook persists because GlobalMeetingOverlay
-  // never unmounts while isActive is true.
+  // LiveKit connection is owned by ActiveMeetingOverlay above.
+  // We receive it via props so minimize/maximize never disconnects.
 
   return (
     <>
@@ -97,9 +136,8 @@ function MinimizedOverlay() {
 
 // ── Full Meeting Overlay ──────────────────────────────────
 
-function FullMeetingOverlay() {
+function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
   const gm = useGlobalMeeting();
-  const lk = useLiveKitRoom();
   const { width: windowWidth } = useWindowDimensions();
   const isNarrow = windowWidth < 768;
 
@@ -116,35 +154,6 @@ function FullMeetingOverlay() {
 
   // ── Recording (local) ─────────────────────────────────
   const [isRecording, setIsRecording] = useState(false);
-
-  // ── Connect to LiveKit on overlay mount ───────────────
-  useEffect(() => {
-    if (gm.joinConfig?.url && gm.joinConfig?.token && !lk.isConnected && !lk.isConnecting) {
-      const enableVideo = gm.joinType === 'video' && !gm.isAudioOnly;
-      lk.connect(gm.joinConfig.url, gm.joinConfig.token, {
-        audio: true,
-        video: enableVideo,
-      }).catch((err) => {
-        console.error('[GlobalMeetingOverlay] Failed to connect:', err);
-        showAlert('Connection Failed', err.message || 'Could not connect to meeting');
-      });
-    }
-    // Cleanup: disconnect from LiveKit when overlay unmounts (meeting ends)
-    return () => {
-      lk.disconnect();
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Graceful exit on tab close / page refresh ─────────
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const handleBeforeUnload = () => {
-      lk.disconnect();
-      if (gm.meetingId) socketClient.leaveMeeting(gm.meetingId);
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [gm.meetingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-start speech recognition once connected ──────
   // Start transcription automatically so transcripts are captured

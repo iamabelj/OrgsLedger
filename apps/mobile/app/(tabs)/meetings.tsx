@@ -74,9 +74,27 @@ export default function MeetingsScreen() {
   // ── Socket: Real-time meeting state sync ────────────────
   useEffect(() => {
     const handleMeetingStarted = (data: any) => {
-      setMeetings((prev) =>
-        prev.map((m) => m.id === data.meetingId ? { ...m, status: 'live', actual_start: new Date().toISOString() } : m)
-      );
+      setMeetings((prev) => {
+        const exists = prev.some((m) => m.id === data.meetingId);
+        if (exists) {
+          return prev.map((m) =>
+            m.id === data.meetingId
+              ? { ...m, status: 'live', actual_start: new Date().toISOString() }
+              : m
+          );
+        }
+        // Meeting not in local list — add a stub so users see it immediately.
+        // The next refresh will fill in full details.
+        return [
+          {
+            id: data.meetingId,
+            title: data.title || 'Meeting',
+            status: 'live',
+            actual_start: new Date().toISOString(),
+          },
+          ...prev,
+        ];
+      });
     };
     const handleMeetingEnded = (data: any) => {
       setMeetings((prev) =>
@@ -84,14 +102,21 @@ export default function MeetingsScreen() {
       );
     };
 
+    // On socket reconnect, refetch meetings to catch events missed during disconnect
+    const handleReconnect = () => {
+      loadMeetings();
+    };
+
     const unsub1 = socketClient.on('meeting:started', handleMeetingStarted);
     const unsub2 = socketClient.on('meeting:ended', handleMeetingEnded);
+    const unsub3 = socketClient.on('connect', handleReconnect);
 
     return () => {
       unsub1();
       unsub2();
+      unsub3();
     };
-  }, []);
+  }, [loadMeetings]);
 
   const onRefresh = async () => {
     setRefreshing(true);
