@@ -11,7 +11,6 @@ import {
   Text,
   StyleSheet,
   Platform,
-  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../theme';
@@ -149,39 +148,51 @@ function VideoTileInner({
   showName = true,
   style,
 }: VideoTileProps) {
-  const pulseAnim = useRef(new Animated.Value(0)).current;
+  // On web, use CSS animation for active speaker glow (zero JS overhead).
+  // On native, use a simple static border (no Animated.loop).
+  const tileRef = useRef<View>(null);
 
-  // Active speaker glow animation
+  // Inject CSS keyframes once for the active-speaker glow
   useEffect(() => {
-    if (isActiveSpeaker) {
-      const loop = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: false }),
-          Animated.timing(pulseAnim, { toValue: 0.4, duration: 800, useNativeDriver: false }),
-        ])
-      );
-      loop.start();
-      return () => loop.stop(); // Stop animation on cleanup to prevent leaks
-    } else {
-      pulseAnim.setValue(0);
-    }
-  }, [isActiveSpeaker, pulseAnim]);
+    if (Platform.OS !== 'web') return;
+    if (document.getElementById('ol-speaker-glow-css')) return;
+    const style = document.createElement('style');
+    style.id = 'ol-speaker-glow-css';
+    style.textContent = `
+      @keyframes ol-speaker-glow {
+        0%, 100% { box-shadow: 0 0 0 2px rgba(52,211,153,0.7); }
+        50% { box-shadow: 0 0 8px 3px rgba(52,211,153,0.3); }
+      }
+      .ol-active-speaker { animation: ol-speaker-glow 1.6s ease-in-out infinite; }
+    `;
+    document.head.appendChild(style);
+  }, []);
 
-  const borderColor = pulseAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['rgba(52, 211, 153, 0)', 'rgba(52, 211, 153, 0.7)'],
-  });
+  // Toggle CSS class on the DOM element (no React re-render needed)
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !tileRef.current) return;
+    const el = (tileRef.current as any);
+    // React Native for Web exposes the DOM node via the ref
+    const dom: HTMLElement | null = el?._nativeTag ?? el;
+    if (!dom?.classList) return;
+    if (isActiveSpeaker) {
+      dom.classList.add('ol-active-speaker');
+    } else {
+      dom.classList.remove('ol-active-speaker');
+    }
+  }, [isActiveSpeaker]);
 
   const hasVideo = participant.isCameraEnabled && participant.videoTrack;
   const hasScreen = participant.isScreenSharing && participant.screenTrack;
   const displayTrack = hasScreen ? participant.screenTrack : hasVideo ? participant.videoTrack : null;
 
   return (
-    <Animated.View
+    <View
+      ref={tileRef}
       style={[
         styles.tile,
         isFocused && styles.tileFocused,
-        isActiveSpeaker && { borderColor, borderWidth: 2 },
+        isActiveSpeaker && styles.tileActiveSpeaker,
         style,
       ]}
     >
@@ -235,7 +246,7 @@ function VideoTileInner({
           <View style={styles.speakingDot} />
         </View>
       )}
-    </Animated.View>
+    </View>
   );
 }
 
@@ -255,6 +266,10 @@ const styles = StyleSheet.create({
   },
   tileFocused: {
     borderColor: Colors.highlight,
+  },
+  tileActiveSpeaker: {
+    borderColor: 'rgba(52, 211, 153, 0.7)',
+    borderWidth: 2,
   },
   videoElement: {
     position: 'absolute',

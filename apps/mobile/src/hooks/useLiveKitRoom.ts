@@ -170,7 +170,7 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
     rebuildTimerRef.current = setTimeout(() => {
       rebuildTimerRef.current = null;
       doRebuild();
-    }, 50); // 50ms debounce — fast enough to feel instant, prevents burst rebuilds
+    }, 150); // 150ms debounce — prevents burst rebuilds from hammering main thread
   }, [doRebuild]);
 
   // ── Attach audio track for playback ─────────────────────
@@ -309,6 +309,12 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
         setIsReconnecting(false);
         setIsConnected(true);
         rebuildParticipants();
+      });
+
+      // Catch negotiation errors to prevent unhandled promise rejections
+      // that cascade and destabilise the WebRTC session.
+      room.engine?.on('negotiationError' as any, (err: any) => {
+        console.warn('[LiveKit] NegotiationError caught (non-fatal):', err?.message);
       });
 
       room.on(RE.SignalReconnecting, () => {

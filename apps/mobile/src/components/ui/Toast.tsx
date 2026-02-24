@@ -106,15 +106,15 @@ function ToastItem({ item, onDismiss }: { item: ToastMessage; onDismiss: (id: st
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 250, useNativeDriver: true }),
-      Animated.timing(translateY, { toValue: 0, duration: 250, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 1, duration: 250, useNativeDriver: Platform.OS !== 'web' }),
+      Animated.timing(translateY, { toValue: 0, duration: 250, useNativeDriver: Platform.OS !== 'web' }),
     ]).start();
 
     if (item.duration && item.duration > 0) {
       const timer = setTimeout(() => {
         Animated.parallel([
-          Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true }),
-          Animated.timing(translateY, { toValue: -20, duration: 200, useNativeDriver: true }),
+          Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: Platform.OS !== 'web' }),
+          Animated.timing(translateY, { toValue: -20, duration: 200, useNativeDriver: Platform.OS !== 'web' }),
         ]).start(() => onDismiss(item.id));
       }, item.duration);
       return () => clearTimeout(timer);
