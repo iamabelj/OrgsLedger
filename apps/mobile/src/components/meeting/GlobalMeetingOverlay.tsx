@@ -307,26 +307,37 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
   // ── Toggle AI ─────────────────────────────────────────
   const aiEnabled = gm.meeting?.ai_enabled ?? false;
 
-  const handleToggleAi = useCallback(async () => {
-    if (!gm.meetingId || !gm.meeting?.organization_id) return;
-    try {
-      const res = await api.meetings.toggleAi(gm.meeting.organization_id, gm.meetingId);
-      const newState = res.data?.data?.aiEnabled ?? !aiEnabled;
-      // Update the local meeting object so UI reflects the change
-      gm.setMeeting({ ...gm.meeting, ai_enabled: newState });
-
-      // Start/stop transcription accordingly
-      // (auto-start effect will pick this up, but start immediately for responsiveness)
-      if (newState && lk.isConnected && lk.isMicEnabled && !isTranscribing) {
-        setTimeout(() => startTranscription(), 500);
-      } else if (!newState && isTranscribing) {
-        stopTranscription();
+  // ── Toggle Transcription ──────────────────────────────
+  // Toggles transcription on/off (also flips ai_enabled on server)
+  const handleToggleTranscribe = useCallback(async () => {
+    if (isTranscribing) {
+      // Stop transcription + disable AI on server
+      stopTranscription();
+      if (aiEnabled) {
+        try {
+          const res = await api.meetings.toggleAi(gm.meeting.organization_id, gm.meetingId!);
+          const newState = res.data?.data?.aiEnabled ?? false;
+          gm.setMeeting({ ...gm.meeting, ai_enabled: newState });
+        } catch (_) {}
       }
-    } catch (err: any) {
-      const msg = err.response?.data?.error || 'Failed to toggle AI';
-      showAlert('AI Toggle', msg);
+    } else {
+      // Enable AI on server + start transcription
+      if (!aiEnabled) {
+        try {
+          const res = await api.meetings.toggleAi(gm.meeting.organization_id, gm.meetingId!);
+          const newState = res.data?.data?.aiEnabled ?? true;
+          gm.setMeeting({ ...gm.meeting, ai_enabled: newState });
+        } catch (err: any) {
+          const msg = err.response?.data?.error || 'Failed to enable AI';
+          showAlert('AI', msg);
+          return;
+        }
+      }
+      if (lk.isConnected && lk.isMicEnabled) {
+        setTimeout(() => startTranscription(), 500);
+      }
     }
-  }, [gm, aiEnabled, lk.isConnected, lk.isMicEnabled, isTranscribing, startTranscription, stopTranscription]);
+  }, [isTranscribing, aiEnabled, gm, lk.isConnected, lk.isMicEnabled, startTranscription, stopTranscription]);
 
   // ── Leave handler ─────────────────────────────────────
   const handleLeave = useCallback(() => {
@@ -564,7 +575,6 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
         isScreenSharing={lk.isScreenSharing}
         isChatOpen={gm.isChatOpen}
         unreadChatCount={gm.unreadChatCount}
-        isAiEnabled={aiEnabled}
         isRecording={isRecording || gm.isRecordingFromSocket}
         handRaised={handRaised}
         isSidebarOpen={sidebarOpen}
@@ -575,7 +585,7 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
         onToggleCamera={gm.isAudioOnly ? gm.toggleAudioOnly : lk.toggleCamera}
         onToggleScreenShare={lk.toggleScreenShare}
         onToggleChat={gm.toggleChat}
-        onToggleAi={handleToggleAi}
+        onToggleTranscribe={handleToggleTranscribe}
         onToggleRecording={handleToggleRecording}
         onRaiseHand={handleRaiseHand}
         onToggleSidebar={handleToggleSidebar}

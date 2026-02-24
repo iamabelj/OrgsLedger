@@ -29,9 +29,6 @@ interface ControlBarProps {
   isChatOpen: boolean;
   unreadChatCount: number;
 
-  // AI
-  isAiEnabled: boolean;
-
   // Recording
   isRecording: boolean;
 
@@ -57,7 +54,7 @@ interface ControlBarProps {
   onToggleCamera: () => void;
   onToggleScreenShare: () => void;
   onToggleChat: () => void;
-  onToggleAi: () => void;
+  onToggleTranscribe: () => void;
   onToggleRecording: () => void;
   onRaiseHand: () => void;
   onToggleSidebar: (panel?: string) => void;
@@ -140,7 +137,6 @@ function ControlBarInner(props: ControlBarProps) {
     isScreenSharing,
     isChatOpen,
     unreadChatCount,
-    isAiEnabled,
     isRecording,
     handRaised,
     isSidebarOpen,
@@ -153,7 +149,7 @@ function ControlBarInner(props: ControlBarProps) {
     onToggleCamera,
     onToggleScreenShare,
     onToggleChat,
-    onToggleAi,
+    onToggleTranscribe,
     onToggleRecording,
     onRaiseHand,
     onToggleSidebar,
@@ -228,11 +224,11 @@ function ControlBarInner(props: ControlBarProps) {
         />
 
         <ControlBtn
-          icon={isAiEnabled ? 'sparkles' : 'sparkles-outline'}
-          label={isTranscribing ? 'AI Active' : isAiEnabled ? 'AI On' : 'AI'}
-          active={isAiEnabled}
-          activeColor={isTranscribing ? '#10B981' : '#8B5CF6'}
-          onPress={onToggleAi}
+          icon={isTranscribing ? 'ear' : 'ear-outline'}
+          label={isTranscribing ? 'Stop' : 'Transcribe'}
+          active={isTranscribing || false}
+          activeColor="#10B981"
+          onPress={onToggleTranscribe}
           compact={isNarrow}
         />
 
