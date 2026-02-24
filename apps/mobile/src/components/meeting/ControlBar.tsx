@@ -229,7 +229,7 @@ function ControlBarInner(props: ControlBarProps) {
 
         <ControlBtn
           icon={isAiEnabled ? 'sparkles' : 'sparkles-outline'}
-          label={isTranscribing ? 'Transcribing' : isAiEnabled ? 'AI On' : 'AI Off'}
+          label={isTranscribing ? 'AI Active' : isAiEnabled ? 'AI On' : 'AI'}
           active={isAiEnabled}
           activeColor={isTranscribing ? '#10B981' : '#8B5CF6'}
           onPress={onToggleAi}
@@ -238,10 +238,10 @@ function ControlBarInner(props: ControlBarProps) {
 
         <ControlBtn
           icon="document-text"
-          label="Transcript"
-          active={isSidebarOpen && activeSidebarPanel === 'transcript'}
+          label="Minutes"
+          active={isSidebarOpen && activeSidebarPanel === 'minutes'}
           badge={(transcriptCount && transcriptCount > 0) ? transcriptCount : undefined}
-          onPress={() => onToggleSidebar('transcript')}
+          onPress={() => onToggleSidebar('minutes')}
           compact={isNarrow}
         />
 

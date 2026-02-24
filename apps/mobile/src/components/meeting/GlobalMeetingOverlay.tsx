@@ -258,11 +258,28 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
       } else {
         setActivePanel(panel as SidebarPanel);
         setSidebarOpen(true);
+        // Auto-fetch data when opening a panel
+        if (panel === 'transcript') gm.refreshTranscripts();
+        if (panel === 'minutes') gm.refreshMinutes();
       }
     } else {
       setSidebarOpen(!sidebarOpen);
     }
   }, [sidebarOpen, activePanel, gm]);
+
+  // ── Auto-refresh transcripts + minutes periodically while meeting is live ──
+  useEffect(() => {
+    if (!lk.isConnected) return;
+    // Initial fetch on connect
+    gm.refreshTranscripts();
+    gm.refreshMinutes();
+    // Periodic refresh every 30 seconds
+    const interval = setInterval(() => {
+      gm.refreshTranscripts();
+      if (sidebarOpen && activePanel === 'minutes') gm.refreshMinutes();
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [lk.isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Raise Hand ────────────────────────────────────────
   const handleRaiseHand = useCallback(() => {
@@ -485,7 +502,11 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
           >
             <MeetingSidebar
               activePanel={activePanel}
-              onChangePanel={setActivePanel}
+              onChangePanel={(panel) => {
+                setActivePanel(panel);
+                if (panel === 'transcript') gm.refreshTranscripts();
+                if (panel === 'minutes') gm.refreshMinutes();
+              }}
               onClose={() => setSidebarOpen(false)}
               lkParticipants={lk.participants}
               activeSpeakerIds={lk.activeSpeakerIds}
