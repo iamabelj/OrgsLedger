@@ -155,23 +155,12 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
   // ── Recording (local) ─────────────────────────────────
   const [isRecording, setIsRecording] = useState(false);
 
-  // ── Auto-start speech recognition once connected ──────
-  // Start transcription automatically so transcripts are captured
-  // without requiring the user to manually select a language.
-  // Delay 3s to let LiveKit fully acquire mic first — avoids
-  // dual getUserMedia race that can trigger permission denial.
-  useEffect(() => {
-    if (!lk.isConnected) return;
-    if (translationListening) return; // already started
-    const timer = setTimeout(() => {
-      if (translationRef.current && !translationListening) {
-        translationRef.current.startListening();
-        setTranslationListening(true);
-        console.debug('[GlobalMeetingOverlay] Auto-started speech recognition for transcription');
-      }
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, [lk.isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ── Speech recognition for transcription ──────────────
+  // NOTE: Auto-start DISABLED. LiveTranslation opens its own
+  // getUserMedia() stream which conflicts with LiveKit's mic
+  // capture on many browsers, causing one or both to fail.
+  // Transcription is started manually by the user via the AI
+  // toggle or sidebar, which is the safer pattern.
 
   // ── Toggle sidebar panel ──────────────────────────────
   const handleToggleSidebar = useCallback((panel?: string) => {
@@ -304,10 +293,15 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
             </View>
           )}
           {(isRecording || gm.isRecordingFromSocket) && <RecordingIndicator />}
-          {lk.error && (
-            <View style={styles.errorBadge}>
-              <Ionicons name="warning" size={12} color={Colors.error} />
-            </View>
+          {lk.error && !lk.isConnecting && (
+            <TouchableOpacity
+              style={styles.errorBadge}
+              onPress={() => {
+                showAlert('Media Error', lk.error || 'Unknown error');
+              }}
+            >
+              <Ionicons name="warning" size={14} color={Colors.error} />
+            </TouchableOpacity>
           )}
           {/* Minimize button */}
           <TouchableOpacity
@@ -319,6 +313,26 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* ═══ MEDIA PERMISSION ERROR BANNER ══════════════════ */}
+      {lk.error && lk.isConnected && (
+        <View style={styles.mediaBanner}>
+          <Ionicons name="alert-circle" size={16} color="#FFF" />
+          <Text style={styles.mediaBannerText} numberOfLines={2}>
+            {lk.error}
+          </Text>
+          <TouchableOpacity
+            style={styles.mediaBannerRetry}
+            onPress={async () => {
+              // Retry enabling mic and camera
+              try { await lk.toggleMic(); } catch (_) {}
+              try { await lk.toggleCamera(); } catch (_) {}
+            }}
+          >
+            <Text style={styles.mediaBannerRetryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* ═══ MAIN CONTENT (VIDEO + SIDEBAR + CHAT) ═══════════ */}
       <View style={styles.mainArea}>
@@ -607,6 +621,31 @@ const styles = StyleSheet.create({
   },
   errorBadge: {
     padding: 4,
+  },
+  mediaBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(192, 57, 43, 0.9)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  mediaBannerText: {
+    flex: 1,
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '500' as any,
+  },
+  mediaBannerRetry: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  mediaBannerRetryText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '600' as any,
   },
   minimizeBtn: {
     width: 36,

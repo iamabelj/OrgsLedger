@@ -394,37 +394,37 @@ export function useLiveKitRoom(): UseLiveKitRoomReturn {
       console.debug('[LiveKit] Room connected, enabling media...');
 
       // Enable mic/camera SEPARATELY to avoid requesting unneeded permissions
-      // and to handle denial gracefully (connection stays alive)
+      // and to handle denial gracefully (connection stays alive).
+      // NO retry loop — browser permission prompts are async and user-driven;
+      // a retry would fire before the user clicks "Allow".
       const enableAudio = options?.audio !== false;
       const enableVideo = options?.video !== false;
-
-      // Enable mic and camera with retry — first attempt sometimes fails
-      // due to browser autoplay policy or transient permission gate.
-      const enableWithRetry = async (label: string, fn: () => Promise<void>, retries = 2) => {
-        for (let attempt = 1; attempt <= retries; attempt++) {
-          try {
-            await fn();
-            console.debug(`[LiveKit] ${label} enabled (attempt ${attempt})`);
-            return;
-          } catch (err: any) {
-            console.warn(`[LiveKit] ${label} enable failed (attempt ${attempt}/${retries}):`, err.message);
-            if (attempt < retries) {
-              // Brief pause then retry — gives browser time to settle permission prompt
-              await new Promise((r) => setTimeout(r, 500));
-            } else {
-              // Final attempt failed — surface a visible but non-blocking error
-              setError(`${label} access denied. Check your browser permissions and try the toggle button.`);
-            }
-          }
-        }
-      };
+      const mediaErrors: string[] = [];
 
       if (enableAudio) {
-        await enableWithRetry('Microphone', () => room.localParticipant.setMicrophoneEnabled(true));
+        try {
+          await room.localParticipant.setMicrophoneEnabled(true);
+          console.debug('[LiveKit] Microphone enabled');
+        } catch (micErr: any) {
+          console.error('[LiveKit] Microphone enable failed:', micErr.message);
+          mediaErrors.push('Microphone');
+        }
       }
 
       if (enableVideo) {
-        await enableWithRetry('Camera', () => room.localParticipant.setCameraEnabled(true));
+        try {
+          await room.localParticipant.setCameraEnabled(true);
+          console.debug('[LiveKit] Camera enabled');
+        } catch (camErr: any) {
+          console.error('[LiveKit] Camera enable failed:', camErr.message);
+          mediaErrors.push('Camera');
+        }
+      }
+
+      // Surface a single consolidated error if any device failed
+      if (mediaErrors.length > 0) {
+        const devices = mediaErrors.join(' and ');
+        setError(`${devices} access was denied. Click the ${mediaErrors.length > 1 ? 'buttons' : 'button'} below to retry, or check your browser permissions.`);
       }
 
       rebuildParticipants();
