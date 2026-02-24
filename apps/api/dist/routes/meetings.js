@@ -21,6 +21,9 @@ const translation_service_1 = require("../services/translation.service");
 const subscription_service_1 = require("../services/subscription.service");
 const livekit_service_1 = require("../services/livekit.service");
 const socket_1 = require("../socket");
+const bot_1 = require("../services/bot");
+const transaction_1 = require("../utils/transaction");
+const cache_service_1 = require("../services/cache.service");
 const router = (0, express_1.Router)();
 // ── Multer for audio uploads ────────────────────────────────
 const audioStorage = multer_1.default.diskStorage({
@@ -87,57 +90,59 @@ router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, (
                 return;
             }
         }
-        // Insert meeting first to get ID, then generate deterministic room name
-        // Build insert payload — only include columns confirmed in DB schema
+        // Insert meeting + agenda in a single DB transaction for atomicity
         // Detect column name: migration 024 renames jitsi_room_id → room_id
         const hasRoomId = await db_1.default.schema.hasColumn('meetings', 'room_id');
         const roomCol = hasRoomId ? 'room_id' : 'jitsi_room_id';
-        const meetingInsert = {
-            organization_id: req.params.orgId,
-            title,
-            description: description || null,
-            location: location || null,
-            scheduled_start: scheduledStart,
-            scheduled_end: scheduledEnd || null,
-            created_by: req.user.userId,
-            ai_enabled: aiEnabled,
-            [roomCol]: 'pending', // placeholder, updated below
-        };
-        // Columns from migration 003
-        meetingInsert.recurring_pattern = recurringPattern || 'none';
-        meetingInsert.recurring_end_date = recurringEndDate || null;
-        // Columns from migration 005
-        meetingInsert.translation_enabled = translationEnabled || false;
-        // Columns from migration 020 (may not exist on older DBs)
-        try {
-            const hasMeetingType = await db_1.default.schema.hasColumn('meetings', 'meeting_type');
-            if (hasMeetingType) {
-                meetingInsert.meeting_type = meetingType || 'video';
-                meetingInsert.max_participants = maxParticipants || 0;
-                meetingInsert.duration_limit_minutes = durationLimitMinutes || 0;
-                meetingInsert.lobby_enabled = lobbyEnabled || false;
+        const meeting = await (0, transaction_1.withTransaction)(async (trx) => {
+            const meetingInsert = {
+                organization_id: req.params.orgId,
+                title,
+                description: description || null,
+                location: location || null,
+                scheduled_start: scheduledStart,
+                scheduled_end: scheduledEnd || null,
+                created_by: req.user.userId,
+                ai_enabled: aiEnabled,
+                [roomCol]: 'pending', // placeholder, updated below
+            };
+            // Columns from migration 003
+            meetingInsert.recurring_pattern = recurringPattern || 'none';
+            meetingInsert.recurring_end_date = recurringEndDate || null;
+            // Columns from migration 005
+            meetingInsert.translation_enabled = translationEnabled || false;
+            // Columns from migration 020 (may not exist on older DBs)
+            try {
+                const hasMeetingType = await db_1.default.schema.hasColumn('meetings', 'meeting_type');
+                if (hasMeetingType) {
+                    meetingInsert.meeting_type = meetingType || 'video';
+                    meetingInsert.max_participants = maxParticipants || 0;
+                    meetingInsert.duration_limit_minutes = durationLimitMinutes || 0;
+                    meetingInsert.lobby_enabled = lobbyEnabled || false;
+                }
             }
-        }
-        catch { /* schema check failed — skip optional columns */ }
-        const [meeting] = await (0, db_1.default)('meetings')
-            .insert(meetingInsert)
-            .returning('*');
-        // Generate tenant-isolated room name: org_<orgId>_meeting_<meetingId>
-        const roomId = (0, livekit_service_1.generateRoomName)(req.params.orgId, meeting.id);
-        await (0, db_1.default)('meetings').where({ id: meeting.id }).update({ [roomCol]: roomId });
-        meeting.room_id = roomId;
-        meeting.jitsi_room_id = roomId; // back-compat until migration 024 runs
-        // Create agenda items
-        if (agendaItems?.length) {
-            await (0, db_1.default)('agenda_items').insert(agendaItems.map((item, idx) => ({
-                meeting_id: meeting.id,
-                title: item.title,
-                description: item.description || null,
-                order: idx + 1,
-                duration_minutes: item.durationMinutes || null,
-                presenter_user_id: item.presenterUserId || null,
-            })));
-        }
+            catch { /* schema check failed — skip optional columns */ }
+            const [inserted] = await trx('meetings')
+                .insert(meetingInsert)
+                .returning('*');
+            // Generate tenant-isolated room name: org_<orgId>_meeting_<meetingId>
+            const roomId = (0, livekit_service_1.generateRoomName)(req.params.orgId, inserted.id);
+            await trx('meetings').where({ id: inserted.id }).update({ [roomCol]: roomId });
+            inserted.room_id = roomId;
+            inserted.jitsi_room_id = roomId; // back-compat until migration 024 runs
+            // Create agenda items inside the same transaction
+            if (agendaItems?.length) {
+                await trx('agenda_items').insert(agendaItems.map((item, idx) => ({
+                    meeting_id: inserted.id,
+                    title: item.title,
+                    description: item.description || null,
+                    order: idx + 1,
+                    duration_minutes: item.durationMinutes || null,
+                    presenter_user_id: item.presenterUserId || null,
+                })));
+            }
+            return inserted;
+        });
         await req.audit?.({
             organizationId: req.params.orgId,
             action: 'create',
@@ -145,6 +150,8 @@ router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, (
             entityId: meeting.id,
             newValue: { title, scheduledStart },
         });
+        // Invalidate meeting list cache for this org
+        await (0, cache_service_1.cacheDel)(`meetings:list:${req.params.orgId}:*`).catch(() => { });
         // Notify all org members
         const members = await (0, db_1.default)('memberships')
             .where({ organization_id: req.params.orgId, is_active: true })
@@ -164,6 +171,11 @@ router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, (
             body: `${title} — ${new Date(scheduledStart).toLocaleString()}`,
             data: { meetingId: meeting.id, type: 'meeting' },
         }, req.user.userId).catch(err => logger_1.logger.warn('Push notification failed (new meeting)', err));
+        // Emit real-time socket event so meeting lists refresh
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`org:${req.params.orgId}`).emit('meeting:scheduled', meeting);
+        }
         res.status(201).json({ success: true, data: meeting });
     }
     catch (err) {
@@ -329,31 +341,35 @@ router.get('/:orgId', middleware_1.authenticate, middleware_1.loadMembership, as
         if (status) {
             query = query.where({ status });
         }
-        const total = await query.clone().clear('select').count('id as count').first();
-        const meetings = await query
-            .orderBy('scheduled_start', 'desc')
-            .offset((page - 1) * limit)
-            .limit(limit);
-        // Batch: attendance counts for all meetings in one query (GROUP BY)
-        let enriched = meetings;
-        if (meetings.length) {
-            const meetingIds = meetings.map((m) => m.id);
-            const attendanceCounts = await (0, db_1.default)('meeting_attendance')
-                .whereIn('meeting_id', meetingIds)
-                .select('meeting_id')
-                .count('id as count')
-                .groupBy('meeting_id');
-            const attendanceMap = {};
-            attendanceCounts.forEach((ac) => { attendanceMap[ac.meeting_id] = parseInt(ac.count) || 0; });
-            enriched = meetings.map((m) => ({
-                ...m,
-                attendeeCount: attendanceMap[m.id] || 0,
-            }));
-        }
+        const statusKey = status || 'all';
+        const cacheKey = `meetings:list:${req.params.orgId}:${statusKey}:p${page}:l${limit}`;
+        const result = await (0, cache_service_1.cacheAside)(cacheKey, 15, async () => {
+            const total = await query.clone().clear('select').count('id as count').first();
+            const meetings = await query
+                .orderBy('scheduled_start', 'desc')
+                .offset((page - 1) * limit)
+                .limit(limit);
+            // Batch: attendance counts for all meetings in one query (GROUP BY)
+            let enriched = meetings;
+            if (meetings.length) {
+                const meetingIds = meetings.map((m) => m.id);
+                const attendanceCounts = await (0, db_1.default)('meeting_attendance')
+                    .whereIn('meeting_id', meetingIds)
+                    .select('meeting_id')
+                    .count('id as count')
+                    .groupBy('meeting_id');
+                const attendanceMap = {};
+                attendanceCounts.forEach((ac) => { attendanceMap[ac.meeting_id] = parseInt(ac.count) || 0; });
+                enriched = meetings.map((m) => ({
+                    ...m,
+                    attendeeCount: attendanceMap[m.id] || 0,
+                }));
+            }
+            return { data: enriched, meta: { page, limit, total: parseInt(total?.count) || 0 } };
+        });
         res.json({
             success: true,
-            data: enriched,
-            meta: { page, limit, total: parseInt(total?.count) || 0 },
+            ...result,
         });
     }
     catch (err) {
@@ -654,6 +670,12 @@ router.post('/:orgId/:meetingId/start', middleware_1.authenticate, middleware_1.
             io.to(`org:${req.params.orgId}`).emit('meeting:started', payload);
             io.to(`meeting:${req.params.meetingId}`).emit('meeting:started', payload);
         }
+        // Start transcription bot (best-effort, don't block response)
+        try {
+            const botManager = (0, bot_1.getBotManager)();
+            botManager.startMeetingBot(req.params.meetingId).catch((err) => logger_1.logger.warn('[MEETING_START] Transcription bot failed to start', { meetingId: req.params.meetingId, error: err.message }));
+        }
+        catch (_) { /* BotManager not initialized */ }
         await req.audit?.({
             organizationId: req.params.orgId,
             action: 'update',
@@ -693,11 +715,25 @@ router.post('/:orgId/:meetingId/end', middleware_1.authenticate, middleware_1.lo
             // NOTE: Do NOT force-disconnect sockets immediately.
             // Clients need to remain in the meeting room to receive
             // meeting:minutes:processing / meeting:minutes:ready / meeting:minutes:failed events.
-            // Instead, force-disconnect after a delay so minutes events can be delivered.
+            // GPT-4o summarization can take 10-30 seconds, so allow 60s before disconnect.
+            // (Clients also receive events via org room, so this is a best-effort grace period.)
             setTimeout(() => {
                 (0, socket_1.forceDisconnectMeeting)(io, req.params.meetingId).catch((err) => logger_1.logger.warn('Force disconnect failed', err));
-            }, 5_000); // 5 seconds grace period for minutes events
+            }, 60_000); // 60 seconds grace period — GPT-4o needs time
         }
+        // ── Respond immediately so the client UI updates fast ──
+        res.json({ success: true, message: 'Meeting ended' });
+        // ── Everything below runs AFTER the response is sent ──
+        // (best-effort: bot stop, transcript check, AI minutes, audit)
+        // Stop transcription bot (best-effort)
+        try {
+            const botManager = (0, bot_1.getBotManager)();
+            const bot = botManager.getBot(req.params.meetingId);
+            const sessionCount = bot?.activeSessionCount || 0;
+            logger_1.logger.info(`[MEETING_END] Stopping transcription bot: meeting=${req.params.meetingId}, activeSessions=${sessionCount}`);
+            botManager.stopMeetingBot(req.params.meetingId).catch((err) => logger_1.logger.warn('[MEETING_END] Transcription bot failed to stop', { meetingId: req.params.meetingId, error: err.message }));
+        }
+        catch (_) { /* BotManager not initialized */ }
         // Always trigger AI minutes generation when transcripts exist
         // (no manual toggle required — pipeline is always-on)
         {
@@ -775,14 +811,13 @@ router.post('/:orgId/:meetingId/end', middleware_1.authenticate, middleware_1.lo
                 });
             }
         }
-        await req.audit?.({
+        req.audit?.({
             organizationId: req.params.orgId,
             action: 'update',
             entityType: 'meeting',
             entityId: req.params.meetingId,
             newValue: { status: 'ended' },
-        });
-        res.json({ success: true, message: 'Meeting ended' });
+        }).catch(() => { });
     }
     catch (err) {
         res.status(500).json({ success: false, error: 'Failed to end meeting' });

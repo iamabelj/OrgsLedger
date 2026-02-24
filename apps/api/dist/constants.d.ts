@@ -73,6 +73,11 @@ export declare const RATE_LIMITS: {
         readonly max: 60;
     };
 };
+export declare const ACCOUNT_LOCKOUT: {
+    readonly MAX_ATTEMPTS: 5;
+    readonly LOCKOUT_DURATION_MIN: 15;
+    readonly LOCKOUT_DURATION_MS: number;
+};
 export declare const UPLOAD: {
     readonly AVATAR_MAX_SIZE: number;
     readonly ALLOWED_IMAGE_TYPES: readonly string[];

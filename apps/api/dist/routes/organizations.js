@@ -16,6 +16,7 @@ const db_1 = __importDefault(require("../db"));
 const middleware_1 = require("../middleware");
 const logger_1 = require("../logger");
 const config_1 = require("../config");
+const cache_service_1 = require("../services/cache.service");
 const subscription_service_1 = require("../services/subscription.service");
 const router = (0, express_1.Router)();
 // ── Multer for logo uploads ────────────────────────────────
@@ -135,6 +136,8 @@ router.post('/', middleware_1.authenticate, (0, middleware_1.validate)(createOrg
             entityId: org.id,
             newValue: { name, slug },
         });
+        // Invalidate org list cache for this user
+        await (0, cache_service_1.cacheDel)(`orgs:list:${req.user.userId}:*`).catch(() => { });
         logger_1.logger.info(`Organization created: ${name} (${slug})`);
         res.status(201).json({ success: true, data: org });
     }
@@ -157,9 +160,13 @@ router.get('/', middleware_1.authenticate, async (req, res) => {
         const page = Math.max(1, parseInt(req.query.page) || 1);
         const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 100));
         const offset = (page - 1) * limit;
-        const total = await query.clone().clear('select').count('id as count').first();
-        const orgs = await query.select('*').orderBy('name').limit(limit).offset(offset);
-        res.json({ success: true, data: orgs, meta: { page, limit, total: parseInt(total?.count) || 0 } });
+        const cacheKey = `orgs:list:${req.user.userId}:p${page}:l${limit}`;
+        const result = await (0, cache_service_1.cacheAside)(cacheKey, 30, async () => {
+            const total = await query.clone().clear('select').count('id as count').first();
+            const orgs = await query.select('*').orderBy('name').limit(limit).offset(offset);
+            return { data: orgs, meta: { page, limit, total: parseInt(total?.count) || 0 } };
+        });
+        res.json({ success: true, ...result });
     }
     catch (err) {
         res.status(500).json({ success: false, error: 'Failed to list organizations' });

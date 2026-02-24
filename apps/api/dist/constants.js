@@ -4,7 +4,7 @@
 // Centralizes magic strings, roles, domains, limits, defaults.
 // ============================================================
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.APP_VERSION = exports.APP_NAME = exports.DEEP_LINK_SCHEME = exports.SOCKET_EVENTS = exports.TX_STATUS = exports.PLANS = exports.UPLOAD = exports.RATE_LIMITS = exports.PAGINATION = exports.RATE_NGN_PER_USD = exports.CURRENCIES = exports.NOTIFICATION_TYPES = exports.GATEWAYS = exports.SUB_STATUS = exports.ELEVATED_ROLES = exports.ROLE_HIERARCHY = exports.ROLES = exports.LANDING_HOSTS = exports.DOMAINS = void 0;
+exports.APP_VERSION = exports.APP_NAME = exports.DEEP_LINK_SCHEME = exports.SOCKET_EVENTS = exports.TX_STATUS = exports.PLANS = exports.UPLOAD = exports.ACCOUNT_LOCKOUT = exports.RATE_LIMITS = exports.PAGINATION = exports.RATE_NGN_PER_USD = exports.CURRENCIES = exports.NOTIFICATION_TYPES = exports.GATEWAYS = exports.SUB_STATUS = exports.ELEVATED_ROLES = exports.ROLE_HIERARCHY = exports.ROLES = exports.LANDING_HOSTS = exports.DOMAINS = void 0;
 exports.isLandingHost = isLandingHost;
 // ── Domains ─────────────────────────────────────────────────
 exports.DOMAINS = {
@@ -87,6 +87,12 @@ exports.RATE_LIMITS = {
     AUTH: { windowMs: 15 * 60 * 1000, max: 15 },
     REFRESH: { windowMs: 15 * 60 * 1000, max: 30 },
     WEBHOOK: { windowMs: 60 * 1000, max: 60 },
+};
+// ── Account Lockout ─────────────────────────────────────────
+exports.ACCOUNT_LOCKOUT = {
+    MAX_ATTEMPTS: 5, // Lock after 5 failed login attempts
+    LOCKOUT_DURATION_MIN: 15, // Lock for 15 minutes
+    LOCKOUT_DURATION_MS: 15 * 60 * 1000, // 15 minutes in ms
 };
 // ── Upload Defaults ─────────────────────────────────────────
 exports.UPLOAD = {

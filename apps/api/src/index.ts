@@ -117,7 +117,9 @@ app.use(helmet({
 
 // ── Additional Security Headers not covered by Helmet ──
 app.use((_req, res, next) => {
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), interest-cohort=()');
+  // Allow camera + microphone for LiveKit video/audio meetings (self = same origin).
+  // Block geolocation and interest-cohort (FLoC tracking).
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(), interest-cohort=()');
   res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
   next();
 });

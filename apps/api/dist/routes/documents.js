@@ -14,6 +14,7 @@ const db_1 = __importDefault(require("../db"));
 const middleware_1 = require("../middleware");
 const logger_1 = require("../logger");
 const config_1 = require("../config");
+const file_validation_1 = require("../utils/file-validation");
 const router = (0, express_1.Router)();
 // ── Multer setup for document uploads ───────────────────────
 const storage = multer_1.default.diskStorage({
@@ -62,15 +63,46 @@ router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAnd
             res.status(400).json({ success: false, error: 'No file provided' });
             return;
         }
+        // ── Server-side file validation ──
+        // 1. Verify magic bytes match claimed MIME type (prevents MIME spoofing)
+        if (!(0, file_validation_1.verifyMagicBytes)(req.file.path, req.file.mimetype)) {
+            // Delete the suspicious file
+            try {
+                fs_1.default.unlinkSync(req.file.path);
+            }
+            catch { }
+            logger_1.logger.warn('[UPLOAD] Magic bytes mismatch', {
+                originalname: req.file.originalname,
+                mimetype: req.file.mimetype,
+                userId: req.user.userId,
+            });
+            res.status(400).json({ success: false, error: 'File content does not match its type' });
+            return;
+        }
+        // 2. Verify extension matches MIME type
+        if (!(0, file_validation_1.validateMimeExtension)(req.file.originalname, req.file.mimetype)) {
+            try {
+                fs_1.default.unlinkSync(req.file.path);
+            }
+            catch { }
+            logger_1.logger.warn('[UPLOAD] Extension/MIME mismatch', {
+                originalname: req.file.originalname,
+                mimetype: req.file.mimetype,
+            });
+            res.status(400).json({ success: false, error: 'File extension does not match its type' });
+            return;
+        }
+        // 3. Sanitize original filename for storage metadata
+        const safeFilename = (0, file_validation_1.sanitizeFilename)(req.file.originalname);
         const { title, description, category, folderId } = req.body;
         const [doc] = await (0, db_1.default)('documents')
             .insert({
             organization_id: req.params.orgId,
-            title: title || req.file.originalname,
+            title: title || safeFilename,
             description: description || null,
             category: category || 'general',
             folder_id: folderId || null,
-            file_name: req.file.originalname,
+            file_name: safeFilename,
             file_path: `/uploads/documents/${req.file.filename}`,
             file_size: req.file.size,
             mime_type: req.file.mimetype,

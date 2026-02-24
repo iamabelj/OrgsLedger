@@ -122,5 +122,6 @@ export declare const MetricsHelper: {
     trackWsDisconnect(): void;
     trackWsMessage(): void;
 };
+export declare function getPrometheusMetrics(): string;
 export {};
 //# sourceMappingURL=metrics.service.d.ts.map

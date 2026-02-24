@@ -17,6 +17,13 @@ router.use(middleware_1.authenticate, (0, middleware_1.requireDeveloper)());
 router.get('/metrics', (_req, res) => {
     res.json({ success: true, data: (0, metrics_service_1.getMetricsSnapshot)() });
 });
+// ── Prometheus Scrape Endpoint ────────────────────────────
+// Returns metrics in Prometheus text exposition format.
+// Scrape target: /api/admin/observability/metrics/prometheus
+router.get('/metrics/prometheus', (_req, res) => {
+    res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+    res.send((0, metrics_service_1.getPrometheusMetrics)());
+});
 // ── Error Monitoring ──────────────────────────────────────
 router.get('/errors', (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);

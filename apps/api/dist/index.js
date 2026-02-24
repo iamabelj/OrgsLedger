@@ -23,6 +23,8 @@ const logger_1 = require("./logger");
 const middleware_1 = require("./middleware");
 const request_logger_1 = require("./middleware/request-logger");
 const error_handler_1 = require("./middleware/error-handler");
+const idempotency_1 = require("./middleware/idempotency");
+const etag_1 = require("./middleware/etag");
 const landing_gateway_1 = require("./middleware/landing-gateway");
 const socket_1 = require("./socket");
 const ai_service_1 = require("./services/ai.service");
@@ -49,6 +51,7 @@ const analytics_1 = __importDefault(require("./routes/analytics"));
 const expenses_1 = __importDefault(require("./routes/expenses"));
 const subscriptions_1 = __importDefault(require("./routes/subscriptions"));
 const observability_1 = __importDefault(require("./routes/observability"));
+const docs_1 = __importDefault(require("./routes/docs"));
 const scheduler_service_1 = require("./services/scheduler.service");
 const seed_service_1 = require("./services/seed.service");
 const app = (0, express_1.default)();
@@ -74,6 +77,11 @@ registry_1.services.register('io', io); // preferred — use services.get('io') 
 const aiService = new ai_service_1.AIService(io);
 app.set('aiService', aiService); // backwards compat
 registry_1.services.register('aiService', aiService);
+// ── Transcription Bot Manager ─────────────────────────────
+// Bot disabled — client-side Whisper handles all transcription.
+// BotManager is NOT initialized to prevent any bot from joining meetings.
+// const botManager = initBotManager({ io, meetingLanguages });
+// services.register('botManager', botManager);
 // ── Global Middleware ─────────────────────────────────────
 app.use((0, helmet_1.default)({
     contentSecurityPolicy: {
@@ -87,10 +95,30 @@ app.use((0, helmet_1.default)({
             connectSrc: ["'self'", "https:", "wss:"],
             frameSrc: ["'self'", "https:"],
             objectSrc: ["'none'"],
+            baseUri: ["'self'"],
+            formAction: ["'self'"],
             upgradeInsecureRequests: [],
         },
     },
+    crossOriginEmbedderPolicy: false, // Needed for cross-origin images
+    crossOriginOpenerPolicy: { policy: 'same-origin' },
+    crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow CDN / image loading
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    hsts: { maxAge: 63072000, includeSubDomains: true, preload: true }, // 2 years
+    noSniff: true, // X-Content-Type-Options: nosniff
+    dnsPrefetchControl: { allow: false },
+    frameguard: { action: 'deny' }, // X-Frame-Options: DENY
+    permittedCrossDomainPolicies: { permittedPolicies: 'none' },
+    hidePoweredBy: true, // Remove X-Powered-By
 }));
+// ── Additional Security Headers not covered by Helmet ──
+app.use((_req, res, next) => {
+    // Allow camera + microphone for LiveKit video/audio meetings (self = same origin).
+    // Block geolocation and interest-cohort (FLoC tracking).
+    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(), interest-cohort=()');
+    res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+    next();
+});
 // Gzip/deflate compression — reduces response sizes by 60-80%
 app.use((0, compression_1.default)({
     level: 6, // Balanced speed vs ratio
@@ -136,8 +164,20 @@ app.use((req, _res, next) => {
 });
 // Audit context
 app.use(middleware_1.auditContext);
+// ── API Versioning ────────────────────────────────────────
+// Add API-Version header to all responses; support /api/v1/* as an alias
+app.use((req, res, next) => {
+    res.setHeader('X-API-Version', constants_1.APP_VERSION);
+    // Rewrite /api/v1/* to /api/* for forward compatibility
+    if (req.path.startsWith('/api/v1/')) {
+        req.url = req.url.replace('/api/v1/', '/api/');
+    }
+    next();
+});
 // ── Observability Middleware ──────────────────────────────
 app.use(metrics_service_1.metricsMiddleware);
+// ── ETag for GET responses (client-side 304 caching) ─────
+app.use(etag_1.etagMiddleware);
 // ── Full Request Logging (temporary observability) ────────
 app.use(request_logger_1.requestLogger);
 // Serve uploaded files (require valid JWT)
@@ -259,11 +299,14 @@ const authLimiter = (0, express_rate_limit_1.default)({
     legacyHeaders: false,
     message: { success: false, error: 'Too many attempts, please try again later' },
 });
+// ── Per-Route Payload Size Limits ──
+// Auth routes don't need large payloads (login/register bodies are tiny)
+const authPayloadLimit = express_1.default.json({ limit: '16kb' });
 // ── API Routes ────────────────────────────────────────────
-app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/register', authLimiter);
-app.use('/api/auth/forgot-password', authLimiter);
-app.use('/api/auth/reset-password', authLimiter);
+app.use('/api/auth/login', authLimiter, authPayloadLimit);
+app.use('/api/auth/register', authLimiter, authPayloadLimit);
+app.use('/api/auth/forgot-password', authLimiter, authPayloadLimit);
+app.use('/api/auth/reset-password', authLimiter, authPayloadLimit);
 app.use('/api/auth/refresh', (0, express_rate_limit_1.default)({
     windowMs: constants_1.RATE_LIMITS.REFRESH.windowMs,
     max: constants_1.RATE_LIMITS.REFRESH.max,
@@ -285,8 +328,8 @@ app.use('/api/auth', auth_1.default);
 app.use('/api/organizations', organizations_1.default);
 app.use('/api/chat', chat_1.default);
 app.use('/api/meetings', meetings_1.default);
-app.use('/api/financials', financials_1.default);
-app.use('/api/payments', payments_1.default);
+app.use('/api/financials', idempotency_1.idempotencyMiddleware, financials_1.default);
+app.use('/api/payments', idempotency_1.idempotencyMiddleware, payments_1.default);
 app.use('/api/committees', committees_1.default);
 app.use('/api/admin', admin_1.default);
 app.use('/api/notifications', notifications_1.default);
@@ -298,6 +341,7 @@ app.use('/api/analytics', analytics_1.default);
 app.use('/api/expenses', expenses_1.default);
 app.use('/api/subscriptions', subscriptions_1.default);
 app.use('/api/admin/observability', observability_1.default);
+app.use('/api/docs', docs_1.default);
 // ── 404 Handler ───────────────────────────────────────────
 // API 404 — only for /api/* routes
 app.all('/api/*', (_req, res) => {
@@ -410,6 +454,44 @@ function doPostStart() {
         catch (err) {
             logger_1.logger.error('[STARTUP] ensureMeetingTables failed (non-fatal):', err.message);
         }
+        // Ensure account lockout columns exist (migration 026)
+        try {
+            const { db: knex } = require('./db');
+            if (await knex.schema.hasTable('users')) {
+                const hasAttempts = await knex.schema.hasColumn('users', 'failed_login_attempts');
+                if (!hasAttempts) {
+                    await knex.schema.alterTable('users', (t) => {
+                        t.integer('failed_login_attempts').notNullable().defaultTo(0);
+                        t.timestamp('locked_until').nullable();
+                    });
+                    logger_1.logger.info('[STARTUP] ✓ Added account lockout columns to users table');
+                }
+            }
+        }
+        catch (err) {
+            logger_1.logger.error('[STARTUP] Account lockout columns check failed (non-fatal):', err.message);
+        }
+        // Ensure refresh_tokens table exists (migration 027)
+        try {
+            const { db: knex } = require('./db');
+            if (!(await knex.schema.hasTable('refresh_tokens'))) {
+                await knex.schema.createTable('refresh_tokens', (t) => {
+                    t.uuid('id').primary().defaultTo(knex.raw("gen_random_uuid()"));
+                    t.uuid('user_id').notNullable().references('id').inTable('users').onDelete('CASCADE');
+                    t.text('token_hash').notNullable().unique();
+                    t.string('user_agent', 512).nullable();
+                    t.string('ip_address', 45).nullable();
+                    t.timestamp('expires_at').notNullable();
+                    t.timestamp('created_at').defaultTo(knex.fn.now());
+                    t.index(['user_id']);
+                    t.index(['expires_at']);
+                });
+                logger_1.logger.info('[STARTUP] ✓ Created refresh_tokens table');
+            }
+        }
+        catch (err) {
+            logger_1.logger.error('[STARTUP] refresh_tokens table check failed (non-fatal):', err.message);
+        }
         // Start recurring dues scheduler
         (0, scheduler_service_1.startScheduler)();
     })();
@@ -426,4 +508,44 @@ else {
         doPostStart();
     });
 }
+// ── Graceful Shutdown ─────────────────────────────────────
+// On SIGTERM / SIGINT: stop accepting new connections, drain
+// existing ones, close DB pool, and exit cleanly.
+let isShuttingDown = false;
+async function gracefulShutdown(signal) {
+    if (isShuttingDown)
+        return;
+    isShuttingDown = true;
+    logger_1.logger.info(`[SHUTDOWN] ${signal} received — starting graceful shutdown`);
+    // 1. Stop accepting new HTTP connections (give 10s for in-flight)
+    server.close(() => {
+        logger_1.logger.info('[SHUTDOWN] HTTP server closed');
+    });
+    // 2. Close Socket.io connections
+    try {
+        io.disconnectSockets(true);
+        logger_1.logger.info('[SHUTDOWN] Socket.io connections closed');
+    }
+    catch { }
+    // 3. Wait for in-flight requests to complete (max 10s)
+    await new Promise((resolve) => setTimeout(resolve, 10_000));
+    // 4. Close database pool
+    try {
+        const { db: knex } = require('./db');
+        await knex.destroy();
+        logger_1.logger.info('[SHUTDOWN] Database pool closed');
+    }
+    catch (err) {
+        logger_1.logger.error('[SHUTDOWN] DB pool close error:', err.message);
+    }
+    // 5. Flush logger
+    try {
+        logger_1.logger.end();
+    }
+    catch { }
+    logger_1.logger.info('[SHUTDOWN] Graceful shutdown complete');
+    process.exit(0);
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 //# sourceMappingURL=index.js.map

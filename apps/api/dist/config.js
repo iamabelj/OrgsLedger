@@ -87,10 +87,21 @@ exports.config = {
         tokenExpirySeconds: parseInt(process.env.LIVEKIT_TOKEN_EXPIRY || '7200', 10),
     },
 };
-// Warn about critical config in production/staging environments
-if (exports.config.env !== 'development' && exports.config.env !== 'test') {
+// ── Config Validation ───────────────────────────────────────
+// Hard-fail in production/staging; warn in development.
+const _isDev = exports.config.env === 'development' || exports.config.env === 'test';
+if (!_isDev) {
+    // Production / staging — fatal errors
     if (exports.config.jwt.secret === 'CHANGE_ME_IN_PRODUCTION') {
         console.error(`[CONFIG] FATAL: JWT_SECRET is using the default value in ${exports.config.env} — set JWT_SECRET in env.js or environment variables`);
+        process.exit(1);
+    }
+    if (exports.config.jwt.secret.length < 32) {
+        console.error(`[CONFIG] FATAL: JWT_SECRET must be at least 32 characters in ${exports.config.env} (current: ${exports.config.jwt.secret.length})`);
+        process.exit(1);
+    }
+    if (exports.config.jwt.refreshSecret.length < 32) {
+        console.error(`[CONFIG] FATAL: JWT_REFRESH_SECRET must be at least 32 characters in ${exports.config.env} (current: ${exports.config.jwt.refreshSecret.length})`);
         process.exit(1);
     }
     if (exports.config.jwt.secret === exports.config.jwt.refreshSecret) {
@@ -100,6 +111,15 @@ if (exports.config.env !== 'development' && exports.config.env !== 'test') {
     if (!process.env.DATABASE_URL && exports.config.db.password === 'orgsledger_dev') {
         console.error(`[CONFIG] FATAL: DB_PASSWORD is using the default value in ${exports.config.env} — set DB_PASSWORD in env.js or environment variables`);
         process.exit(1);
+    }
+}
+else {
+    // Development — non-fatal warnings
+    if (exports.config.jwt.secret === 'CHANGE_ME_IN_PRODUCTION') {
+        console.warn('[CONFIG] WARNING: Using default JWT_SECRET — set JWT_SECRET env var before deploying');
+    }
+    if (exports.config.jwt.secret === exports.config.jwt.refreshSecret) {
+        console.warn('[CONFIG] WARNING: JWT_SECRET and JWT_REFRESH_SECRET are identical — set separate values');
     }
 }
 //# sourceMappingURL=config.js.map
