@@ -313,6 +313,7 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
     if (isTranscribing) {
       // Stop transcription + disable AI on server
       stopTranscription();
+      showAlert('Transcription', 'Transcription stopped');
       if (aiEnabled) {
         try {
           const res = await api.meetings.toggleAi(gm.meeting.organization_id, gm.meetingId!);
@@ -321,6 +322,20 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
         } catch (_) {}
       }
     } else {
+      // Pre-flight checks with feedback
+      if (Platform.OS !== 'web') {
+        showAlert('Transcription', 'Live transcription is currently only supported on web browsers.');
+        return;
+      }
+      if (!lk.isConnected) {
+        showAlert('Transcription', 'Not connected to meeting room. Please wait for connection.');
+        return;
+      }
+      if (!lk.isMicEnabled) {
+        showAlert('Transcription', 'Please unmute your microphone first to enable transcription.');
+        return;
+      }
+
       // Enable AI on server + start transcription
       if (!aiEnabled) {
         try {
@@ -333,9 +348,11 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
           return;
         }
       }
-      if (lk.isConnected && lk.isMicEnabled) {
-        setTimeout(() => startTranscription(), 500);
-      }
+      // Start transcription with visual feedback
+      setTimeout(() => {
+        startTranscription();
+        showAlert('Transcription', 'Transcription started — your speech will be captured.');
+      }, 500);
     }
   }, [isTranscribing, aiEnabled, gm, lk.isConnected, lk.isMicEnabled, startTranscription, stopTranscription]);
 
