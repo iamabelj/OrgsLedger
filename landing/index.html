@@ -67,12 +67,12 @@
         "operatingSystem": "Web, Android, iOS",
         "url": "https://orgsledger.com",
         "offers": {
-          "@type": "AggregateOffer",
-          "priceCurrency": "USD",
-          "lowPrice": "300",
-          "highPrice": "5000",
-          "offerCount": "4"
-        },
+            "@type": "AggregateOffer",
+            "priceCurrency": "USD",
+            "lowPrice": "200",
+            "highPrice": "5000",
+            "offerCount": "4"
+          },
         "description": "All-in-one SaaS platform for managing organizations across borders — AI meeting summaries, real-time translation, financial management, events, polls, and more.",
         "featureList": "AI Meeting Summaries, Real-Time Language Translation, Dues & Financial Management, Event Management, Polls & Voting, Document Storage, Member Directory, Chat & Announcements"
       }
@@ -652,6 +652,23 @@
     </div>
 
     <div class="pricing-grid">
+      <!-- Starter -->
+      <div class="pricing-card anim">
+        <div class="pricing-plan-name">Starter</div>
+        <div class="pricing-amount">
+          <span class="currency" data-cur>$</span><span data-price="starter">200</span><span class="period" data-per>/year</span>
+        </div>
+        <div class="pricing-desc">For micro organizations <strong>1–50 members</strong>.</div>
+        <ul class="pricing-features">
+          <li><span class="feat-check">&#10003;</span> Real-Time Chat &amp; Channels</li>
+          <li><span class="feat-check">&#10003;</span> Meeting Management</li>
+          <li><span class="feat-check">&#10003;</span> Dues &amp; Donation Collection</li>
+          <li class="excluded"><span class="feat-check">&mdash;</span> Advanced Analytics</li>
+          <li class="excluded"><span class="feat-check">&mdash;</span> Data Export</li>
+        </ul>
+        <button class="pricing-cta btn-primary" onclick="location.href='https://app.orgsledger.com/checkout?plan=starter'">Start Your Organization</button>
+      </div>
+
       <!-- Standard -->
       <div class="pricing-card anim">
         <div class="pricing-plan-name">Standard</div>
@@ -965,6 +982,7 @@
   // ── Region / Currency Toggle ─────────────────────────
   var region = 'global';
   var prices = {
+    starter:      { global: '200',   nigeria: '300,000' },
     standard:     { global: '300',   nigeria: '500,000' },
     professional: { global: '800',   nigeria: '1,200,000' },
     enterprise:   { global: '2,500', nigeria: '3,500,000' },
