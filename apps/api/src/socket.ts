@@ -121,7 +121,7 @@ async function handleSpeechText(
 
   logger.debug(`[TRANSCRIPT] Speech: speaker=${speakerName}, isFinal=${isFinal}, lang=${sourceLang}, len=${text.length}`);
 
-  // For interim results, just broadcast original text
+  // For interim results, broadcast AND persist to DB so we have data for minutes even if finals never arrive
   if (!isFinal) {
     socket.to(`meeting:${meetingId}`).emit('translation:interim', {
       meetingId,
@@ -130,6 +130,9 @@ async function handleSpeechText(
       text,
       sourceLang,
     });
+    
+    await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, { [sourceLang]: text });
+    logger.debug(`[TRANSCRIPT] ✓ Interim persisted: meeting=${meetingId}, speaker=${speakerName}`);
     return;
   }
 
