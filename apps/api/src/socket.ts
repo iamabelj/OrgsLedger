@@ -107,6 +107,15 @@ async function handleSpeechText(
 
   const langMap = meetingLanguages.get(meetingId);
 
+  // Look up organization_id early (needed for both interim and final results)
+  let organizationId: string | null = null;
+  try {
+    const meeting = await db('meetings').where({ id: meetingId }).select('organization_id').first();
+    organizationId = meeting?.organization_id || null;
+  } catch (lookupErr) {
+    logger.warn('[TRANSLATION] Failed to look up meeting org', lookupErr);
+  }
+
   // Get speaker name
   let speakerName = 'Unknown';
   const speaker = langMap?.get(userId);
@@ -144,15 +153,6 @@ async function handleSpeechText(
         targetLangs.add(val.language);
       }
     });
-  }
-
-  // Look up organization_id
-  let organizationId: string | null = null;
-  try {
-    const meeting = await db('meetings').where({ id: meetingId }).select('organization_id').first();
-    organizationId = meeting?.organization_id || null;
-  } catch (lookupErr) {
-    logger.warn('[TRANSLATION] Failed to look up meeting org', lookupErr);
   }
 
   try {
