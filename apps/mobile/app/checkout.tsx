@@ -102,17 +102,28 @@ export default function CheckoutScreen() {
   const plan = plans.find((p: any) => p.slug === selectedPlan);
 
   const getPrice = () => {
+    // Fallback prices (monthly)
+    const fallback: Record<string, Record<string, number>> = {
+      standard: { USD: 25, NGN: 12500 },
+      professional: { USD: 67, NGN: 33500 },
+      enterprise: { USD: 210, NGN: 105000 },
+    };
+
+    // If no plan, use fallback
     if (!plan) {
-      // Fallback prices (monthly)
-      const fallback: Record<string, Record<string, number>> = {
-        standard: { USD: 25, NGN: 12500 },
-        professional: { USD: 67, NGN: 33500 },
-        enterprise: { USD: 210, NGN: 105000 },
-      };
       return fallback[selectedPlan]?.[currentRegion.currency] || 0;
     }
+
+    // Check plan pricing
     const curr = currentRegion.currency.toLowerCase();
-    return plan[`price_${curr}_monthly`] || plan.price_usd_monthly || 0;
+    const price = plan[`price_${curr}_monthly`] || plan.price_usd_monthly;
+
+    // Use fallback if plan price is 0 or not set
+    if (!price || price === 0) {
+      return fallback[selectedPlan]?.[currentRegion.currency] || 0;
+    }
+
+    return price;
   };
 
   const price = getPrice();
