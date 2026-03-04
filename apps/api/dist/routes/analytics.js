@@ -219,5 +219,192 @@ router.get('/:orgId/receipt/:recordId', middleware_1.authenticate, middleware_1.
         res.status(500).json({ success: false, error: 'Failed to generate receipt' });
     }
 });
+// ── AI Meeting Insights Dashboard ────────────────────────────
+router.get('/:orgId/meeting-insights', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin', 'executive'), async (req, res) => {
+    try {
+        const orgId = req.params.orgId;
+        const now = new Date();
+        const lastSixMonths = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString();
+        const lastThirtyDays = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        // ── Overview Metrics ──
+        const totalMeetings = await (0, db_1.default)('meetings')
+            .where({ organization_id: orgId })
+            .where('status', 'ended')
+            .count('id as count')
+            .first();
+        const meetingsWithAI = await (0, db_1.default)('meetings')
+            .where({ organization_id: orgId, ai_enabled: true })
+            .where('status', 'ended')
+            .count('id as count')
+            .first();
+        const minutesGenerated = await (0, db_1.default)('meeting_minutes')
+            .join('meetings', 'meeting_minutes.meeting_id', 'meetings.id')
+            .where({ 'meetings.organization_id': orgId, 'meeting_minutes.status': 'completed' })
+            .count('meeting_minutes.id as count')
+            .first();
+        const totalAiCreditsUsed = await (0, db_1.default)('meeting_minutes')
+            .join('meetings', 'meeting_minutes.meeting_id', 'meetings.id')
+            .where({ 'meetings.organization_id': orgId, 'meeting_minutes.status': 'completed' })
+            .sum('meeting_minutes.ai_credits_used as total')
+            .first();
+        // ── Meeting Frequency (Last 6 Months) ──
+        const meetingFrequency = await (0, db_1.default)('meetings')
+            .where({ organization_id: orgId })
+            .where('scheduled_start', '>=', lastSixMonths)
+            .select(db_1.default.raw("DATE_TRUNC('month', scheduled_start) as month"))
+            .count('id as count')
+            .groupBy('month')
+            .orderBy('month', 'asc');
+        // ── Average Meeting Duration ──
+        const durationStats = await (0, db_1.default)('meetings')
+            .where({ organization_id: orgId, status: 'ended' })
+            .whereNotNull('actual_start')
+            .whereNotNull('actual_end')
+            .select(db_1.default.raw(`
+          AVG(EXTRACT(EPOCH FROM (actual_end::timestamp - actual_start::timestamp)) / 60) as avg_minutes,
+          MAX(EXTRACT(EPOCH FROM (actual_end::timestamp - actual_start::timestamp)) / 60) as max_minutes,
+          MIN(EXTRACT(EPOCH FROM (actual_end::timestamp - actual_start::timestamp)) / 60) as min_minutes
+        `))
+            .first();
+        // ── Average Attendance ──
+        const attendanceStats = await (0, db_1.default)('meeting_attendance')
+            .join('meetings', 'meeting_attendance.meeting_id', 'meetings.id')
+            .where({ 'meetings.organization_id': orgId, 'meetings.status': 'ended' })
+            .select(db_1.default.raw(`
+          COUNT(DISTINCT meeting_attendance.meeting_id) as total_meetings,
+          COUNT(meeting_attendance.id) as total_attendance
+        `))
+            .first();
+        const avgAttendance = attendanceStats?.total_meetings > 0
+            ? Math.round(attendanceStats.total_attendance / attendanceStats.total_meetings)
+            : 0;
+        // ── Decisions & Action Items ──
+        const decisionsCount = await (0, db_1.default)('meeting_minutes')
+            .join('meetings', 'meeting_minutes.meeting_id', 'meetings.id')
+            .where({ 'meetings.organization_id': orgId, 'meeting_minutes.status': 'completed' })
+            .select(db_1.default.raw(`
+          SUM(COALESCE(jsonb_array_length(decisions), 0)) as total_decisions
+        `))
+            .first();
+        const actionItemsCount = await (0, db_1.default)('meeting_minutes')
+            .join('meetings', 'meeting_minutes.meeting_id', 'meetings.id')
+            .where({ 'meetings.organization_id': orgId, 'meeting_minutes.status': 'completed' })
+            .select(db_1.default.raw(`
+          SUM(COALESCE(jsonb_array_length(action_items), 0)) as total_action_items
+        `))
+            .first();
+        // ── Action Items by Priority ──
+        const actionItemsByPriority = await (0, db_1.default)('meeting_minutes')
+            .join('meetings', 'meeting_minutes.meeting_id', 'meetings.id')
+            .where({ 'meetings.organization_id': orgId, 'meeting_minutes.status': 'completed' })
+            .select(db_1.default.raw(`
+          COALESCE(jsonb_array_elements(action_items) ->> 'priority', 'medium') as priority,
+          COUNT(*) as count
+        `))
+            .groupBy('priority');
+        const priorityCounts = {
+            critical: 0,
+            high: 0,
+            medium: 0,
+            low: 0,
+        };
+        actionItemsByPriority.forEach((row) => {
+            const priority = row.priority?.toLowerCase() || 'medium';
+            if (priority in priorityCounts) {
+                priorityCounts[priority] = parseInt(row.count) || 0;
+            }
+        });
+        const motionsCount = await (0, db_1.default)('meeting_minutes')
+            .join('meetings', 'meeting_minutes.meeting_id', 'meetings.id')
+            .where({ 'meetings.organization_id': orgId, 'meeting_minutes.status': 'completed' })
+            .select(db_1.default.raw(`
+          SUM(COALESCE(jsonb_array_length(motions), 0)) as total_motions
+        `))
+            .first();
+        // ── Top Contributors (by speaking time) ──
+        const topContributors = await (0, db_1.default)('meeting_minutes')
+            .join('meetings', 'meeting_minutes.meeting_id', 'meetings.id')
+            .where({ 'meetings.organization_id': orgId, 'meeting_minutes.status': 'completed' })
+            .select(db_1.default.raw(`
+          jsonb_array_elements(contributions) -> 'userName' as contributor_name,
+          SUM((jsonb_array_elements(contributions) -> 'speakingTimeSeconds')::int) as total_speaking_seconds
+        `))
+            .groupBy('contributor_name')
+            .orderBy('total_speaking_seconds', 'desc')
+            .limit(10);
+        // ── Recent Insights (Last 30 days) ──
+        const recentMetrics = await (0, db_1.default)('meetings')
+            .where({ organization_id: orgId, status: 'ended' })
+            .where('actual_end', '>=', lastThirtyDays)
+            .count('id as meetings_last_30_days')
+            .first();
+        const recentMinutes = await (0, db_1.default)('meeting_minutes')
+            .join('meetings', 'meeting_minutes.meeting_id', 'meetings.id')
+            .where({ 'meetings.organization_id': orgId, 'meeting_minutes.status': 'completed' })
+            .where('meeting_minutes.generated_at', '>=', lastThirtyDays)
+            .count('meeting_minutes.id as minutes_last_30_days')
+            .first();
+        // ── AI Minutes Trend (Last 6 months) ──
+        const minutesTrend = await (0, db_1.default)('meeting_minutes')
+            .join('meetings', 'meeting_minutes.meeting_id', 'meetings.id')
+            .where({ 'meetings.organization_id': orgId, 'meeting_minutes.status': 'completed' })
+            .where('meeting_minutes.generated_at', '>=', lastSixMonths)
+            .select(db_1.default.raw("DATE_TRUNC('month', meeting_minutes.generated_at) as month"))
+            .count('meeting_minutes.id as count')
+            .sum('meeting_minutes.ai_credits_used as credits_used')
+            .groupBy('month')
+            .orderBy('month', 'asc');
+        res.json({
+            success: true,
+            data: {
+                overview: {
+                    totalMeetings: parseInt(totalMeetings?.count) || 0,
+                    meetingsWithAI: parseInt(meetingsWithAI?.count) || 0,
+                    minutesGenerated: parseInt(minutesGenerated?.count) || 0,
+                    totalAiCreditsUsed: parseFloat(totalAiCreditsUsed?.total || '0'),
+                    avgAttendance,
+                    avgDuration: parseFloat(durationStats?.avg_minutes || '0').toFixed(1),
+                    maxDuration: parseFloat(durationStats?.max_minutes || '0').toFixed(1),
+                    minDuration: parseFloat(durationStats?.min_minutes || '0').toFixed(1),
+                },
+                decisions: {
+                    totalDecisions: parseInt(decisionsCount?.total_decisions || '0'),
+                    totalActionItems: parseInt(actionItemsCount?.total_action_items || '0'),
+                    actionItemsByPriority: priorityCounts,
+                    totalMotions: parseInt(motionsCount?.total_motions || '0'),
+                    avgDecisionsPerMeeting: minutesGenerated?.count
+                        ? (parseInt(decisionsCount?.total_decisions || '0') / parseInt(String(minutesGenerated.count))).toFixed(1)
+                        : '0',
+                    avgActionItemsPerMeeting: minutesGenerated?.count
+                        ? (parseInt(actionItemsCount?.total_action_items || '0') / parseInt(String(minutesGenerated.count))).toFixed(1)
+                        : '0',
+                },
+                contributors: topContributors.map((c) => ({
+                    name: c.contributor_name?.replace(/"/g, '') || 'Unknown',
+                    speakingTimeMinutes: Math.round(parseInt(c.total_speaking_seconds || '0') / 60),
+                })),
+                trends: {
+                    meetingFrequency: meetingFrequency.map((m) => ({
+                        month: new Date(m.month).toISOString().slice(0, 7), // YYYY-MM format
+                        count: parseInt(m.count),
+                    })),
+                    minutesTrend: minutesTrend.map((m) => ({
+                        month: new Date(m.month).toISOString().slice(0, 7),
+                        count: parseInt(m.count),
+                        creditsUsed: parseFloat(m.credits_used || '0'),
+                    })),
+                },
+                recent: {
+                    meetingsLast30Days: parseInt(recentMetrics?.meetings_last_30_days) || 0,
+                    minutesLast30Days: parseInt(recentMinutes?.minutes_last_30_days) || 0,
+                },
+            },
+        });
+    }
+    catch (err) {
+        console.error('Meeting insights error:', err);
+        res.status(500).json({ success: false, error: 'Failed to load meeting insights' });
+    }
+});
 exports.default = router;
 //# sourceMappingURL=analytics.js.map

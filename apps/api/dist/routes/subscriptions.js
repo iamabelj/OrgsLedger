@@ -420,15 +420,15 @@ router.get('/admin/revenue', middleware_1.authenticate, (0, middleware_1.require
         // Separate USD / NGN sums
         const subRevenueUsd = byPlan.filter((r) => r.currency === 'USD').reduce((s, r) => s + parseFloat(r.revenue || 0), 0);
         const subRevenueNgn = byPlan.filter((r) => r.currency === 'NGN').reduce((s, r) => s + parseFloat(r.revenue || 0), 0);
-        const aiTxUsd = await (0, db_1.default)('ai_wallet_transactions').where({ type: 'topup', currency: 'USD' }).select(db_1.default.raw('COALESCE(SUM(cost),0) as total')).first();
-        const aiTxNgn = await (0, db_1.default)('ai_wallet_transactions').where({ type: 'topup', currency: 'NGN' }).select(db_1.default.raw('COALESCE(SUM(cost),0) as total')).first();
-        const transTxUsd = await (0, db_1.default)('translation_wallet_transactions').where({ type: 'topup', currency: 'USD' }).select(db_1.default.raw('COALESCE(SUM(cost),0) as total')).first();
-        const transTxNgn = await (0, db_1.default)('translation_wallet_transactions').where({ type: 'topup', currency: 'NGN' }).select(db_1.default.raw('COALESCE(SUM(cost),0) as total')).first();
+        const aiTxUsd = await (0, db_1.default)('wallet_transactions').where({ type: 'topup', service_type: 'ai', currency: 'USD' }).select(db_1.default.raw('COALESCE(SUM(cost),0) as total')).first();
+        const aiTxNgn = await (0, db_1.default)('wallet_transactions').where({ type: 'topup', service_type: 'ai', currency: 'NGN' }).select(db_1.default.raw('COALESCE(SUM(cost),0) as total')).first();
+        const transTxUsd = await (0, db_1.default)('wallet_transactions').where({ type: 'topup', service_type: 'translation', currency: 'USD' }).select(db_1.default.raw('COALESCE(SUM(cost),0) as total')).first();
+        const transTxNgn = await (0, db_1.default)('wallet_transactions').where({ type: 'topup', service_type: 'translation', currency: 'NGN' }).select(db_1.default.raw('COALESCE(SUM(cost),0) as total')).first();
         const walletRevenueUsd = parseFloat(aiTxUsd?.total || 0) + parseFloat(transTxUsd?.total || 0);
         const walletRevenueNgn = parseFloat(aiTxNgn?.total || 0) + parseFloat(transTxNgn?.total || 0);
         // Total AI usage hours across all orgs
-        const aiUsage = await (0, db_1.default)('ai_wallet_transactions').where('amount_minutes', '<', 0).select(db_1.default.raw('COALESCE(SUM(ABS(amount_minutes)),0) as total')).first();
-        const transUsage = await (0, db_1.default)('translation_wallet_transactions').where('amount_minutes', '<', 0).select(db_1.default.raw('COALESCE(SUM(ABS(amount_minutes)),0) as total')).first();
+        const aiUsage = await (0, db_1.default)('wallet_transactions').where({ service_type: 'ai' }).where('amount_minutes', '<', 0).select(db_1.default.raw('COALESCE(SUM(ABS(amount_minutes)),0) as total')).first();
+        const transUsage = await (0, db_1.default)('wallet_transactions').where({ service_type: 'translation' }).where('amount_minutes', '<', 0).select(db_1.default.raw('COALESCE(SUM(ABS(amount_minutes)),0) as total')).first();
         // Flatten response to match dashboard expectations
         res.json({
             success: true,
@@ -794,17 +794,21 @@ router.post('/admin/subscription/override', middleware_1.authenticate, (0, middl
 router.get('/admin/wallet-analytics', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (_req, res) => {
     try {
         // AI wallet totals
-        const aiStats = await (0, db_1.default)('ai_wallet')
+        const aiStats = await (0, db_1.default)('wallet')
+            .where({ service_type: 'ai' })
             .select(db_1.default.raw('SUM(balance_minutes) as total_balance'), db_1.default.raw('COUNT(*) as wallet_count'))
             .first();
-        const aiTxStats = await (0, db_1.default)('ai_wallet_transactions')
+        const aiTxStats = await (0, db_1.default)('wallet_transactions')
+            .where({ service_type: 'ai' })
             .select(db_1.default.raw("SUM(CASE WHEN amount_minutes > 0 THEN amount_minutes ELSE 0 END) as total_added"), db_1.default.raw("SUM(CASE WHEN amount_minutes < 0 THEN ABS(amount_minutes) ELSE 0 END) as total_used"))
             .first();
         // Translation wallet totals
-        const transStats = await (0, db_1.default)('translation_wallet')
+        const transStats = await (0, db_1.default)('wallet')
+            .where({ service_type: 'translation' })
             .select(db_1.default.raw('SUM(balance_minutes) as total_balance'), db_1.default.raw('COUNT(*) as wallet_count'))
             .first();
-        const transTxStats = await (0, db_1.default)('translation_wallet_transactions')
+        const transTxStats = await (0, db_1.default)('wallet_transactions')
+            .where({ service_type: 'translation' })
             .select(db_1.default.raw("SUM(CASE WHEN amount_minutes > 0 THEN amount_minutes ELSE 0 END) as total_added"), db_1.default.raw("SUM(CASE WHEN amount_minutes < 0 THEN ABS(amount_minutes) ELSE 0 END) as total_used"))
             .first();
         // Per-org wallet data (dashboard shows per-org table)

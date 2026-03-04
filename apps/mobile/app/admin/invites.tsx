@@ -145,7 +145,7 @@ export default function InvitesScreen() {
             {inv.is_active && (
               <View style={s.actions}>
                 <TouchableOpacity style={s.actionBtn} onPress={() => shareInvite(inv.code)}>
-                  <Ionicons name="share-outline" size={14} color={Colors.highlight} />
+                  <Ionicons name="share-outline" size={14} color={Colors.info} />
                   <Text style={s.actionTxt}>Share</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[s.actionBtn, { borderColor: Colors.error }]} onPress={() => deactivateInvite(inv.id)}>
@@ -182,6 +182,6 @@ const s = StyleSheet.create({
   statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 },
   statusTxt: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold as any },
   actions: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm },
-  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: Colors.highlight },
-  actionTxt: { fontSize: FontSize.xs, color: Colors.highlight, fontWeight: FontWeight.medium as any },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: Colors.info },
+  actionTxt: { fontSize: FontSize.xs, color: Colors.info, fontWeight: FontWeight.medium as any },
 });

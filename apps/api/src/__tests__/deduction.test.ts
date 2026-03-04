@@ -186,7 +186,7 @@ describe('Wallet Deduction Algorithm', () => {
           chain.fn = { now: jest.fn().mockReturnValue('NOW()') };
           chain.raw = jest.fn((...args: any[]) => args);
           chain.first.mockResolvedValue({ organization_id: 'org-1', balance_minutes: '120.00' });
-          if (table === 'ai_wallet_transactions') {
+          if (table === 'wallet_transactions') {
             chain.insert = jest.fn((data: any) => {
               insertedData = data;
               return chain;
@@ -220,7 +220,7 @@ describe('Wallet Deduction Algorithm', () => {
           chain.fn = { now: jest.fn().mockReturnValue('NOW()') };
           chain.raw = jest.fn((...args: any[]) => args);
           chain.first.mockResolvedValue({ organization_id: 'org-1', balance_minutes: '120.00' });
-          if (table === 'ai_wallet_transactions') {
+          if (table === 'wallet_transactions') {
             chain.insert = jest.fn((data: any) => {
               insertedData = data;
               return chain;

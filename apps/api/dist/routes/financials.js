@@ -14,6 +14,7 @@ const middleware_1 = require("../middleware");
 const logger_1 = require("../logger");
 const socket_1 = require("../socket");
 const push_service_1 = require("../services/push.service");
+const email_service_1 = require("../services/email.service");
 const router = (0, express_1.Router)();
 // ── Schemas ─────────────────────────────────────────────────
 const createDueSchema = zod_1.z.object({
@@ -310,6 +311,24 @@ router.post('/:orgId/fines', middleware_1.authenticate, middleware_1.loadMembers
             body: `You have been fined ${data.currency} ${data.amount}: ${data.reason}`,
             data: { fineId: fine.id, type: 'fine' },
         }).catch(err => logger_1.logger.warn('Push notification failed (fine issued)', err));
+        // Send fine issued email (best-effort, non-blocking)
+        try {
+            const user = await (0, db_1.default)('users').where({ id: data.userId }).select('email').first();
+            if (user?.email) {
+                const org = await (0, db_1.default)('organizations')
+                    .where({ id: req.params.orgId })
+                    .select('settings')
+                    .first();
+                const settings = typeof org?.settings === 'string' ? JSON.parse(org.settings) : org?.settings;
+                if (settings?.notifications?.emailNotifications !== false) {
+                    await (0, email_service_1.sendFineIssuedEmail)(data.reason, data.amount, data.currency, user.email)
+                        .catch((err) => logger_1.logger.warn('Failed to send fine issued email', err));
+                }
+            }
+        }
+        catch (emailErr) {
+            logger_1.logger.warn('Fine issued email error (non-blocking)', emailErr);
+        }
         await req.audit?.({
             organizationId: req.params.orgId,
             action: 'create',

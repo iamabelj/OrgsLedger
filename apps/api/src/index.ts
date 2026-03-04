@@ -20,6 +20,7 @@ import { requestLogger } from './middleware/request-logger';
 import { globalErrorHandler } from './middleware/error-handler';
 import { idempotencyMiddleware } from './middleware/idempotency';
 import { etagMiddleware } from './middleware/etag';
+import { sessionExpiry } from './middleware/session-expiry';
 import { mountLandingGateway, mountWebFrontend, mountSpaFallback } from './middleware/landing-gateway';
 import { setupSocketIO, meetingLanguages } from './socket';
 import { AIService } from './services/ai.service';
@@ -323,6 +324,7 @@ const authLimiter = rateLimit({
 const authPayloadLimit = express.json({ limit: '16kb' });
 
 // ── API Routes ────────────────────────────────────────────
+app.use('/api/auth', authLimiter, authPayloadLimit);
 app.use('/api/auth/login', authLimiter, authPayloadLimit);
 app.use('/api/auth/register', authLimiter, authPayloadLimit);
 app.use('/api/auth/forgot-password', authLimiter, authPayloadLimit);
@@ -334,6 +336,10 @@ app.use('/api/auth/refresh', rateLimit({
   legacyHeaders: false,
   message: { success: false, error: 'Too many requests, please try again later' },
 }));
+
+// ── Session Expiry Middleware ──
+// Validates platform-specific session lifetimes (applies to all authenticated endpoints)
+app.use('/api', sessionExpiry);
 
 // ── Webhook Rate Limiting ──
 const webhookLimiter = rateLimit({

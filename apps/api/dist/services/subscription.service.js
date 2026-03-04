@@ -7,6 +7,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.supportsDigitalSignatures = supportsDigitalSignatures;
+exports.getLatestPlanSlugForOrg = getLatestPlanSlugForOrg;
 exports.isNigeria = isNigeria;
 exports.getCurrency = getCurrency;
 exports.getPlans = getPlans;
@@ -38,6 +40,82 @@ const logger_1 = require("../logger");
 const audit_1 = require("../middleware/audit");
 const validators_1 = require("../utils/validators");
 const crypto_1 = __importDefault(require("crypto"));
+const FREE_TIER_MAX_MEMBERS = 5;
+const INCLUDED_AI_HOURS_BY_PLAN = {
+    starter: 4,
+    standard: 10,
+    professional: 30,
+    enterprise: 150,
+    enterprise_pro: 150,
+};
+// Plans that support digital meeting signatures (Professional+)
+const SIGNATURE_ENABLED_PLANS = ['professional', 'enterprise', 'enterprise_pro'];
+function getIncludedAiMinutesForPlanSlug(slug) {
+    if (!slug)
+        return 0;
+    const hours = INCLUDED_AI_HOURS_BY_PLAN[slug.toLowerCase()] ?? 0;
+    return hours * 60;
+}
+function supportsDigitalSignatures(planSlug) {
+    if (!planSlug)
+        return false;
+    return SIGNATURE_ENABLED_PLANS.includes(planSlug.toLowerCase());
+}
+async function getLatestPlanSlugForOrg(orgId) {
+    const subQuery = (0, db_1.default)('subscriptions').where({ organization_id: orgId });
+    const sub = typeof subQuery.orderBy === 'function'
+        ? await subQuery.orderBy('created_at', 'desc').first()
+        : await subQuery.first();
+    if (!sub?.plan_id)
+        return null;
+    const plan = await (0, db_1.default)('subscription_plans')
+        .where({ id: sub.plan_id })
+        .select('slug')
+        .first();
+    return plan?.slug || null;
+}
+async function applyIncludedAiMinutesTx(trx, params) {
+    if (!params.minutes || params.minutes <= 0)
+        return;
+    let wallet = await trx('wallet')
+        .where({ organization_id: params.orgId, service_type: 'ai' })
+        .forUpdate()
+        .first();
+    if (!wallet) {
+        const [created] = await trx('wallet')
+            .insert({
+            organization_id: params.orgId,
+            service_type: 'ai',
+            balance_minutes: 0,
+            currency: params.currency || 'USD',
+            price_per_hour_usd: 10.00,
+            price_per_hour_ngn: 18000.00,
+        })
+            .returning('*');
+        wallet = created;
+    }
+    const balanceBefore = parseFloat(wallet.balance_minutes || '0');
+    const balanceAfter = balanceBefore + params.minutes;
+    const txCurrency = params.currency || wallet.currency || 'USD';
+    await trx('wallet')
+        .where({ organization_id: params.orgId, service_type: 'ai' })
+        .update({
+        balance_minutes: trx.raw('balance_minutes + ?', [params.minutes]),
+        total_topped_up: trx.raw('COALESCE(total_topped_up, 0) + ?', [params.minutes]),
+        updated_at: trx.fn.now(),
+    });
+    await trx('wallet_transactions').insert({
+        wallet_id: wallet.id,
+        organization_id: params.orgId,
+        service_type: 'ai',
+        type: 'bonus',
+        amount_minutes: params.minutes,
+        balance_after: balanceAfter,
+        cost: 0,
+        currency: txCurrency,
+        description: params.description,
+    });
+}
 // ── Currency Helpers ──────────────────────────────────────
 function isNigeria(country) {
     if (!country)
@@ -75,7 +153,7 @@ function getPlanPrice(plan, currency, cycle = 'annual') {
 // ── Member Limit Check ────────────────────────────────────
 async function checkMemberLimit(orgId) {
     const sub = await getOrgSubscription(orgId);
-    const maxMembers = sub?.plan?.max_members || 100;
+    const maxMembers = sub?.plan?.max_members || FREE_TIER_MAX_MEMBERS;
     const countResult = await (0, db_1.default)('memberships')
         .where({ organization_id: orgId, is_active: true })
         .count('id as count')
@@ -118,6 +196,10 @@ async function getOrgSubscription(orgId) {
 async function createSubscription(params) {
     const initialStatus = params.status || 'active';
     const safeCreatedBy = (0, validators_1.isUUID)(params.createdBy) ? params.createdBy : null;
+    const plan = await getPlanById(params.planId);
+    const includedAiMinutes = initialStatus === 'active'
+        ? getIncludedAiMinutesForPlanSlug(plan?.slug)
+        : 0;
     const now = new Date();
     const periodEnd = new Date(now);
     if (params.billingCycle === 'monthly') {
@@ -164,6 +246,14 @@ async function createSubscription(params) {
             action: 'created',
             metadata: JSON.stringify({ planId: params.planId, amountPaid: params.amountPaid, cycle: params.billingCycle }),
         });
+        if (includedAiMinutes > 0) {
+            await applyIncludedAiMinutesTx(trx, {
+                orgId: params.organizationId,
+                minutes: includedAiMinutes,
+                currency: params.currency,
+                description: `Plan included AI credits (${(includedAiMinutes / 60).toFixed(0)}h) - ${plan?.slug || 'plan'} ${params.billingCycle}`,
+            });
+        }
         return newSub;
     });
     logger_1.logger.info('[SUB] Subscription created', {
@@ -193,6 +283,8 @@ async function renewSubscription(orgId, amountPaid, paymentRef) {
         .first();
     if (!sub)
         throw new Error('No subscription to renew');
+    const renewalPlan = await (0, db_1.default)('subscription_plans').where({ id: sub.plan_id }).select('slug').first();
+    const includedAiMinutes = getIncludedAiMinutesForPlanSlug(renewalPlan?.slug);
     const now = new Date();
     const base = new Date(sub.current_period_end) > now ? new Date(sub.current_period_end) : now;
     const newEnd = new Date(base);
@@ -222,6 +314,14 @@ async function renewSubscription(orgId, amountPaid, paymentRef) {
             action: 'renewed',
             metadata: JSON.stringify({ amountPaid, paymentRef }),
         });
+        if (includedAiMinutes > 0) {
+            await applyIncludedAiMinutesTx(trx, {
+                orgId,
+                minutes: includedAiMinutes,
+                currency: sub.currency,
+                description: `Plan included AI credits (${(includedAiMinutes / 60).toFixed(0)}h) - ${renewalPlan?.slug || 'plan'} renewal`,
+            });
+        }
     });
     await (0, audit_1.writeAuditLog)({
         organizationId: orgId,
@@ -235,47 +335,70 @@ async function renewSubscription(orgId, amountPaid, paymentRef) {
     return (0, db_1.default)('subscriptions').where({ id: sub.id }).first();
 }
 // ── Wallets ───────────────────────────────────────────────
-async function getAiWallet(orgId) {
-    let wallet = await (0, db_1.default)('ai_wallet').where({ organization_id: orgId }).first();
+// Unified wallet getter (internal)
+async function getWallet(orgId, serviceType) {
+    let wallet = await (0, db_1.default)('wallet')
+        .where({ organization_id: orgId, service_type: serviceType })
+        .first();
     if (!wallet) {
         // Use org's billing currency instead of hardcoded USD
         const org = await (0, db_1.default)('organizations').where({ id: orgId }).select('billing_currency').first();
         const currency = org?.billing_currency || 'USD';
-        // Default 60 minutes so new orgs can use AI minutes out of the box
-        [wallet] = await (0, db_1.default)('ai_wallet').insert({ organization_id: orgId, balance_minutes: 60, currency }).returning('*');
+        if (serviceType === 'ai') {
+            const planSlug = await getLatestPlanSlugForOrg(orgId);
+            const includedAiMinutes = getIncludedAiMinutesForPlanSlug(planSlug);
+            [wallet] = await (0, db_1.default)('wallet').insert({
+                organization_id: orgId,
+                service_type: 'ai',
+                balance_minutes: includedAiMinutes,
+                currency,
+                price_per_hour_usd: 10.00,
+                price_per_hour_ngn: 18000.00,
+            }).returning('*');
+        }
+        else {
+            // Default 60 minutes so new orgs can use live translation out of the box
+            [wallet] = await (0, db_1.default)('wallet').insert({
+                organization_id: orgId,
+                service_type: 'translation',
+                balance_minutes: 60,
+                currency,
+                price_per_hour_usd: 25.00,
+                price_per_hour_ngn: 45000.00,
+            }).returning('*');
+        }
     }
     return wallet;
 }
+async function getAiWallet(orgId) {
+    return getWallet(orgId, 'ai');
+}
 async function getTranslationWallet(orgId) {
-    let wallet = await (0, db_1.default)('translation_wallet').where({ organization_id: orgId }).first();
-    if (!wallet) {
-        // Use org's billing currency instead of hardcoded USD
-        const org = await (0, db_1.default)('organizations').where({ id: orgId }).select('billing_currency').first();
-        const currency = org?.billing_currency || 'USD';
-        // Default 60 minutes so new orgs can use live translation out of the box
-        [wallet] = await (0, db_1.default)('translation_wallet').insert({ organization_id: orgId, balance_minutes: 60, currency }).returning('*');
-    }
-    return wallet;
+    return getWallet(orgId, 'translation');
 }
 async function topUpAiWallet(params) {
     await db_1.default.transaction(async (trx) => {
         // Lock wallet row to prevent concurrent top-up race conditions
-        const wallet = await trx('ai_wallet').where({ organization_id: params.orgId }).forUpdate().first();
+        const wallet = await trx('wallet')
+            .where({ organization_id: params.orgId, service_type: 'ai' })
+            .forUpdate()
+            .first();
         if (!wallet) {
             throw new Error('AI wallet not found for top-up');
         }
         const balanceBefore = parseFloat(wallet.balance_minutes);
         const balanceAfter = balanceBefore + params.minutes;
-        await trx('ai_wallet')
-            .where({ organization_id: params.orgId })
+        await trx('wallet')
+            .where({ organization_id: params.orgId, service_type: 'ai' })
             .update({
             balance_minutes: trx.raw('balance_minutes + ?', [params.minutes]),
             total_topped_up: trx.raw('COALESCE(total_topped_up, 0) + ?', [params.minutes]),
             updated_at: trx.fn.now(),
         });
-        await trx('ai_wallet_transactions').insert({
+        await trx('wallet_transactions').insert({
             wallet_id: wallet.id,
             organization_id: params.orgId,
+            service_type: 'ai',
             type: 'topup',
             amount_minutes: params.minutes,
             balance_after: balanceAfter,
@@ -307,22 +430,26 @@ async function topUpAiWallet(params) {
 async function topUpTranslationWallet(params) {
     await db_1.default.transaction(async (trx) => {
         // Lock wallet row to prevent concurrent top-up race conditions
-        const wallet = await trx('translation_wallet').where({ organization_id: params.orgId }).forUpdate().first();
+        const wallet = await trx('wallet')
+            .where({ organization_id: params.orgId, service_type: 'translation' })
+            .forUpdate()
+            .first();
         if (!wallet) {
             throw new Error('Translation wallet not found for top-up');
         }
         const balanceBefore = parseFloat(wallet.balance_minutes);
         const balanceAfter = balanceBefore + params.minutes;
-        await trx('translation_wallet')
-            .where({ organization_id: params.orgId })
+        await trx('wallet')
+            .where({ organization_id: params.orgId, service_type: 'translation' })
             .update({
             balance_minutes: trx.raw('balance_minutes + ?', [params.minutes]),
             total_topped_up: trx.raw('COALESCE(total_topped_up, 0) + ?', [params.minutes]),
             updated_at: trx.fn.now(),
         });
-        await trx('translation_wallet_transactions').insert({
+        await trx('wallet_transactions').insert({
             wallet_id: wallet.id,
             organization_id: params.orgId,
+            service_type: 'translation',
             type: 'topup',
             amount_minutes: params.minutes,
             balance_after: balanceAfter,
@@ -354,8 +481,8 @@ async function topUpTranslationWallet(params) {
 async function deductAiWallet(orgId, minutes, description) {
     const result = await db_1.default.transaction(async (trx) => {
         // Lock row to prevent concurrent deductions (TOCTOU race)
-        const wallet = await trx('ai_wallet')
-            .where({ organization_id: orgId })
+        const wallet = await trx('wallet')
+            .where({ organization_id: orgId, service_type: 'ai' })
             .forUpdate()
             .first();
         if (!wallet) {
@@ -367,15 +494,16 @@ async function deductAiWallet(orgId, minutes, description) {
             logger_1.logger.warn('[WALLET] AI deduction failed - insufficient balance', { orgId, requested: minutes, available: balanceBefore });
             return { success: false, error: 'Insufficient AI wallet balance' };
         }
-        await trx('ai_wallet')
-            .where({ organization_id: orgId })
+        await trx('wallet')
+            .where({ organization_id: orgId, service_type: 'ai' })
             .update({
             balance_minutes: trx.raw('balance_minutes - ?', [minutes]),
             updated_at: trx.fn.now(),
         });
-        await trx('ai_wallet_transactions').insert({
+        await trx('wallet_transactions').insert({
             wallet_id: wallet.id,
             organization_id: orgId,
+            service_type: 'ai',
             type: 'usage',
             amount_minutes: -minutes,
             balance_after: balanceBefore - minutes,
@@ -400,8 +528,8 @@ async function deductAiWallet(orgId, minutes, description) {
 async function deductTranslationWallet(orgId, minutes, description) {
     const result = await db_1.default.transaction(async (trx) => {
         // Lock row to prevent concurrent deductions (TOCTOU race)
-        const wallet = await trx('translation_wallet')
-            .where({ organization_id: orgId })
+        const wallet = await trx('wallet')
+            .where({ organization_id: orgId, service_type: 'translation' })
             .forUpdate()
             .first();
         if (!wallet) {
@@ -413,15 +541,16 @@ async function deductTranslationWallet(orgId, minutes, description) {
             logger_1.logger.warn('[WALLET] Translation deduction failed - insufficient balance', { orgId, requested: minutes, available: balanceBefore });
             return { success: false, error: 'Insufficient translation wallet balance' };
         }
-        await trx('translation_wallet')
-            .where({ organization_id: orgId })
+        await trx('wallet')
+            .where({ organization_id: orgId, service_type: 'translation' })
             .update({
             balance_minutes: trx.raw('balance_minutes - ?', [minutes]),
             updated_at: trx.fn.now(),
         });
-        await trx('translation_wallet_transactions').insert({
+        await trx('wallet_transactions').insert({
             wallet_id: wallet.id,
             organization_id: orgId,
+            service_type: 'translation',
             type: 'usage',
             amount_minutes: -minutes,
             balance_after: balanceBefore - minutes,
@@ -444,15 +573,15 @@ async function deductTranslationWallet(orgId, minutes, description) {
     return result;
 }
 async function getAiWalletHistory(orgId, limit = 50, offset = 0) {
-    return (0, db_1.default)('ai_wallet_transactions')
-        .where({ organization_id: orgId })
+    return (0, db_1.default)('wallet_transactions')
+        .where({ organization_id: orgId, service_type: 'ai' })
         .orderBy('created_at', 'desc')
         .limit(limit)
         .offset(offset);
 }
 async function getTranslationWalletHistory(orgId, limit = 50, offset = 0) {
-    return (0, db_1.default)('translation_wallet_transactions')
-        .where({ organization_id: orgId })
+    return (0, db_1.default)('wallet_transactions')
+        .where({ organization_id: orgId, service_type: 'translation' })
         .orderBy('created_at', 'desc')
         .limit(limit)
         .offset(offset);
@@ -530,10 +659,10 @@ async function useInviteLink(code, userId) {
             const sub = await trx('subscriptions')
                 .where({ organization_id: link.organization_id, status: 'active' })
                 .first();
-            let maxMembers = 15; // free tier default
+            let maxMembers = FREE_TIER_MAX_MEMBERS; // free tier default
             if (sub) {
                 const plan = await trx('subscription_plans').where({ id: sub.plan_id }).first();
-                maxMembers = plan?.max_members || 100;
+                maxMembers = plan?.max_members || FREE_TIER_MAX_MEMBERS;
             }
             const current = parseInt(String(memberCount?.count || 0));
             if (current >= maxMembers) {
@@ -580,18 +709,22 @@ async function completeUsageRecord(recordId, durationMinutes, cost, currency) {
 // ── Admin Adjustments ─────────────────────────────────────
 async function adminAdjustAiWallet(orgId, minutes, description) {
     await db_1.default.transaction(async (trx) => {
-        const wallet = await trx('ai_wallet').where({ organization_id: orgId }).forUpdate().first();
+        const wallet = await trx('wallet')
+            .where({ organization_id: orgId, service_type: 'ai' })
+            .forUpdate()
+            .first();
         const balanceBefore = parseFloat(wallet.balance_minutes);
         const balanceAfter = Math.max(balanceBefore + minutes, 0);
-        await trx('ai_wallet')
-            .where({ organization_id: orgId })
+        await trx('wallet')
+            .where({ organization_id: orgId, service_type: 'ai' })
             .update({
             balance_minutes: db_1.default.raw('GREATEST(balance_minutes + ?, 0)', [minutes]),
             updated_at: db_1.default.fn.now(),
         });
-        await trx('ai_wallet_transactions').insert({
+        await trx('wallet_transactions').insert({
             wallet_id: wallet.id,
             organization_id: orgId,
+            service_type: 'ai',
             type: 'admin_adjustment',
             amount_minutes: minutes,
             balance_after: balanceAfter,
@@ -602,18 +735,22 @@ async function adminAdjustAiWallet(orgId, minutes, description) {
 }
 async function adminAdjustTranslationWallet(orgId, minutes, description) {
     await db_1.default.transaction(async (trx) => {
-        const wallet = await trx('translation_wallet').where({ organization_id: orgId }).forUpdate().first();
+        const wallet = await trx('wallet')
+            .where({ organization_id: orgId, service_type: 'translation' })
+            .forUpdate()
+            .first();
         const balanceBefore = parseFloat(wallet.balance_minutes);
         const balanceAfter = Math.max(balanceBefore + minutes, 0);
-        await trx('translation_wallet')
-            .where({ organization_id: orgId })
+        await trx('wallet')
+            .where({ organization_id: orgId, service_type: 'translation' })
             .update({
             balance_minutes: db_1.default.raw('GREATEST(balance_minutes + ?, 0)', [minutes]),
             updated_at: db_1.default.fn.now(),
         });
-        await trx('translation_wallet_transactions').insert({
+        await trx('wallet_transactions').insert({
             wallet_id: wallet.id,
             organization_id: orgId,
+            service_type: 'translation',
             type: 'admin_adjustment',
             amount_minutes: minutes,
             balance_after: balanceAfter,
@@ -628,12 +765,12 @@ async function getPlatformRevenue() {
         .where('amount_paid', '>', 0)
         .select(db_1.default.raw('COUNT(*) as total_subscriptions'), db_1.default.raw('COALESCE(SUM(amount_paid), 0) as total_subscription_revenue'))
         .first();
-    const aiRevenue = await (0, db_1.default)('ai_wallet_transactions')
-        .where({ type: 'topup' })
+    const aiRevenue = await (0, db_1.default)('wallet_transactions')
+        .where({ type: 'topup', service_type: 'ai' })
         .select(db_1.default.raw('COUNT(*) as total_topups'), db_1.default.raw('COALESCE(SUM(cost), 0) as total_ai_revenue'))
         .first();
-    const translationRevenue = await (0, db_1.default)('translation_wallet_transactions')
-        .where({ type: 'topup' })
+    const translationRevenue = await (0, db_1.default)('wallet_transactions')
+        .where({ type: 'topup', service_type: 'translation' })
         .select(db_1.default.raw('COUNT(*) as total_topups'), db_1.default.raw('COALESCE(SUM(cost), 0) as total_translation_revenue'))
         .first();
     const activeSubs = await (0, db_1.default)('subscriptions').where({ status: 'active' }).count('* as count').first();

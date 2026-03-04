@@ -13,6 +13,8 @@ import {
   StyleSheet,
   Platform,
   useWindowDimensions,
+  TextInput,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../theme';
@@ -144,16 +146,40 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
   const [sidebarOpen, setSidebarOpen] = useState(!isNarrow);
   const [activePanel, setActivePanel] = useState<SidebarPanel>('participants');
 
+  // ── Language Selection ────────────────────────────────
+  const [selectedLanguage, setSelectedLanguage] = useState('en'); // Default English, updated on language selection
+  const [showLanguagePicker, setShowLanguagePicker] = useState(true); // Show on first join
+  const [hasChosenLanguage, setHasChosenLanguage] = useState(false);
+  const [langSearch, setLangSearch] = useState('');
+
   // ── Transcription State (uses LiveKit mic track — no extra getUserMedia) ──
   const [isTranscribing, setIsTranscribing] = useState(false);
   const recorderRef = useRef<any>(null);
   const transcriptionStreamRef = useRef<MediaStream | null>(null);
 
+  // ── Recording (local) ─────────────────────────────────
+  const [isRecording, setIsRecording] = useState(false);
+
   // ── Hand Raised ───────────────────────────────────────
   const [handRaised, setHandRaised] = useState(false);
 
-  // ── Recording (local) ─────────────────────────────────
-  const [isRecording, setIsRecording] = useState(false);
+  // ── Language Handler ───────────────────────────────────
+  // When user picks a language, save it locally, notify server, and set up translation
+  const handleSelectLanguage = useCallback((code: string) => {
+    setSelectedLanguage(code);
+    setShowLanguagePicker(false);
+    setHasChosenLanguage(true);
+    setLangSearch('');
+    // Notify server of language preference (enables translation routing)
+    socketClient.emit('translation:set-language', {
+      meetingId: gm.meetingId,
+      language: code,
+      receiveVoice: true, // Enable voice-to-voice by default
+    });
+  }, [gm.meetingId]);
+
+  // ── Toggle AI ─────────────────────────────────────────
+  const aiEnabled = gm.meeting?.ai_enabled ?? false;
 
   // ── Start/stop transcription using LiveKit's mic track ──
   // Streams audio via MediaRecorder → socketClient → server → Google STT.
@@ -186,8 +212,8 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
 
       const recorder = new MediaRecorder(stream, { mimeType });
 
-      // Tell server to start Google STT session
-      socketClient.startAudioStream(gm.meetingId!, 'en', 'WEBM_OPUS');
+      // Tell server to start Google STT session with the user's selected language
+      socketClient.startAudioStream(gm.meetingId!, selectedLanguage, 'WEBM_OPUS');
 
       recorder.ondataavailable = (e: any) => {
         if (e.data && e.data.size > 0) {
@@ -205,11 +231,11 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
       recorder.start(250);
       recorderRef.current = recorder;
       setIsTranscribing(true);
-      console.debug(`[TRANSCRIPTION] Started (using LiveKit mic track, mimeType=${mimeType})`);
+      console.debug(`[TRANSCRIPTION] Started (using LiveKit mic track, mimeType=${mimeType}, lang=${selectedLanguage})`);
     } catch (err: any) {
       console.warn('[TRANSCRIPTION] Failed to start:', err.message);
     }
-  }, [isTranscribing, lk.isConnected, lk.room, gm.meetingId]);
+  }, [isTranscribing, lk.isConnected, lk.room, gm.meetingId, selectedLanguage]);
 
   const stopTranscription = useCallback(() => {
     if (recorderRef.current) {
@@ -303,9 +329,6 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
       showAlert('Recording', 'Recording started');
     }
   }, [isRecording]);
-
-  // ── Toggle AI ─────────────────────────────────────────
-  const aiEnabled = gm.meeting?.ai_enabled ?? false;
 
   // ── Toggle Transcription ──────────────────────────────
   // Toggles transcription on/off (also flips ai_enabled on server)
@@ -610,7 +633,80 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
         onEnd={gm.isAdmin ? handleEnd : undefined}
         isTranscribing={isTranscribing}
         transcriptCount={gm.transcripts.length}
+        currentLanguage={selectedLanguage}
+        onOpenLanguagePick={() => setShowLanguagePicker(true)}
       />
+
+      {/* ═══ LANGUAGE PICKER OVERLAY ═════════════════════════ */}
+      {showLanguagePicker && (
+        <View style={styles.langPickerOverlay}>
+          <View style={styles.langPickerCard}>
+            <View style={styles.langPickerHeader}>
+              <Ionicons name="language" size={18} color={Colors.highlight} />
+              <Text style={styles.langPickerTitle}>Select Your Language</Text>
+              <TouchableOpacity onPress={() => { setShowLanguagePicker(false); setLangSearch(''); }}>
+                <Ionicons name="close" size={20} color={Colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.langSearchWrap}>
+              <Ionicons name="search" size={14} color={Colors.textLight} />
+              <TextInput
+                style={styles.langSearchInput}
+                placeholder="Search language..."
+                placeholderTextColor={Colors.textLight}
+                value={langSearch}
+                onChangeText={setLangSearch}
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+              {langSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setLangSearch('')}>
+                  <Ionicons name="close-circle" size={14} color={Colors.textLight} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <ScrollView style={styles.langList} keyboardShouldPersistTaps="handled">
+              {langSearch.length === 0 ? (
+                // Show popular languages
+                [
+                  { code: 'en', name: 'English', nativeName: 'English', flag: '🇺🇸' },
+                  { code: 'es', name: 'Spanish', nativeName: 'Español', flag: '🇪🇸' },
+                  { code: 'fr', name: 'French', nativeName: 'Français', flag: '🇫🇷' },
+                  { code: 'de', name: 'German', nativeName: 'Deutsch', flag: '🇩🇪' },
+                  { code: 'zh', name: 'Chinese (Mandarin)', nativeName: '中文', flag: '🇨🇳' },
+                  { code: 'ja', name: 'Japanese', nativeName: '日本語', flag: '🇯🇵' },
+                  { code: 'pt', name: 'Portuguese', nativeName: 'Português', flag: '🇧🇷' },
+                  { code: 'ru', name: 'Russian', nativeName: 'Русский', flag: '🇷🇺' },
+                  { code: 'it', name: 'Italian', nativeName: 'Italiano', flag: '🇮🇹' },
+                  { code: 'ko', name: 'Korean', nativeName: '한국어', flag: '🇰🇷' },
+                ].map((lang) => (
+                  <TouchableOpacity
+                    key={lang.code}
+                    style={[styles.langItem, selectedLanguage === lang.code && styles.langItemActive]}
+                    onPress={() => handleSelectLanguage(lang.code)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={{ fontSize: 18 }}>{lang.flag}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.langName, selectedLanguage === lang.code && { color: Colors.highlight }]}>
+                        {lang.name}
+                      </Text>
+                      {lang.nativeName !== lang.name && (
+                        <Text style={styles.langNative}>{lang.nativeName}</Text>
+                      )}
+                    </View>
+                    {selectedLanguage === lang.code && <Ionicons name="checkmark-circle" size={16} color={Colors.highlight} />}
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <Text style={styles.langNoResults}>Search all 100+ languages in meeting settings</Text>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -906,5 +1002,86 @@ const styles = StyleSheet.create({
     fontSize: FontSize.lg,
     fontWeight: FontWeight.bold,
     color: Colors.textWhite,
+  },
+
+  // Language picker
+  langPickerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(6, 13, 24, 0.7)',
+    zIndex: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+  },
+  langPickerCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.md,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '80%',
+    ...(Shadow.lg as any),
+  },
+  langPickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  langPickerTitle: {
+    flex: 1,
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.semibold,
+    color: Colors.textWhite,
+  },
+  langSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primaryLight,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    marginBottom: Spacing.sm,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  langSearchInput: {
+    flex: 1,
+    color: Colors.textWhite,
+    fontSize: FontSize.sm,
+    padding: 0,
+  },
+  langList: {
+    maxHeight: 400,
+  },
+  langNoResults: {
+    color: Colors.textLight,
+    fontSize: FontSize.xs,
+    textAlign: 'center',
+    paddingVertical: Spacing.md,
+  },
+  langItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.xs + 2,
+    paddingHorizontal: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+  },
+  langItemActive: {
+    backgroundColor: Colors.highlightSubtle,
+  },
+  langName: {
+    color: Colors.textWhite,
+    fontSize: FontSize.sm,
+  },
+  langNative: {
+    color: Colors.textLight,
+    fontSize: 10,
   },
 });

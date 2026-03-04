@@ -205,6 +205,7 @@ export interface IActionItem {
   assigneeId?: string;
   assigneeName?: string;
   dueDate?: Date;
+  priority?: 'critical' | 'high' | 'medium' | 'low';
   status: 'pending' | 'in_progress' | 'completed';
 }
 
@@ -213,6 +214,67 @@ export interface IContribution {
   userName: string;
   speakingTimeSeconds: number;
   keyPoints: string[];
+}
+
+// ── Digital Signatures (Professional+ only) ─────────────────
+export interface ISignature {
+  id: string;
+  meetingId: string;
+  organizationId: string;
+  signedByUserId: string;
+  signedByName: string;
+  signedByEmail?: string;
+  signatureHash: string;
+  signatureData?: string; // base64 encoded
+  metadata?: Record<string, any>;
+  signedAt: Date;
+  createdAt: Date;
+}
+
+// ── Meeting Insights Dashboard ──────────────────────────────
+export interface IMeetingInsights {
+  overview: {
+    totalMeetings: number;
+    meetingsWithAI: number;
+    minutesGenerated: number;
+    totalAiCreditsUsed: number;
+    avgAttendance: number;
+    avgDuration: string;
+    maxDuration: string;
+    minDuration: string;
+  };
+  decisions: {
+    totalDecisions: number;
+    totalActionItems: number;
+    actionItemsByPriority: {
+      critical: number;
+      high: number;
+      medium: number;
+      low: number;
+    };
+    totalMotions: number;
+    avgDecisionsPerMeeting: string;
+    avgActionItemsPerMeeting: string;
+  };
+  contributors: Array<{
+    name: string;
+    speakingTimeMinutes: number;
+  }>;
+  trends: {
+    meetingFrequency: Array<{
+      month: string;
+      count: number;
+    }>;
+    minutesTrend: Array<{
+      month: string;
+      count: number;
+      creditsUsed: number;
+    }>;
+  };
+  recent: {
+    meetingsLast30Days: number;
+    minutesLast30Days: number;
+  };
 }
 
 // ── Financial ───────────────────────────────────────────────

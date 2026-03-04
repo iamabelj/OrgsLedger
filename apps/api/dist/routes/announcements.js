@@ -12,6 +12,7 @@ const db_1 = __importDefault(require("../db"));
 const middleware_1 = require("../middleware");
 const logger_1 = require("../logger");
 const push_service_1 = require("../services/push.service");
+const email_service_1 = require("../services/email.service");
 const router = (0, express_1.Router)();
 // ── Schemas ─────────────────────────────────────────────────
 const createAnnouncementSchema = zod_1.z.object({
@@ -60,6 +61,25 @@ router.post('/:orgId', middleware_1.authenticate, middleware_1.loadMembershipAnd
                 body: body.substring(0, 200),
                 data: { announcementId: announcement.id, type: 'announcement' },
             }, req.user.userId).catch(err => logger_1.logger.warn('Push notification failed (announcement)', err));
+            // Send announcement email (best-effort, non-blocking)
+            try {
+                const users = await (0, db_1.default)('users').whereIn('id', members).select('email');
+                const emails = users.map((u) => u.email).filter(Boolean);
+                if (emails.length > 0) {
+                    const org = await (0, db_1.default)('organizations')
+                        .where({ id: req.params.orgId })
+                        .select('settings')
+                        .first();
+                    const settings = typeof org?.settings === 'string' ? JSON.parse(org.settings) : org?.settings;
+                    if (settings?.notifications?.emailNotifications !== false) {
+                        await (0, email_service_1.sendAnnouncementEmail)(title, body, priority, emails)
+                            .catch((err) => logger_1.logger.warn('Failed to send announcement email', err));
+                    }
+                }
+            }
+            catch (emailErr) {
+                logger_1.logger.warn('Announcement email error (non-blocking)', emailErr);
+            }
         }
         res.status(201).json({ success: true, data: announcement });
     }

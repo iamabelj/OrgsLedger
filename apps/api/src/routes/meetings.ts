@@ -12,6 +12,7 @@ import db from '../db';
 import { authenticate, loadMembership, requireRole, validate } from '../middleware';
 import { logger } from '../logger';
 import { sendPushToOrg } from '../services/push.service';
+import { sendMeetingStartedEmail } from '../services/email.service';
 import { config } from '../config';
 import { translateText, LANGUAGES, SPEECH_CODES, ALL_LANGUAGES } from '../services/translation.service';
 import { getAiWallet, getOrgSubscription } from '../services/subscription.service';
@@ -778,6 +779,32 @@ router.post(
         io.to(`meeting:${req.params.meetingId}`).emit('meeting:started', payload);
       }
 
+      // Send meeting started email to attendees (best-effort, non-blocking)
+      try {
+        const attendees = await db('meeting_attendance')
+          .where({ meeting_id: req.params.meetingId })
+          .select('user_id');
+        const attendeeIds = attendees.map((a: any) => a.user_id);
+        if (attendeeIds.length > 0) {
+          const users = await db('users').whereIn('id', attendeeIds).select('email');
+          const emails = users.map((u: any) => u.email).filter(Boolean);
+          if (emails.length > 0) {
+            // Check org notification settings
+            const org = await db('organizations')
+              .where({ id: req.params.orgId })
+              .select('settings')
+              .first();
+            const settings = typeof org?.settings === 'string' ? JSON.parse(org.settings) : org?.settings;
+            if (settings?.notifications?.meetingReminders !== false) {
+              await sendMeetingStartedEmail(meeting.title, emails)
+                .catch((err) => logger.warn('Failed to send meeting started email', err));
+            }
+          }
+        }
+      } catch (emailErr) {
+        logger.warn('Meeting started email error (non-blocking)', emailErr);
+      }
+
       // Start transcription bot (best-effort, don't block response)
       try {
         const botManager = getBotManager();
@@ -1224,7 +1251,9 @@ router.post(
           return res.status(403).json({ success: false, error: 'You are not a member of this organization' });
         }
 
-        const wallet = await db('translation_wallet').where({ organization_id: organizationId }).first();
+        const wallet = await db('wallet')
+          .where({ organization_id: organizationId, service_type: 'translation' })
+          .first();
         if (wallet && parseFloat(wallet.balance_minutes) <= 0) {
           return res.status(402).json({ success: false, error: 'Translation wallet balance is zero. Please contact your administrator.' });
         }
@@ -1241,6 +1270,7 @@ router.post(
 
 // ── Get Meeting Transcripts ─────────────────────────────────
 // Returns persisted live translation transcripts for a meeting.
+// Supports pagination with ?limit=50&offset=0
 router.get(
   '/:orgId/:meetingId/transcripts',
   authenticate,
@@ -1248,6 +1278,8 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const { orgId, meetingId } = req.params;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 500); // Cap at 500 per request
+      const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
 
       // Verify meeting belongs to org
       const meeting = await db('meetings')
@@ -1261,16 +1293,38 @@ router.get(
       // Check if meeting_transcripts table exists
       const hasTable = await db.schema.hasTable('meeting_transcripts');
       if (!hasTable) {
-        res.json({ success: true, data: [] });
+        res.json({ 
+          success: true, 
+          data: [],
+          limit,
+          offset,
+          total: 0
+        });
         return;
       }
 
+      // Get total count (cached result, not repeated per query)
+      const countResult = await db('meeting_transcripts')
+        .where({ meeting_id: meetingId, organization_id: orgId })
+        .count('* as count')
+        .first();
+      const total = countResult?.count || 0;
+
+      // Fetch paginated transcripts
       const transcripts = await db('meeting_transcripts')
         .where({ meeting_id: meetingId, organization_id: orgId })
         .orderBy('spoken_at', 'asc')
+        .limit(limit)
+        .offset(offset)
         .select('*');
 
-      res.json({ success: true, data: transcripts });
+      res.json({ 
+        success: true, 
+        data: transcripts,
+        limit,
+        offset,
+        total
+      });
     } catch (err) {
       logger.error('Get transcripts error', err);
       res.status(500).json({ success: false, error: 'Failed to get transcripts' });
@@ -1597,6 +1651,204 @@ router.post(
     } catch (err) {
       logger.error('Generate minutes error', err);
       res.status(500).json({ success: false, error: 'Failed to start minutes generation' });
+    }
+  }
+);
+
+// ── Sign Meeting Minutes (Professional+ only) ───────────────
+const signMinutesSchema = z.object({
+  signatureData: z.string().optional(), // base64 encoded signature
+  metadata: z.record(z.any()).optional(),
+});
+
+router.post(
+  '/:orgId/:meetingId/minutes/sign',
+  authenticate,
+  loadMembership,
+  validate(signMinutesSchema),
+  async (req: Request, res: Response) => {
+    try {
+      const { orgId, meetingId } = req.params;
+      const { signatureData, metadata } = req.body;
+
+      // Import plan check function
+      const { supportsDigitalSignatures, getLatestPlanSlugForOrg } = await import('../services/subscription.service');
+      const planSlug = await getLatestPlanSlugForOrg(orgId);
+      
+      if (!supportsDigitalSignatures(planSlug)) {
+        res.status(403).json({
+          success: false,
+          error: 'Digital signatures require Professional plan or higher',
+        });
+        return;
+      }
+
+      // Verify meeting exists and belongs to org
+      const meeting = await db('meetings')
+        .where({ id: meetingId, organization_id: orgId })
+        .first();
+      if (!meeting) {
+        res.status(404).json({ success: false, error: 'Meeting not found' });
+        return;
+      }
+
+      // Verify minutes exist
+      const minutes = await db('meeting_minutes')
+        .where({ meeting_id: meetingId, status: 'completed' })
+        .first();
+      if (!minutes) {
+        res.status(400).json({ success: false, error: 'Meeting minutes must be completed before signing' });
+        return;
+      }
+
+      // Get user full name from database
+      const user = req.user!;
+      const userRecord = await db('users').where({ id: user.userId }).select('first_name', 'last_name').first();
+      const fullName = (userRecord?.first_name && userRecord?.last_name)
+        ? `${userRecord.first_name} ${userRecord.last_name}`
+        : user.email;
+
+      const signatureHash = crypto
+        .createHash('sha256')
+        .update(`${meetingId}${user.userId}${Date.now()}${signatureData || ''}`)
+        .digest('hex');
+
+      // Insert signature (upsert - one signature per user per meeting)
+      const [signature] = await db('meeting_signatures')
+        .insert({
+          meeting_id: meetingId,
+          organization_id: orgId,
+          signed_by_user_id: user.userId,
+          signed_by_name: fullName,
+          signed_by_email: user.email,
+          signature_hash: signatureHash,
+          signature_data: signatureData || null,
+          metadata: metadata ? JSON.stringify(metadata) : null,
+          signed_at: db.fn.now(),
+        })
+        .onConflict(['meeting_id', 'signed_by_user_id'])
+        .merge(['signature_hash', 'signature_data', 'metadata', 'signed_at'])
+        .returning('*');
+
+      // Update signature_count on meeting_minutes
+      const sigCount = await db('meeting_signatures')
+        .where({ meeting_id: meetingId })
+        .count('id as count')
+        .first();
+      
+      await db('meeting_minutes')
+        .where({ meeting_id: meetingId })
+        .update({ signature_count: sigCount?.count || 0 });
+
+      // Audit log
+      await (req as any).audit?.({
+        organizationId: orgId,
+        action: 'create',
+        entityType: 'meeting_signature',
+        entityId: signature.id,
+        newValue: { signedBy: user.email, signedAt: new Date() },
+      }).catch(() => {});
+
+      res.status(201).json({ success: true, data: signature });
+    } catch (err) {
+      logger.error('Sign minutes error', err);
+      res.status(500).json({ success: false, error: 'Failed to sign minutes' });
+    }
+  }
+);
+
+// ── Get Meeting Signatures ──────────────────────────────────
+router.get(
+  '/:orgId/:meetingId/minutes/signatures',
+  authenticate,
+  loadMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const { orgId, meetingId } = req.params;
+
+      // Verify meeting exists
+      const meeting = await db('meetings')
+        .where({ id: meetingId, organization_id: orgId })
+        .first();
+      if (!meeting) {
+        res.status(404).json({ success: false, error: 'Meeting not found' });
+        return;
+      }
+
+      const signatures = await db('meeting_signatures')
+        .where({ meeting_id: meetingId })
+        .orderBy('signed_at', 'desc')
+        .select(
+          'id',
+          'signed_by_user_id',
+          'signed_by_name',
+          'signed_by_email',
+          'signed_at',
+          'created_at'
+        );
+
+      res.json({ success: true, data: signatures });
+    } catch (err) {
+      logger.error('Get signatures error', err);
+      res.status(500).json({ success: false, error: 'Failed to get signatures' });
+    }
+  }
+);
+
+// ── Remove Meeting Signature (by signer or admin) ──────────
+router.delete(
+  '/:orgId/:meetingId/minutes/signatures/:signatureId',
+  authenticate,
+  loadMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const { orgId, meetingId, signatureId } = req.params;
+      const user = req.user!;
+
+      // Get the signature
+      const signature = await db('meeting_signatures')
+        .where({ id: signatureId, meeting_id: meetingId, organization_id: orgId })
+        .first();
+      if (!signature) {
+        res.status(404).json({ success: false, error: 'Signature not found' });
+        return;
+      }
+
+      // Only allow the signer or admin to remove
+      const isAdmin = (req as any).membership?.role === 'org_admin';
+      const isSigner = signature.signed_by_user_id === user.userId;
+      
+      if (!isAdmin && !isSigner) {
+        res.status(403).json({ success: false, error: 'Only the signer or admin can remove a signature' });
+        return;
+      }
+
+      // Delete signature
+      await db('meeting_signatures').where({ id: signatureId }).delete();
+
+      // Update signature_count
+      const sigCount = await db('meeting_signatures')
+        .where({ meeting_id: meetingId })
+        .count('id as count')
+        .first();
+      
+      await db('meeting_minutes')
+        .where({ meeting_id: meetingId })
+        .update({ signature_count: sigCount?.count || 0 });
+
+      // Audit log
+      await (req as any).audit?.({
+        organizationId: orgId,
+        action: 'delete',
+        entityType: 'meeting_signature',
+        entityId: signatureId,
+        newValue: { removedBy: user.email },
+      }).catch(() => {});
+
+      res.json({ success: true, message: 'Signature removed' });
+    } catch (err) {
+      logger.error('Remove signature error', err);
+      res.status(500).json({ success: false, error: 'Failed to remove signature' });
     }
   }
 );

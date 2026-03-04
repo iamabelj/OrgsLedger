@@ -194,9 +194,13 @@ Generate the following in JSON format:
   "summary": "A concise executive summary of the meeting (2-4 paragraphs)",
   "decisions": ["List of decisions made during the meeting"],
   "motions": [{"text": "Motion text", "movedBy": "Speaker name", "secondedBy": "Speaker name", "result": "passed|failed|tabled"}],
-  "actionItems": [{"description": "Action item", "assigneeName": "Person responsible", "dueDate": "YYYY-MM-DD or null", "status": "pending"}],
+  "actionItems": [{"description": "Action item", "assigneeName": "Person responsible", "dueDate": "YYYY-MM-DD or null", "priority": "critical|high|medium|low", "status": "pending"}],
   "contributions": [{"userName": "Speaker name", "speakingTimeSeconds": 120, "keyPoints": ["Key point 1", "Key point 2"]}]
 }
+
+For action items:
+- Priority levels: Use "critical" for items blocking other work or time-sensitive, "high" for important but not blocking, "medium" for nice-to-have, "low" for minor items
+- Due dates: Extract from meeting context (e.g., "by EOW", "next week", explicit dates). Use YYYY-MM-DD format or null if not specified.
 
 Be thorough and accurate.`;
 

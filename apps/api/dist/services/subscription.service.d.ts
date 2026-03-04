@@ -1,3 +1,6 @@
+export declare function supportsDigitalSignatures(planSlug?: string | null): boolean;
+declare function getLatestPlanSlugForOrg(orgId: string): Promise<string | null>;
+export { getLatestPlanSlugForOrg };
 export declare function isNigeria(country?: string | null): boolean;
 export declare function getCurrency(country?: string | null): 'USD' | 'NGN';
 export declare function getPlans(): Promise<any[]>;

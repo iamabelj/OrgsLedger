@@ -958,8 +958,8 @@ router.get(
           .first();
       }
 
-      const aiWallet = await db('ai_wallet')
-        .where({ organization_id: req.params.orgId })
+      const aiWallet = await db('wallet')
+        .where({ organization_id: req.params.orgId, service_type: 'ai' })
         .first();
 
       res.json({
@@ -969,7 +969,7 @@ router.get(
           planId: plan?.slug || 'standard',
           planName: plan?.name || 'Standard',
           status: subscription?.status || org.subscription_status || 'active',
-          maxMembers: plan?.max_members || 100,
+          maxMembers: plan?.max_members || 5,
           features: plan?.features || {},
           billingCycle: subscription?.billing_cycle || 'annual',
           currency: subscription?.currency || org.billing_currency,

@@ -747,8 +747,8 @@ router.get('/:orgId/subscription', middleware_1.authenticate, middleware_1.loadM
                 .where({ id: subscription.plan_id })
                 .first();
         }
-        const aiWallet = await (0, db_1.default)('ai_wallet')
-            .where({ organization_id: req.params.orgId })
+        const aiWallet = await (0, db_1.default)('wallet')
+            .where({ organization_id: req.params.orgId, service_type: 'ai' })
             .first();
         res.json({
             success: true,
@@ -757,7 +757,7 @@ router.get('/:orgId/subscription', middleware_1.authenticate, middleware_1.loadM
                 planId: plan?.slug || 'standard',
                 planName: plan?.name || 'Standard',
                 status: subscription?.status || org.subscription_status || 'active',
-                maxMembers: plan?.max_members || 100,
+                maxMembers: plan?.max_members || 5,
                 features: plan?.features || {},
                 billingCycle: subscription?.billing_cycle || 'annual',
                 currency: subscription?.currency || org.billing_currency,

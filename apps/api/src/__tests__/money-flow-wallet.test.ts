@@ -109,7 +109,7 @@ describe('Money Flow — Wallet Operations', () => {
           chain.first.mockResolvedValue({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '0.00' });
           // Capture insert calls to wallet_transactions
           chain.insert.mockImplementation((data: any) => {
-            if (_table === 'ai_wallet_transactions') insertedData = data;
+            if (_table === 'wallet_transactions') insertedData = data;
             return chain;
           });
           return chain;
@@ -390,7 +390,7 @@ describe('Money Flow — Wallet Operations', () => {
           chain.raw = jest.fn((...args: any[]) => args);
           chain.first.mockResolvedValue({ id: 'wallet-mock-id', organization_id: 'org-1', balance_minutes: '100.00' });
           chain.insert.mockImplementation((data: any) => {
-            if (_table === 'ai_wallet_transactions') insertedData = data;
+            if (_table === 'wallet_transactions') insertedData = data;
             return chain;
           });
           return chain;
@@ -485,18 +485,26 @@ describe('Money Flow — Wallet Operations', () => {
           });
           chain.count.mockReturnValue(chain);
         }
-        // ai_wallet_transactions → ₦18000
-        if (_table === 'ai_wallet_transactions') {
-          chain.first.mockResolvedValue({
-            total_topups: '1',
-            total_ai_revenue: '18000',
-          });
-        }
-        // translation_wallet_transactions → ₦45000
-        if (_table === 'translation_wallet_transactions') {
-          chain.first.mockResolvedValue({
-            total_topups: '1',
-            total_translation_revenue: '45000',
+        // Track where conditions to distinguish AI from translation
+        let whereConditions: any = {};
+        if (_table === 'wallet_transactions') {
+          chain.where.mockImplementation((cond: any) => {
+            whereConditions = { ...whereConditions, ...cond };
+            // AI wallet transactions
+            if (whereConditions.service_type === 'ai') {
+              chain.first.mockResolvedValue({
+                total_topups: '1',
+                total_ai_revenue: '18000',
+              });
+            }
+            // Translation wallet transactions
+            if (whereConditions.service_type === 'translation') {
+              chain.first.mockResolvedValue({
+                total_topups: '1',
+                total_translation_revenue: '45000',
+              });
+            }
+            return chain;
           });
         }
         return chain;

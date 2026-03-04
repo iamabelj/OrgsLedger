@@ -301,8 +301,8 @@ class ApiClient {
       });
     },
     // Meeting transcripts (live translation history)
-    getTranscripts: (orgId: string, meetingId: string) =>
-      this.client.get(`/meetings/${orgId}/${meetingId}/transcripts`),
+    getTranscripts: (orgId: string, meetingId: string, limit: number = 50, offset: number = 0) =>
+      this.client.get(`/meetings/${orgId}/${meetingId}/transcripts?limit=${limit}&offset=${offset}`),
     // AI-generated minutes
     getMinutes: (orgId: string, meetingId: string) =>
       this.client.get(`/meetings/${orgId}/${meetingId}/minutes`),
@@ -315,6 +315,13 @@ class ApiClient {
     // Trigger AI minutes generation from live transcripts
     generateMinutes: (orgId: string, meetingId: string) =>
       this.client.post(`/meetings/${orgId}/${meetingId}/generate-minutes`),
+    // Digital signatures (Professional+ only)
+    signMinutes: (orgId: string, meetingId: string, signatureData?: string, metadata?: any) =>
+      this.client.post(`/meetings/${orgId}/${meetingId}/minutes/sign`, { signatureData, metadata }),
+    getSignatures: (orgId: string, meetingId: string) =>
+      this.client.get(`/meetings/${orgId}/${meetingId}/minutes/signatures`),
+    removeSignature: (orgId: string, meetingId: string, signatureId: string) =>
+      this.client.delete(`/meetings/${orgId}/${meetingId}/minutes/signatures/${signatureId}`),
     // In-meeting chat messages
     getChatMessages: (orgId: string, meetingId: string) =>
       this.client.get(`/meetings/${orgId}/${meetingId}/chat`),
@@ -597,6 +604,8 @@ class ApiClient {
       this.client.get(`/analytics/${orgId}/member-payments`),
     receipt: (orgId: string, recordId: string) =>
       this.client.get(`/analytics/${orgId}/receipt/${recordId}`),
+    meetingInsights: (orgId: string) =>
+      this.client.get(`/analytics/${orgId}/meeting-insights`),
   };
 
   // ── Translation ───────────────────────────────────────

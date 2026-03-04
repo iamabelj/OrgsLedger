@@ -419,7 +419,7 @@ describe('Wallet Endpoint Abuse', () => {
           c.first.mockResolvedValue({
             organization_id: 'org-1', balance_minutes: '100.00',
           });
-          if (table === 'ai_wallet_transactions') {
+          if (table === 'wallet_transactions') {
             c.insert = jest.fn((data: any) => {
               insertedRecord = data;
               return c;
@@ -446,7 +446,7 @@ describe('Wallet Endpoint Abuse', () => {
       db.transaction.mockImplementation(async (cb: Function) => {
         const trx: any = jest.fn((table: string) => {
           const c = mockChain();
-          if (table === 'ai_wallet_transactions') {
+          if (table === 'wallet_transactions') {
             c.insert = jest.fn((data: any) => {
               insertedRecord = data;
               return c;

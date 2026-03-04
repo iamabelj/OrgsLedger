@@ -447,7 +447,8 @@ export function GlobalMeetingProvider({ children }: { children: React.ReactNode 
     if (!orgId || !meetingId) return;
     setTranscriptsLoading(true);
     try {
-      const res = await api.meetings.getTranscripts(orgId, meetingId);
+      // Fetch latest 50 transcripts (pagination will load more on scroll if needed)
+      const res = await api.meetings.getTranscripts(orgId, meetingId, 50, 0);
       setTranscripts(res.data.data || []);
     } catch {
       // fail silently

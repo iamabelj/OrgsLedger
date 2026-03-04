@@ -8,6 +8,7 @@ import db from '../db';
 import { authenticate, loadMembershipAndSub as loadMembership, requireRole, validate } from '../middleware';
 import { logger } from '../logger';
 import { sendPushToOrg } from '../services/push.service';
+import { sendAnnouncementEmail } from '../services/email.service';
 
 const router = Router();
 
@@ -70,6 +71,25 @@ router.post(
           body: body.substring(0, 200),
           data: { announcementId: announcement.id, type: 'announcement' },
         }, req.user!.userId).catch(err => logger.warn('Push notification failed (announcement)', err));
+
+        // Send announcement email (best-effort, non-blocking)
+        try {
+          const users = await db('users').whereIn('id', members).select('email');
+          const emails = users.map((u: any) => u.email).filter(Boolean);
+          if (emails.length > 0) {
+            const org = await db('organizations')
+              .where({ id: req.params.orgId })
+              .select('settings')
+              .first();
+            const settings = typeof org?.settings === 'string' ? JSON.parse(org.settings) : org?.settings;
+            if (settings?.notifications?.emailNotifications !== false) {
+              await sendAnnouncementEmail(title, body, priority, emails)
+                .catch((err) => logger.warn('Failed to send announcement email', err));
+            }
+          }
+        } catch (emailErr) {
+          logger.warn('Announcement email error (non-blocking)', emailErr);
+        }
       }
 
       res.status(201).json({ success: true, data: announcement });

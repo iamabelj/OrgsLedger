@@ -643,7 +643,7 @@
     <div class="section-header">
       <div class="section-tag anim">Pricing</div>
       <h2 class="section-title anim anim-delay-1">Transparent Annual Pricing</h2>
-      <p class="section-subtitle anim anim-delay-2">Choose your region. All plans require an annual subscription. AI and Translation services are billed separately via wallet credits.</p>
+      <p class="section-subtitle anim anim-delay-2">Choose your region. Annual plans include AI hours by tier, and extra usage is billed via wallet top-ups.</p>
     </div>
 
     <div class="pricing-region-toggle anim">
@@ -652,17 +652,36 @@
     </div>
 
     <div class="pricing-grid">
+      <!-- Free -->
+      <div class="pricing-card anim">
+        <div class="pricing-plan-name">Free</div>
+        <div class="pricing-amount">
+          <span class="currency" data-cur>$</span><span data-price="free">0</span><span class="period" data-per>/year</span>
+        </div>
+        <div class="pricing-desc">For micro groups with <strong>0–5 members</strong>.</div>
+        <ul class="pricing-features">
+          <li><span class="feat-check">&#10003;</span> Real-Time Chat &amp; Channels</li>
+          <li><span class="feat-check">&#10003;</span> Basic Meeting Management</li>
+          <li><span class="feat-check">&#10003;</span> Polls &amp; Voting</li>
+          <li><span class="feat-check">&#10003;</span> AI Included: <strong>0 hours</strong></li>
+          <li class="excluded"><span class="feat-check">&mdash;</span> Financial Management</li>
+          <li class="excluded"><span class="feat-check">&mdash;</span> Advanced Analytics</li>
+        </ul>
+        <button class="pricing-cta btn-outline" onclick="location.href='https://app.orgsledger.com/checkout?plan=free'">Start Free</button>
+      </div>
+
       <!-- Starter -->
       <div class="pricing-card anim">
         <div class="pricing-plan-name">Starter</div>
         <div class="pricing-amount">
           <span class="currency" data-cur>$</span><span data-price="starter">200</span><span class="period" data-per>/year</span>
         </div>
-        <div class="pricing-desc">For micro organizations <strong>1–50 members</strong>.</div>
+        <div class="pricing-desc">For small organizations with <strong>6–50 members</strong>.</div>
         <ul class="pricing-features">
           <li><span class="feat-check">&#10003;</span> Real-Time Chat &amp; Channels</li>
           <li><span class="feat-check">&#10003;</span> Meeting Management</li>
           <li><span class="feat-check">&#10003;</span> Dues &amp; Donation Collection</li>
+          <li><span class="feat-check">&#10003;</span> AI Included: <strong>4 hours/year</strong></li>
           <li class="excluded"><span class="feat-check">&mdash;</span> Advanced Analytics</li>
           <li class="excluded"><span class="feat-check">&mdash;</span> Data Export</li>
         </ul>
@@ -685,6 +704,7 @@
           <li><span class="feat-check">&#10003;</span> Announcements &amp; Documents</li>
           <li><span class="feat-check">&#10003;</span> Committees &amp; Groups</li>
           <li><span class="feat-check">&#10003;</span> Mobile + Web Access</li>
+          <li><span class="feat-check">&#10003;</span> AI Included: <strong>10 hours/year</strong></li>
           <li class="excluded"><span class="feat-check">&mdash;</span> Advanced Analytics</li>
           <li class="excluded"><span class="feat-check">&mdash;</span> Data Export</li>
         </ul>
@@ -703,8 +723,8 @@
           <li><span class="feat-check">&#10003;</span> Advanced Analytics &amp; Reports</li>
           <li><span class="feat-check">&#10003;</span> Data Export (CSV, Excel)</li>
           <li><span class="feat-check">&#10003;</span> Custom Branding</li>
-          <li><span class="feat-check">&#10003;</span> AI Meeting Summaries *</li>
-          <li><span class="feat-check">&#10003;</span> Real-Time Translation *</li>
+          <li><span class="feat-check">&#10003;</span> AI Included: <strong>30 hours/year</strong></li>
+          <li><span class="feat-check">&#10003;</span> Real-Time Translation Support</li>
           <li><span class="feat-check">&#10003;</span> Expense Tracking &amp; Approval</li>
           <li><span class="feat-check">&#10003;</span> Priority Email Support</li>
           <li class="excluded"><span class="feat-check">&mdash;</span> Dedicated Account Manager</li>
@@ -722,8 +742,8 @@
         <div class="pricing-desc">For large organizations up to <strong>500 members</strong>.</div>
         <ul class="pricing-features">
           <li><span class="feat-check">&#10003;</span> Everything in Professional</li>
-          <li><span class="feat-check">&#10003;</span> AI Meeting Summaries *</li>
-          <li><span class="feat-check">&#10003;</span> Real-Time Translation *</li>
+          <li><span class="feat-check">&#10003;</span> AI Included: <strong>150 hours/year</strong></li>
+          <li><span class="feat-check">&#10003;</span> Real-Time Translation Support</li>
           <li><span class="feat-check">&#10003;</span> Dedicated Account Manager</li>
           <li><span class="feat-check">&#10003;</span> Full API Access</li>
           <li><span class="feat-check">&#10003;</span> Priority Phone &amp; Chat Support</li>
@@ -760,7 +780,7 @@
 
     <p class="pricing-note anim">
       All plans require an <strong style="color:var(--gray-200);">annual subscription</strong>.
-      * AI Meeting Summaries and Real-Time Translation are independent add-ons billed separately via wallet credits &mdash; see below.
+      Included AI hours are bundled by plan tier each year. Additional AI and translation usage is billed separately via wallet credits &mdash; see add-ons below.
     </p>
   </div>
 </section>
@@ -773,7 +793,7 @@
     <div class="section-header">
       <div class="section-tag anim">Add-Ons</div>
       <h2 class="section-title anim anim-delay-1">AI &amp; Translation &mdash; Pay Only for What You Use</h2>
-      <p class="section-subtitle anim anim-delay-2">Two independent add-ons, each billed separately. Top up your organization's wallet and consume on demand. No commitments, no minimum spend.</p>
+      <p class="section-subtitle anim anim-delay-2">Use included AI hours first, then top up wallets for additional on-demand usage. No commitments, no minimum spend.</p>
     </div>
 
     <div class="addons-grid">
@@ -789,7 +809,8 @@
           <li>Meeting transcription (speech-to-text)</li>
           <li>AI-generated summaries &amp; action items</li>
           <li>AI document generation &amp; analysis</li>
-          <li>Usage-based billing via wallet</li>
+          <li>Included annual AI hours by plan tier</li>
+          <li>Usage-based billing via wallet after included hours</li>
           <li>Real-time cost tracking per session</li>
         </ul>
       </div>
@@ -806,7 +827,7 @@
           <li>Live speech-to-text during meetings</li>
           <li>Multi-language instant translation</li>
           <li>Members read in their preferred language</li>
-          <li>Per-hour wallet-based billing</li>
+          <li>Wallet-based billing when extra translation hours are needed</li>
           <li>Supports global language pairs</li>
         </ul>
       </div>
@@ -865,7 +886,7 @@
         <div class="step-num">6</div>
         <div class="step-body">
           <h3>Activate AI &amp; Translation</h3>
-          <p>Optionally top up your AI and Translation wallets. Enable AI meeting summaries and real-time translation on demand &mdash; pay only for what you use.</p>
+          <p>Start with your plan's included AI hours. Top up AI and Translation wallets when you need additional usage &mdash; pay only for what you use.</p>
         </div>
       </div>
     </div>
@@ -982,6 +1003,7 @@
   // ── Region / Currency Toggle ─────────────────────────
   var region = 'global';
   var prices = {
+    free:         { global: '0',     nigeria: '0' },
     starter:      { global: '200',   nigeria: '300,000' },
     standard:     { global: '300',   nigeria: '500,000' },
     professional: { global: '800',   nigeria: '1,200,000' },

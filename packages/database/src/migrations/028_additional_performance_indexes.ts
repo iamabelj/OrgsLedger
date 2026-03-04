@@ -11,8 +11,8 @@ export async function up(knex: Knex): Promise<void> {
   if (await knex.schema.hasTable('notifications')) {
     await knex.raw(`
       CREATE INDEX IF NOT EXISTS idx_notifications_user_read
-      ON notifications (user_id, read)
-      WHERE read = false
+      ON notifications (user_id, is_read)
+      WHERE is_read = false
     `);
     await knex.raw(`
       CREATE INDEX IF NOT EXISTS idx_notifications_user_created
@@ -82,7 +82,6 @@ export async function up(knex: Knex): Promise<void> {
     await knex.raw(`
       CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires
       ON refresh_tokens (expires_at)
-      WHERE expires_at < NOW()
     `);
   }
 

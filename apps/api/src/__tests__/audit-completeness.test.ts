@@ -206,8 +206,7 @@ describe('Audit Log Completeness', () => {
     });
 
     it('should detect spikes for both AI and translation usage', () => {
-      expect(subscriptionsRoute).toContain('ai_wallet_transactions');
-      expect(subscriptionsRoute).toContain('translation_wallet_transactions');
+      expect(subscriptionsRoute).toContain('wallet_transactions');
     });
 
     it('should include failed payments in risk analysis', () => {

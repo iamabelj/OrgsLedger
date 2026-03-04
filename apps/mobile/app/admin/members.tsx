@@ -310,8 +310,8 @@ export default function MembersScreen() {
                   <Text style={[styles.actionText, { color: Colors.success }]}>Message</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.actionBtn} onPress={() => handleChangeRole(item)}>
-                  <Ionicons name="shield-outline" size={14} color={Colors.highlight} />
-                  <Text style={styles.actionText}>Role</Text>
+                  <Ionicons name="shield-outline" size={14} color={Colors.info} />
+                  <Text style={[styles.actionText, { color: Colors.info }]}>Role</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.actionBtn, styles.dangerAction]} onPress={() => handleRemoveMember(item)}>
                   <Ionicons name="person-remove-outline" size={14} color={Colors.danger} />
@@ -483,9 +483,9 @@ export default function MembersScreen() {
                     <Ionicons
                       name={copiedId === item.id ? 'checkmark-circle' : 'copy-outline'}
                       size={18}
-                      color={copiedId === item.id ? Colors.success : Colors.highlight}
+                      color={copiedId === item.id ? Colors.success : Colors.info}
                     />
-                    <Text style={[styles.inviteActionText, copiedId === item.id && { color: Colors.success }]}>
+                    <Text style={[styles.inviteActionText, copiedId === item.id && { color: Colors.success }, !copiedId || copiedId !== item.id && { color: Colors.info }]}>
                       {copiedId === item.id ? 'Copied!' : 'Copy'}
                     </Text>
                   </TouchableOpacity>
@@ -515,7 +515,7 @@ export default function MembersScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Add Member</Text>
               <TouchableOpacity onPress={() => { setShowAddModal(false); setAddEmail(''); setAddRole('member'); }}>
-                <Ionicons name="close" size={22} color={Colors.textLight} />
+                <Ionicons name="close" size={22} color={Colors.textPrimary} />
               </TouchableOpacity>
             </View>
             <Text style={styles.modalHint}>Enter the email of a registered user to add them directly.</Text>

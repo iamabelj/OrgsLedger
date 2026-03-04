@@ -383,7 +383,7 @@ export function MeetingRoom(props: MeetingRoomProps) {
               <Ionicons name="language" size={18} color={Colors.highlight} />
               <Text style={styles.langPickerTitle}>Select Language</Text>
               <TouchableOpacity onPress={() => { setShowLangPicker(false); setLangSearch(''); }}>
-                <Ionicons name="close" size={20} color={Colors.textLight} />
+                <Ionicons name="close" size={20} color={Colors.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -444,8 +444,9 @@ export function MeetingRoom(props: MeetingRoomProps) {
         isMicEnabled={lk.isMicEnabled}
         isCameraEnabled={lk.isCameraEnabled}
         isScreenSharing={lk.isScreenSharing}
-        translationLang={translationLang}
-        isTranslationListening={translationListening}
+        isChatOpen={false}
+        unreadChatCount={0}
+        currentLanguage={translationLang}
         isRecording={isRecording || isRecordingFromSocket}
         handRaised={handRaised}
         isSidebarOpen={sidebarOpen}
@@ -455,7 +456,9 @@ export function MeetingRoom(props: MeetingRoomProps) {
         onToggleMic={lk.toggleMic}
         onToggleCamera={lk.toggleCamera}
         onToggleScreenShare={lk.toggleScreenShare}
-        onOpenLanguagePicker={() => setShowLangPicker(true)}
+        onToggleChat={() => {}} // Legacy path doesn't use chat drawer
+        onOpenLanguagePick={() => setShowLangPicker(true)}
+        onToggleTranscribe={() => {}} // Legacy path handled by LiveTranslation
         onToggleRecording={handleToggleRecording}
         onRaiseHand={handleRaiseHand}
         onToggleSidebar={handleToggleSidebar}

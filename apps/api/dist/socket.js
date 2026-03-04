@@ -23,6 +23,16 @@ const speech_to_text_service_1 = require("./services/speech-to-text.service");
 // In-memory store for meeting translation sessions
 // meetingId -> Map<userId, { language, name, receiveVoice }>
 exports.meetingLanguages = new Map();
+// Cache for user info to avoid repeated DB lookups in hot path
+// userId -> { firstName, lastName, name }
+const userCache = new Map();
+const USER_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const userCacheTTL = new Map();
+// Cache for meeting org_id to avoid repeated DB lookups
+// meetingId -> organizationId
+const meetingOrgCache = new Map();
+const MEETING_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+const meetingCacheTTL = new Map();
 // Cache whether meeting_transcripts table exists (checked once on first insert)
 let transcriptTableExists = null;
 // Cache whether user_language_preferences table exists
@@ -32,6 +42,45 @@ const speechRateLimits = new Map();
 const SPEECH_RATE_LIMIT_MS = 500; // Min interval between final speech events
 // Active Google STT sessions: socketId -> SpeechSession
 const activeSttSessions = new Map();
+// ── Helper: Get cached or fetch user name ────────────────
+async function getCachedUserName(userId) {
+    const now = Date.now();
+    const cached = userCache.get(userId);
+    const cachedTime = userCacheTTL.get(userId) || 0;
+    if (cached && now - cachedTime < USER_CACHE_TTL_MS) {
+        return cached.name;
+    }
+    try {
+        const user = await (0, db_1.default)('users').where({ id: userId }).select('first_name', 'last_name').first();
+        if (user) {
+            const name = `${user.first_name} ${user.last_name}`.trim();
+            userCache.set(userId, { firstName: user.first_name, lastName: user.last_name, name });
+            userCacheTTL.set(userId, now);
+            return name;
+        }
+    }
+    catch (_) { /* non-critical */ }
+    return 'Unknown';
+}
+// ── Helper: Get cached or fetch meeting org_id ───────────
+async function getCachedMeetingOrg(meetingId) {
+    const now = Date.now();
+    const cached = meetingOrgCache.get(meetingId);
+    const cachedTime = meetingCacheTTL.get(meetingId) || 0;
+    if (cached && now - cachedTime < MEETING_CACHE_TTL_MS) {
+        return cached;
+    }
+    try {
+        const meeting = await (0, db_1.default)('meetings').where({ id: meetingId }).select('organization_id').first();
+        if (meeting?.organization_id) {
+            meetingOrgCache.set(meetingId, meeting.organization_id);
+            meetingCacheTTL.set(meetingId, now);
+            return meeting.organization_id;
+        }
+    }
+    catch (_) { /* non-critical */ }
+    return null;
+}
 // ── Helper: Persist transcript segment to DB ────────────
 // Stores transcript. Requires valid organizationId (NOT NULL in schema).
 async function this_persistTranscript(meetingId, organizationId, speakerId, speakerName, originalText, sourceLang, translations) {
@@ -82,22 +131,19 @@ async function handleSpeechText(io, socket, userId, meetingId, text, sourceLang,
         speechRateLimits.set(rateLimitKey, now);
     }
     const langMap = exports.meetingLanguages.get(meetingId);
-    // Get speaker name
+    // Get speaker name (use cache to avoid DB lookup in hot path)
     let speakerName = 'Unknown';
     const speaker = langMap?.get(userId);
     if (speaker?.name) {
         speakerName = speaker.name;
     }
     else {
-        try {
-            const user = await (0, db_1.default)('users').where({ id: userId }).select('first_name', 'last_name').first();
-            if (user)
-                speakerName = `${user.first_name} ${user.last_name}`.trim();
-        }
-        catch (_) { /* non-critical */ }
+        speakerName = await getCachedUserName(userId);
     }
     logger_1.logger.debug(`[TRANSCRIPT] Speech: speaker=${speakerName}, isFinal=${isFinal}, lang=${sourceLang}, len=${text.length}`);
-    // For interim results, just broadcast original text
+    // For interim results: broadcast ONLY (do NOT persist)
+    // Redline removal: Interim persistence in hot path is expensive and not needed
+    // Clients cache interim text locally until final arrives; we only need finals in DB for minutes generation
     if (!isFinal) {
         socket.to(`meeting:${meetingId}`).emit('translation:interim', {
             meetingId,
@@ -106,8 +152,11 @@ async function handleSpeechText(io, socket, userId, meetingId, text, sourceLang,
             text,
             sourceLang,
         });
-        return;
+        return; // <-- KEY CHANGE: Skip DB write for interim
     }
+    // For FINAL results: persist + translate + broadcast
+    // Get cached organization_id (needed for transcript storage)
+    let organizationId = await getCachedMeetingOrg(meetingId);
     // Collect target languages
     const targetLangs = new Set();
     if (langMap) {
@@ -116,15 +165,6 @@ async function handleSpeechText(io, socket, userId, meetingId, text, sourceLang,
                 targetLangs.add(val.language);
             }
         });
-    }
-    // Look up organization_id
-    let organizationId = null;
-    try {
-        const meeting = await (0, db_1.default)('meetings').where({ id: meetingId }).select('organization_id').first();
-        organizationId = meeting?.organization_id || null;
-    }
-    catch (lookupErr) {
-        logger_1.logger.warn('[TRANSLATION] Failed to look up meeting org', lookupErr);
     }
     try {
         let translations = {};
@@ -561,14 +601,8 @@ function setupSocketIO(httpServer) {
                 existingSession.close();
                 activeSttSessions.delete(sessionKey);
             }
-            // Look up speaker name
-            let speakerName = 'Unknown';
-            try {
-                const user = await (0, db_1.default)('users').where({ id: userId }).select('first_name', 'last_name').first();
-                if (user)
-                    speakerName = `${user.first_name} ${user.last_name}`.trim();
-            }
-            catch (_) { }
+            // Look up speaker name (use cache to avoid DB lookup)
+            const speakerName = await getCachedUserName(userId);
             // Determine language code (from language picker or default en-US)
             const langMap = exports.meetingLanguages.get(meetingId);
             const userPrefs = langMap?.get(userId);

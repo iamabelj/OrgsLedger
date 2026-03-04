@@ -25,6 +25,7 @@ const request_logger_1 = require("./middleware/request-logger");
 const error_handler_1 = require("./middleware/error-handler");
 const idempotency_1 = require("./middleware/idempotency");
 const etag_1 = require("./middleware/etag");
+const session_expiry_1 = require("./middleware/session-expiry");
 const landing_gateway_1 = require("./middleware/landing-gateway");
 const socket_1 = require("./socket");
 const ai_service_1 = require("./services/ai.service");
@@ -303,6 +304,7 @@ const authLimiter = (0, express_rate_limit_1.default)({
 // Auth routes don't need large payloads (login/register bodies are tiny)
 const authPayloadLimit = express_1.default.json({ limit: '16kb' });
 // ── API Routes ────────────────────────────────────────────
+app.use('/api/auth', authLimiter, authPayloadLimit);
 app.use('/api/auth/login', authLimiter, authPayloadLimit);
 app.use('/api/auth/register', authLimiter, authPayloadLimit);
 app.use('/api/auth/forgot-password', authLimiter, authPayloadLimit);
@@ -314,6 +316,9 @@ app.use('/api/auth/refresh', (0, express_rate_limit_1.default)({
     legacyHeaders: false,
     message: { success: false, error: 'Too many requests, please try again later' },
 }));
+// ── Session Expiry Middleware ──
+// Validates platform-specific session lifetimes (applies to all authenticated endpoints)
+app.use('/api', session_expiry_1.sessionExpiry);
 // ── Webhook Rate Limiting ──
 const webhookLimiter = (0, express_rate_limit_1.default)({
     windowMs: constants_1.RATE_LIMITS.WEBHOOK.windowMs,

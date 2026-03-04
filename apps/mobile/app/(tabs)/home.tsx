@@ -565,6 +565,12 @@ export default function HomeScreen() {
               onPress={() => router.push('/admin/analytics')}
             />
             <AdminActionCard
+              icon="bulb"
+              label="AI Insights"
+              color="#F59E0B"
+              onPress={() => router.push('/admin/meeting-insights')}
+            />
+            <AdminActionCard
               icon="swap-horizontal"
               label="Transfers"
               color="#0EA5E9"
@@ -638,6 +644,12 @@ export default function HomeScreen() {
               label="Analytics"
               color="#EC4899"
               onPress={() => router.push('/admin/analytics')}
+            />
+            <AdminActionCard
+              icon="bulb"
+              label="AI Insights"
+              color="#F59E0B"
+              onPress={() => router.push('/admin/meeting-insights')}
             />
             <AdminActionCard
               icon="megaphone-outline"

@@ -49,6 +49,10 @@ interface ControlBarProps {
   isTranscribing?: boolean;
   transcriptCount?: number;
 
+  // Language
+  currentLanguage?: string;
+  onOpenLanguagePick?: () => void;
+
   // Handlers
   onToggleMic: () => void;
   onToggleCamera: () => void;
@@ -145,6 +149,8 @@ function ControlBarInner(props: ControlBarProps) {
     isAdmin,
     isTranscribing,
     transcriptCount,
+    currentLanguage,
+    onOpenLanguagePick,
     onToggleMic,
     onToggleCamera,
     onToggleScreenShare,
@@ -229,6 +235,14 @@ function ControlBarInner(props: ControlBarProps) {
           active={isTranscribing || false}
           activeColor="#10B981"
           onPress={onToggleTranscribe}
+          compact={isNarrow}
+        />
+
+        <ControlBtn
+          icon="language"
+          label={currentLanguage ? currentLanguage.toUpperCase() : 'Language'}
+          active={false}
+          onPress={onOpenLanguagePick || (() => {})}
           compact={isNarrow}
         />
 

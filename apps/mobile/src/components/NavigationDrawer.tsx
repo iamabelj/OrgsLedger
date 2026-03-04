@@ -241,7 +241,7 @@ export function NavigationDrawer() {
                 onPress={toggle}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Ionicons name="chevron-back" size={18} color={Colors.textLight} />
+                <Ionicons name="chevron-back" size={18} color={Colors.textPrimary} />
               </TouchableOpacity>
             )}
             {!isDesktop && (
@@ -250,7 +250,7 @@ export function NavigationDrawer() {
                 onPress={close}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Ionicons name="close" size={22} color={Colors.textLight} />
+                <Ionicons name="close" size={22} color={Colors.textPrimary} />
               </TouchableOpacity>
             )}
           </View>

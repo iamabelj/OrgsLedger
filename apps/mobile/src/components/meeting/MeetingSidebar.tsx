@@ -113,7 +113,7 @@ function MeetingSidebarInner(props: MeetingSidebarProps) {
            activePanel === 'transcript' ? 'Transcript' : 'Minutes'}
         </Text>
         <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
-          <Ionicons name="close" size={18} color={Colors.textLight} />
+          <Ionicons name="close" size={18} color={Colors.textPrimary} />
         </TouchableOpacity>
       </View>
 

@@ -423,7 +423,7 @@ function InviteCard({
       {!inactive && invite.is_active && !isExpired && !isUsedUp && (
         <View style={styles.cardActions}>
           <TouchableOpacity style={styles.actionBtn} onPress={onShare}>
-            <Ionicons name="share-outline" size={14} color={Colors.highlight} />
+            <Ionicons name="share-outline" size={14} color={Colors.info} />
             <Text style={styles.actionText}>Share</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.actionBtn, styles.actionBtnDanger]} onPress={onDeactivate}>
@@ -472,9 +472,9 @@ const styles = StyleSheet.create({
   metaText: { fontSize: FontSize.xs, color: Colors.textLight },
   noteText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontStyle: 'italic', marginTop: 2 },
   cardActions: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.borderLight, paddingTop: Spacing.sm },
-  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: Colors.highlight },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: Colors.info },
   actionBtnDanger: { borderColor: Colors.error },
-  actionText: { fontSize: FontSize.xs, color: Colors.highlight, fontWeight: FontWeight.medium as any },
+  actionText: { fontSize: FontSize.xs, color: Colors.info, fontWeight: FontWeight.medium as any },
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: Spacing.md },

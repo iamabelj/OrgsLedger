@@ -59,26 +59,29 @@ router.post(
     try {
       const { organizationId, credits, reason } = req.body;
 
-      // Ensure ai_wallet exists
-      let wallet = await db('ai_wallet')
-        .where({ organization_id: organizationId })
+      // Ensure wallet exists
+      let wallet = await db('wallet')
+        .where({ organization_id: organizationId, service_type: 'ai' })
         .first();
 
       if (wallet) {
-        await db('ai_wallet')
-          .where({ organization_id: organizationId })
+        await db('wallet')
+          .where({ organization_id: organizationId, service_type: 'ai' })
           .update({
             balance_minutes: db.raw('balance_minutes + ?', [credits]),
           });
       } else {
-        await db('ai_wallet').insert({
+        [wallet] = await db('wallet').insert({
           organization_id: organizationId,
+          service_type: 'ai',
           balance_minutes: credits,
-        });
+        }).returning('*');
       }
 
-      await db('ai_wallet_transactions').insert({
+      await db('wallet_transactions').insert({
+        wallet_id: wallet.id,
         organization_id: organizationId,
+        service_type: 'ai',
         type: 'bonus',
         amount_minutes: credits,
         cost: 0,
@@ -153,7 +156,8 @@ router.get(
         .select(db.raw('coalesce(sum(amount), 0) as total'))
         .first();
       const totalMeetings = await db('meetings').count('id as count').first();
-      const aiMinutesUsed = await db('ai_wallet_transactions')
+      const aiMinutesUsed = await db('wallet_transactions')
+        .where({ service_type: 'ai' })
         .where('amount_minutes', '<', 0)
         .select(db.raw('coalesce(sum(abs(amount_minutes)), 0) as total'))
         .first();

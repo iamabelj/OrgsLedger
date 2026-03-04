@@ -268,10 +268,10 @@ router.post('/register', (0, middleware_1.validate)(registerSchema), async (req,
                         .where({ organization_id: inviteOrg.id })
                         .orderBy('created_at', 'desc')
                         .first();
-                    let maxMembers = 100; // Default limit
+                    let maxMembers = 5; // Free tier default limit
                     if (sub?.plan_id) {
                         const planRecord = await trx('subscription_plans').where({ id: sub.plan_id }).first();
-                        maxMembers = planRecord?.max_members || 100;
+                        maxMembers = planRecord?.max_members || 5;
                     }
                     if (memberCount < maxMembers) {
                         await trx('memberships').insert({
@@ -611,7 +611,7 @@ router.post('/register-with-invite', (0, middleware_1.validate)(registerWithInvi
                 .first();
             const memberCount = parseInt(countResult?.count) || 0;
             // Get subscription and plan for member limit (with fallback for missing tables)
-            let maxMembers = 100; // default
+            let maxMembers = 5; // free tier default
             try {
                 const sub = await trx('subscriptions')
                     .where({ organization_id: org.id })
@@ -619,7 +619,7 @@ router.post('/register-with-invite', (0, middleware_1.validate)(registerWithInvi
                     .first();
                 if (sub?.plan_id) {
                     const planRecord = await trx('subscription_plans').where({ id: sub.plan_id }).first();
-                    maxMembers = planRecord?.max_members || 100;
+                    maxMembers = planRecord?.max_members || 5;
                 }
             }
             catch {
@@ -762,6 +762,8 @@ router.post('/login', (0, middleware_1.validate)(loginSchema), async (req, res) 
         // ── Successful login — reset lockout counters ──
         await (0, db_1.default)('users').where({ id: user.id }).update({
             last_login_at: db_1.default.fn.now(),
+            last_signin_at: db_1.default.fn.now(), // Track for 30-day mobile no-signin logout
+            last_activity_at: db_1.default.fn.now(), // Track for inactivity timeout
             failed_login_attempts: 0,
             locked_until: null,
         });

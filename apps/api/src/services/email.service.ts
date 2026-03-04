@@ -107,3 +107,226 @@ export async function sendMeetingMinutesEmail(
     text: minutesSummary,
   });
 }
+
+/**
+ * Send meeting reminder emails (24h, 1h, or 15min before).
+ */
+export async function sendMeetingReminderEmail(
+  meetingTitle: string,
+  scheduledStart: Date,
+  timeframe: '24h' | '1h' | '15min',
+  recipientEmails: string[]
+): Promise<void> {
+  const timeframeText = {
+    '24h': '24 hours',
+    '1h': '1 hour',
+    '15min': '15 minutes'
+  }[timeframe];
+
+  const formattedTime = scheduledStart.toLocaleString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZoneName: 'short'
+  });
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #0B1426; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
+        <h1 style="color: #C9A84C; margin: 0; font-size: 24px;">OrgsLedger</h1>
+      </div>
+      <div style="background: #f8f9fa; padding: 32px; border-radius: 0 0 8px 8px;">
+        <div style="background: #2980B9; color: white; padding: 16px; border-radius: 8px; margin-bottom: 24px; text-align: center;">
+          <p style="margin: 0; font-size: 14px; opacity: 0.9;">Meeting starting in ${timeframeText}</p>
+        </div>
+        <h2 style="color: #0B1426; margin-top: 0; font-size: 20px;">${escapeHtml(meetingTitle)}</h2>
+        <div style="background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 16px 0;">
+          <p style="margin: 8px 0; color: #555;"><strong>When:</strong> ${formattedTime}</p>
+          <p style="margin: 8px 0; color: #555;"><strong>Status:</strong> Starting soon</p>
+          <a href="https://app.orgsledger.com" style="display: inline-block; margin-top: 16px; padding: 10px 20px; background: #2980B9; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">Join Meeting</a>
+        </div>
+        <p style="color: #888; font-size: 12px; margin-top: 16px;">
+          Don't miss this meeting! Click the button above to join.
+        </p>
+      </div>
+      <p style="color: #aaa; font-size: 11px; text-align: center; margin-top: 16px;">&copy; ${new Date().getFullYear()} OrgsLedger. All rights reserved.</p>
+    </div>
+  `;
+
+  await sendEmail({
+    to: recipientEmails,
+    subject: `Reminder: ${escapeHtml(meetingTitle)} starts in ${timeframeText}`,
+    html,
+  });
+}
+
+/**
+ * Send email when meeting starts.
+ */
+export async function sendMeetingStartedEmail(
+  meetingTitle: string,
+  recipientEmails: string[]
+): Promise<void> {
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #0B1426; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
+        <h1 style="color: #C9A84C; margin: 0; font-size: 24px;">OrgsLedger</h1>
+      </div>
+      <div style="background: #f8f9fa; padding: 32px; border-radius: 0 0 8px 8px;">
+        <div style="background: #10B981; color: white; padding: 16px; border-radius: 8px; margin-bottom: 24px; text-align: center;">
+          <p style="margin: 0; font-size: 14px; opacity: 0.9;">📌 Meeting is now live!</p>
+        </div>
+        <h2 style="color: #0B1426; margin-top: 0; font-size: 20px;">${escapeHtml(meetingTitle)}</h2>
+        <div style="background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 16px 0;">
+          <p style="margin: 8px 0; color: #555;">Your meeting has started. Click below to join now.</p>
+          <a href="https://app.orgsledger.com" style="display: inline-block; margin-top: 16px; padding: 10px 20px; background: #10B981; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">Join Now</a>
+        </div>
+        <p style="color: #888; font-size: 12px; margin-top: 16px;">
+          This is an automated notification. Meeting is actively running.
+        </p>
+      </div>
+      <p style="color: #aaa; font-size: 11px; text-align: center; margin-top: 16px;">&copy; ${new Date().getFullYear()} OrgsLedger. All rights reserved.</p>
+    </div>
+  `;
+
+  await sendEmail({
+    to: recipientEmails,
+    subject: `Meeting Started: ${escapeHtml(meetingTitle)}`,
+    html,
+  });
+}
+
+/**
+ * Send due/fine reminder emails.
+ */
+export async function sendDueReminderEmail(
+  dueTitle: string,
+  amount: number,
+  currency: string,
+  dueDate: Date,
+  recipientEmail: string
+): Promise<void> {
+  const daysUntilDue = Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  const urgencyColor = daysUntilDue <= 3 ? '#E74C3C' : daysUntilDue <= 7 ? '#F39C12' : '#2980B9';
+  const urgencyLabel = daysUntilDue <= 0 ? 'OVERDUE' : `Due in ${daysUntilDue} day${daysUntilDue === 1 ? '' : 's'}`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #0B1426; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
+        <h1 style="color: #C9A84C; margin: 0; font-size: 24px;">OrgsLedger</h1>
+      </div>
+      <div style="background: #f8f9fa; padding: 32px; border-radius: 0 0 8px 8px;">
+        <div style="background: ${urgencyColor}; color: white; padding: 16px; border-radius: 8px; margin-bottom: 24px; text-align: center;">
+          <p style="margin: 0; font-size: 14px; opacity: 0.9;">Payment Due Reminder</p>
+          <p style="margin: 8px 0; font-size: 18px; font-weight: bold;">${urgencyLabel}</p>
+        </div>
+        <h2 style="color: #0B1426; margin-top: 0;">${escapeHtml(dueTitle)}</h2>
+        <div style="background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 16px 0;">
+          <p style="margin: 8px 0; color: #555;"><strong>Amount Due:</strong> ${currency} ${amount.toFixed(2)}</p>
+          <p style="margin: 8px 0; color: #555;"><strong>Due Date:</strong> ${dueDate.toLocaleDateString()}</p>
+          <a href="https://app.orgsledger.com" style="display: inline-block; margin-top: 16px; padding: 10px 20px; background: ${urgencyColor}; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">Make Payment</a>
+        </div>
+        <p style="color: #888; font-size: 12px; margin-top: 16px;">
+          Please settle this payment to avoid late fees.
+        </p>
+      </div>
+      <p style="color: #aaa; font-size: 11px; text-align: center; margin-top: 16px;">&copy; ${new Date().getFullYear()} OrgsLedger. All rights reserved.</p>
+    </div>
+  `;
+
+  await sendEmail({
+    to: recipientEmail,
+    subject: `Payment Reminder: ${escapeHtml(dueTitle)} - ${urgencyLabel}`,
+    html,
+  });
+}
+
+/**
+ * Send fine issued email.
+ */
+export async function sendFineIssuedEmail(
+  reason: string,
+  amount: number,
+  currency: string,
+  recipientEmail: string
+): Promise<void> {
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #0B1426; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
+        <h1 style="color: #C9A84C; margin: 0; font-size: 24px;">OrgsLedger</h1>
+      </div>
+      <div style="background: #f8f9fa; padding: 32px; border-radius: 0 0 8px 8px;">
+        <div style="background: #E74C3C; color: white; padding: 16px; border-radius: 8px; margin-bottom: 24px; text-align: center;">
+          <p style="margin: 0; font-size: 14px; opacity: 0.9;">⚠️ Fine Issued</p>
+        </div>
+        <h2 style="color: #0B1426; margin-top: 0;">Fine Assessment</h2>
+        <div style="background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 16px 0;">
+          <p style="margin: 8px 0; color: #555;"><strong>Reason:</strong> ${escapeHtml(reason)}</p>
+          <p style="margin: 8px 0; color: #555;"><strong>Amount:</strong> <span style="color: #E74C3C; font-weight: bold;">${currency} ${amount.toFixed(2)}</span></p>
+          <p style="margin: 12px 0; color: #888; font-size: 13px;">This fine has been added to your account. You can view details and make payment in the app.</p>
+          <a href="https://app.orgsledger.com" style="display: inline-block; margin-top: 16px; padding: 10px 20px; background: #E74C3C; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">View Fine Details</a>
+        </div>
+        <p style="color: #888; font-size: 12px; margin-top: 16px;">
+          If you believe this is an error, contact your organization's administrator.
+        </p>
+      </div>
+      <p style="color: #aaa; font-size: 11px; text-align: center; margin-top: 16px;">&copy; ${new Date().getFullYear()} OrgsLedger. All rights reserved.</p>
+    </div>
+  `;
+
+  await sendEmail({
+    to: recipientEmail,
+    subject: 'Fine Issued - Action Required',
+    html,
+  });
+}
+
+/**
+ * Send announcement email to group of users.
+ */
+export async function sendAnnouncementEmail(
+  title: string,
+  body: string,
+  priority: 'low' | 'normal' | 'high' | 'urgent',
+  recipientEmails: string[]
+): Promise<void> {
+  const priorityColors: Record<string, { bg: string; text: string }> = {
+    low: { bg: '#AEB6BF', text: 'Low Priority' },
+    normal: { bg: '#2980B9', text: 'Standard' },
+    high: { bg: '#F39C12', text: 'High Priority' },
+    urgent: { bg: '#E74C3C', text: 'Urgent' }
+  };
+
+  const style = priorityColors[priority] || priorityColors.normal;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #0B1426; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
+        <h1 style="color: #C9A84C; margin: 0; font-size: 24px;">OrgsLedger</h1>
+      </div>
+      <div style="background: #f8f9fa; padding: 32px; border-radius: 0 0 8px 8px;">
+        <div style="background: ${style.bg}; color: white; padding: 12px; border-radius: 6px; margin-bottom: 24px; text-align: center;">
+          <p style="margin: 4px 0; font-size: 12px; opacity: 0.9; text-transform: uppercase; font-weight: bold;">📢 ${style.text}</p>
+        </div>
+        <h2 style="color: #0B1426; margin-top: 0; font-size: 20px;">${escapeHtml(title)}</h2>
+        <div style="background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 16px 0; line-height: 1.6;">
+          ${escapeHtml(body).replace(/\n/g, '<br/>')}
+        </div>
+        <a href="https://app.orgsledger.com" style="display: inline-block; margin-top: 16px; padding: 10px 20px; background: ${style.bg}; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">View in App</a>
+        <p style="color: #888; font-size: 12px; margin-top: 16px;">
+          You're receiving this because you're a member of the organization.
+        </p>
+      </div>
+      <p style="color: #aaa; font-size: 11px; text-align: center; margin-top: 16px;">&copy; ${new Date().getFullYear()} OrgsLedger. All rights reserved.</p>
+    </div>
+  `;
+
+  await sendEmail({
+    to: recipientEmails,
+    subject: `${priority === 'urgent' ? '🔴 URGENT: ' : ''}${escapeHtml(title)}`,
+    html,
+  });
+}

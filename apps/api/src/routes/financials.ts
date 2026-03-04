@@ -10,6 +10,7 @@ import { authenticate, loadMembershipAndSub as loadMembership, requireRole, vali
 import { logger } from '../logger';
 import { emitFinancialUpdate } from '../socket';
 import { sendPushToUser, sendPushToOrg } from '../services/push.service';
+import { sendFineIssuedEmail } from '../services/email.service';
 
 const router = Router();
 
@@ -380,6 +381,24 @@ router.post(
         body: `You have been fined ${data.currency} ${data.amount}: ${data.reason}`,
         data: { fineId: fine.id, type: 'fine' },
       }).catch(err => logger.warn('Push notification failed (fine issued)', err));
+
+      // Send fine issued email (best-effort, non-blocking)
+      try {
+        const user = await db('users').where({ id: data.userId }).select('email').first();
+        if (user?.email) {
+          const org = await db('organizations')
+            .where({ id: req.params.orgId })
+            .select('settings')
+            .first();
+          const settings = typeof org?.settings === 'string' ? JSON.parse(org.settings) : org?.settings;
+          if (settings?.notifications?.emailNotifications !== false) {
+            await sendFineIssuedEmail(data.reason, data.amount, data.currency, user.email)
+              .catch((err) => logger.warn('Failed to send fine issued email', err));
+          }
+        }
+      } catch (emailErr) {
+        logger.warn('Fine issued email error (non-blocking)', emailErr);
+      }
 
       await (req as any).audit?.({
         organizationId: req.params.orgId,

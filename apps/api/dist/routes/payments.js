@@ -969,11 +969,11 @@ router.get('/:orgId/payments/verify/:transactionId', middleware_1.authenticate, 
 // ══════════════════════════════════════════════════════════════
 router.get('/:orgId/ai-credits', middleware_1.authenticate, middleware_1.loadMembershipAndSub, async (req, res) => {
     try {
-        const wallet = await (0, db_1.default)('ai_wallet')
-            .where({ organization_id: req.params.orgId })
+        const wallet = await (0, db_1.default)('wallet')
+            .where({ organization_id: req.params.orgId, service_type: 'ai' })
             .first();
-        const history = await (0, db_1.default)('ai_wallet_transactions')
-            .where({ organization_id: req.params.orgId })
+        const history = await (0, db_1.default)('wallet_transactions')
+            .where({ organization_id: req.params.orgId, service_type: 'ai' })
             .orderBy('created_at', 'desc')
             .limit(50);
         res.json({
@@ -994,8 +994,8 @@ router.get('/:orgId/ai-credits', middleware_1.authenticate, middleware_1.loadMem
 router.post('/:orgId/ai-credits/purchase', middleware_1.authenticate, middleware_1.loadMembershipAndSub, (0, middleware_1.requireRole)('org_admin'), (0, middleware_1.validate)(purchaseCreditsSchema), async (req, res) => {
     try {
         const { credits: creditsToPurchase } = req.body;
-        const wallet = await (0, db_1.default)('ai_wallet')
-            .where({ organization_id: req.params.orgId })
+        const wallet = await (0, db_1.default)('wallet')
+            .where({ organization_id: req.params.orgId, service_type: 'ai' })
             .first();
         const pricePerHour = parseFloat(wallet?.price_per_hour_usd) || 10.00;
         const totalPrice = creditsToPurchase * pricePerHour;
@@ -1017,13 +1017,15 @@ router.post('/:orgId/ai-credits/purchase', middleware_1.authenticate, middleware
                 .where({ id: transaction.id })
                 .update({ status: 'completed' });
             // Add minutes to AI wallet
-            await (0, db_1.default)('ai_wallet')
-                .where({ organization_id: req.params.orgId })
+            await (0, db_1.default)('wallet')
+                .where({ organization_id: req.params.orgId, service_type: 'ai' })
                 .update({
                 balance_minutes: db_1.default.raw('balance_minutes + ?', [creditsToPurchase * 60]),
             });
-            await (0, db_1.default)('ai_wallet_transactions').insert({
+            await (0, db_1.default)('wallet_transactions').insert({
+                wallet_id: wallet.id,
                 organization_id: req.params.orgId,
+                service_type: 'ai',
                 type: 'topup',
                 amount_minutes: creditsToPurchase * 60,
                 cost: totalPrice,

@@ -4,12 +4,12 @@
 // Shows real-time transcripts with speaker, time, translations.
 // ============================================================
 
-import React, { useRef, useEffect, memo } from 'react';
+import React, { useRef, useEffect, memo, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
+  FlatList,
   ActivityIndicator,
   TouchableOpacity,
 } from 'react-native';
@@ -29,14 +29,58 @@ interface TranscriptPanelProps {
 // ── Component ─────────────────────────────────────────────
 
 function TranscriptPanelInner({ transcripts, loading, userId, onRefresh }: TranscriptPanelProps) {
-  const scrollRef = useRef<ScrollView>(null);
+  const listRef = useRef<FlatList>(null);
 
-  // Auto-scroll on new transcripts
+  // Auto-scroll to bottom on new transcripts
   useEffect(() => {
     if (transcripts.length > 0) {
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
     }
   }, [transcripts.length]);
+
+  // Memoize rendered items to prevent re-renders of unchanged entries
+  const renderItem = useMemo(() => {
+    return ({ item: t, index }: { item: any; index: number }) => {
+      const time = new Date(parseInt(t.spoken_at)).toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+      const isSelf = t.speaker_id === userId;
+      const translations =
+        typeof t.translations === 'string'
+          ? JSON.parse(t.translations || '{}')
+          : t.translations || {};
+
+      return (
+        <View style={[styles.entry, isSelf && styles.entrySelf]}>
+          <View style={styles.entryHeader}>
+            <Text style={styles.speakerName}>
+              {getLanguageFlag(t.source_lang)} {isSelf ? 'You' : t.speaker_name}
+            </Text>
+            <Text style={styles.timestamp}>{time}</Text>
+          </View>
+          <Text style={styles.originalText}>{t.original_text}</Text>
+          {Object.keys(translations).length > 0 && (
+            <View style={styles.translationsContainer}>
+              {Object.entries(translations).map(([lang, text]) => (
+                <Text key={lang} style={styles.translationText}>
+                  {getLanguageFlag(lang)} {text as string}
+                </Text>
+              ))}
+            </View>
+          )}
+        </View>
+      );
+    };
+  }, [userId]);
+
+  // Get item layout hint for fixed-height items (improves FlatList performance)
+  const getItemLayout = (_: any, index: number) => ({
+    length: 100, // Approximate height of each item
+    offset: 100 * index,
+    index,
+  });
 
   return (
     <View style={styles.container}>
@@ -66,47 +110,20 @@ function TranscriptPanelInner({ transcripts, loading, userId, onRefresh }: Trans
           </Text>
         </View>
       ) : (
-        <ScrollView
-          ref={scrollRef}
-          style={styles.scrollView}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-        >
-          {transcripts.map((t: any, idx: number) => {
-            const time = new Date(parseInt(t.spoken_at)).toLocaleTimeString(undefined, {
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit',
-            });
-            const isSelf = t.speaker_id === userId;
-            const translations =
-              typeof t.translations === 'string'
-                ? JSON.parse(t.translations || '{}')
-                : t.translations || {};
-
-            return (
-              <View key={t.id || idx} style={[styles.entry, isSelf && styles.entrySelf]}>
-                <View style={styles.entryHeader}>
-                  <Text style={styles.speakerName}>
-                    {getLanguageFlag(t.source_lang)} {isSelf ? 'You' : t.speaker_name}
-                  </Text>
-                  <Text style={styles.timestamp}>{time}</Text>
-                </View>
-                <Text style={styles.originalText}>{t.original_text}</Text>
-                {Object.keys(translations).length > 0 && (
-                  <View style={styles.translationsContainer}>
-                    {Object.entries(translations).map(([lang, text]) => (
-                      <Text key={lang} style={styles.translationText}>
-                        {getLanguageFlag(lang)} {text as string}
-                      </Text>
-                    ))}
-                  </View>
-                )}
-              </View>
-            );
-          })}
-          <View style={{ height: Spacing.md }} />
-        </ScrollView>
+        <FlatList
+          ref={listRef}
+          data={transcripts}
+          renderItem={renderItem}
+          keyExtractor={(item, index) => item.id || `transcript-${index}`}
+          style={styles.flatList}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          updateCellsBatchingPeriod={50}
+          initialNumToRender={15}
+          getItemLayout={getItemLayout}
+          ListFooterComponent={<View style={{ height: Spacing.md }} />}
+          scrollIndicatorInsets={{ right: 1 }}
+        />
       )}
     </View>
   );
@@ -170,6 +187,9 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingVertical: Spacing.xs,
+  },
+  flatList: {
+    flex: 1,
   },
   entry: {
     paddingHorizontal: Spacing.sm,

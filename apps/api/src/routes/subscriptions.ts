@@ -415,17 +415,17 @@ router.get('/admin/revenue', authenticate, requireDeveloper(), async (_req: Requ
     const subRevenueUsd = byPlan.filter((r: any) => r.currency === 'USD').reduce((s: number, r: any) => s + parseFloat(r.revenue || 0), 0);
     const subRevenueNgn = byPlan.filter((r: any) => r.currency === 'NGN').reduce((s: number, r: any) => s + parseFloat(r.revenue || 0), 0);
 
-    const aiTxUsd = await db('ai_wallet_transactions').where({ type: 'topup', currency: 'USD' }).select(db.raw('COALESCE(SUM(cost),0) as total')).first();
-    const aiTxNgn = await db('ai_wallet_transactions').where({ type: 'topup', currency: 'NGN' }).select(db.raw('COALESCE(SUM(cost),0) as total')).first();
-    const transTxUsd = await db('translation_wallet_transactions').where({ type: 'topup', currency: 'USD' }).select(db.raw('COALESCE(SUM(cost),0) as total')).first();
-    const transTxNgn = await db('translation_wallet_transactions').where({ type: 'topup', currency: 'NGN' }).select(db.raw('COALESCE(SUM(cost),0) as total')).first();
+    const aiTxUsd = await db('wallet_transactions').where({ type: 'topup', service_type: 'ai', currency: 'USD' }).select(db.raw('COALESCE(SUM(cost),0) as total')).first();
+    const aiTxNgn = await db('wallet_transactions').where({ type: 'topup', service_type: 'ai', currency: 'NGN' }).select(db.raw('COALESCE(SUM(cost),0) as total')).first();
+    const transTxUsd = await db('wallet_transactions').where({ type: 'topup', service_type: 'translation', currency: 'USD' }).select(db.raw('COALESCE(SUM(cost),0) as total')).first();
+    const transTxNgn = await db('wallet_transactions').where({ type: 'topup', service_type: 'translation', currency: 'NGN' }).select(db.raw('COALESCE(SUM(cost),0) as total')).first();
 
     const walletRevenueUsd = parseFloat(aiTxUsd?.total || 0) + parseFloat(transTxUsd?.total || 0);
     const walletRevenueNgn = parseFloat(aiTxNgn?.total || 0) + parseFloat(transTxNgn?.total || 0);
 
     // Total AI usage hours across all orgs
-    const aiUsage = await db('ai_wallet_transactions').where('amount_minutes', '<', 0).select(db.raw('COALESCE(SUM(ABS(amount_minutes)),0) as total')).first();
-    const transUsage = await db('translation_wallet_transactions').where('amount_minutes', '<', 0).select(db.raw('COALESCE(SUM(ABS(amount_minutes)),0) as total')).first();
+    const aiUsage = await db('wallet_transactions').where({ service_type: 'ai' }).where('amount_minutes', '<', 0).select(db.raw('COALESCE(SUM(ABS(amount_minutes)),0) as total')).first();
+    const transUsage = await db('wallet_transactions').where({ service_type: 'translation' }).where('amount_minutes', '<', 0).select(db.raw('COALESCE(SUM(ABS(amount_minutes)),0) as total')).first();
 
     // Flatten response to match dashboard expectations
     res.json({
@@ -849,13 +849,15 @@ router.post('/admin/subscription/override', authenticate, requireDeveloper(), va
 router.get('/admin/wallet-analytics', authenticate, requireDeveloper(), async (_req: Request, res: Response) => {
   try {
     // AI wallet totals
-    const aiStats = await db('ai_wallet')
+    const aiStats = await db('wallet')
+      .where({ service_type: 'ai' })
       .select(
         db.raw('SUM(balance_minutes) as total_balance'),
         db.raw('COUNT(*) as wallet_count'),
       )
       .first();
-    const aiTxStats = await db('ai_wallet_transactions')
+    const aiTxStats = await db('wallet_transactions')
+      .where({ service_type: 'ai' })
       .select(
         db.raw("SUM(CASE WHEN amount_minutes > 0 THEN amount_minutes ELSE 0 END) as total_added"),
         db.raw("SUM(CASE WHEN amount_minutes < 0 THEN ABS(amount_minutes) ELSE 0 END) as total_used"),
@@ -863,13 +865,15 @@ router.get('/admin/wallet-analytics', authenticate, requireDeveloper(), async (_
       .first();
 
     // Translation wallet totals
-    const transStats = await db('translation_wallet')
+    const transStats = await db('wallet')
+      .where({ service_type: 'translation' })
       .select(
         db.raw('SUM(balance_minutes) as total_balance'),
         db.raw('COUNT(*) as wallet_count'),
       )
       .first();
-    const transTxStats = await db('translation_wallet_transactions')
+    const transTxStats = await db('wallet_transactions')
+      .where({ service_type: 'translation' })
       .select(
         db.raw("SUM(CASE WHEN amount_minutes > 0 THEN amount_minutes ELSE 0 END) as total_added"),
         db.raw("SUM(CASE WHEN amount_minutes < 0 THEN ABS(amount_minutes) ELSE 0 END) as total_used"),

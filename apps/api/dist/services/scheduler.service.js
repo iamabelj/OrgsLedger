@@ -3,6 +3,39 @@
 // OrgsLedger API — Recurring Dues Scheduler
 // Checks recurring dues and auto-generates pending transactions
 // ============================================================
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -226,9 +259,194 @@ async function processLateFees() {
         logger_1.logger.error('Late-fee processor error', err);
     }
 }
+// ── Meeting reminder processor ──────────────────────────────
+async function checkMeetingReminders() {
+    try {
+        const now = new Date();
+        const remind24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        const remind1h = new Date(now.getTime() + 60 * 60 * 1000);
+        const remind15m = new Date(now.getTime() + 15 * 60 * 1000);
+        // Find meetings in the next 24 hours that haven't been reminded
+        const upcomingMeetings = await (0, db_1.default)('meetings')
+            .where('scheduled_start', '>', now.toISOString())
+            .where('scheduled_start', '<=', remind24h.toISOString())
+            .where('status', 'scheduled')
+            .select('*');
+        if (!upcomingMeetings.length)
+            return;
+        for (const meeting of upcomingMeetings) {
+            const scheduledStart = new Date(meeting.scheduled_start);
+            // Fetch org settings
+            const org = await (0, db_1.default)('organizations')
+                .where({ id: meeting.organization_id })
+                .select('settings')
+                .first();
+            if (!org?.settings)
+                continue;
+            const settings = typeof org.settings === 'string' ? JSON.parse(org.settings) : org.settings;
+            if (settings.notifications?.meetingReminders === false)
+                continue;
+            // Fetch attendees with email preference enabled
+            const attendees = await (0, db_1.default)('meeting_attendance')
+                .where({ meeting_id: meeting.id })
+                .select('user_id');
+            const attendeeIds = attendees.map((a) => a.user_id);
+            if (!attendeeIds.length)
+                continue;
+            // Get user emails and their notification preferences
+            const users = await (0, db_1.default)('users')
+                .whereIn('id', attendeeIds)
+                .select('id', 'email');
+            const userEmails = users.map((u) => u.email);
+            if (!userEmails.length)
+                continue;
+            // Check which users have email reminders enabled
+            const userPrefs = await (0, db_1.default)('notification_preferences')
+                .whereIn('user_id', users.map((u) => u.id))
+                .select('user_id', 'email_meetings');
+            const usersWithEmailEnabled = new Set();
+            for (const pref of userPrefs) {
+                if (pref.email_meetings !== false) {
+                    usersWithEmailEnabled.add(pref.user_id);
+                }
+            }
+            // Determine which reminder to send
+            const minutesUntil = (scheduledStart.getTime() - now.getTime()) / (1000 * 60);
+            let reminderType = null;
+            if (minutesUntil <= 15 && minutesUntil > 0) {
+                reminderType = '15min';
+            }
+            else if (minutesUntil <= 65 && minutesUntil > 40) {
+                reminderType = '1h';
+            }
+            else if (minutesUntil <= 1445 && minutesUntil > 1380) {
+                reminderType = '24h';
+            }
+            if (!reminderType)
+                continue;
+            // Send emails
+            const emailsToSend = userEmails.filter((_, idx) => usersWithEmailEnabled.has(users[idx].id));
+            if (emailsToSend.length > 0) {
+                // Dynamic import to avoid circular dependency
+                const { sendMeetingReminderEmail } = await Promise.resolve().then(() => __importStar(require('./email.service')));
+                await sendMeetingReminderEmail(meeting.title, scheduledStart, reminderType, emailsToSend);
+                logger_1.logger.info(`Meeting reminder sent (${reminderType}) for ${meeting.title} to ${emailsToSend.length} users`);
+            }
+        }
+    }
+    catch (err) {
+        logger_1.logger.error('Meeting reminder checker error', err);
+    }
+}
+// ── Due reminder processor ──────────────────────────────────
+async function checkDueReminders() {
+    try {
+        const now = new Date();
+        const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+        // Find pending transactions for dues that are coming due
+        const upcomingDues = await (0, db_1.default)('transactions')
+            .join('dues', 'transactions.reference_id', 'dues.id')
+            .where('transactions.status', 'pending')
+            .where('transactions.type', 'due')
+            .where('dues.due_date', '>', now.toISOString())
+            .where('dues.due_date', '<=', threeDaysFromNow.toISOString())
+            .select('transactions.*', 'dues.title', 'dues.currency', 'dues.amount', 'dues.due_date');
+        if (!upcomingDues.length)
+            return;
+        // Group by user and org to check preferences once per user
+        const userReminders = new Map();
+        for (const due of upcomingDues) {
+            const key = `${due.user_id}:${due.organization_id}`;
+            if (!userReminders.has(key))
+                userReminders.set(key, []);
+            userReminders.get(key).push(due);
+        }
+        for (const [key, dues] of userReminders.entries()) {
+            const [userId, orgId] = key.split(':');
+            // Check org settings
+            const org = await (0, db_1.default)('organizations')
+                .where({ id: orgId })
+                .select('settings')
+                .first();
+            if (!org?.settings)
+                continue;
+            const settings = typeof org.settings === 'string' ? JSON.parse(org.settings) : org.settings;
+            if (settings.notifications?.dueReminders === false)
+                continue;
+            // Check user preference
+            const userPref = await (0, db_1.default)('notification_preferences')
+                .where({ user_id: userId })
+                .select('email_finances')
+                .first();
+            if (userPref?.email_finances === false)
+                continue;
+            // Get user email
+            const user = await (0, db_1.default)('users').where({ id: userId }).select('email').first();
+            if (!user?.email)
+                continue;
+            // Send reminder for first due (most urgent)
+            const mostUrgent = dues.reduce((a, b) => new Date(a.due_date).getTime() < new Date(b.due_date).getTime() ? a : b);
+            const { sendDueReminderEmail } = await Promise.resolve().then(() => __importStar(require('./email.service')));
+            await sendDueReminderEmail(mostUrgent.title, mostUrgent.amount, mostUrgent.currency, new Date(mostUrgent.due_date), user.email);
+            logger_1.logger.info(`Due reminder sent for "${mostUrgent.title}" to ${user.email}`);
+        }
+    }
+    catch (err) {
+        logger_1.logger.error('Due reminder checker error', err);
+    }
+}
+// ── 30-Day No-Signin Check (Mobile Users) ────────────────
+// Deactivates users on mobile devices who haven't signed in for 30+ days
+// This prevents stale tokens from being used indefinitely
+async function checkNoSigninPurge() {
+    try {
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        // Find all users who last signed in 30+ days ago
+        const expiredSessions = await (0, db_1.default)('users')
+            .where({ is_active: true })
+            .andWhere(db_1.default.raw('DATE(last_signin_at) < ?', [thirtyDaysAgo.toISOString().split('T')[0]]))
+            .whereNull('deleted_at')
+            .select('id', 'email', 'last_signin_at');
+        if (expiredSessions.length === 0) {
+            logger_1.logger.debug('[SCHEDULER] No users expired by 30-day no-signin rule');
+            return;
+        }
+        const userIds = expiredSessions.map((u) => u.id);
+        // Deactivate these users (preserves data, but forces re-login)
+        const result = await (0, db_1.default)('users')
+            .whereIn('id', userIds)
+            .update({
+            is_active: false,
+            deactivation_reason: 'Automatic: No sign-in for 30+ days',
+            deactivated_at: db_1.default.fn.now(),
+        });
+        logger_1.logger.info('[SCHEDULER] Deactivated users due to 30-day no-signin rule', {
+            count: result,
+            userIds: userIds.slice(0, 5), // Log first 5 for debugging
+        });
+        // Log audit trail for each deactivated user
+        const auditEntries = expiredSessions.map((user) => ({
+            user_id: user.id,
+            action: 'deactivate',
+            entity_type: 'user',
+            entity_id: user.id,
+            old_value: { is_active: true },
+            new_value: { is_active: false, reason: 'No sign-in for 30+ days' },
+            ip_address: '127.0.0.1', // System action
+            user_agent: 'OrgsLedger Scheduler',
+            created_at: db_1.default.fn.now(),
+        }));
+        if (auditEntries.length > 0) {
+            await (0, db_1.default)('audit_logs').insert(auditEntries);
+        }
+    }
+    catch (err) {
+        logger_1.logger.error('[SCHEDULER] No-signin purge error', err);
+    }
+}
 let intervalHandle = null;
 function startScheduler() {
-    logger_1.logger.info('Starting recurring dues scheduler (interval: 1h)');
+    logger_1.logger.info('Starting scheduler (interval: 1h)');
     const runCycle = async () => {
         if (isRunning) {
             logger_1.logger.warn('Scheduler: previous cycle still running, skipping');
@@ -238,6 +456,9 @@ function startScheduler() {
         try {
             await processRecurringDues();
             await processLateFees();
+            await checkMeetingReminders();
+            await checkDueReminders();
+            await checkNoSigninPurge();
         }
         finally {
             isRunning = false;

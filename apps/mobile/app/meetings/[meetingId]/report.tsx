@@ -32,18 +32,21 @@ export default function MeetingReportScreen() {
   const [meeting, setMeeting] = useState<any>(null);
   const [transcripts, setTranscripts] = useState<any[]>([]);
   const [minutes, setMinutes] = useState<any>(null);
+  const [signatures, setSignatures] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [transcriptsLoading, setTranscriptsLoading] = useState(false);
   const [minutesLoading, setMinutesLoading] = useState(false);
+  const [signingLoading, setSigningLoading] = useState(false);
 
   // ── Load Meeting ────────────────────────────────────────
   const loadData = useCallback(async () => {
     if (!currentOrgId || !meetingId) return;
     try {
-      const [meetingRes, transcriptRes, minutesRes] = await Promise.allSettled([
+      const [meetingRes, transcriptRes, minutesRes, signaturesRes] = await Promise.allSettled([
         api.meetings.get(currentOrgId, meetingId),
         api.meetings.getTranscripts(currentOrgId, meetingId),
         api.meetings.getMinutes(currentOrgId, meetingId),
+        api.meetings.getSignatures(currentOrgId, meetingId),
       ]);
 
       if (meetingRes.status === 'fulfilled') {
@@ -54,6 +57,9 @@ export default function MeetingReportScreen() {
       }
       if (minutesRes.status === 'fulfilled') {
         setMinutes(minutesRes.value.data.data);
+      }
+      if (signaturesRes.status === 'fulfilled') {
+        setSignatures(signaturesRes.value.data.data || []);
       }
     } catch {
       showAlert('Error', 'Failed to load meeting report');
@@ -86,6 +92,27 @@ export default function MeetingReportScreen() {
       showAlert('Error', err.response?.data?.error || 'Failed to download report');
     }
   };
+
+  // ── Sign Minutes ────────────────────────────────────────
+  const handleSignMinutes = async () => {
+    if (!currentOrgId || !meetingId) return;
+    try {
+      setSigningLoading(true);
+      await api.meetings.signMinutes(currentOrgId, meetingId);
+      showAlert('Success', 'You have signed the meeting minutes');
+      // Reload signatures
+      const res = await api.meetings.getSignatures(currentOrgId, meetingId);
+      setSignatures(res.data.data || []);
+    } catch (err: any) {
+      showAlert('Error', err.response?.data?.error || 'Failed to sign minutes');
+    } finally {
+      setSigningLoading(false);
+    }
+  };
+
+  // ── Check if user already signed ────────────────────────
+  const userSignature = signatures.find((sig: any) => sig.signed_by_user_id === userId);
+  const canSign = minutes?.status === 'completed' && !userSignature;
 
   if (loading) return <LoadingScreen />;
   if (!meeting) {
@@ -196,6 +223,66 @@ export default function MeetingReportScreen() {
               ))}
             </Card>
           )}
+
+          {/* Digital Signatures */}
+          <Card style={s.section}>
+            <Text style={s.sectionTitle}>Meeting Signatures</Text>
+            {signatures.length > 0 ? (
+              <>
+                {signatures.map((sig: any, i: number) => (
+                  <View key={i} style={s.signatureRow}>
+                    <Ionicons name="checkmark-seal" size={16} color={Colors.success} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.signatureName}>{sig.signed_by_name}</Text>
+                      <Text style={s.signatureMeta}>
+                        {new Date(sig.signed_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                        {' at '}
+                        {new Date(sig.signed_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+                {canSign && (
+                  <TouchableOpacity 
+                    style={s.signBtn} 
+                    onPress={handleSignMinutes}
+                    disabled={signingLoading}
+                    activeOpacity={0.7}
+                  >
+                    {signingLoading ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <>
+                        <Ionicons name="pen" size={16} color="#FFF" />
+                        <Text style={s.signBtnText}>Sign Now</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </>
+            ) : (
+              <>
+                <Text style={s.noSignaturesText}>No signatures yet. Be the first to sign these meeting minutes.</Text>
+                {canSign && (
+                  <TouchableOpacity 
+                    style={s.signBtn} 
+                    onPress={handleSignMinutes}
+                    disabled={signingLoading}
+                    activeOpacity={0.7}
+                  >
+                    {signingLoading ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <>
+                        <Ionicons name="pen" size={16} color="#FFF" />
+                        <Text style={s.signBtnText}>Sign Minutes</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
+          </Card>
         </>
       )}
 
@@ -311,4 +398,10 @@ const s = StyleSheet.create({
   downloadRow: { flexDirection: 'row', gap: Spacing.sm },
   downloadBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.xs, paddingVertical: Spacing.md, borderRadius: BorderRadius.md, backgroundColor: Colors.primaryLight, borderWidth: 1, borderColor: Colors.accent },
   downloadBtnText: { fontSize: FontSize.sm, color: Colors.highlight, fontWeight: FontWeight.medium as any },
+  signatureRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.md, borderBottomWidth: 0.5, borderBottomColor: Colors.accent },
+  signatureName: { fontSize: FontSize.md, color: Colors.textWhite, fontWeight: FontWeight.medium as any },
+  signatureMeta: { fontSize: FontSize.xs, color: Colors.textLight, marginTop: 2 },
+  noSignaturesText: { fontSize: FontSize.sm, color: Colors.textLight, textAlign: 'center', paddingVertical: Spacing.md },
+  signBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.xs, marginTop: Spacing.md, paddingVertical: Spacing.md, borderRadius: BorderRadius.md, backgroundColor: Colors.highlight },
+  signBtnText: { fontSize: FontSize.md, color: '#FFF', fontWeight: FontWeight.semibold as any },
 });
