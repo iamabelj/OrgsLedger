@@ -104,9 +104,9 @@ export default function CheckoutScreen() {
   const getPrice = () => {
     // Fallback prices (yearly)
     const fallback: Record<string, Record<string, number>> = {
-      standard: { USD: 250, NGN: 125000 },
-      professional: { USD: 670, NGN: 335000 },
-      enterprise: { USD: 2100, NGN: 1050000 },
+      standard: { USD: 300, NGN: 150000 },
+      professional: { USD: 800, NGN: 400000 },
+      enterprise: { USD: 2500, NGN: 1250000 },
     };
 
     // If no plan, use fallback
