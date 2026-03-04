@@ -80,8 +80,8 @@ export default function CheckoutScreen() {
   const [region, setRegion] = useState('global');
   const [processing, setProcessing] = useState(false);
   
-  // Fixed to monthly billing only
-  const billingCycle = 'monthly';
+  // Yearly plans only
+  const billingCycle = 'annual';
 
   useEffect(() => {
     loadPlans();
@@ -102,11 +102,11 @@ export default function CheckoutScreen() {
   const plan = plans.find((p: any) => p.slug === selectedPlan);
 
   const getPrice = () => {
-    // Fallback prices (monthly)
+    // Fallback prices (yearly)
     const fallback: Record<string, Record<string, number>> = {
-      standard: { USD: 25, NGN: 12500 },
-      professional: { USD: 67, NGN: 33500 },
-      enterprise: { USD: 210, NGN: 105000 },
+      standard: { USD: 250, NGN: 125000 },
+      professional: { USD: 670, NGN: 335000 },
+      enterprise: { USD: 2100, NGN: 1050000 },
     };
 
     // If no plan, use fallback
@@ -114,9 +114,9 @@ export default function CheckoutScreen() {
       return fallback[selectedPlan]?.[currentRegion.currency] || 0;
     }
 
-    // Check plan pricing
+    // Check plan pricing (yearly/annual)
     const curr = currentRegion.currency.toLowerCase();
-    const price = plan[`price_${curr}_monthly`] || plan.price_usd_monthly;
+    const price = plan[`price_${curr}_annual`] || plan.price_usd_annual;
 
     // Use fallback if plan price is 0 or not set
     if (!price || price === 0) {
@@ -249,7 +249,7 @@ export default function CheckoutScreen() {
                 <Text style={styles.priceLabel}>Total</Text>
                 <View>
                   <Text style={styles.priceAmount}>{formatPrice(price)}</Text>
-                  <Text style={styles.pricePeriod}>/month</Text>
+                  <Text style={styles.pricePeriod}>/year</Text>
                 </View>
               </View>
 
