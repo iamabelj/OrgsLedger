@@ -78,8 +78,10 @@ export default function CheckoutScreen() {
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [region, setRegion] = useState('global');
-  const [billingCycle, setBillingCycle] = useState<'annual' | 'monthly'>('annual');
   const [processing, setProcessing] = useState(false);
+  
+  // Fixed to monthly billing only
+  const billingCycle = 'monthly';
 
   useEffect(() => {
     loadPlans();
@@ -101,18 +103,15 @@ export default function CheckoutScreen() {
 
   const getPrice = () => {
     if (!plan) {
-      // Fallback prices
+      // Fallback prices (monthly)
       const fallback: Record<string, Record<string, number>> = {
-        standard: { USD: 300, NGN: 150000 },
-        professional: { USD: 800, NGN: 400000 },
-        enterprise: { USD: 2500, NGN: 1250000 },
+        standard: { USD: 25, NGN: 12500 },
+        professional: { USD: 67, NGN: 33500 },
+        enterprise: { USD: 210, NGN: 105000 },
       };
       return fallback[selectedPlan]?.[currentRegion.currency] || 0;
     }
     const curr = currentRegion.currency.toLowerCase();
-    if (billingCycle === 'annual') {
-      return plan[`price_${curr}_annual`] || plan.price_usd_annual || 0;
-    }
     return plan[`price_${curr}_monthly`] || plan.price_usd_monthly || 0;
   };
 
@@ -233,38 +232,13 @@ export default function CheckoutScreen() {
               </View>
             </Card>
 
-            {/* Billing Cycle */}
-            <Card style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Billing Cycle</Text>
-              <View style={styles.regionRow}>
-                <TouchableOpacity
-                  style={[styles.regionBtn, billingCycle === 'annual' && styles.regionBtnActive]}
-                  onPress={() => setBillingCycle('annual')}
-                >
-                  <Text style={[styles.regionBtnText, billingCycle === 'annual' && styles.regionBtnTextActive]}>
-                    Annual (Save 20%)
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.regionBtn, billingCycle === 'monthly' && styles.regionBtnActive]}
-                  onPress={() => setBillingCycle('monthly')}
-                >
-                  <Text style={[styles.regionBtnText, billingCycle === 'monthly' && styles.regionBtnTextActive]}>
-                    Monthly
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </Card>
-
             {/* Price Summary */}
             <Card style={styles.priceCard}>
               <View style={styles.priceRow}>
                 <Text style={styles.priceLabel}>Total</Text>
                 <View>
                   <Text style={styles.priceAmount}>{formatPrice(price)}</Text>
-                  <Text style={styles.pricePeriod}>
-                    /{billingCycle === 'annual' ? 'year' : 'month'}
-                  </Text>
+                  <Text style={styles.pricePeriod}>/month</Text>
                 </View>
               </View>
 
