@@ -103,10 +103,10 @@ export default function CheckoutScreen() {
     if (!plan) {
       // Fallback prices (annual only)
       const fallback: Record<string, Record<string, number>> = {
-        starter: { USD: 200, NGN: 100000 },
-        standard: { USD: 300, NGN: 150000 },
-        professional: { USD: 800, NGN: 400000 },
-        enterprise: { USD: 2500, NGN: 1250000 },
+        starter: { USD: 200, NGN: 300000 },
+        standard: { USD: 300, NGN: 500000 },
+        professional: { USD: 800, NGN: 1200000 },
+        enterprise: { USD: 2500, NGN: 3500000 },
       };
       return fallback[selectedPlan]?.[currentRegion.currency] || 0;
     }
