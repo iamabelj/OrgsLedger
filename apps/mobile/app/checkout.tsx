@@ -78,10 +78,8 @@ export default function CheckoutScreen() {
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [region, setRegion] = useState('global');
+  const [billingCycle] = useState<'annual'>('annual');
   const [processing, setProcessing] = useState(false);
-  
-  // Yearly plans only
-  const billingCycle = 'annual';
 
   useEffect(() => {
     loadPlans();
@@ -102,28 +100,17 @@ export default function CheckoutScreen() {
   const plan = plans.find((p: any) => p.slug === selectedPlan);
 
   const getPrice = () => {
-    // Fallback prices (yearly)
-    const fallback: Record<string, Record<string, number>> = {
-      standard: { USD: 300, NGN: 150000 },
-      professional: { USD: 800, NGN: 400000 },
-      enterprise: { USD: 2500, NGN: 1250000 },
-    };
-
-    // If no plan, use fallback
     if (!plan) {
+      // Fallback prices (annual only)
+      const fallback: Record<string, Record<string, number>> = {
+        standard: { USD: 300, NGN: 150000 },
+        professional: { USD: 800, NGN: 400000 },
+        enterprise: { USD: 2500, NGN: 1250000 },
+      };
       return fallback[selectedPlan]?.[currentRegion.currency] || 0;
     }
-
-    // Check plan pricing (yearly/annual)
     const curr = currentRegion.currency.toLowerCase();
-    const price = plan[`price_${curr}_annual`] || plan.price_usd_annual;
-
-    // Use fallback if plan price is 0 or not set
-    if (!price || price === 0) {
-      return fallback[selectedPlan]?.[currentRegion.currency] || 0;
-    }
-
-    return price;
+    return plan[`price_${curr}_annual`] || plan.price_usd_annual || 0;
   };
 
   const price = getPrice();
@@ -243,13 +230,17 @@ export default function CheckoutScreen() {
               </View>
             </Card>
 
+
+
             {/* Price Summary */}
             <Card style={styles.priceCard}>
               <View style={styles.priceRow}>
                 <Text style={styles.priceLabel}>Total</Text>
                 <View>
                   <Text style={styles.priceAmount}>{formatPrice(price)}</Text>
-                  <Text style={styles.pricePeriod}>/year</Text>
+                  <Text style={styles.pricePeriod}>
+                    /year
+                  </Text>
                 </View>
               </View>
 
