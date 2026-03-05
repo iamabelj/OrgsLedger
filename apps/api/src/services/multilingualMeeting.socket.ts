@@ -8,6 +8,7 @@ import { Socket, Server } from 'socket.io';
 import { db } from '../db';
 import { logger } from '../logger';
 import { meetingTranscriptHandler, MeetingTranscriptContext } from './meetingTranscript.handler';
+import { deepgramRealtimeService } from './deepgramRealtime.service';
 
 /**
  * Register multilingual meeting transcript handlers
@@ -84,8 +85,8 @@ export function registerMultilingualMeetingHandlers(io: Server, socket: Socket):
         ? audioBuffer
         : Buffer.from(audioBuffer);
 
-      // Send to Deepgram
-      await meetingTranscriptHandler.sendAudioChunk(participantId, buffer);
+      // Send to Deepgram using the context ID as stream ID
+      await deepgramRealtimeService.handleAudioChunk(contextId, buffer);
     } catch (err) {
       logger.error('Error processing audio chunk:', err);
     }

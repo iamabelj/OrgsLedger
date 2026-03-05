@@ -94,8 +94,9 @@ class BotWorker {
           await botManager.startMeetingBot(meetingId);
           break;
         case 'check_health':
-          const status = botManager.getBotStatus(meetingId);
-          if (!status?.isRunning) {
+          const statusList = botManager.getStatus();
+          const status = statusList.find(s => s.meetingId === meetingId);
+          if (!status || status.activeSessions === 0) {
             logger.warn('[BOT_WORKER] Bot not running, attempting reconnect', { meetingId });
             await botManager.startMeetingBot(meetingId);
           }

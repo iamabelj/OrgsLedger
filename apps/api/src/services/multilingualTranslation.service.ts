@@ -5,7 +5,7 @@
 
 import { db } from '../db';
 import { logger } from '../logger';
-import TranslationService from './translation.service';
+import { translateText } from './translation.service';
 
 interface TranslationCacheEntry {
   text: string;
@@ -61,9 +61,10 @@ class MultilingualTranslationPipeline {
           translations[targetLang] = cached;
           logger.debug(`Using cached translation for ${sourceLang}->${targetLang}`);
         } else {
-          // Translate using TranslationService
+          // Translate using translation service
           try {
-            const translation = await TranslationService.translate(text, sourceLang, targetLang);
+            const result = await translateText(text, sourceLang, targetLang);
+            const translation = result.translatedText;
             translations[targetLang] = translation;
 
             // Cache the translation

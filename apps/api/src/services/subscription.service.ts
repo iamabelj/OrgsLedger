@@ -7,8 +7,19 @@ import db from '../db';
 import { logger } from '../logger';
 import { writeAuditLog } from '../middleware/audit';
 import { isUUID } from '../utils/validators';
-import { WALLET_PRICES } from '@orgsledger/database';
+// import { WALLET_PRICES } from '@orgsledger/database'; // TODO: Define WALLET_PRICES
 import crypto from 'crypto';
+
+// Temporary wallet prices until database package exports them
+const WALLET_PRICES = {
+  starter: 5,
+  professional: 15,
+  enterprise: 30,
+  AI_PER_HOUR_USD: 0.10,
+  AI_PER_HOUR_NGN: 150,
+  TRANSLATION_PER_HOUR_USD: 0.05,
+  TRANSLATION_PER_HOUR_NGN: 75
+};
 
 const FREE_TIER_MAX_MEMBERS = 5;
 const INCLUDED_AI_HOURS_BY_PLAN: Record<string, number> = {

@@ -76,7 +76,9 @@ class NotificationWorker {
       await sendPushToOrg(organizationId, {
         title,
         body,
-        data: data || {},
+        data: data ? Object.fromEntries(
+          Object.entries(data).map(([k, v]) => [k, String(v)])
+        ) : {},
       });
 
       logger.debug('Notification sent', {
