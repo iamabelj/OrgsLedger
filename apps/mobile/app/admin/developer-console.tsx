@@ -130,6 +130,15 @@ export default function DeveloperConsole() {
     isVerified: true,
   });
 
+  // Wallet pricing form states
+  const [pricingForm, setPricingForm] = useState({
+    aiUsd: '10.00',
+    aiNgn: '18000',
+    translationUsd: '25.00',
+    translationNgn: '45000',
+    isUpdating: false,
+  });
+
   // ── Data Loading ──────────────────────────────────────────
   const loadData = useCallback(async () => {
     try {
@@ -148,7 +157,20 @@ export default function DeveloperConsole() {
 
       setRevenue(revRes.data);
       setWalletAnalytics(walletRes.data?.summary || walletRes.data);
-      setWalletPricing(pricingRes.data?.data);
+      const pricingData = pricingRes.data?.data;
+      setWalletPricing(pricingData);
+      
+      // Update pricing form with loaded data
+      if (pricingData?.ai_price_usd) {
+        setPricingForm({
+          aiUsd: String(pricingData.ai_price_usd),
+          aiNgn: String(pricingData.ai_price_ngn || 18000),
+          translationUsd: String(pricingData.translation_price_usd || 25),
+          translationNgn: String(pricingData.translation_price_ngn || 45000),
+          isUpdating: false,
+        });
+      }
+      
       setSubscriptions(revRes.data?.subscriptions || subsRes.data?.subscriptions || []);
       setOrgs(orgsRes.data?.organizations || []);
       setPlans(plansRes.data?.data || []);
@@ -395,6 +417,34 @@ export default function DeveloperConsole() {
         },
       ]
     );
+  };
+
+  // ── Wallet Pricing Handlers ──────────────────────────────
+  const updateWalletPricing = async () => {
+    try {
+      setPricingForm({ ...pricingForm, isUpdating: true });
+
+      // Update AI pricing
+      await api.subscriptions.adminUpdateWalletPricing({
+        serviceType: 'ai',
+        pricePerHourUsd: parseFloat(pricingForm.aiUsd),
+        pricePerHourNgn: parseFloat(pricingForm.aiNgn),
+      });
+
+      // Update Translation pricing
+      await api.subscriptions.adminUpdateWalletPricing({
+        serviceType: 'translation',
+        pricePerHourUsd: parseFloat(pricingForm.translationUsd),
+        pricePerHourNgn: parseFloat(pricingForm.translationNgn),
+      });
+
+      showAlert('Success', 'Wallet pricing updated successfully');
+      loadData();
+    } catch (err: any) {
+      showAlert('Error', err?.response?.data?.error || 'Failed to update pricing');
+    } finally {
+      setPricingForm({ ...pricingForm, isUpdating: false });
+    }
   };
 
   // ── User Handlers ─────────────────────────────────────────
@@ -774,6 +824,117 @@ export default function DeveloperConsole() {
               </Card>
             ))
           )}
+        </View>
+      )}
+
+      {/* ════════════════════════════════════════════════════════ */}
+      {/* WALLET PRICING TAB */}
+      {/* ════════════════════════════════════════════════════════ */}
+      {tab === 'wallet-pricing' && (
+        <View style={[styles.section, { padding: responsive.contentPadding }]}>
+          <SectionHeader title="Wallet Pricing Management" />
+          
+          {/* Current Pricing Display */}
+          <Card style={styles.card}>
+            <Text style={styles.cardTitle}>Current Pricing Rates</Text>
+            <View style={styles.divider} />
+            
+            <View style={styles.pricingRowDisplay}>
+              <View style={styles.pricingCol}>
+                <Text style={styles.pricingLabel}>AI Hours</Text>
+                <Text style={styles.pricingValue}>${walletPricing?.ai_price_usd || '10.00'}</Text>
+                <Text style={styles.pricingCurrency}>/ hour (USD)</Text>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.pricingCol}>
+                <Text style={styles.pricingLabel}>AI Hours</Text>
+                <Text style={styles.pricingValue}>₦{walletPricing?.ai_price_ngn || '18000'}</Text>
+                <Text style={styles.pricingCurrency}>/ hour (NGN)</Text>
+              </View>
+            </View>
+
+            <View style={[styles.pricingRowDisplay, { marginTop: Spacing.md }]}>
+              <View style={styles.pricingCol}>
+                <Text style={styles.pricingLabel}>Translation Hours</Text>
+                <Text style={styles.pricingValue}>${walletPricing?.translation_price_usd || '25.00'}</Text>
+                <Text style={styles.pricingCurrency}>/ hour (USD)</Text>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.pricingCol}>
+                <Text style={styles.pricingLabel}>Translation Hours</Text>
+                <Text style={styles.pricingValue}>₦{walletPricing?.translation_price_ngn || '45000'}</Text>
+                <Text style={styles.pricingCurrency}>/ hour (NGN)</Text>
+              </View>
+            </View>
+          </Card>
+
+          {/* Update Pricing Form */}
+          <Card style={styles.card}>
+            <Text style={styles.cardTitle}>Update Pricing</Text>
+            <View style={styles.divider} />
+
+            <Text style={styles.formSectionTitle}>AI Hours Pricing</Text>
+            <View style={styles.formRow}>
+              <FormField
+                label="USD per hour"
+                value={pricingForm.aiUsd}
+                onChangeText={(v) => setPricingForm({ ...pricingForm, aiUsd: v })}
+                keyboardType="decimal-pad"
+                style={{ flex: 1 }}
+                editable={!pricingForm.isUpdating}
+              />
+              <FormField
+                label="NGN per hour"
+                value={pricingForm.aiNgn}
+                onChangeText={(v) => setPricingForm({ ...pricingForm, aiNgn: v })}
+                keyboardType="decimal-pad"
+                style={{ flex: 1 }}
+                editable={!pricingForm.isUpdating}
+              />
+            </View>
+
+            <Text style={styles.formSectionTitle}>Translation Hours Pricing</Text>
+            <View style={styles.formRow}>
+              <FormField
+                label="USD per hour"
+                value={pricingForm.translationUsd}
+                onChangeText={(v) => setPricingForm({ ...pricingForm, translationUsd: v })}
+                keyboardType="decimal-pad"
+                style={{ flex: 1 }}
+                editable={!pricingForm.isUpdating}
+              />
+              <FormField
+                label="NGN per hour"
+                value={pricingForm.translationNgn}
+                onChangeText={(v) => setPricingForm({ ...pricingForm, translationNgn: v })}
+                keyboardType="decimal-pad"
+                style={{ flex: 1 }}
+                editable={!pricingForm.isUpdating}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.saveBtn, pricingForm.isUpdating && { opacity: 0.5 }]}
+              onPress={updateWalletPricing}
+              disabled={pricingForm.isUpdating}
+            >
+              {pricingForm.isUpdating ? (
+                <ActivityIndicator color={Colors.white} />
+              ) : (
+                <Text style={styles.saveBtnText}>Update Pricing</Text>
+              )}
+            </TouchableOpacity>
+          </Card>
+
+          {/* Info Card */}
+          <Card style={{ ...styles.card, backgroundColor: Colors.highlightSubtle }}>
+            <View style={styles.infoRow}>
+              <Ionicons name="information-circle" size={20} color={Colors.highlight} />
+              <Text style={styles.infoText}>
+                Changes to pricing rates will apply to new wallet transactions immediately. Existing wallet balances are unaffected.
+              </Text>
+            </View>
+          </Card>
         </View>
       )}
 
@@ -1264,4 +1425,14 @@ const styles = StyleSheet.create({
   selectOptionText: { fontSize: FontSize.sm, color: Colors.textSecondary },
   selectOptionTextActive: { color: Colors.highlight, fontWeight: FontWeight.semibold as any },
   userEmail: { fontSize: FontSize.sm, color: Colors.textLight, marginBottom: Spacing.md },
+
+  // Wallet Pricing
+  cardTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold as any, color: Colors.textPrimary, marginBottom: Spacing.md },
+  pricingRowDisplay: { flexDirection: 'row', alignItems: 'stretch', gap: Spacing.md },
+  pricingCol: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.md },
+  pricingLabel: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: Spacing.xs },
+  pricingValue: { fontSize: FontSize.title, fontWeight: FontWeight.bold as any, color: Colors.highlight },
+  pricingCurrency: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: Spacing.xs },
+  infoRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  infoText: { fontSize: FontSize.sm, color: Colors.highlight, flex: 1, lineHeight: 20 },
 });
