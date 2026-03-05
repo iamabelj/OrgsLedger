@@ -412,9 +412,9 @@ async function checkNoSigninPurge() {
     // Find all users who last signed in 30+ days ago
     const expiredSessions = await db('users')
       .where({ is_active: true })
-      .andWhere(db.raw('DATE(last_signin_at) < ?', [thirtyDaysAgo.toISOString().split('T')[0]]))
+      .andWhere(db.raw('DATE(last_login_at) < ?', [thirtyDaysAgo.toISOString().split('T')[0]]))
       .whereNull('deleted_at')
-      .select('id', 'email', 'last_signin_at');
+      .select('id', 'email', 'last_login_at');
 
     if (expiredSessions.length === 0) {
       logger.debug('[SCHEDULER] No users expired by 30-day no-signin rule');
