@@ -24,7 +24,7 @@ import { Card, SectionHeader, ResponsiveScrollView } from '../../src/components/
 import { useResponsive } from '../../src/hooks/useResponsive';
 import { showAlert } from '../../src/utils/alert';
 
-type Tab = 'overview' | 'plans' | 'orgs' | 'users' | 'audit';
+type Tab = 'overview' | 'plans' | 'orgs' | 'users' | 'audit' | 'wallet-pricing';
 
 interface SubscriptionPlan {
   id: string;
@@ -81,6 +81,7 @@ export default function DeveloperConsole() {
   // Data states
   const [revenue, setRevenue] = useState<any>(null);
   const [walletAnalytics, setWalletAnalytics] = useState<any>(null);
+  const [walletPricing, setWalletPricing] = useState<any>(null);
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [orgs, setOrgs] = useState<Organization[]>([]);
@@ -133,9 +134,10 @@ export default function DeveloperConsole() {
   const loadData = useCallback(async () => {
     try {
       setError(null);
-      const [revRes, walletRes, subsRes, orgsRes, plansRes, usersRes, auditRes, riskRes] = await Promise.all([
+      const [revRes, walletRes, pricingRes, subsRes, orgsRes, plansRes, usersRes, auditRes, riskRes] = await Promise.all([
         api.subscriptions.adminRevenue().catch(() => ({ data: {} })),
         api.subscriptions.adminWalletAnalytics().catch(() => ({ data: {} })),
+        api.subscriptions.adminGetWalletPricing().catch(() => ({ data: { data: {} } })),
         api.subscriptions.adminSubscriptions({ limit: 200 }).catch(() => ({ data: { subscriptions: [] } })),
         api.subscriptions.adminOrganizations().catch(() => ({ data: { organizations: [] } })),
         api.subscriptions.adminPlans().catch(() => ({ data: { data: [] } })),
@@ -146,6 +148,7 @@ export default function DeveloperConsole() {
 
       setRevenue(revRes.data);
       setWalletAnalytics(walletRes.data?.summary || walletRes.data);
+      setWalletPricing(pricingRes.data?.data);
       setSubscriptions(revRes.data?.subscriptions || subsRes.data?.subscriptions || []);
       setOrgs(orgsRes.data?.organizations || []);
       setPlans(plansRes.data?.data || []);

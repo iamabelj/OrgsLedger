@@ -505,6 +505,11 @@ class ApiClient {
       this.client.delete(`/subscriptions/admin/signup-invites/${inviteId}`),
     validateSignupInvite: (code: string) =>
       this.client.get(`/subscriptions/invite/validate/${code}`),
+    // Wallet pricing management
+    adminGetWalletPricing: () =>
+      this.client.get('/subscriptions/admin/wallet-pricing'),
+    adminUpdateWalletPricing: (data: { serviceType: 'ai' | 'translation'; pricePerHourUsd?: number; pricePerHourNgn?: number }) =>
+      this.client.put('/subscriptions/admin/wallet-pricing/update', data),
   };
 
   // ── AI Credits (legacy — kept for backward compatibility) ─

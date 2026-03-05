@@ -2048,4 +2048,83 @@ router.get('/invite/validate/:code', async (req: Request, res: Response) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════
+// WALLET PRICING CONFIGURATION (Developer)
+// ══════════════════════════════════════════════════════════════
+
+// GET /admin/wallet-pricing — Get current AI and translation wallet pricing
+router.get('/admin/wallet-pricing', authenticate, requireDeveloper(), async (_req: Request, res: Response) => {
+  try {
+    // Get sample prices from existing wallets
+    const aiWallet = await db('wallet').where({ service_type: 'ai' }).first();
+    const translationWallet = await db('wallet').where({ service_type: 'translation' }).first();
+
+    const pricing = {
+      ai: {
+        pricePerHourUsd: aiWallet?.price_per_hour_usd || 10.00,
+        pricePerHourNgn: aiWallet?.price_per_hour_ngn || 18000.00,
+      },
+      translation: {
+        pricePerHourUsd: translationWallet?.price_per_hour_usd || 25.00,
+        pricePerHourNgn: translationWallet?.price_per_hour_ngn || 45000.00,
+      },
+    };
+
+    res.json({ success: true, data: pricing });
+  } catch (err: any) {
+    logger.error('[AdminWalletPricing] Error', err);
+    res.status(500).json({ success: false, error: 'Failed to get wallet pricing' });
+  }
+});
+
+// PUT /admin/wallet-pricing/update — Update wallet pricing for all wallets
+const updateWalletPricingSchema = z.object({
+  serviceType: z.enum(['ai', 'translation']),
+  pricePerHourUsd: z.number().min(0.01).optional(),
+  pricePerHourNgn: z.number().min(0.01).optional(),
+});
+
+router.put('/admin/wallet-pricing/update', authenticate, requireDeveloper(), validate(updateWalletPricingSchema), async (req: Request, res: Response) => {
+  try {
+    const { serviceType, pricePerHourUsd, pricePerHourNgn } = req.body;
+
+    const updates: any = { updated_at: db.fn.now() };
+    if (pricePerHourUsd) updates.price_per_hour_usd = pricePerHourUsd;
+    if (pricePerHourNgn) updates.price_per_hour_ngn = pricePerHourNgn;
+
+    const result = await db('wallet')
+      .where({ service_type: serviceType })
+      .update(updates)
+      .returning('*');
+
+    if (result.length === 0) {
+      return res.status(404).json({ success: false, error: 'No wallets found for this service type' });
+    }
+
+    // Log audit trail
+    await writeAuditLog({
+      userId: (req as any).user?.id || 'developer',
+      action: 'update',
+      entityType: 'wallet_pricing',
+      entityId: serviceType,
+      newValue: updates,
+    });
+
+    logger.info(`[AdminWalletPricing] Updated ${serviceType} pricing for ${result.length} wallets`, { updates });
+
+    res.json({
+      success: true,
+      message: `Updated pricing for ${result.length} ${serviceType} wallets`,
+      data: {
+        serviceType,
+        pricePerHourUsd: result[0]?.price_per_hour_usd,
+        pricePerHourNgn: result[0]?.price_per_hour_ngn,
+      },
+    });
+  } catch (err: any) {
+    logger.error('[AdminWalletPricing] Error updating pricing', err);
+    res.status(500).json({ success: false, error: 'Failed to update wallet pricing' });
+  }
+});
+
 export default router;
