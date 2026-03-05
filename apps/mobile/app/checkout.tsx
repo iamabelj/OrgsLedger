@@ -21,10 +21,35 @@ import { useResponsive } from '../src/hooks/useResponsive';
 import { LOGO } from '../src/logo';
 
 // ── Plan features (static fallback) ─────────────────────────
-const PLAN_FEATURES: Record<string, { maxMembers: string; features: string[] }> = {
+const PLAN_FEATURES: Record<string, { maxMembers: string; aiHours: number; features: string[] }> = {
+  free: {
+    maxMembers: 'Up to 5 members',
+    aiHours: 0,
+    features: [
+      'Real-Time Chat & Channels',
+      'Meeting Management',
+      'Polls & Voting',
+      'Event Scheduling & RSVP',
+      'Announcements & Documents',
+      'Mobile + Web Access',
+    ],
+  },
+  starter: {
+    maxMembers: 'Up to 50 members',
+    aiHours: 4,
+    features: [
+      'Everything in Free',
+      'Dues & Donation Collection',
+      'Committees & Groups',
+      '4 AI hours/year included',
+      'Mobile + Web Access',
+    ],
+  },
   standard: {
     maxMembers: 'Up to 100 members',
+    aiHours: 10,
     features: [
+      'Everything in Starter',
       'Real-Time Chat & Channels',
       'Meeting Management',
       'Dues & Donation Collection',
@@ -32,11 +57,13 @@ const PLAN_FEATURES: Record<string, { maxMembers: string; features: string[] }> 
       'Event Scheduling & RSVP',
       'Announcements & Documents',
       'Committees & Groups',
+      '10 AI hours/year included',
       'Mobile + Web Access',
     ],
   },
   professional: {
     maxMembers: 'Up to 300 members',
+    aiHours: 30,
     features: [
       'Everything in Standard',
       'Advanced Analytics & Reports',
@@ -46,19 +73,20 @@ const PLAN_FEATURES: Record<string, { maxMembers: string; features: string[] }> 
       'Real-Time Translation',
       'Expense Tracking & Approval',
       'Priority Email Support',
+      '30 AI hours/year included',
     ],
   },
   enterprise: {
     maxMembers: 'Up to 500 members',
+    aiHours: 150,
     features: [
       'Everything in Professional',
-      'AI Meeting Summaries',
-      'Real-Time Translation',
       'Dedicated Account Manager',
       'Full API Access',
       'Priority Phone & Chat Support',
       'Custom Integrations',
       'SLA Guarantee',
+      '150 AI hours/year included',
     ],
   },
 };
@@ -103,6 +131,7 @@ export default function CheckoutScreen() {
     if (!plan) {
       // Fallback prices (annual only)
       const fallback: Record<string, Record<string, number>> = {
+        free: { USD: 0, NGN: 0 },
         starter: { USD: 200, NGN: 300000 },
         standard: { USD: 300, NGN: 500000 },
         professional: { USD: 800, NGN: 1200000 },
@@ -193,6 +222,16 @@ export default function CheckoutScreen() {
                   <Text style={styles.planMembers}>{planInfo.maxMembers}</Text>
                 )}
               </View>
+
+              {/* AI Hours Included */}
+              {planInfo && planInfo.aiHours > 0 && (
+                <View style={styles.aiHoursRow}>
+                  <Ionicons name="flash" size={18} color={Colors.highlight} />
+                  <Text style={styles.aiHoursText}>
+                    {planInfo.aiHours} AI hours/year included
+                  </Text>
+                </View>
+              )}
 
               {/* Features */}
               {planInfo && (
@@ -372,6 +411,24 @@ const styles = StyleSheet.create({
   pricePeriod: {
     fontSize: FontSize.sm, color: Colors.textSecondary,
     textAlign: 'right',
+  },
+  aiHoursRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    marginBottom: Spacing.md,
+    backgroundColor: Colors.highlightSubtle,
+    borderRadius: BorderRadius.lg,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.highlight,
+  },
+  aiHoursText: {
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.semibold as any,
+    color: Colors.highlight,
+    flex: 1,
   },
   securityRow: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.xs,
