@@ -7,6 +7,7 @@ import db from '../db';
 import { logger } from '../logger';
 import { writeAuditLog } from '../middleware/audit';
 import { isUUID } from '../utils/validators';
+import { WALLET_PRICES } from '@orgsledger/database';
 import crypto from 'crypto';
 
 const FREE_TIER_MAX_MEMBERS = 5;
@@ -375,8 +376,8 @@ async function getWallet(orgId: string, serviceType: 'ai' | 'translation') {
         service_type: 'ai',
         balance_minutes: includedAiMinutes,
         currency,
-        price_per_hour_usd: 10.00,
-        price_per_hour_ngn: 18000.00,
+        price_per_hour_usd: WALLET_PRICES.AI_PER_HOUR_USD,
+        price_per_hour_ngn: WALLET_PRICES.AI_PER_HOUR_NGN,
       }).returning('*');
     } else {
       // Default 60 minutes so new orgs can use live translation out of the box
@@ -385,8 +386,8 @@ async function getWallet(orgId: string, serviceType: 'ai' | 'translation') {
         service_type: 'translation',
         balance_minutes: 60,
         currency,
-        price_per_hour_usd: 25.00,
-        price_per_hour_ngn: 45000.00,
+        price_per_hour_usd: WALLET_PRICES.TRANSLATION_PER_HOUR_USD,
+        price_per_hour_ngn: WALLET_PRICES.TRANSLATION_PER_HOUR_NGN,
       }).returning('*');
     }
   }
