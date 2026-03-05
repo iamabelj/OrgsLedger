@@ -39,6 +39,7 @@ const db_1 = __importDefault(require("../db"));
 const logger_1 = require("../logger");
 const audit_1 = require("../middleware/audit");
 const validators_1 = require("../utils/validators");
+const database_1 = require("@orgsledger/database");
 const crypto_1 = __importDefault(require("crypto"));
 const FREE_TIER_MAX_MEMBERS = 5;
 const INCLUDED_AI_HOURS_BY_PLAN = {
@@ -352,8 +353,8 @@ async function getWallet(orgId, serviceType) {
                 service_type: 'ai',
                 balance_minutes: includedAiMinutes,
                 currency,
-                price_per_hour_usd: 10.00,
-                price_per_hour_ngn: 18000.00,
+                price_per_hour_usd: database_1.WALLET_PRICES.AI_PER_HOUR_USD,
+                price_per_hour_ngn: database_1.WALLET_PRICES.AI_PER_HOUR_NGN,
             }).returning('*');
         }
         else {
@@ -363,8 +364,8 @@ async function getWallet(orgId, serviceType) {
                 service_type: 'translation',
                 balance_minutes: 60,
                 currency,
-                price_per_hour_usd: 25.00,
-                price_per_hour_ngn: 45000.00,
+                price_per_hour_usd: database_1.WALLET_PRICES.TRANSLATION_PER_HOUR_USD,
+                price_per_hour_ngn: database_1.WALLET_PRICES.TRANSLATION_PER_HOUR_NGN,
             }).returning('*');
         }
     }

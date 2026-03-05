@@ -58,6 +58,7 @@ const socket_1 = require("../socket");
 const bot_1 = require("../services/bot");
 const transaction_1 = require("../utils/transaction");
 const cache_service_1 = require("../services/cache.service");
+const minutes_queue_1 = require("../queues/minutes.queue");
 const router = (0, express_1.Router)();
 // ── Multer for audio uploads ────────────────────────────────
 const audioStorage = multer_1.default.diskStorage({
@@ -845,23 +846,23 @@ router.post('/:orgId/:meetingId/end', middleware_1.authenticate, middleware_1.lo
                     });
                     skipProcessing = true;
                 }
-                // Queue AI processing (handled by AI service) — skip if minutes already completed
+                // Queue AI processing (handled by minutes worker) — skip if minutes already completed
                 if (!skipProcessing) {
-                    const aiService = req.app.get('aiService');
-                    if (aiService) {
-                        logger_1.logger.info('[MINUTES_PIPELINE] Triggering AI minutes processing', {
+                    try {
+                        logger_1.logger.info('[MINUTES_PIPELINE] Submitting AI minutes job to queue', {
                             meetingId: req.params.meetingId,
                             orgId: req.params.orgId,
                         });
-                        aiService.processMinutes(req.params.meetingId, req.params.orgId).catch((err) => {
-                            logger_1.logger.error('[MINUTES_PIPELINE] AI minutes processing FAILED', {
-                                meetingId: req.params.meetingId,
-                                error: err.message,
-                            });
+                        await (0, minutes_queue_1.submitMinutesJob)({
+                            meetingId: req.params.meetingId,
+                            organizationId: req.params.orgId,
                         });
                     }
-                    else {
-                        logger_1.logger.warn('[MINUTES_PIPELINE] aiService not registered on app — minutes will NOT be generated');
+                    catch (err) {
+                        logger_1.logger.error('[MINUTES_PIPELINE] Failed to submit minutes job to queue', {
+                            meetingId: req.params.meetingId,
+                            error: err.message,
+                        });
                     }
                 }
             }
@@ -1423,11 +1424,18 @@ router.post('/:orgId/:meetingId/generate-minutes', middleware_1.authenticate, mi
         if (io) {
             io.to(`org:${orgId}`).emit('meeting:minutes:processing', { meetingId });
         }
-        // Queue AI processing
-        const aiService = req.app.get('aiService');
-        if (aiService) {
-            aiService.processMinutes(meetingId, orgId).catch((err) => {
-                logger_1.logger.error('AI minutes processing failed', err);
+        // Queue AI processing via minutes worker
+        try {
+            logger_1.logger.info('[MINUTES] Submitting minutes job to queue', { meetingId, orgId });
+            await (0, minutes_queue_1.submitMinutesJob)({
+                meetingId,
+                organizationId: orgId,
+            });
+        }
+        catch (err) {
+            logger_1.logger.error('[MINUTES] Failed to submit job to queue', {
+                meetingId,
+                error: err.message,
             });
         }
         res.json({ success: true, message: 'Minutes generation started' });

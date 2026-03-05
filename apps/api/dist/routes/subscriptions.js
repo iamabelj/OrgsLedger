@@ -1832,5 +1832,76 @@ router.get('/invite/validate/:code', async (req, res) => {
         res.status(500).json({ success: false, error: 'Failed to validate invite code' });
     }
 });
+// ══════════════════════════════════════════════════════════════
+// WALLET PRICING CONFIGURATION (Developer)
+// ══════════════════════════════════════════════════════════════
+// GET /admin/wallet-pricing — Get current AI and translation wallet pricing
+router.get('/admin/wallet-pricing', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), async (_req, res) => {
+    try {
+        // Get sample prices from existing wallets
+        const aiWallet = await (0, db_1.default)('wallet').where({ service_type: 'ai' }).first();
+        const translationWallet = await (0, db_1.default)('wallet').where({ service_type: 'translation' }).first();
+        const pricing = {
+            ai: {
+                pricePerHourUsd: aiWallet?.price_per_hour_usd || 10.00,
+                pricePerHourNgn: aiWallet?.price_per_hour_ngn || 18000.00,
+            },
+            translation: {
+                pricePerHourUsd: translationWallet?.price_per_hour_usd || 25.00,
+                pricePerHourNgn: translationWallet?.price_per_hour_ngn || 45000.00,
+            },
+        };
+        res.json({ success: true, data: pricing });
+    }
+    catch (err) {
+        logger_1.logger.error('[AdminWalletPricing] Error', err);
+        res.status(500).json({ success: false, error: 'Failed to get wallet pricing' });
+    }
+});
+// PUT /admin/wallet-pricing/update — Update wallet pricing for all wallets
+const updateWalletPricingSchema = zod_1.z.object({
+    serviceType: zod_1.z.enum(['ai', 'translation']),
+    pricePerHourUsd: zod_1.z.number().min(0.01).optional(),
+    pricePerHourNgn: zod_1.z.number().min(0.01).optional(),
+});
+router.put('/admin/wallet-pricing/update', middleware_1.authenticate, (0, middleware_1.requireDeveloper)(), (0, middleware_1.validate)(updateWalletPricingSchema), async (req, res) => {
+    try {
+        const { serviceType, pricePerHourUsd, pricePerHourNgn } = req.body;
+        const updates = { updated_at: db_1.default.fn.now() };
+        if (pricePerHourUsd)
+            updates.price_per_hour_usd = pricePerHourUsd;
+        if (pricePerHourNgn)
+            updates.price_per_hour_ngn = pricePerHourNgn;
+        const result = await (0, db_1.default)('wallet')
+            .where({ service_type: serviceType })
+            .update(updates)
+            .returning('*');
+        if (result.length === 0) {
+            return res.status(404).json({ success: false, error: 'No wallets found for this service type' });
+        }
+        // Log audit trail
+        await (0, audit_1.writeAuditLog)({
+            userId: req.user?.id || 'developer',
+            action: 'update',
+            entityType: 'wallet_pricing',
+            entityId: serviceType,
+            newValue: updates,
+        });
+        logger_1.logger.info(`[AdminWalletPricing] Updated ${serviceType} pricing for ${result.length} wallets`, { updates });
+        res.json({
+            success: true,
+            message: `Updated pricing for ${result.length} ${serviceType} wallets`,
+            data: {
+                serviceType,
+                pricePerHourUsd: result[0]?.price_per_hour_usd,
+                pricePerHourNgn: result[0]?.price_per_hour_ngn,
+            },
+        });
+    }
+    catch (err) {
+        logger_1.logger.error('[AdminWalletPricing] Error updating pricing', err);
+        res.status(500).json({ success: false, error: 'Failed to update wallet pricing' });
+    }
+});
 exports.default = router;
 //# sourceMappingURL=subscriptions.js.map

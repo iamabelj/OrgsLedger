@@ -16,10 +16,10 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const config_1 = require("./config");
 const db_1 = __importDefault(require("./db"));
 const logger_1 = require("./logger");
-const translation_service_1 = require("./services/translation.service");
 const subscription_service_1 = require("./services/subscription.service");
 const audit_1 = require("./middleware/audit");
 const speech_to_text_service_1 = require("./services/speech-to-text.service");
+const processing_queue_1 = require("./queues/processing.queue");
 // In-memory store for meeting translation sessions
 // meetingId -> Map<userId, { language, name, receiveVoice }>
 exports.meetingLanguages = new Map();
@@ -167,10 +167,10 @@ async function handleSpeechText(io, socket, userId, meetingId, text, sourceLang,
         });
     }
     try {
-        let translations = {};
         if (targetLangs.size > 0) {
-            logger_1.logger.debug(`[TRANSLATION] Translating to ${targetLangs.size} languages: ${[...targetLangs].join(', ')}`);
+            logger_1.logger.debug(`[TRANSLATION] Queuing translation job to ${targetLangs.size} languages: ${[...targetLangs].join(', ')}`);
             if (organizationId) {
+                // Check wallet balance before submitting (for immediate feedback)
                 const wallet = await (0, subscription_service_1.getTranslationWallet)(organizationId);
                 const balance = parseFloat(wallet.balance_minutes);
                 if (balance <= 0) {
@@ -179,100 +179,69 @@ async function handleSpeechText(io, socket, userId, meetingId, text, sourceLang,
                         error: 'Translation wallet empty. Please top up to continue translations.',
                         code: 'WALLET_EMPTY',
                     });
-                    await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, {});
-                    logger_1.logger.info(`[TRANSCRIPT] ✓ Stored (wallet empty): meeting=${meetingId}, speaker=${speakerName}`);
-                    io.to(`meeting:${meetingId}`).emit('transcript:stored', {
-                        meetingId, speakerId: userId, speakerName, originalText: text,
-                        sourceLang, translations: {}, timestamp: Date.now(),
-                    });
+                    logger_1.logger.warn('[TRANSLATION] Wallet empty, rejecting translation job', { meetingId, orgId: organizationId });
                     return;
                 }
-                translations = await (0, translation_service_1.translateToMultiple)(text, [...targetLangs], sourceLang);
-                logger_1.logger.debug(`[TRANSLATION] Translation complete: ${Object.keys(translations).length} languages`);
-                const speakingSeconds = Math.max(5, Math.ceil(text.length / 15));
-                const langMultiplier = Math.max(1, targetLangs.size);
-                const deductMinutes = (speakingSeconds * langMultiplier) / 60;
-                const deduction = await (0, subscription_service_1.deductTranslationWallet)(organizationId, Math.round(deductMinutes * 100) / 100, `Live translation: ${targetLangs.size} language(s), ${text.length} chars in meeting`);
-                if (!deduction.success) {
-                    logger_1.logger.warn('[TRANSLATION] Wallet deduction failed but translation was served', {
-                        meetingId, orgId: organizationId,
-                    });
-                }
+                // Submit translation job to processing queue (non-blocking)
+                const jobId = await (0, processing_queue_1.submitProcessingJob)({
+                    meetingId,
+                    speakerId: userId,
+                    originalText: text,
+                    sourceLanguage: sourceLang,
+                    targetLanguages: [...targetLangs],
+                    isFinal: true,
+                    organizationId, // Pass org ID for wallet deduction in worker
+                });
+                logger_1.logger.info(`[TRANSLATION] ✓ Job submitted to queue: jobId=${jobId}, meeting=${meetingId}, speaker=${speakerName}, targets=${targetLangs.size}`);
+                await (0, audit_1.writeAuditLog)({
+                    userId,
+                    action: 'submitted_translation_job',
+                    entityType: 'meeting',
+                    entityId: meetingId,
+                    newValue: { jobId, targetLanguages: targetLangs.size, textLength: text.length },
+                });
             }
             else {
-                translations = await (0, translation_service_1.translateToMultiple)(text, [...targetLangs], sourceLang);
-                logger_1.logger.warn('[TRANSLATION] No organization_id found for meeting, skipping wallet deduction', { meetingId });
+                // Submit job without wallet tracking (org-less meetings)
+                const jobId = await (0, processing_queue_1.submitProcessingJob)({
+                    meetingId,
+                    speakerId: userId,
+                    originalText: text,
+                    sourceLanguage: sourceLang,
+                    targetLanguages: [...targetLangs],
+                    isFinal: true,
+                });
+                logger_1.logger.info(`[TRANSLATION] ✓ Job submitted (no org): jobId=${jobId}, meeting=${meetingId}, speaker=${speakerName}`);
             }
         }
-        // Always include the original language
-        translations[sourceLang] = text;
-        // Persist transcript
-        await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, translations);
-        logger_1.logger.info(`[TRANSCRIPT] ✓ Stored: meeting=${meetingId}, speaker=${speakerName}, translations=${Object.keys(translations).length}`);
-        const now = Date.now();
-        // Emit transcript:stored for real-time transcript tab
-        io.to(`meeting:${meetingId}`).emit('transcript:stored', {
-            meetingId, speakerId: userId, speakerName, originalText: text,
-            sourceLang, translations, timestamp: now,
-        });
-        // Per-user routing with TTS availability
-        const langMapForEmit = exports.meetingLanguages.get(meetingId);
-        if (langMapForEmit) {
-            const allSockets = await io.in(`meeting:${meetingId}`).fetchSockets();
-            for (const [targetUserId, prefs] of langMapForEmit.entries()) {
-                if (targetUserId === userId)
-                    continue;
-                const targetSocket = allSockets.find((s) => s.userId === targetUserId || s.data?.userId === targetUserId);
-                if (targetSocket) {
-                    const ttsAvailable = (0, translation_service_1.isTtsSupported)(prefs.language) && prefs.receiveVoice;
-                    targetSocket.emit('translation:result', {
-                        meetingId,
-                        speakerId: userId,
-                        speakerName,
-                        originalText: text,
-                        sourceLang,
-                        translations,
-                        timestamp: now,
-                        ttsEnabled: ttsAvailable,
-                        ttsAvailable,
-                        userLang: prefs.language,
-                    });
-                    logger_1.logger.debug(`[TRANSLATION] Emitted to user ${targetUserId} (lang=${prefs.language}, tts=${ttsAvailable})`);
-                }
+        else {
+            // No target languages: store original only (no translation needed)
+            if (organizationId) {
+                await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, { [sourceLang]: text });
+                logger_1.logger.info(`[TRANSCRIPT] ✓ Stored (original only): meeting=${meetingId}, speaker=${speakerName}`);
+                io.to(`meeting:${meetingId}`).emit('transcript:stored', {
+                    meetingId, speakerId: userId, speakerName, originalText: text,
+                    sourceLang, translations: { [sourceLang]: text }, timestamp: Date.now(),
+                });
             }
         }
-        // Also emit to the speaker (no TTS for own speech)
-        socket.emit('translation:result', {
-            meetingId,
-            speakerId: userId,
-            speakerName,
-            originalText: text,
-            sourceLang,
-            translations,
-            timestamp: now,
-            ttsEnabled: false,
-            ttsAvailable: false,
-        });
     }
     catch (err) {
-        logger_1.logger.error('[TRANSCRIPT] Translation pipeline failed', err);
-        await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, { [sourceLang]: text });
-        logger_1.logger.info(`[TRANSCRIPT] ✓ Stored (error fallback): meeting=${meetingId}, speaker=${speakerName}`);
-        io.to(`meeting:${meetingId}`).emit('transcript:stored', {
-            meetingId, speakerId: userId, speakerName, originalText: text,
-            sourceLang, translations: { [sourceLang]: text }, timestamp: Date.now(),
-        });
-        socket.emit('translation:result', {
+        logger_1.logger.error('[TRANSLATION] Failed to submit translation job', err);
+        // Fallback: store original text without translation
+        if (organizationId) {
+            await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, { [sourceLang]: text });
+            logger_1.logger.info(`[TRANSCRIPT] ✓ Stored (error fallback): meeting=${meetingId}, speaker=${speakerName}`);
+            io.to(`meeting:${meetingId}`).emit('transcript:stored', {
+                meetingId, speakerId: userId, speakerName, originalText: text,
+                sourceLang, translations: { [sourceLang]: text }, timestamp: Date.now(),
+            });
+        }
+        socket.emit('translation:error', {
             meetingId,
-            speakerId: userId,
-            speakerName,
-            originalText: text,
-            sourceLang,
-            translations: { [sourceLang]: text },
+            error: 'Failed to process translation. Please try again.',
+            code: 'JOB_SUBMISSION_FAILED',
             timestamp: Date.now(),
-            ttsEnabled: false,
-            ttsAvailable: false,
-            error: 'Translation temporarily unavailable',
         });
     }
 }

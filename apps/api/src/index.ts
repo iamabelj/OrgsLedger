@@ -51,8 +51,15 @@ import expenseRoutes from './routes/expenses';
 import subscriptionRoutes from './routes/subscriptions';
 import observabilityRoutes from './routes/observability';
 import docsRoutes from './routes/docs';
+import translationRoutes from './routes/translation.routes';
+import jobsRoutes from './routes/jobs.routes';
+import transcriptsRoutes from './routes/transcripts';
 import { startScheduler } from './services/scheduler.service';
 import { ensureSuperAdmin } from './services/seed.service';
+import { initializeWorkerOrchestrator, shutdownWorkerOrchestrator } from './workers/orchestrator';
+import { ProcessingWorkerService } from './services/workers/processingWorker.service';
+import { MinutesWorkerService } from './services/workers/minutesWorker.service';
+import { initializeMinutesQueue } from './queues/minutes.queue';
 
 const app = express();
 
@@ -369,6 +376,9 @@ app.use('/api/expenses', expenseRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/admin/observability', observabilityRoutes);
 app.use('/api/docs', docsRoutes);
+app.use('/api/translations', translationRoutes);
+app.use('/api/meetings/:meetingId/transcripts', transcriptsRoutes);
+app.use('/api', jobsRoutes);
 
 // ── 404 Handler ───────────────────────────────────────────
 // API 404 — only for /api/* routes
@@ -533,6 +543,17 @@ function doPostStart(): void {
 
     // Start recurring dues scheduler
     startScheduler();
+
+    // Initialize worker orchestrator
+    try {
+      const processingWorkerService = new ProcessingWorkerService();
+      const minutesWorkerService = new MinutesWorkerService(io);
+      await initializeMinutesQueue();
+      await initializeWorkerOrchestrator(io, processingWorkerService, minutesWorkerService);
+      logger.info('[STARTUP] ✓ Worker orchestrator initialized');
+    } catch (err: any) {
+      logger.error('[STARTUP] Worker orchestrator initialization failed (non-fatal):', err.message);
+    }
   })();
 }
 
@@ -572,7 +593,15 @@ async function gracefulShutdown(signal: string): Promise<void> {
   // 3. Wait for in-flight requests to complete (max 10s)
   await new Promise((resolve) => setTimeout(resolve, 10_000));
 
-  // 4. Close database pool
+  // 4. Stop worker orchestrator
+  try {
+    await shutdownWorkerOrchestrator();
+    logger.info('[SHUTDOWN] Worker orchestrator closed');
+  } catch (err: any) {
+    logger.error('[SHUTDOWN] Worker orchestrator close error:', err.message);
+  }
+
+  // 5. Close database pool
   try {
     const { db: knex } = require('./db');
     await knex.destroy();
@@ -581,7 +610,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
     logger.error('[SHUTDOWN] DB pool close error:', err.message);
   }
 
-  // 5. Flush logger
+  // 6. Flush logger
   try {
     logger.end();
   } catch {}

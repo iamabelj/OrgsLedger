@@ -53,8 +53,13 @@ const expenses_1 = __importDefault(require("./routes/expenses"));
 const subscriptions_1 = __importDefault(require("./routes/subscriptions"));
 const observability_1 = __importDefault(require("./routes/observability"));
 const docs_1 = __importDefault(require("./routes/docs"));
+const translation_routes_1 = __importDefault(require("./routes/translation.routes"));
 const scheduler_service_1 = require("./services/scheduler.service");
 const seed_service_1 = require("./services/seed.service");
+const orchestrator_1 = require("./workers/orchestrator");
+const processingWorker_service_1 = require("./services/workers/processingWorker.service");
+const minutesWorker_service_1 = require("./services/workers/minutesWorker.service");
+const minutes_queue_1 = require("./queues/minutes.queue");
 const app = (0, express_1.default)();
 exports.app = app;
 // Use pre-created server from server.js if available (production).
@@ -347,6 +352,7 @@ app.use('/api/expenses', expenses_1.default);
 app.use('/api/subscriptions', subscriptions_1.default);
 app.use('/api/admin/observability', observability_1.default);
 app.use('/api/docs', docs_1.default);
+app.use('/api/translations', translation_routes_1.default);
 // ── 404 Handler ───────────────────────────────────────────
 // API 404 — only for /api/* routes
 app.all('/api/*', (_req, res) => {
@@ -499,6 +505,17 @@ function doPostStart() {
         }
         // Start recurring dues scheduler
         (0, scheduler_service_1.startScheduler)();
+        // Initialize worker orchestrator
+        try {
+            const processingWorkerService = new processingWorker_service_1.ProcessingWorkerService();
+            const minutesWorkerService = new minutesWorker_service_1.MinutesWorkerService(io);
+            await (0, minutes_queue_1.initializeMinutesQueue)();
+            await (0, orchestrator_1.initializeWorkerOrchestrator)(io, processingWorkerService, minutesWorkerService);
+            logger_1.logger.info('[STARTUP] ✓ Worker orchestrator initialized');
+        }
+        catch (err) {
+            logger_1.logger.error('[STARTUP] Worker orchestrator initialization failed (non-fatal):', err.message);
+        }
     })();
 }
 if (preCreatedServer) {
@@ -534,7 +551,15 @@ async function gracefulShutdown(signal) {
     catch { }
     // 3. Wait for in-flight requests to complete (max 10s)
     await new Promise((resolve) => setTimeout(resolve, 10_000));
-    // 4. Close database pool
+    // 4. Stop worker orchestrator
+    try {
+        await (0, orchestrator_1.shutdownWorkerOrchestrator)();
+        logger_1.logger.info('[SHUTDOWN] Worker orchestrator closed');
+    }
+    catch (err) {
+        logger_1.logger.error('[SHUTDOWN] Worker orchestrator close error:', err.message);
+    }
+    // 5. Close database pool
     try {
         const { db: knex } = require('./db');
         await knex.destroy();
@@ -543,7 +568,7 @@ async function gracefulShutdown(signal) {
     catch (err) {
         logger_1.logger.error('[SHUTDOWN] DB pool close error:', err.message);
     }
-    // 5. Flush logger
+    // 6. Flush logger
     try {
         logger_1.logger.end();
     }

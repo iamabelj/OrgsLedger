@@ -21,6 +21,8 @@ import { forceDisconnectMeeting } from '../socket';
 import { getBotManager } from '../services/bot';
 import { withTransaction } from '../utils/transaction';
 import { cacheAside, cacheDel } from '../services/cache.service';
+import { submitMinutesJob } from '../queues/minutes.queue';
+import { onMeetingCreated, onMeetingUpdated, onMeetingStarted, onMeetingEnded } from '../services/meeting-queue-integration.service';
 
 const router = Router();
 
@@ -202,6 +204,10 @@ router.post(
         io.to(`org:${req.params.orgId}`).emit('meeting:scheduled', meeting);
       }
 
+      // Trigger async queue jobs for meeting setup (best-effort)
+      onMeetingCreated(meeting.id, req.params.orgId, meeting)
+        .catch(err => logger.warn('Meeting queue integration failed', err));
+
       res.status(201).json({ success: true, data: meeting });
     } catch (err) {
       logger.error('Create meeting error', err);
@@ -317,6 +323,10 @@ router.put(
         entityId: req.params.meetingId,
         newValue: updates,
       });
+
+      // Trigger async queue jobs for meeting update (best-effort)
+      onMeetingUpdated(req.params.meetingId, req.params.orgId, meeting, updated)
+        .catch(err => logger.warn('Meeting queue integration failed', err));
 
       res.json({ success: true, data: updated });
     } catch (err) {
@@ -821,6 +831,10 @@ router.post(
         newValue: { status: 'live' },
       });
 
+      // Trigger async queue jobs for meeting start (best-effort)
+      onMeetingStarted(req.params.meetingId, req.params.orgId, meeting)
+        .catch(err => logger.warn('Meeting queue integration failed', err));
+
       res.json({ success: true, message: 'Meeting started' });
     } catch (err) {
       res.status(500).json({ success: false, error: 'Failed to start meeting' });
@@ -888,82 +902,14 @@ router.post(
         );
       } catch (_) { /* BotManager not initialized */ }
 
-      // Always trigger AI minutes generation when transcripts exist
-      // (no manual toggle required — pipeline is always-on)
-      {
-        const hasAudio = !!meeting.audio_storage_url;
-        let hasLiveTranscripts = false;
-        try {
-          const transcriptCount = await db('meeting_transcripts')
-            .where({ meeting_id: req.params.meetingId })
-            .count('id as count')
-            .first();
-          hasLiveTranscripts = parseInt(transcriptCount?.count as string) > 0;
-        } catch {
-          // Table may not exist yet — that's fine
-          hasLiveTranscripts = false;
-        }
-
-        logger.info('[MINUTES_PIPELINE] Auto-generate check', {
-          meetingId: req.params.meetingId,
-          hasAudio,
-          hasLiveTranscripts,
-        });
-
-        if (hasAudio || hasLiveTranscripts) {
-          // Notify that processing is starting
-          if (io) {
-            io.to(`org:${req.params.orgId}`).emit('meeting:minutes:processing', {
-              meetingId: req.params.meetingId,
-            });
-            io.to(`meeting:${req.params.meetingId}`).emit('meeting:minutes:processing', {
-              meetingId: req.params.meetingId,
-            });
-          }
-
-          // Create pending minutes record (don't overwrite already-completed minutes)
-          let skipProcessing = false;
-          const existing = await db('meeting_minutes').where({ meeting_id: req.params.meetingId }).first();
-          if (!existing) {
-            await db('meeting_minutes').insert({
-              meeting_id: req.params.meetingId,
-              organization_id: req.params.orgId,
-              status: 'processing',
-            });
-          } else if (existing.status !== 'completed') {
-            // Only reset to processing if not already completed (prevent data loss on double-end)
-            await db('meeting_minutes').where({ meeting_id: req.params.meetingId }).update({ status: 'processing', error_message: null });
-          } else {
-            logger.info('[MINUTES_PIPELINE] Minutes already completed — skipping re-generation', {
-              meetingId: req.params.meetingId,
-            });
-            skipProcessing = true;
-          }
-
-          // Queue AI processing (handled by AI service) — skip if minutes already completed
-          if (!skipProcessing) {
-            const aiService = req.app.get('aiService');
-            if (aiService) {
-              logger.info('[MINUTES_PIPELINE] Triggering AI minutes processing', {
-                meetingId: req.params.meetingId,
-                orgId: req.params.orgId,
-              });
-              aiService.processMinutes(req.params.meetingId, req.params.orgId).catch((err: any) => {
-                logger.error('[MINUTES_PIPELINE] AI minutes processing FAILED', {
-                  meetingId: req.params.meetingId,
-                  error: err.message,
-                });
-              });
-            } else {
-              logger.warn('[MINUTES_PIPELINE] aiService not registered on app — minutes will NOT be generated');
-            }
-          }
-        } else {
-          logger.info('[MINUTES_PIPELINE] No audio or transcripts found — skipping minutes generation', {
-            meetingId: req.params.meetingId,
-          });
-        }
-      }
+      // Trigger async queue jobs for meeting end (best-effort)
+      // This handles:
+      // - Broadcast end notification to org
+      // - Create/update minutes record
+      // - Queue AI minutes job
+      // - Finalize translation pipeline
+      onMeetingEnded(req.params.meetingId, req.params.orgId, meeting)
+        .catch(err => logger.warn('Meeting queue integration failed', err));
 
       (req as any).audit?.({
         organizationId: req.params.orgId,
@@ -1639,11 +1585,17 @@ router.post(
         io.to(`org:${orgId}`).emit('meeting:minutes:processing', { meetingId });
       }
 
-      // Queue AI processing
-      const aiService = req.app.get('aiService');
-      if (aiService) {
-        aiService.processMinutes(meetingId, orgId).catch((err: any) => {
-          logger.error('AI minutes processing failed', err);
+      // Queue AI processing via minutes worker
+      try {
+        logger.info('[MINUTES] Submitting minutes job to queue', { meetingId, orgId });
+        await submitMinutesJob({
+          meetingId,
+          organizationId: orgId,
+        });
+      } catch (err: any) {
+        logger.error('[MINUTES] Failed to submit job to queue', {
+          meetingId,
+          error: err.message,
         });
       }
 
