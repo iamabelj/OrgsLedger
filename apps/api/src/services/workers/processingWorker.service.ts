@@ -7,7 +7,8 @@
 import { logger } from '../../logger';
 import { broadcastToQueue } from '../../queues/broadcast.queue';
 import { translateText } from '../translation.service';
-import { transcriptService } from '../transcript.service';
+import { transcriptService } from '../../services/transcript.service';
+
 import { deductTranslationWallet } from '../subscription.service';
 
 export interface ProcessingWorker {

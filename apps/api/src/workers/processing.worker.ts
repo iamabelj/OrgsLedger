@@ -8,7 +8,19 @@ import { Worker, Job } from 'bullmq';
 import { createBullMQConnection } from '../infrastructure/redisClient';
 import { logger } from '../logger';
 import { ProcessingWorker as IProcessingWorkerService } from '../services/workers/processingWorker.service';
-import { ProcessingJobData } from '../queues/processing.queue';
+
+// ProcessingJobData interface definition
+export interface ProcessingJobData {
+  meetingId: string;
+  speakerId: string;
+  originalText: string;
+  sourceLanguage: string;
+  targetLanguages: string[];
+  isFinal: boolean;
+  organizationId?: string;
+  chunkIndex?: number;
+}
+
 
 class ProcessingWorker {
   private worker: Worker<ProcessingJobData> | null = null;

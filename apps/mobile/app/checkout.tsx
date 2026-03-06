@@ -213,7 +213,7 @@ export default function CheckoutScreen() {
             <Card style={styles.planCard}>
               <View style={styles.planHeader}>
                 <View style={styles.planBadge}>
-                  <Ionicons name="diamond" size={16} color={Colors.highlight} />
+                  <Ionicons name="star" size={16} color={Colors.highlight} />
                   <Text style={styles.planName}>
                     {selectedPlan.charAt(0).toUpperCase() + selectedPlan.slice(1)} Plan
                   </Text>
