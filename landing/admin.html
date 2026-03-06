@@ -665,9 +665,8 @@ window.viewOrg = async function(id){
       '<div class="detail-grid">'+
         detailCard('Organization','Status',statusBadge(o.status),'Subscription',statusBadge(sub.status||'—'),'Currency',o.billing_currency||'USD','Country',o.billing_country||'—','Members',fmt(o.member_count||0),'Created',fmtDate(o.created_at))+
         detailCard('Subscription','Plan',plan.name||'—','Cycle',sub.billing_cycle||'—','Amount Paid',fmtCurrency(sub.amount_paid,sub.currency),'Period End',fmtDate(sub.current_period_end),'Grace End',fmtDate(sub.grace_period_end),'')+
-        detailCard('AI Wallet','Balance',fmtMins(aiW.balance_minutes),'Rate','$'+(aiW.price_per_hour_usd||10)+'/hr','')+
-        detailCard('Translation Wallet','Balance',fmtMins(trW.balance_minutes),'Rate','$'+(trW.price_per_hour_usd||10)+'/hr','')+
-        detailCard('Bundle Total','','','Combined Rate','$20/hr','')+
+        detailCard('AI Wallet','Balance',fmtMins(aiW.balance_minutes),'Rate','$'+(aiW.price_per_hour_usd||20)+'/hr','')+
+        detailCard('Translation Wallet','Balance',fmtMins(trW.balance_minutes),'Rate','$'+(trW.price_per_hour_usd||20)+'/hr','')+
       '</div>'+
       (o.admins?.length ? '<div class="table-wrap"><div class="table-header"><h3>Admins</h3></div><div class="table-responsive"><table><thead><tr><th>Email</th><th>Name</th><th>Role</th></tr></thead><tbody>'+o.admins.map(a=>'<tr><td>'+esc(a.email)+'</td><td>'+esc((a.first_name||'')+' '+(a.last_name||''))+'</td><td>'+roleBadge(a.role)+'</td></tr>').join('')+'</tbody></table></div></div>' : '');
   }catch(e){ $('org-detail-content').innerHTML='<div class="empty-state"><p>'+esc(e.message)+'</p></div>' }

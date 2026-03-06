@@ -54,13 +54,14 @@ async function up(knex) {
         t.timestamps(true, true);
     });
     // ── AI Wallet ───────────────────────────────────────────
+    // Bundled pricing: $20/hr (₦25,000/hr)
     await knex.schema.createTable('ai_wallet', (t) => {
         t.uuid('id').primary().defaultTo(knex.fn.uuid());
         t.uuid('organization_id').notNullable().unique().references('id').inTable('organizations').onDelete('CASCADE');
         t.decimal('balance_minutes', 14, 2).notNullable().defaultTo(0);
         t.string('currency', 5).defaultTo('USD');
-        t.decimal('price_per_hour_usd', 10, 2).defaultTo(10.00);
-        t.decimal('price_per_hour_ngn', 14, 2).defaultTo(18000.00);
+        t.decimal('price_per_hour_usd', 10, 2).defaultTo(20.00);
+        t.decimal('price_per_hour_ngn', 14, 2).defaultTo(25000.00);
         t.timestamps(true, true);
     });
     // ── AI Wallet Transactions ──────────────────────────────
@@ -77,14 +78,14 @@ async function up(knex) {
         t.timestamps(true, true);
     });
     // ── Translation Wallet ──────────────────────────────────
-    // AI + Translation bundled at $20/hr total ($10 each)
+    // Bundled pricing: $20/hr (₦25,000/hr)
     await knex.schema.createTable('translation_wallet', (t) => {
         t.uuid('id').primary().defaultTo(knex.fn.uuid());
         t.uuid('organization_id').notNullable().unique().references('id').inTable('organizations').onDelete('CASCADE');
         t.decimal('balance_minutes', 14, 2).notNullable().defaultTo(0);
         t.string('currency', 5).defaultTo('USD');
-        t.decimal('price_per_hour_usd', 10, 2).defaultTo(10.00);
-        t.decimal('price_per_hour_ngn', 14, 2).defaultTo(18000.00);
+        t.decimal('price_per_hour_usd', 10, 2).defaultTo(20.00);
+        t.decimal('price_per_hour_ngn', 14, 2).defaultTo(25000.00);
         t.timestamps(true, true);
     });
     // ── Translation Wallet Transactions ─────────────────────

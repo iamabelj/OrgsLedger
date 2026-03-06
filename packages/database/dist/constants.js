@@ -48,12 +48,12 @@ exports.BILLING_CYCLES = {
     MONTHLY: 'monthly',
 };
 // ── Wallet Prices ───────────────────────────────────────────
-// AI + Translation bundled at $20/hr total ($10 each)
+// AI + Translation bundled at $20/hr (₦25,000/hr) — single unified rate
 exports.WALLET_PRICES = {
-    AI_PER_HOUR_USD: 10.00,
-    AI_PER_HOUR_NGN: 18_000.00,
-    TRANSLATION_PER_HOUR_USD: 10.00,
-    TRANSLATION_PER_HOUR_NGN: 18_000.00,
+    AI_PER_HOUR_USD: 20.00,
+    AI_PER_HOUR_NGN: 25_000.00,
+    TRANSLATION_PER_HOUR_USD: 20.00,
+    TRANSLATION_PER_HOUR_NGN: 25_000.00,
     AI_CREDIT_PER_HOUR_USD: 7.00,
 };
 // ── Subscription Plan Defaults ──────────────────────────────

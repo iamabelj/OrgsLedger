@@ -37,10 +37,10 @@ export declare const BILLING_CYCLES: {
     readonly MONTHLY: "monthly";
 };
 export declare const WALLET_PRICES: {
-    readonly AI_PER_HOUR_USD: 10;
-    readonly AI_PER_HOUR_NGN: 18000;
-    readonly TRANSLATION_PER_HOUR_USD: 10;
-    readonly TRANSLATION_PER_HOUR_NGN: 18000;
+    readonly AI_PER_HOUR_USD: 20;
+    readonly AI_PER_HOUR_NGN: 25000;
+    readonly TRANSLATION_PER_HOUR_USD: 20;
+    readonly TRANSLATION_PER_HOUR_NGN: 25000;
     readonly AI_CREDIT_PER_HOUR_USD: 7;
 };
 export declare const PLAN_SLUGS: {
