@@ -1,6 +1,6 @@
 // ============================================================
 // OrgsLedger API — AI Meeting Minutes Service
-// Google Speech-to-Text + OpenAI Summarization
+// Deepgram Speech-to-Text + OpenAI Summarization
 // ============================================================
 
 import db from '../db';
@@ -63,7 +63,7 @@ export class AIService {
 
   /**
    * Process meeting audio into structured minutes.
-   * 1. Transcribe audio via Google Speech-to-Text
+   * 1. Transcribe audio via Deepgram Speech-to-Text
    * 2. Summarize & structure via OpenAI
    * 3. Store results
    * 4. Deduct AI credits
@@ -275,9 +275,9 @@ export class AIService {
   }
 
   /**
-   * Transcribe audio using Google Cloud Speech-to-Text.
+   * Transcribe audio using Deepgram Speech-to-Text.
    * When AI_PROXY_URL is configured, routes through the OrgsLedger AI Gateway
-   * so clients never need Google credentials locally.
+   * so clients never need Deepgram credentials locally.
    */
   private async transcribeAudio(audioUrl: string): Promise<TranscriptSegment[]> {
     // ── Proxy mode: forward to AI Gateway ──────────────
@@ -304,78 +304,77 @@ export class AIService {
       }
     }
 
-    // ── Direct mode: call Google API directly ──────────
-    if (!config.ai.googleCredentials) {
-      logger.warn('Google credentials not configured');
-      throw new Error('No transcription service configured (no AI proxy, no Google credentials)');
+    // ── Direct mode: call Deepgram API directly ──────────
+    if (!process.env.DEEPGRAM_API_KEY) {
+      logger.warn('DEEPGRAM_API_KEY not configured');
+      throw new Error('No transcription service configured (no AI proxy, no Deepgram API key)');
     }
 
     try {
-      // Dynamic import for Google Speech
-      const speech = await import('@google-cloud/speech');
-      const client = new speech.SpeechClient();
+      // Dynamic import for Deepgram
+      const { DeepgramClient } = await import('@deepgram/sdk');
+      const client = new DeepgramClient({ apiKey: process.env.DEEPGRAM_API_KEY });
 
-      const request = {
-        config: {
-          encoding: 'LINEAR16' as any,
-          sampleRateHertz: 16000,
-          // Google STT requires a valid BCP-47 code; 'auto' is not valid.
-          // Use 'en-US' as primary with broad alternativeLanguageCodes for
-          // 100+ language auto-detection.
-          languageCode: 'en-US',
-          alternativeLanguageCodes: [
-            'fr-FR', 'es-ES', 'de-DE', 'pt-BR', 'it-IT', 'nl-NL',
-            'ar-SA', 'zh-CN', 'ja-JP', 'ko-KR', 'hi-IN', 'ru-RU',
-            'tr-TR', 'pl-PL', 'sv-SE', 'da-DK', 'fi-FI', 'no-NO',
-            'uk-UA', 'ro-RO', 'cs-CZ', 'el-GR', 'he-IL', 'th-TH',
-            'vi-VN', 'id-ID', 'ms-MY', 'sw-KE', 'af-ZA', 'zu-ZA',
-          ],
-          enableAutomaticPunctuation: true,
-          enableSpeakerDiarization: true,
-          diarizationSpeakerCount: 10,
-          model: 'latest_long',
-        },
-        audio: {
-          uri: audioUrl, // GCS URI like gs://bucket/file.wav
-        },
-      };
-
-      const [operation] = await client.longRunningRecognize(request);
-      const [response] = await operation.promise();
+      // Transcribe prerecorded audio with multilingual support
+      logger.info('[DEEPGRAM] Transcribing prerecorded audio', { url: audioUrl });
+      const response = await client.listen.prerecorded.transcribeUrl(
+        { url: audioUrl },
+        {
+          model: 'nova-3',
+          language: 'multi', // Automatic language detection for 100+ languages
+          punctuate: true,
+          smart_format: true,
+          diarize: true,
+          diarize_version: 'latest',
+          utterances: true,
+        } as any
+      );
 
       const segments: TranscriptSegment[] = [];
-      let currentTime = 0;
 
-      if (response.results) {
-        for (const result of response.results) {
-          const alt = result.alternatives?.[0];
-          if (alt?.transcript) {
-            const words = alt.words || [];
-            const startTime = words[0]?.startTime
-              ? Number(words[0].startTime.seconds || 0)
-              : currentTime;
-            const endTime = words[words.length - 1]?.endTime
-              ? Number(words[words.length - 1]!.endTime!.seconds || 0)
-              : startTime + 5;
-            const speakerTag = words[0]?.speakerTag || 0;
-
-            segments.push({
-              speakerName: `Speaker ${speakerTag}`,
-              text: alt.transcript,
-              startTime,
-              endTime,
-              language: result.languageCode || 'en-US',
-            });
-
-            currentTime = endTime;
+      // Extract utterances (speaker-diarized segments)
+      const utterances = response.result?.results?.utterances || [];
+      
+      if (utterances.length > 0) {
+        // Use utterances for speaker-separated transcript
+        for (const utterance of utterances) {
+          segments.push({
+            speakerId: `speaker_${utterance.speaker}`,
+            speakerName: `Speaker ${utterance.speaker}`,
+            text: utterance.transcript || '',
+            startTime: utterance.start || 0,
+            endTime: utterance.end || 0,
+            language: response.result?.results?.channels?.[0]?.detected_language || 'en',
+          });
+        }
+      } else {
+        // Fallback: use channel alternatives if no utterances
+        const channels = response.result?.results?.channels || [];
+        for (const channel of channels) {
+          const alternatives = channel.alternatives || [];
+          for (const alt of alternatives) {
+            if (alt.transcript) {
+              segments.push({
+                speakerName: 'Speaker 0',
+                text: alt.transcript,
+                startTime: 0,
+                endTime: 0,
+                language: channel.detected_language || 'en',
+              });
+            }
           }
         }
       }
 
+      logger.info('[DEEPGRAM] Transcription complete', { 
+        segments: segments.length,
+        duration: response.result?.metadata?.duration || 0 
+      });
+
       return segments;
     } catch (err) {
-      logger.error('Google Speech-to-Text failed', err);
-      throw new Error('Audio transcription failed via Google Speech-to-Text');
+      logger.error('Deepgram transcription failed', err);
+      throw new Error('Audio transcription failed via Deepgram');
     }
   }
 
