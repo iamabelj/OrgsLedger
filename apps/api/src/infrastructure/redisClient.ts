@@ -31,7 +31,7 @@ class RedisClientManager {
       port,
       password,
       db: parseInt(process.env.REDIS_DB || '0', 10),
-      lazyConnect: true,
+      lazyConnect: false,
       retryStrategy: (times: number) => {
         // Exponential backoff: 1s, 2s, 4s, 8s, max 30s
         const delay = Math.min(1000 * Math.pow(2, times - 1), 30000);
@@ -119,7 +119,6 @@ class RedisClientManager {
 
       // Clear timeout on ready
       redis.once('ready', () => clearTimeout(timeout));
-      redis.once('error', () => clearTimeout(timeout));
     });
   }
 

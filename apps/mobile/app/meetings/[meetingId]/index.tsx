@@ -21,17 +21,17 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, Stack, router } from 'expo-router';
-import { useAuthStore } from '../../src/stores/auth.store';
-import { useMeetingStore } from '../../src/stores/meeting.store';
-import { api } from '../../src/api/client';
-import { socketClient } from '../../src/api/socket';
-import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
-import { Card, Badge, Button, Avatar, SectionHeader, LoadingScreen, CrossPlatformDateTimePicker, ResponsiveScrollView } from '../../src/components/ui';
-import LiveTranslation, { LANGUAGES, LANG_FLAGS, LiveTranslationRef } from '../../src/components/ui/LiveTranslation';
-import { ALL_LANGUAGES, getLanguageFlag, getLanguageName, isTtsSupported } from '../../src/utils/languages';
-import { showAlert } from '../../src/utils/alert';
-import { MeetingRoom } from '../../src/components/meeting';
-import { useGlobalMeeting } from '../../src/contexts/MeetingContext';
+import { useAuthStore } from '../../../src/stores/auth.store';
+import { useMeetingStore } from '../../../src/stores/meeting.store';
+import { api } from '../../../src/api/client';
+import { socketClient } from '../../../src/api/socket';
+import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../../src/theme';
+import { Card, Badge, Button, Avatar, SectionHeader, LoadingScreen, CrossPlatformDateTimePicker, ResponsiveScrollView } from '../../../src/components/ui';
+import LiveTranslation, { LANGUAGES, LANG_FLAGS, LiveTranslationRef } from '../../../src/components/ui/LiveTranslation';
+import { ALL_LANGUAGES, getLanguageFlag, getLanguageName, isTtsSupported } from '../../../src/utils/languages';
+import { showAlert } from '../../../src/utils/alert';
+import { MeetingRoom } from '../../../src/components/meeting';
+import { useGlobalMeeting } from '../../../src/contexts/MeetingContext';
 
 // ── Constants ──────────────────────────────────────────────
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
