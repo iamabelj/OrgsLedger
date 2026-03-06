@@ -19,7 +19,7 @@ class EmailWorker {
     failedCount = 0;
     async initialize() {
         try {
-            const redis = await (0, redisClient_1.getRedisClient)();
+            const redis = (0, redisClient_1.createBullMQConnection)();
             this.worker = new bullmq_1.Worker('email', async (job) => {
                 return this.processEmailJob(job);
             }, {

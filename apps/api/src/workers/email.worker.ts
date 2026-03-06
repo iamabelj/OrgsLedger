@@ -5,7 +5,7 @@
 // ============================================================
 
 import { Worker, Job } from 'bullmq';
-import { getRedisClient } from '../infrastructure/redisClient';
+import { createBullMQConnection } from '../infrastructure/redisClient';
 import { logger } from '../logger';
 import { EmailJobData } from '../queues/email.queue';
 import { sendEmail } from '../services/email.service';
@@ -18,7 +18,7 @@ class EmailWorker {
 
   async initialize(): Promise<void> {
     try {
-      const redis = await getRedisClient();
+      const redis = createBullMQConnection();
 
       this.worker = new Worker<EmailJobData>(
         'email',

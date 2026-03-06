@@ -21,7 +21,7 @@ class BroadcastWorker {
     async initialize(ioServer) {
         try {
             this.ioServer = ioServer;
-            const redis = await (0, redisClient_1.getRedisClient)();
+            const redis = (0, redisClient_1.createBullMQConnection)();
             this.worker = new bullmq_1.Worker('broadcast-events', async (job) => {
                 return this.broadcastEvent(job);
             }, {

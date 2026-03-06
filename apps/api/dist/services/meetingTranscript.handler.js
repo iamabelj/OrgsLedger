@@ -105,15 +105,20 @@ class MeetingTranscriptHandler {
             // Step 1: Broadcast final transcript - EXISTING EVENT
             context.io.to(context.meetingId).emit('translation:result', payload);
             // Step 2: Store transcript in database
-            await (0, db_1.db)('meeting_transcripts').insert({
-                meeting_id: context.meetingId,
-                speaker_id: segment.speakerId,
-                speaker_name: segment.speakerName,
-                original_text: segment.text,
-                language: segment.language,
-                confidence: segment.confidence,
-                created_at: segment.timestamp,
-            });
+            // Fetch organization_id from meeting
+            const meeting = await (0, db_1.db)('meetings').where({ id: context.meetingId }).select('organization_id').first();
+            if (meeting) {
+                await (0, db_1.db)('meeting_transcripts').insert({
+                    meeting_id: context.meetingId,
+                    organization_id: meeting.organization_id,
+                    speaker_id: segment.speakerId,
+                    speaker_name: segment.speakerName,
+                    original_text: segment.text,
+                    source_lang: segment.language,
+                    translations: translations.translations,
+                    spoken_at: Math.floor(segment.timestamp.getTime?.() || Date.now()),
+                });
+            }
             // Step 3: Emit stored event - EXISTING EVENT
             context.io.to(context.meetingId).emit('transcript:stored', {
                 meetingId: context.meetingId,

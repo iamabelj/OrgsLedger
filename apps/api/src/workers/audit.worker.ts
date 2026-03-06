@@ -4,7 +4,7 @@
 // ============================================================
 
 import { Worker, Job } from 'bullmq';
-import { getRedisClient } from '../infrastructure/redisClient';
+import { createBullMQConnection } from '../infrastructure/redisClient';
 import { logger } from '../logger';
 import { AuditJobData } from '../queues/audit.queue';
 import db from '../db';
@@ -17,7 +17,7 @@ class AuditWorker {
 
   async initialize(): Promise<void> {
     try {
-      const redis = await getRedisClient();
+      const redis = createBullMQConnection();
 
       this.worker = new Worker<AuditJobData>(
         'audit-logs',

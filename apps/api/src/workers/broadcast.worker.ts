@@ -6,7 +6,7 @@
 
 import { Worker, Job } from 'bullmq';
 import { Server as SocketIOServer } from 'socket.io';
-import { getRedisClient } from '../infrastructure/redisClient';
+import { createBullMQConnection } from '../infrastructure/redisClient';
 import { logger } from '../logger';
 import { BroadcastJobData } from '../queues/broadcast.queue';
 
@@ -21,7 +21,7 @@ class BroadcastWorker {
   async initialize(ioServer: SocketIOServer): Promise<void> {
     try {
       this.ioServer = ioServer;
-      const redis = await getRedisClient();
+      const redis = createBullMQConnection();
 
       this.worker = new Worker<BroadcastJobData>(
         'broadcast-events',

@@ -56,5 +56,11 @@ export declare function withRedis<T>(callback: (redis: Redis) => Promise<T>): Pr
  * Get the singleton instance
  */
 export declare function getRedisClient(): Promise<Redis>;
+/**
+ * Create a new Redis connection specifically for BullMQ workers.
+ * BullMQ requires maxRetriesPerRequest: null for blocking commands.
+ * Each worker should call this to get its own dedicated connection.
+ */
+export declare function createBullMQConnection(): Redis;
 export { Redis, RedisConfig };
 //# sourceMappingURL=redisClient.d.ts.map

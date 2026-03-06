@@ -19,7 +19,7 @@ class NotificationWorker {
     failedCount = 0;
     async initialize() {
         try {
-            const redis = await (0, redisClient_1.getRedisClient)();
+            const redis = (0, redisClient_1.createBullMQConnection)();
             this.worker = new bullmq_1.Worker('notifications', async (job) => {
                 return this.processNotificationJob(job);
             }, {

@@ -21,7 +21,7 @@ class ProcessingWorker {
     async initialize(processingService) {
         try {
             this.processingService = processingService;
-            const redis = await (0, redisClient_1.getRedisClient)();
+            const redis = (0, redisClient_1.createBullMQConnection)();
             this.worker = new bullmq_1.Worker('translation-processing', async (job) => {
                 return this.processTranslation(job);
             }, {

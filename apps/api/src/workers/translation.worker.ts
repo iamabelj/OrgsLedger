@@ -5,7 +5,7 @@
 // ============================================================
 
 import { Worker, Job } from 'bullmq';
-import { getRedisClient } from '../infrastructure/redisClient';
+import { createBullMQConnection } from '../infrastructure/redisClient';
 import { logger } from '../logger';
 import { multilingualTranslationPipeline } from '../services/multilingualTranslation.service';
 import { broadcastQueueManager, BroadcastJobData } from '../queues/broadcast.queue';
@@ -20,7 +20,7 @@ class TranslationWorker {
    */
   async initialize(): Promise<void> {
     try {
-      const redis = await getRedisClient();
+      const redis = createBullMQConnection();
 
       this.worker = new Worker<TranscriptJobData>(
         'transcript-processing',

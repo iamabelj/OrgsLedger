@@ -21,7 +21,7 @@ class TranslationWorker {
      */
     async initialize() {
         try {
-            const redis = await (0, redisClient_1.getRedisClient)();
+            const redis = (0, redisClient_1.createBullMQConnection)();
             this.worker = new bullmq_1.Worker('transcript-processing', async (job) => {
                 return this.processTranscript(job);
             }, {

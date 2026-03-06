@@ -10,6 +10,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.Redis = exports.redisClientManager = void 0;
 exports.withRedis = withRedis;
 exports.getRedisClient = getRedisClient;
+exports.createBullMQConnection = createBullMQConnection;
 const ioredis_1 = __importDefault(require("ioredis"));
 exports.Redis = ioredis_1.default;
 const logger_1 = require("../logger");
@@ -26,7 +27,7 @@ class RedisClientManager {
             port,
             password,
             db: parseInt(process.env.REDIS_DB || '0', 10),
-            lazyConnect: true,
+            lazyConnect: false,
             retryStrategy: (times) => {
                 // Exponential backoff: 1s, 2s, 4s, 8s, max 30s
                 const delay = Math.min(1000 * Math.pow(2, times - 1), 30000);
@@ -101,7 +102,6 @@ class RedisClientManager {
             }, 10000);
             // Clear timeout on ready
             redis.once('ready', () => clearTimeout(timeout));
-            redis.once('error', () => clearTimeout(timeout));
         });
     }
     /**
@@ -187,5 +187,29 @@ async function withRedis(callback) {
  */
 async function getRedisClient() {
     return exports.redisClientManager.getInstance();
+}
+/**
+ * Create a new Redis connection specifically for BullMQ workers.
+ * BullMQ requires maxRetriesPerRequest: null for blocking commands.
+ * Each worker should call this to get its own dedicated connection.
+ */
+function createBullMQConnection() {
+    const host = process.env.REDIS_HOST || 'localhost';
+    const port = parseInt(process.env.REDIS_PORT || '6379', 10);
+    const password = process.env.REDIS_PASSWORD;
+    const db = parseInt(process.env.REDIS_DB || '0', 10);
+    return new ioredis_1.default({
+        host,
+        port,
+        password,
+        db,
+        maxRetriesPerRequest: null, // Required by BullMQ for blocking operations
+        enableReadyCheck: false,
+        retryStrategy: (times) => {
+            const delay = Math.min(1000 * Math.pow(2, times - 1), 30000);
+            logger_1.logger.info(`BullMQ Redis reconnection attempt #${times}, waiting ${delay}ms`);
+            return delay;
+        },
+    });
 }
 //# sourceMappingURL=redisClient.js.map

@@ -5,7 +5,7 @@
 // ============================================================
 
 import { Worker, Job } from 'bullmq';
-import { getRedisClient } from '../infrastructure/redisClient';
+import { createBullMQConnection } from '../infrastructure/redisClient';
 import { logger } from '../logger';
 import { ProcessingWorker as IProcessingWorkerService } from '../services/workers/processingWorker.service';
 import { ProcessingJobData } from '../queues/processing.queue';
@@ -21,7 +21,7 @@ class ProcessingWorker {
   async initialize(processingService: IProcessingWorkerService): Promise<void> {
     try {
       this.processingService = processingService;
-      const redis = await getRedisClient();
+      const redis = createBullMQConnection();
 
       this.worker = new Worker<ProcessingJobData>(
         'translation-processing',

@@ -23,7 +23,7 @@ class MinutesWorker {
     async initialize(minutesService) {
         try {
             this.minutesService = minutesService;
-            const redis = await (0, redisClient_1.getRedisClient)();
+            const redis = (0, redisClient_1.createBullMQConnection)();
             this.worker = new bullmq_1.Worker('meeting-minutes', async (job) => {
                 return this.processMinutesJob(job);
             }, {

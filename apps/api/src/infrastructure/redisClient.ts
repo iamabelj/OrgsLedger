@@ -218,4 +218,30 @@ export async function getRedisClient(): Promise<Redis> {
   return redisClientManager.getInstance();
 }
 
+/**
+ * Create a new Redis connection specifically for BullMQ workers.
+ * BullMQ requires maxRetriesPerRequest: null for blocking commands.
+ * Each worker should call this to get its own dedicated connection.
+ */
+export function createBullMQConnection(): Redis {
+  const host = process.env.REDIS_HOST || 'localhost';
+  const port = parseInt(process.env.REDIS_PORT || '6379', 10);
+  const password = process.env.REDIS_PASSWORD;
+  const db = parseInt(process.env.REDIS_DB || '0', 10);
+
+  return new Redis({
+    host,
+    port,
+    password,
+    db,
+    maxRetriesPerRequest: null, // Required by BullMQ for blocking operations
+    enableReadyCheck: false,
+    retryStrategy: (times: number) => {
+      const delay = Math.min(1000 * Math.pow(2, times - 1), 30000);
+      logger.info(`BullMQ Redis reconnection attempt #${times}, waiting ${delay}ms`);
+      return delay;
+    },
+  });
+}
+
 export { Redis, RedisConfig };
