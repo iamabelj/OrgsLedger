@@ -517,8 +517,8 @@ router.get('/admin/organizations', authenticate, requireDeveloper(), async (req:
         'latest_sub.organization_id',
       )
       .leftJoin('subscription_plans', 'latest_sub.plan_id', 'subscription_plans.id')
-      .leftJoin('ai_wallet', 'organizations.id', 'ai_wallet.organization_id')
-      .leftJoin('translation_wallet', 'organizations.id', 'translation_wallet.organization_id');
+      .leftJoin(db.raw("wallet as ai_wallet ON organizations.id = ai_wallet.organization_id AND ai_wallet.service_type = 'ai'"))
+      .leftJoin(db.raw("wallet as translation_wallet ON organizations.id = translation_wallet.organization_id AND translation_wallet.service_type = 'translation'"));
 
     const [{ count: totalCount }] = await db('organizations').count('* as count');
 
@@ -882,8 +882,8 @@ router.get('/admin/wallet-analytics', authenticate, requireDeveloper(), async (_
 
     // Per-org wallet data (dashboard shows per-org table)
     const perOrg = await db('organizations')
-      .leftJoin('ai_wallet', 'organizations.id', 'ai_wallet.organization_id')
-      .leftJoin('translation_wallet', 'organizations.id', 'translation_wallet.organization_id')
+      .leftJoin(db.raw("wallet as ai_wallet ON organizations.id = ai_wallet.organization_id AND ai_wallet.service_type = 'ai'"))
+      .leftJoin(db.raw("wallet as translation_wallet ON organizations.id = translation_wallet.organization_id AND translation_wallet.service_type = 'translation'"))
       .select(
         'organizations.id',
         'organizations.name',
@@ -898,15 +898,17 @@ router.get('/admin/wallet-analytics', authenticate, requireDeveloper(), async (_
     let aiUsageByOrg: Record<string, number> = {};
     let transUsageByOrg: Record<string, number> = {};
     if (orgIds.length > 0) {
-      const aiUsageRows = await db('ai_wallet_transactions')
+      const aiUsageRows = await db('wallet_transactions')
         .whereIn('organization_id', orgIds)
+        .where({ service_type: 'ai' })
         .where('amount_minutes', '<', 0)
         .groupBy('organization_id')
         .select('organization_id', db.raw('SUM(ABS(amount_minutes)) as used_minutes'));
       aiUsageRows.forEach((r: any) => { aiUsageByOrg[r.organization_id] = parseFloat(r.used_minutes || 0); });
 
-      const transUsageRows = await db('translation_wallet_transactions')
+      const transUsageRows = await db('wallet_transactions')
         .whereIn('organization_id', orgIds)
+        .where({ service_type: 'translation' })
         .where('amount_minutes', '<', 0)
         .groupBy('organization_id')
         .select('organization_id', db.raw('SUM(ABS(amount_minutes)) as used_minutes'));
@@ -1181,8 +1183,8 @@ router.get('/admin/organizations/:orgId', authenticate, requireDeveloper(), asyn
       : null;
 
     // Get wallets
-    const aiWallet = await db('ai_wallet').where({ organization_id: req.params.orgId }).first();
-    const translationWallet = await db('translation_wallet').where({ organization_id: req.params.orgId }).first();
+    const aiWallet = await db('wallet').where({ organization_id: req.params.orgId, service_type: 'ai' }).first();
+    const translationWallet = await db('wallet').where({ organization_id: req.params.orgId, service_type: 'translation' }).first();
 
     // Get member count and list of admins
     const memberCount = await db('memberships')
@@ -1644,47 +1646,51 @@ router.get('/admin/risk/low-balances', authenticate, requireDeveloper(), async (
   try {
     const thresholdMinutes = parseFloat(req.query.threshold as string) || 60; // default 1 hour
 
-    const lowAi = await db('ai_wallet')
-      .join('organizations', 'ai_wallet.organization_id', 'organizations.id')
-      .where('ai_wallet.balance_minutes', '<', thresholdMinutes)
-      .where('ai_wallet.balance_minutes', '>', 0)
+    const lowAi = await db('wallet')
+      .join('organizations', 'wallet.organization_id', 'organizations.id')
+      .where({ 'wallet.service_type': 'ai' })
+      .where('wallet.balance_minutes', '<', thresholdMinutes)
+      .where('wallet.balance_minutes', '>', 0)
       .select(
         'organizations.id as org_id',
         'organizations.name as org_name',
-        'ai_wallet.balance_minutes',
+        'wallet.balance_minutes',
         db.raw("'ai' as wallet_type"),
       )
-      .orderBy('ai_wallet.balance_minutes', 'asc');
+      .orderBy('wallet.balance_minutes', 'asc');
 
-    const lowTranslation = await db('translation_wallet')
-      .join('organizations', 'translation_wallet.organization_id', 'organizations.id')
-      .where('translation_wallet.balance_minutes', '<', thresholdMinutes)
-      .where('translation_wallet.balance_minutes', '>', 0)
+    const lowTranslation = await db('wallet')
+      .join('organizations', 'wallet.organization_id', 'organizations.id')
+      .where({ 'wallet.service_type': 'translation' })
+      .where('wallet.balance_minutes', '<', thresholdMinutes)
+      .where('wallet.balance_minutes', '>', 0)
       .select(
         'organizations.id as org_id',
         'organizations.name as org_name',
-        'translation_wallet.balance_minutes',
+        'wallet.balance_minutes',
         db.raw("'translation' as wallet_type"),
       )
-      .orderBy('translation_wallet.balance_minutes', 'asc');
+      .orderBy('wallet.balance_minutes', 'asc');
 
-    const emptyAi = await db('ai_wallet')
-      .join('organizations', 'ai_wallet.organization_id', 'organizations.id')
-      .where('ai_wallet.balance_minutes', '<=', 0)
+    const emptyAi = await db('wallet')
+      .join('organizations', 'wallet.organization_id', 'organizations.id')
+      .where({ 'wallet.service_type': 'ai' })
+      .where('wallet.balance_minutes', '<=', 0)
       .select(
         'organizations.id as org_id',
         'organizations.name as org_name',
-        'ai_wallet.balance_minutes',
+        'wallet.balance_minutes',
         db.raw("'ai' as wallet_type"),
       );
 
-    const emptyTranslation = await db('translation_wallet')
-      .join('organizations', 'translation_wallet.organization_id', 'organizations.id')
-      .where('translation_wallet.balance_minutes', '<=', 0)
+    const emptyTranslation = await db('wallet')
+      .join('organizations', 'wallet.organization_id', 'organizations.id')
+      .where({ 'wallet.service_type': 'translation' })
+      .where('wallet.balance_minutes', '<=', 0)
       .select(
         'organizations.id as org_id',
         'organizations.name as org_name',
-        'translation_wallet.balance_minutes',
+        'wallet.balance_minutes',
         db.raw("'translation' as wallet_type"),
       );
 
@@ -1730,7 +1736,8 @@ router.get('/admin/risk/spikes', authenticate, requireDeveloper(), async (req: R
     const lookbackDays = daysBack + 30;
 
     // Get daily AI usage per org for the analysis period + prior 30 days for baseline
-    const aiDaily = await db('ai_wallet_transactions')
+    const aiDaily = await db('wallet_transactions')
+      .where({ service_type: 'ai' })
       .where('amount_minutes', '<', 0)
       .where('created_at', '>=', db.raw("NOW() - make_interval(days := ?)", [lookbackDays]))
       .select(
@@ -1742,7 +1749,8 @@ router.get('/admin/risk/spikes', authenticate, requireDeveloper(), async (req: R
       .orderBy('organization_id');
 
     // Get daily translation usage per org
-    const transDaily = await db('translation_wallet_transactions')
+    const transDaily = await db('wallet_transactions')
+      .where({ service_type: 'translation' })
       .where('amount_minutes', '<', 0)
       .where('created_at', '>=', db.raw("NOW() - make_interval(days := ?)", [lookbackDays]))
       .select(
