@@ -48,11 +48,12 @@ exports.BILLING_CYCLES = {
     MONTHLY: 'monthly',
 };
 // ── Wallet Prices ───────────────────────────────────────────
+// AI + Translation bundled at $20/hr total ($10 each)
 exports.WALLET_PRICES = {
     AI_PER_HOUR_USD: 10.00,
     AI_PER_HOUR_NGN: 18_000.00,
-    TRANSLATION_PER_HOUR_USD: 25.00,
-    TRANSLATION_PER_HOUR_NGN: 45_000.00,
+    TRANSLATION_PER_HOUR_USD: 10.00,
+    TRANSLATION_PER_HOUR_NGN: 18_000.00,
     AI_CREDIT_PER_HOUR_USD: 7.00,
 };
 // ── Subscription Plan Defaults ──────────────────────────────

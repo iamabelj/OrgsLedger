@@ -112,6 +112,11 @@ if (!_isDev) {
         console.error(`[CONFIG] FATAL: DB_PASSWORD is using the default value in ${exports.config.env} — set DB_PASSWORD in env.js or environment variables`);
         process.exit(1);
     }
+    // Queue validation: Redis is required for queue infrastructure
+    if (!process.env.REDIS_URL && !process.env.REDIS_HOST) {
+        console.error('[CONFIG] FATAL: REDIS_URL or REDIS_HOST must be set in production for queue infrastructure');
+        process.exit(1);
+    }
 }
 else {
     // Development — non-fatal warnings
@@ -120,6 +125,9 @@ else {
     }
     if (exports.config.jwt.secret === exports.config.jwt.refreshSecret) {
         console.warn('[CONFIG] WARNING: JWT_SECRET and JWT_REFRESH_SECRET are identical — set separate values');
+    }
+    if (!process.env.REDIS_URL && !process.env.REDIS_HOST) {
+        console.warn('[CONFIG] WARNING: Redis not configured — queues will use default localhost:6379');
     }
 }
 //# sourceMappingURL=config.js.map

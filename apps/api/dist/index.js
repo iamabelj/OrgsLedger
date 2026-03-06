@@ -54,6 +54,8 @@ const subscriptions_1 = __importDefault(require("./routes/subscriptions"));
 const observability_1 = __importDefault(require("./routes/observability"));
 const docs_1 = __importDefault(require("./routes/docs"));
 const translation_routes_1 = __importDefault(require("./routes/translation.routes"));
+const jobs_routes_1 = __importDefault(require("./routes/jobs.routes"));
+const transcripts_1 = __importDefault(require("./routes/transcripts"));
 const scheduler_service_1 = require("./services/scheduler.service");
 const seed_service_1 = require("./services/seed.service");
 const orchestrator_1 = require("./workers/orchestrator");
@@ -353,6 +355,8 @@ app.use('/api/subscriptions', subscriptions_1.default);
 app.use('/api/admin/observability', observability_1.default);
 app.use('/api/docs', docs_1.default);
 app.use('/api/translations', translation_routes_1.default);
+app.use('/api/meetings/:meetingId/transcripts', transcripts_1.default);
+app.use('/api', jobs_routes_1.default);
 // ── 404 Handler ───────────────────────────────────────────
 // API 404 — only for /api/* routes
 app.all('/api/*', (_req, res) => {
