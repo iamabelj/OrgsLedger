@@ -8,8 +8,8 @@
  * - Minutes generation with translated content
  */
 
-import db from '../db';
-import logger from '../logger';
+import { db } from '../db';
+import { logger } from '../logger';
 
 describe('Meeting Integration Flow', () => {
   let meetingId: string;
