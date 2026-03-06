@@ -34,7 +34,7 @@ class TranscriptQueueManager {
       const redis = await getRedisClient();
 
       const queueOptions: QueueOptions = {
-        connection: redis,
+        connection: redis as any,
         defaultJobOptions: {
           removeOnComplete: {
             age: 3600, // Remove completed jobs after 1 hour

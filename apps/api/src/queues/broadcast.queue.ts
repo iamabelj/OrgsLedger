@@ -34,7 +34,7 @@ class BroadcastQueueManager {
       const redis = await getRedisClient();
 
       const queueOptions: QueueOptions = {
-        connection: redis,
+        connection: redis as any,
         defaultJobOptions: {
           removeOnComplete: true, // Remove immediately after successful broadcast
           attempts: 5, // More retries for broadcast (important for real-time)

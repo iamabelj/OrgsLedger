@@ -26,7 +26,7 @@ class EmailWorker {
           return this.processEmailJob(job);
         },
         {
-          connection: redis,
+          connection: redis as any,
           concurrency: parseInt(process.env.EMAIL_WORKER_CONCURRENCY || '5', 10),
           maxStalledCount: 2,
           stalledInterval: 5000,

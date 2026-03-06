@@ -29,7 +29,7 @@ class ProcessingWorker {
           return this.processTranslation(job);
         },
         {
-          connection: redis,
+          connection: redis as any,
           concurrency: parseInt(process.env.PROCESSING_WORKER_CONCURRENCY || '10', 10),
           maxStalledCount: 2,
           stalledInterval: 5000,

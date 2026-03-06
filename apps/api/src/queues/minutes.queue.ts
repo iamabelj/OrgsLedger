@@ -29,7 +29,7 @@ class MinutesQueueManager {
       const redis = await getRedisClient();
 
       const queueOptions: QueueOptions = {
-        connection: redis,
+        connection: redis as any,
         defaultJobOptions: {
           removeOnComplete: {
             age: 86400, // Keep completed jobs for 24 hours

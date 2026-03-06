@@ -29,7 +29,7 @@ class BroadcastWorker {
           return this.broadcastEvent(job);
         },
         {
-          connection: redis,
+          connection: redis as any,
           concurrency: parseInt(process.env.BROADCAST_WORKER_CONCURRENCY || '20', 10),
           maxStalledCount: 2,
           stalledInterval: 5000,

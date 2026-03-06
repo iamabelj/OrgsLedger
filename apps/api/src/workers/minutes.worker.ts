@@ -31,7 +31,7 @@ class MinutesWorker {
           return this.processMinutesJob(job);
         },
         {
-          connection: redis,
+          connection: redis as any,
           concurrency: parseInt(process.env.MINUTES_WORKER_CONCURRENCY || '2', 10),
           maxStalledCount: 2,
           stalledInterval: 5000,

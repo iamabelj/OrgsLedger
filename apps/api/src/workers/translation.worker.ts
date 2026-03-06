@@ -28,7 +28,7 @@ class TranslationWorker {
           return this.processTranscript(job);
         },
         {
-          connection: redis,
+          connection: redis as any,
           concurrency: parseInt(process.env.TRANSLATION_WORKER_CONCURRENCY || '10', 10),
           maxStalledCount: 3,
           stalledInterval: 5000, // Check for stalled jobs every 5s

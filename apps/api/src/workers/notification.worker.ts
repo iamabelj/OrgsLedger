@@ -26,7 +26,7 @@ class NotificationWorker {
           return this.processNotificationJob(job);
         },
         {
-          connection: redis,
+          connection: redis as any,
           concurrency: parseInt(process.env.NOTIFICATION_WORKER_CONCURRENCY || '10', 10),
           maxStalledCount: 1,
           stalledInterval: 5000,

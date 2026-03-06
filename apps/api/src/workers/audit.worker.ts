@@ -25,7 +25,7 @@ class AuditWorker {
           return this.processAuditJob(job);
         },
         {
-          connection: redis,
+          connection: redis as any,
           concurrency: parseInt(process.env.AUDIT_WORKER_CONCURRENCY || '10', 10),
           maxStalledCount: 3,
           stalledInterval: 2000,

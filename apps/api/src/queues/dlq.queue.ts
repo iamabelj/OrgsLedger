@@ -31,7 +31,7 @@ class DeadLetterQueueManager {
       const redis = await getRedisClient();
 
       const queueOptions: QueueOptions = {
-        connection: redis,
+        connection: redis as any,
         defaultJobOptions: {
           removeOnComplete: {
             age: 604800, // Keep for 7 days

@@ -26,7 +26,7 @@ class BotWorker {
           return this.processBotJob(job);
         },
         {
-          connection: redis,
+          connection: redis as any,
           concurrency: parseInt(process.env.BOT_WORKER_CONCURRENCY || '3', 10),
           maxStalledCount: 2,
           stalledInterval: 5000,
