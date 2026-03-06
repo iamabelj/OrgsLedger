@@ -357,8 +357,8 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
     <div class="page" id="page-wallets">
       <div class="stats-grid" id="wallet-stats"></div>
       <div class="table-wrap">
-        <div class="table-header"><h3>Wallet Balances by Organization</h3></div>
-        <div class="table-responsive"><table><thead><tr><th>Organization</th><th>AI Balance</th><th>AI Used</th><th>Trans. Balance</th><th>Trans. Used</th><th>Actions</th></tr></thead><tbody id="wallet-table"></tbody></table></div>
+        <div class="table-header"><h3>Add-On Bundle Balances by Organization</h3></div>
+        <div class="table-responsive"><table><thead><tr><th>Organization</th><th>Bundle Balance</th><th>Bundle Used</th><th>Rate</th><th>Actions</th></tr></thead><tbody id="wallet-table"></tbody></table></div>
       </div>
     </div>
 
@@ -410,27 +410,19 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
       <div class="stats-grid" id="credit-stats"></div>
       <div class="detail-grid">
         <div class="detail-card">
-          <h4>&#9889; Grant AI Credits</h4>
+          <h4>&#9889; Grant Add-On Bundle Credits</h4>
           <div class="form-group"><label>Organization</label><select id="cr-ai-org" style="width:100%"></select></div>
           <div class="form-group"><label>Hours to Grant</label><input id="cr-ai-hours" type="number" step="0.5" value="10" placeholder="Hours"></div>
           <div class="form-group"><label>Method</label><select id="cr-ai-method"><option value="manual">Manual (Developer Grant)</option><option value="paid">Paid (Enter Reference)</option></select></div>
           <div class="form-group" id="cr-ai-ref-wrap" style="display:none"><label>Payment Reference</label><input id="cr-ai-ref" placeholder="e.g. pi_3abc123..."></div>
           <div class="form-group"><label>Description</label><input id="cr-ai-desc" placeholder="Reason for grant"></div>
-          <button class="btn btn-primary" onclick="grantAiCredits()" style="width:100%">Grant AI Credits</button>
-        </div>
-        <div class="detail-card">
-          <h4>&#127760; Grant Translation Credits</h4>
-          <div class="form-group"><label>Organization</label><select id="cr-tr-org" style="width:100%"></select></div>
-          <div class="form-group"><label>Hours to Grant</label><input id="cr-tr-hours" type="number" step="0.5" value="5" placeholder="Hours"></div>
-          <div class="form-group"><label>Method</label><select id="cr-tr-method"><option value="manual">Manual (Developer Grant)</option><option value="paid">Paid (Enter Reference)</option></select></div>
-          <div class="form-group" id="cr-tr-ref-wrap" style="display:none"><label>Payment Reference</label><input id="cr-tr-ref" placeholder="e.g. pay_ref_abc..."></div>
-          <div class="form-group"><label>Description</label><input id="cr-tr-desc" placeholder="Reason for grant"></div>
-          <button class="btn btn-accent" onclick="grantTranslationCredits()" style="width:100%">Grant Translation Credits</button>
+          <button class="btn btn-primary" onclick="grantAiCredits()" style="width:100%">Grant Bundle Credits</button>
+          <p style="font-size:0.75rem;color:var(--text-3);margin-top:8px">Bundle includes AI meeting minutes + real-time translation ($20/hr | ₦25,000/hr)</p>
         </div>
       </div>
       <div class="table-wrap">
-        <div class="table-header"><h3>All Organization Wallets</h3></div>
-        <div class="table-responsive"><table><thead><tr><th>Organization</th><th>AI Balance</th><th>AI Used</th><th>Trans. Balance</th><th>Trans. Used</th><th>Currency</th><th>Quick Actions</th></tr></thead><tbody id="credit-wallet-table"></tbody></table></div>
+        <div class="table-header"><h3>All Organization Add-On Bundles</h3></div>
+        <div class="table-responsive"><table><thead><tr><th>Organization</th><th>Bundle Balance</th><th>Bundle Used</th><th>Rate</th><th>Currency</th><th>Quick Actions</th></tr></thead><tbody id="credit-wallet-table"></tbody></table></div>
       </div>
     </div>
 
@@ -665,8 +657,7 @@ window.viewOrg = async function(id){
       '<div class="detail-grid">'+
         detailCard('Organization','Status',statusBadge(o.status),'Subscription',statusBadge(sub.status||'—'),'Currency',o.billing_currency||'USD','Country',o.billing_country||'—','Members',fmt(o.member_count||0),'Created',fmtDate(o.created_at))+
         detailCard('Subscription','Plan',plan.name||'—','Cycle',sub.billing_cycle||'—','Amount Paid',fmtCurrency(sub.amount_paid,sub.currency),'Period End',fmtDate(sub.current_period_end),'Grace End',fmtDate(sub.grace_period_end),'')+
-        detailCard('AI Wallet','Balance',fmtMins(aiW.balance_minutes),'Rate','$'+(aiW.price_per_hour_usd||20)+'/hr','')+
-        detailCard('Translation Wallet','Balance',fmtMins(trW.balance_minutes),'Rate','$'+(trW.price_per_hour_usd||20)+'/hr','')+
+        detailCard('Add-On Bundle','Balance',fmtMins(aiW.balance_minutes),'Rate','$20/hr | ₦25,000/hr','Includes','AI + Translation','')+
       '</div>'+
       (o.admins?.length ? '<div class="table-wrap"><div class="table-header"><h3>Admins</h3></div><div class="table-responsive"><table><thead><tr><th>Email</th><th>Name</th><th>Role</th></tr></thead><tbody>'+o.admins.map(a=>'<tr><td>'+esc(a.email)+'</td><td>'+esc((a.first_name||'')+' '+(a.last_name||''))+'</td><td>'+roleBadge(a.role)+'</td></tr>').join('')+'</tbody></table></div></div>' : '');
   }catch(e){ $('org-detail-content').innerHTML='<div class="empty-state"><p>'+esc(e.message)+'</p></div>' }
@@ -925,19 +916,18 @@ async function loadWallets(){
   const orgs = d.organizations || d.orgs || [];
 
   $('wallet-stats').innerHTML =
-    statCard('Total AI Balance',fmtMins((d.platformTotals?.totalAiBalance||0)),'primary')+
-    statCard('Total AI Used',fmtMins((d.platformTotals?.totalAiUsed||0)),'warn')+
-    statCard('Total Trans Balance',fmtMins((d.platformTotals?.totalTranslationBalance||0)),'primary')+
-    statCard('Total Trans Used',fmtMins((d.platformTotals?.totalTranslationUsed||0)),'warn');
+    statCard('Total Bundle Balance',fmtMins((d.platformTotals?.totalAiBalance||0)),'primary')+
+    statCard('Total Bundle Used',fmtMins((d.platformTotals?.totalAiUsed||0)),'warn')+
+    statCard('Bundle Rate','$20/hr','primary')+
+    statCard('NGN Rate','₦25,000/hr','primary');
 
   $('wallet-table').innerHTML = orgs.length ? orgs.map(o=>'<tr>'+
     '<td>'+esc(o.org_name||o.name)+'</td>'+
     '<td>'+fmtMins(o.ai_balance||0)+'</td>'+
     '<td>'+fmtMins(o.ai_used||0)+'</td>'+
-    '<td>'+fmtMins(o.translation_balance||0)+'</td>'+
-    '<td>'+fmtMins(o.translation_used||0)+'</td>'+
+    '<td>$20/hr | ₦25,000/hr</td>'+
     '<td><button class="btn btn-sm btn-outline" onclick="openAdjustWallet(\''+o.org_id+'\')">Adjust</button></td></tr>').join('') :
-    '<tr><td colspan="6"><div class="empty-state"><p>No data</p></div></td></tr>';
+    '<tr><td colspan="5"><div class="empty-state"><p>No data</p></div></td></tr>';
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1022,32 +1012,28 @@ async function loadCredits(){
     const walletOrgs = d.organizations || d.orgs || [];
 
     $('credit-stats').innerHTML =
-      statCard('Total AI Balance',fmtMins((d.platformTotals?.totalAiBalance||0)),'primary')+
-      statCard('Total AI Used',fmtMins((d.platformTotals?.totalAiUsed||0)),'warn')+
-      statCard('Total Trans Balance',fmtMins((d.platformTotals?.totalTranslationBalance||0)),'accent')+
-      statCard('Total Trans Used',fmtMins((d.platformTotals?.totalTranslationUsed||0)),'warn');
+      statCard('Total Bundle Balance',fmtMins((d.platformTotals?.totalAiBalance||0)),'primary')+
+      statCard('Total Bundle Used',fmtMins((d.platformTotals?.totalAiUsed||0)),'warn')+
+      statCard('Bundle Rate','$20/hr','accent')+
+      statCard('NGN Rate','₦25,000/hr','primary');
 
     // Populate org selects
     var optionsHtml = orgs.map(function(o){return '<option value="'+o.id+'">'+esc(o.name||o.org_name)+' ('+(o.billing_currency||'USD')+')</option>'}).join('');
     $('cr-ai-org').innerHTML = optionsHtml;
-    $('cr-tr-org').innerHTML = optionsHtml;
 
     // Wire up method toggles
     $('cr-ai-method').onchange = function(){ $('cr-ai-ref-wrap').style.display = this.value==='paid'?'block':'none' };
-    $('cr-tr-method').onchange = function(){ $('cr-tr-ref-wrap').style.display = this.value==='paid'?'block':'none' };
 
     $('credit-wallet-table').innerHTML = walletOrgs.length ? walletOrgs.map(function(o){return '<tr>'+
       '<td><strong>'+esc(o.org_name||o.name)+'</strong></td>'+
       '<td>'+fmtMins(o.ai_balance||0)+'</td>'+
       '<td>'+fmtMins(o.ai_used||0)+'</td>'+
-      '<td>'+fmtMins(o.translation_balance||0)+'</td>'+
-      '<td>'+fmtMins(o.translation_used||0)+'</td>'+
+      '<td>$20/hr | ₦25,000/hr</td>'+
       '<td>'+(o.currency||'USD')+'</td>'+
       '<td style="white-space:nowrap">'+
-        '<button class="btn btn-sm btn-outline" onclick="quickGrantAi(\''+o.org_id+'\')">+AI</button> '+
-        '<button class="btn btn-sm btn-outline" onclick="quickGrantTrans(\''+o.org_id+'\')">+Trans</button>'+
+        '<button class="btn btn-sm btn-outline" onclick="quickGrantAi(\''+o.org_id+'\')">+Bundle</button>'+
       '</td></tr>'}).join('') :
-      '<tr><td colspan="7"><div class="empty-state"><p>No wallet data</p></div></td></tr>';
+      '<tr><td colspan="6"><div class="empty-state"><p>No wallet data</p></div></td></tr>';
   }catch(e){toast('Credit Manager: '+e.message,'error')}
 }
 
@@ -1055,18 +1041,26 @@ window.grantAiCredits = async function(){
   const orgId = $('cr-ai-org').value;
   const hours = parseFloat($('cr-ai-hours').value);
   const method = $('cr-ai-method').value;
-  const desc = $('cr-ai-desc').value || (method==='manual' ? 'Developer manual grant' : 'Paid top-up');
+  const desc = $('cr-ai-desc').value || (method==='manual' ? 'Developer manual grant (bundle)' : 'Paid bundle top-up');
   if(!orgId||!hours){toast('Select org and enter hours','error');return}
 
   try{
     if(method==='paid'){
       const ref = $('cr-ai-ref').value.trim();
       if(!ref){toast('Payment reference required for paid top-up','error');return}
-      await api('/api/subscriptions/'+orgId+'/wallet/ai/topup',{method:'POST',body:JSON.stringify({hours:hours,paymentGateway:'manual',paymentReference:ref})});
+      // Grant both AI and Translation for bundled pricing
+      await Promise.all([
+        api('/api/subscriptions/'+orgId+'/wallet/ai/topup',{method:'POST',body:JSON.stringify({hours:hours,paymentGateway:'manual',paymentReference:ref})}),
+        api('/api/subscriptions/'+orgId+'/wallet/translation/topup',{method:'POST',body:JSON.stringify({hours:hours,paymentGateway:'manual',paymentReference:ref})})
+      ]);
     } else {
-      await api('/api/subscriptions/admin/wallet/ai/adjust',{method:'POST',body:JSON.stringify({organizationId:orgId,hours:hours,description:desc})});
+      // Grant both AI and Translation for bundled pricing
+      await Promise.all([
+        api('/api/subscriptions/admin/wallet/ai/adjust',{method:'POST',body:JSON.stringify({organizationId:orgId,hours:hours,description:desc})}),
+        api('/api/subscriptions/admin/wallet/translation/adjust',{method:'POST',body:JSON.stringify({organizationId:orgId,hours:hours,description:desc})})
+      ]);
     }
-    toast(hours+'h AI credits granted','success'); loadCredits();
+    toast(hours+'h bundle credits granted (AI + Translation)','success'); loadCredits();
   }catch(e){toast(e.message,'error')}
 };
 
@@ -1090,16 +1084,23 @@ window.grantTranslationCredits = async function(){
 };
 
 window.quickGrantAi = function(orgId){
-  openModal('Grant AI Credits',
+  openModal('Grant Bundle Credits',
     formGroup('Hours','<input id="m-qai-hrs" type="number" step="0.5" value="10">')+
-    formGroup('Description','<input id="m-qai-desc" placeholder="Reason">'),
-    '<button class="btn btn-primary" onclick="doQuickGrantAi(\''+orgId+'\')">Grant</button>'
+    formGroup('Description','<input id="m-qai-desc" placeholder="Reason">')+
+    '<p style="font-size:0.75rem;color:var(--text-3);margin-top:8px">Bundle includes AI + Translation ($20/hr | ₦25,000/hr)</p>',
+    '<button class="btn btn-primary" onclick="doQuickGrantAi(\''+orgId+'\')">Grant Bundle</button>'
   );
 };
 window.doQuickGrantAi = async function(orgId){
   try{
-    await api('/api/subscriptions/admin/wallet/ai/adjust',{method:'POST',body:JSON.stringify({organizationId:orgId,hours:parseFloat($('m-qai-hrs').value),description:$('m-qai-desc').value||'Developer grant'})});
-    closeModal(); toast('AI credits granted','success'); loadCredits();
+    const hours = parseFloat($('m-qai-hrs').value);
+    const desc = $('m-qai-desc').value || 'Developer grant (bundle)';
+    // Grant both AI and Translation for bundled pricing
+    await Promise.all([
+      api('/api/subscriptions/admin/wallet/ai/adjust',{method:'POST',body:JSON.stringify({organizationId:orgId,hours:hours,description:desc})}),
+      api('/api/subscriptions/admin/wallet/translation/adjust',{method:'POST',body:JSON.stringify({organizationId:orgId,hours:hours,description:desc})})
+    ]);
+    closeModal(); toast(hours+'h bundle credits granted','success'); loadCredits();
   }catch(e){toast(e.message,'error')}
 };
 

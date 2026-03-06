@@ -22,7 +22,7 @@ import { Colors, Spacing, FontSize, FontWeight, BorderRadius } from '../../src/t
 import { Card, SectionHeader, ResponsiveScrollView } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
 
-type WalletType = 'ai' | 'translation';
+// Unified Add-On Bundle (AI + Translation)
 
 export default function WalletsScreen() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
@@ -34,7 +34,7 @@ export default function WalletsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeWallet, setActiveWallet] = useState<WalletType>('ai');
+  // Using AI wallet for unified bundle balance
   const [aiWallet, setAiWallet] = useState<any>(null);
   const [translationWallet, setTranslationWallet] = useState<any>(null);
   const [aiHistory, setAiHistory] = useState<any[]>([]);
@@ -69,24 +69,21 @@ export default function WalletsScreen() {
     const hours = parseFloat(topUpHours);
     if (!hours || hours < 1) return showAlert('Invalid', 'Enter at least 1 hour.');
 
-    const wallet = activeWallet === 'ai' ? aiWallet : translationWallet;
-    const priceKey = activeWallet === 'ai' ? 'price_per_hour_usd' : 'price_per_hour_usd';
-    const price = parseFloat(wallet?.[priceKey] || (activeWallet === 'ai' ? 10 : 25));
+    const price = parseFloat(aiWallet?.price_per_hour_usd || 20);
+    const priceNgn = parseFloat(aiWallet?.price_per_hour_ngn || 25000);
     const cost = hours * price;
-    const label = activeWallet === 'ai' ? 'AI' : 'Translation';
+    const costNgn = hours * priceNgn;
 
-    showAlert(`Top Up ${label} Wallet`, `Add ${hours} hour(s) for $${cost.toFixed(2)}?`, [
+    showAlert('Top Up Add-On Bundle', `Add ${hours} hour(s) for $${cost.toFixed(2)} (₦${costNgn.toLocaleString()})?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Confirm',
         onPress: async () => {
           try {
-            if (activeWallet === 'ai') {
-              await api.subscriptions.topUpAi(currentOrgId!, { hours });
-            } else {
-              await api.subscriptions.topUpTranslation(currentOrgId!, { hours });
-            }
-            showAlert('Success', `${hours} hour(s) added to ${label} wallet!`);
+            // Top up both AI and Translation wallets together
+            await api.subscriptions.topUpAi(currentOrgId!, { hours });
+            await api.subscriptions.topUpTranslation(currentOrgId!, { hours });
+            showAlert('Success', `${hours} hour(s) added to your Add-On bundle!`);
             setTopUpHours('1');
             loadData();
           } catch (err: any) {
@@ -105,13 +102,16 @@ export default function WalletsScreen() {
     );
   }
 
-  const wallet = activeWallet === 'ai' ? aiWallet : translationWallet;
-  const history = activeWallet === 'ai' ? aiHistory : transHistory;
-  const balance = parseFloat(wallet?.balance_minutes || '0');
-  const priceUsd = activeWallet === 'ai' ? '$10/hr' : '$25/hr';
-  const priceNgn = activeWallet === 'ai' ? '₦18,000/hr' : '₦45,000/hr';
-  const icon = activeWallet === 'ai' ? 'sparkles' : 'language';
-  const color = activeWallet === 'ai' ? Colors.highlight : Colors.info;
+  // Unified wallet display
+  const balance = parseFloat(aiWallet?.balance_minutes || '0');
+  const priceUsd = '$20/hr';
+  const priceNgn = '₦25,000/hr';
+  const icon = 'rocket';
+  const color = Colors.highlight;
+  // Combined history from both wallets
+  const history = [...aiHistory, ...transHistory].sort((a, b) => 
+    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
 
   return (
     <ResponsiveScrollView
@@ -119,22 +119,11 @@ export default function WalletsScreen() {
       refreshing={refreshing}
       onRefresh={onRefresh}
     >
-      {/* Wallet Tabs */}
-      <View style={styles.tabs}>
-        <TouchableOpacity
-          style={[styles.tab, activeWallet === 'ai' && styles.tabActive]}
-          onPress={() => setActiveWallet('ai')}
-        >
-          <Ionicons name="sparkles" size={18} color={activeWallet === 'ai' ? Colors.highlight : Colors.textLight} />
-          <Text style={[styles.tabText, activeWallet === 'ai' && styles.tabTextActive]}>AI Wallet</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeWallet === 'translation' && styles.tabActive]}
-          onPress={() => setActiveWallet('translation')}
-        >
-          <Ionicons name="language" size={18} color={activeWallet === 'translation' ? Colors.info : Colors.textLight} />
-          <Text style={[styles.tabText, activeWallet === 'translation' && { color: Colors.info, fontWeight: FontWeight.semibold as any }]}>Translation</Text>
-        </TouchableOpacity>
+      {/* Add-On Bundle Header */}
+      <View style={styles.headerSection}>
+        <Ionicons name="rocket" size={24} color={Colors.highlight} />
+        <Text style={styles.headerTitle}>Add-On Bundle</Text>
+        <Text style={styles.headerSubtitle}>AI + Translation</Text>
       </View>
 
       {/* Balance Card */}
@@ -143,7 +132,7 @@ export default function WalletsScreen() {
           <Ionicons name={icon as any} size={32} color={color} />
           <View style={{ flex: 1, marginLeft: Spacing.md }}>
             <Text style={styles.balanceLabel}>
-              {activeWallet === 'ai' ? 'AI' : 'Translation'} Balance
+              Bundle Balance
             </Text>
             <Text style={[styles.balanceValue, { color }]}>
               {(balance / 60).toFixed(1)} hours
@@ -173,7 +162,7 @@ export default function WalletsScreen() {
           <View style={styles.emptyBanner}>
             <Ionicons name="alert-circle" size={18} color={Colors.warning} />
             <Text style={styles.emptyBannerText}>
-              Wallet empty — {activeWallet === 'ai' ? 'AI features' : 'translation'} disabled until topped up
+              Bundle empty — AI and translation features disabled until topped up
             </Text>
           </View>
         )}
@@ -205,13 +194,13 @@ export default function WalletsScreen() {
           <View style={styles.costRow}>
             <Text style={styles.costLabel}>Total cost:</Text>
             <Text style={[styles.costValue, { color }]}>
-              ${((parseFloat(topUpHours) || 0) * (activeWallet === 'ai' ? 10 : 25)).toFixed(2)}
+              ${((parseFloat(topUpHours) || 0) * 20).toFixed(2)}
             </Text>
           </View>
           <TouchableOpacity style={[styles.topUpBtn, { backgroundColor: color }]} onPress={handleTopUp}>
-            <Ionicons name="add-circle" size={20} color={activeWallet === 'ai' ? Colors.primary : '#fff'} />
-            <Text style={[styles.topUpBtnText, { color: activeWallet === 'ai' ? Colors.primary : '#fff' }]}>
-              Top Up {activeWallet === 'ai' ? 'AI' : 'Translation'} Wallet
+            <Ionicons name="add-circle" size={20} color={Colors.primary} />
+            <Text style={[styles.topUpBtnText, { color: Colors.primary }]}>
+              Top Up Add-On Bundle
             </Text>
           </TouchableOpacity>
         </Card>
@@ -278,6 +267,11 @@ const styles = StyleSheet.create({
   tabActive: { backgroundColor: Colors.primaryLight },
   tabText: { fontSize: FontSize.sm, color: Colors.textLight },
   tabTextActive: { color: Colors.highlight, fontWeight: FontWeight.semibold as any },
+
+  // Header Section
+  headerSection: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, margin: Spacing.lg, marginBottom: Spacing.md },
+  headerTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold as any, color: Colors.textPrimary },
+  headerSubtitle: { fontSize: FontSize.sm, color: Colors.textLight, marginLeft: 'auto' },
 
   // Balance
   balanceCard: { marginHorizontal: Spacing.lg, marginBottom: Spacing.md, borderWidth: 1 },

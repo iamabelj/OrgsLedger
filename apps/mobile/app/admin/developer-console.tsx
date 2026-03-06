@@ -553,19 +553,17 @@ export default function DeveloperConsole() {
           <SectionHeader title="Wallet Analytics" />
           <Card style={styles.card}>
             <View style={styles.analyticRow}>
-              <Ionicons name={"sparkles" as any} size={18} color={Colors.highlight} />
-              <Text style={styles.analyticLabel}>AI Hours (Balance/Used)</Text>
+              <Ionicons name={"rocket" as any} size={18} color={Colors.highlight} />
+              <Text style={styles.analyticLabel}>Add-On Bundle Hours (Balance/Used)</Text>
               <Text style={styles.analyticValue}>
                 {fmtNum(walletAnalytics?.total_ai_balance_hours || 0)}h / {fmtNum(walletAnalytics?.total_ai_used_hours || 0)}h
               </Text>
             </View>
             <View style={styles.divider} />
             <View style={styles.analyticRow}>
-              <Ionicons name="language" size={18} color={Colors.info} />
-              <Text style={styles.analyticLabel}>Translation Hours (Balance/Used)</Text>
-              <Text style={styles.analyticValue}>
-                {fmtNum(walletAnalytics?.total_translation_balance_hours || 0)}h / {fmtNum(walletAnalytics?.total_translation_used_hours || 0)}h
-              </Text>
+              <Ionicons name="cash" size={18} color={Colors.success} />
+              <Text style={styles.analyticLabel}>Bundle Rate</Text>
+              <Text style={styles.analyticValue}>$20/hr | ₦25,000/hr</Text>
             </View>
           </Card>
 
@@ -576,11 +574,11 @@ export default function DeveloperConsole() {
               <Card style={{ ...styles.card, borderColor: Colors.warning + '50' }}>
                 <View style={styles.riskHeader}>
                   <Ionicons name="warning" size={20} color={Colors.warning} />
-                  <Text style={styles.riskTitle}>{riskData.low_balances.length} Low Balance Wallets</Text>
+                  <Text style={styles.riskTitle}>{riskData.low_balances.length} Low Balance Add-Ons</Text>
                 </View>
                 {riskData.low_balances.slice(0, 5).map((r: any, i: number) => (
                   <Text key={i} style={styles.riskItem}>
-                    • {r.name}: AI {r.ai_balance_hours?.toFixed(1)}h, Trans {r.translation_balance_hours?.toFixed(1)}h
+                    • {r.name}: Bundle {r.ai_balance_hours?.toFixed(1)}h
                   </Text>
                 ))}
               </Card>
@@ -704,15 +702,9 @@ export default function DeveloperConsole() {
                     <Text style={styles.orgDetailText}>{org.plan_name || 'No plan'}</Text>
                   </View>
                   <View style={styles.orgDetailItem}>
-                    <Ionicons name={"sparkles" as any} size={14} color={Colors.highlight} />
+                    <Ionicons name={"rocket" as any} size={14} color={Colors.highlight} />
                     <Text style={styles.orgDetailText}>
-                      AI: {((org.ai_balance_minutes || 0) / 60).toFixed(1)}h
-                    </Text>
-                  </View>
-                  <View style={styles.orgDetailItem}>
-                    <Ionicons name="language" size={14} color={Colors.info} />
-                    <Text style={styles.orgDetailText}>
-                      Trans: {((org.translation_balance_minutes || 0) / 60).toFixed(1)}h
+                      Bundle: {((org.ai_balance_minutes || 0) / 60).toFixed(1)}h
                     </Text>
                   </View>
                 </View>
@@ -832,37 +824,23 @@ export default function DeveloperConsole() {
       {/* ════════════════════════════════════════════════════════ */}
       {tab === 'wallet-pricing' && (
         <View style={[styles.section, { padding: responsive.contentPadding }]}>
-          <SectionHeader title="Wallet Pricing Management" />
+          <SectionHeader title="Add-On Bundle Pricing" />
           
           {/* Current Pricing Display */}
           <Card style={styles.card}>
-            <Text style={styles.cardTitle}>Current Pricing Rates</Text>
+            <Text style={styles.cardTitle}>Current Bundle Rate (AI + Translation)</Text>
             <View style={styles.divider} />
             
             <View style={styles.pricingRowDisplay}>
               <View style={styles.pricingCol}>
-                <Text style={styles.pricingLabel}>AI Hours</Text>
-                <Text style={styles.pricingValue}>${walletPricing?.ai_price_usd || '10.00'}</Text>
+                <Text style={styles.pricingLabel}>Bundle Hours</Text>
+                <Text style={styles.pricingValue}>${walletPricing?.ai_price_usd || '20.00'}</Text>
                 <Text style={styles.pricingCurrency}>/ hour (USD)</Text>
               </View>
               <View style={styles.divider} />
               <View style={styles.pricingCol}>
-                <Text style={styles.pricingLabel}>AI Hours</Text>
-                <Text style={styles.pricingValue}>₦{walletPricing?.ai_price_ngn || '18000'}</Text>
-                <Text style={styles.pricingCurrency}>/ hour (NGN)</Text>
-              </View>
-            </View>
-
-            <View style={[styles.pricingRowDisplay, { marginTop: Spacing.md }]}>
-              <View style={styles.pricingCol}>
-                <Text style={styles.pricingLabel}>Translation Hours</Text>
-                <Text style={styles.pricingValue}>${walletPricing?.translation_price_usd || '25.00'}</Text>
-                <Text style={styles.pricingCurrency}>/ hour (USD)</Text>
-              </View>
-              <View style={styles.divider} />
-              <View style={styles.pricingCol}>
-                <Text style={styles.pricingLabel}>Translation Hours</Text>
-                <Text style={styles.pricingValue}>₦{walletPricing?.translation_price_ngn || '45000'}</Text>
+                <Text style={styles.pricingLabel}>Bundle Hours</Text>
+                <Text style={styles.pricingValue}>₦{walletPricing?.ai_price_ngn || '25000'}</Text>
                 <Text style={styles.pricingCurrency}>/ hour (NGN)</Text>
               </View>
             </View>
@@ -870,10 +848,10 @@ export default function DeveloperConsole() {
 
           {/* Update Pricing Form */}
           <Card style={styles.card}>
-            <Text style={styles.cardTitle}>Update Pricing</Text>
+            <Text style={styles.cardTitle}>Update Bundle Pricing</Text>
             <View style={styles.divider} />
 
-            <Text style={styles.formSectionTitle}>AI Hours Pricing</Text>
+            <Text style={styles.formSectionTitle}>Add-On Bundle (AI + Translation)</Text>
             <View style={styles.formRow}>
               <FormField
                 label="USD per hour"
@@ -893,26 +871,6 @@ export default function DeveloperConsole() {
               />
             </View>
 
-            <Text style={styles.formSectionTitle}>Translation Hours Pricing</Text>
-            <View style={styles.formRow}>
-              <FormField
-                label="USD per hour"
-                value={pricingForm.translationUsd}
-                onChangeText={(v) => setPricingForm({ ...pricingForm, translationUsd: v })}
-                keyboardType="decimal-pad"
-                style={{ flex: 1 }}
-                editable={!pricingForm.isUpdating}
-              />
-              <FormField
-                label="NGN per hour"
-                value={pricingForm.translationNgn}
-                onChangeText={(v) => setPricingForm({ ...pricingForm, translationNgn: v })}
-                keyboardType="decimal-pad"
-                style={{ flex: 1 }}
-                editable={!pricingForm.isUpdating}
-              />
-            </View>
-
             <TouchableOpacity
               style={[styles.saveBtn, pricingForm.isUpdating && { opacity: 0.5 }]}
               onPress={updateWalletPricing}
@@ -921,7 +879,7 @@ export default function DeveloperConsole() {
               {pricingForm.isUpdating ? (
                 <ActivityIndicator color={Colors.white} />
               ) : (
-                <Text style={styles.saveBtnText}>Update Pricing</Text>
+                <Text style={styles.saveBtnText}>Update Bundle Pricing</Text>
               )}
             </TouchableOpacity>
           </Card>
@@ -931,7 +889,7 @@ export default function DeveloperConsole() {
             <View style={styles.infoRow}>
               <Ionicons name="information-circle" size={20} color={Colors.highlight} />
               <Text style={styles.infoText}>
-                Changes to pricing rates will apply to new wallet transactions immediately. Existing wallet balances are unaffected.
+                The Add-On Bundle includes both AI meeting minutes and real-time translation. Changes to pricing will apply to new transactions immediately.
               </Text>
             </View>
           </Card>

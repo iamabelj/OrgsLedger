@@ -34,9 +34,8 @@ export default function PlansScreen() {
   const [subscription, setSubscription] = useState<any>(null);
   const [aiWallet, setAiWallet] = useState<any>(null);
   const [translationWallet, setTranslationWallet] = useState<any>(null);
-  const [aiTopUpHours, setAiTopUpHours] = useState('1');
-  const [transTopUpHours, setTransTopUpHours] = useState('1');
-  const [tab, setTab] = useState<'plans' | 'ai' | 'translation'>('plans');
+  const [bundleTopUpHours, setBundleTopUpHours] = useState('1');
+  const [tab, setTab] = useState<'plans' | 'addons'>('plans');
   const [currency, setCurrency] = useState<'usd' | 'ngn'>('usd');
   const [error, setError] = useState<string | null>(null);
 
@@ -93,43 +92,21 @@ export default function PlansScreen() {
 
   const handleAiTopUp = async () => {
     if (!isAdmin || !currentOrgId) return;
-    const hours = parseFloat(aiTopUpHours);
+    const hours = parseFloat(bundleTopUpHours);
     if (!hours || hours < 1) return showAlert('Invalid', 'Enter at least 1 hour.');
-    const pricePerHour = aiWallet?.price_per_hour_usd || 10;
+    const pricePerHour = aiWallet?.price_per_hour_usd || 20;
     const cost = hours * pricePerHour;
-    const nairaCost = hours * (aiWallet?.price_per_hour_ngn || 18000);
-    showAlert('Top Up AI Wallet', `Add ${hours} hour(s) for $${cost.toFixed(2)} (₦${nairaCost.toLocaleString()})?`, [
+    const nairaCost = hours * (aiWallet?.price_per_hour_ngn || 25000);
+    showAlert('Top Up Add-On Bundle', `Add ${hours} hour(s) for $${cost.toFixed(2)} (₦${nairaCost.toLocaleString()})?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Confirm',
         onPress: async () => {
           try {
+            // Top up both AI and Translation wallets together
             await api.subscriptions.topUpAi(currentOrgId!, { hours });
-            showAlert('Success', `${hours} hour(s) added to AI wallet!`);
-            loadData();
-          } catch (err: any) {
-            showAlert('Error', err?.response?.data?.error || 'Top-up failed');
-          }
-        },
-      },
-    ]);
-  };
-
-  const handleTranslationTopUp = async () => {
-    if (!isAdmin || !currentOrgId) return;
-    const hours = parseFloat(transTopUpHours);
-    if (!hours || hours < 1) return showAlert('Invalid', 'Enter at least 1 hour.');
-    const pricePerHour = translationWallet?.price_per_hour_usd || 25;
-    const cost = hours * pricePerHour;
-    const nairaCost = hours * (translationWallet?.price_per_hour_ngn || 45000);
-    showAlert('Top Up Translation Wallet', `Add ${hours} hour(s) for $${cost.toFixed(2)} (₦${nairaCost.toLocaleString()})?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Confirm',
-        onPress: async () => {
-          try {
             await api.subscriptions.topUpTranslation(currentOrgId!, { hours });
-            showAlert('Success', `${hours} hour(s) added to Translation wallet!`);
+            showAlert('Success', `${hours} hour(s) added to your Add-On bundle!`);
             loadData();
           } catch (err: any) {
             showAlert('Error', err?.response?.data?.error || 'Top-up failed');
@@ -183,19 +160,19 @@ export default function PlansScreen() {
 
       {/* Tabs */}
       <View style={styles.tabs}>
-        {(['plans', 'ai', 'translation'] as const).map((t) => (
+        {(['plans', 'addons'] as const).map((t) => (
           <TouchableOpacity
             key={t}
             style={[styles.tab, tab === t && styles.tabActive]}
             onPress={() => setTab(t)}
           >
             <Ionicons
-              name={t === 'plans' ? 'card' : t === 'ai' ? 'sparkles' : 'language'}
+              name={t === 'plans' ? 'card' : 'rocket'}
               size={16}
               color={tab === t ? Colors.highlight : Colors.textLight}
             />
             <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
-              {t === 'plans' ? 'Plans' : t === 'ai' ? 'AI Wallet' : 'Translation'}
+              {t === 'plans' ? 'Plans' : 'Add-Ons'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -267,17 +244,17 @@ export default function PlansScreen() {
         </View>
       )}
 
-      {/* AI Wallet Tab */}
-      {tab === 'ai' && (
+      {/* Add-Ons Bundle Tab */}
+      {tab === 'addons' && (
         <View style={styles.section}>
-          <SectionHeader title="AI Wallet" />
-          <Text style={styles.subtitle}>Prepaid AI meeting transcription & summaries</Text>
+          <SectionHeader title="AI + Translation Bundle" />
+          <Text style={styles.subtitle}>Prepaid hours for AI meeting minutes and real-time translation</Text>
 
           <Card style={styles.walletCard}>
             <View style={styles.walletHeader}>
-              <Ionicons name="sparkles" size={24} color={Colors.highlight} />
+              <Ionicons name="rocket" size={24} color={Colors.highlight} />
               <View style={{ flex: 1, marginLeft: Spacing.md }}>
-                <Text style={styles.walletLabel}>AI Balance</Text>
+                <Text style={styles.walletLabel}>Bundle Balance</Text>
                 <Text style={styles.walletBalance}>
                   {(aiBalance / 60).toFixed(1)} hours
                 </Text>
@@ -286,9 +263,9 @@ export default function PlansScreen() {
             </View>
 
             <View style={styles.pricingRow}>
-              <Text style={styles.pricingText}>$10/hour</Text>
+              <Text style={styles.pricingText}>$20/hour</Text>
               <Text style={styles.pricingDivider}>|</Text>
-              <Text style={styles.pricingText}>₦18,000/hour</Text>
+              <Text style={styles.pricingText}>₦25,000/hour</Text>
             </View>
 
             {isAdmin && (
@@ -297,8 +274,8 @@ export default function PlansScreen() {
                 <View style={styles.topUpRow}>
                   <TextInput
                     style={styles.topUpInput}
-                    value={aiTopUpHours}
-                    onChangeText={setAiTopUpHours}
+                    value={bundleTopUpHours}
+                    onChangeText={setBundleTopUpHours}
                     keyboardType="numeric"
                     placeholder="Hours"
                     placeholderTextColor={Colors.textLight}
@@ -314,81 +291,21 @@ export default function PlansScreen() {
             {aiBalance <= 0 && (
               <View style={styles.emptyNotice}>
                 <Ionicons name="alert-circle" size={16} color={Colors.warning} />
-                <Text style={styles.emptyText}>AI wallet empty — AI features disabled until topped up</Text>
+                <Text style={styles.emptyText}>Add-on balance empty — AI and translation features disabled until topped up</Text>
               </View>
             )}
           </Card>
 
           <View style={styles.featureList}>
-            <Text style={styles.featureListTitle}>AI Features Include:</Text>
+            <Text style={styles.featureListTitle}>Bundle Features Include:</Text>
             <FeatureRow icon="mic" text="Meeting transcription" />
             <FeatureRow icon="document-text" text="Automatic summaries" />
             <FeatureRow icon="checkmark-circle" text="Action item extraction" />
             <FeatureRow icon="trending-up" text="Financial insights" />
+            <FeatureRow icon="globe" text="Real-time speech-to-text translation" />
+            <FeatureRow icon="language" text="Live translation to any language" />
+            <FeatureRow icon="volume-high" text="Voice playback for translations" />
             <FeatureRow icon="time" text="Per-minute billing — pay only for what you use" />
-          </View>
-        </View>
-      )}
-
-      {/* Translation Wallet Tab */}
-      {tab === 'translation' && (
-        <View style={styles.section}>
-          <SectionHeader title="Translation Wallet" />
-          <Text style={styles.subtitle}>Real-time multilingual meeting translation</Text>
-
-          <Card style={styles.walletCard}>
-            <View style={styles.walletHeader}>
-              <Ionicons name="language" size={24} color={Colors.info} />
-              <View style={{ flex: 1, marginLeft: Spacing.md }}>
-                <Text style={styles.walletLabel}>Translation Balance</Text>
-                <Text style={[styles.walletBalance, { color: Colors.info }]}>
-                  {(transBalance / 60).toFixed(1)} hours
-                </Text>
-                <Text style={styles.walletMinutes}>{transBalance.toFixed(0)} minutes remaining</Text>
-              </View>
-            </View>
-
-            <View style={styles.pricingRow}>
-              <Text style={styles.pricingText}>$25/hour</Text>
-              <Text style={styles.pricingDivider}>|</Text>
-              <Text style={styles.pricingText}>₦45,000/hour</Text>
-            </View>
-
-            {isAdmin && (
-              <View style={styles.topUpSection}>
-                <Text style={styles.topUpLabel}>Top Up</Text>
-                <View style={styles.topUpRow}>
-                  <TextInput
-                    style={styles.topUpInput}
-                    value={transTopUpHours}
-                    onChangeText={setTransTopUpHours}
-                    keyboardType="numeric"
-                    placeholder="Hours"
-                    placeholderTextColor={Colors.textLight}
-                  />
-                  <TouchableOpacity style={[styles.topUpBtn, { backgroundColor: Colors.info }]} onPress={handleTranslationTopUp}>
-                    <Ionicons name="add" size={18} color="#fff" />
-                    <Text style={[styles.topUpBtnText, { color: '#fff' }]}>Add Hours</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {transBalance <= 0 && (
-              <View style={styles.emptyNotice}>
-                <Ionicons name="alert-circle" size={16} color={Colors.warning} />
-                <Text style={styles.emptyText}>Translation wallet empty — translation disabled until topped up</Text>
-              </View>
-            )}
-          </Card>
-
-          <View style={styles.featureList}>
-            <Text style={styles.featureListTitle}>Translation Features Include:</Text>
-            <FeatureRow icon="globe" text="Real-time speech-to-text" />
-            <FeatureRow icon="language" text="Live translation to target language" />
-            <FeatureRow icon="volume-high" text="Optional voice playback" />
-            <FeatureRow icon="people" text="Per-participant language preference" />
-            <FeatureRow icon="time" text="Per-minute billing" />
           </View>
         </View>
       )}
