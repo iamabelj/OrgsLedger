@@ -311,29 +311,40 @@ export class AIService {
     }
 
     try {
-      // Dynamic import for Deepgram
-      const { DeepgramClient } = await import('@deepgram/sdk');
-      const client = new DeepgramClient({ apiKey: process.env.DEEPGRAM_API_KEY });
-
-      // Transcribe prerecorded audio with multilingual support
+      // Call Deepgram REST API directly (SDK v5 types are incomplete)
       logger.info('[DEEPGRAM] Transcribing prerecorded audio', { url: audioUrl });
-      const response = await client.listen.prerecorded.transcribeUrl(
-        { url: audioUrl },
-        {
-          model: 'nova-3',
-          language: 'multi', // Automatic language detection for 100+ languages
-          punctuate: true,
-          smart_format: true,
-          diarize: true,
-          diarize_version: 'latest',
-          utterances: true,
-        } as any
-      );
+      
+      // Build query params string
+      const params = new URLSearchParams({
+        model: 'nova-3',
+        language: 'multi',
+        punctuate: 'true',
+        smart_format: 'true',
+        diarize: 'true',
+        diarize_version: 'latest',
+        utterances: 'true',
+      });
 
+      const apiUrl = `https://api.deepgram.com/v1/listen?${params.toString()}`;
+      const apiResponse = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Token ${process.env.DEEPGRAM_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: audioUrl }),
+      });
+
+      if (!apiResponse.ok) {
+        const errorData = await apiResponse.json().catch(() => ({}));
+        throw new Error(`Deepgram API returned ${apiResponse.status}: ${JSON.stringify(errorData)}`);
+      }
+
+      const data = await apiResponse.json() as any;
       const segments: TranscriptSegment[] = [];
 
       // Extract utterances (speaker-diarized segments)
-      const utterances = response.result?.results?.utterances || [];
+      const utterances = data.results?.utterances || [];
       
       if (utterances.length > 0) {
         // Use utterances for speaker-separated transcript
@@ -344,12 +355,12 @@ export class AIService {
             text: utterance.transcript || '',
             startTime: utterance.start || 0,
             endTime: utterance.end || 0,
-            language: response.result?.results?.channels?.[0]?.detected_language || 'en',
+            language: data.results?.channels?.[0]?.detected_language || 'en',
           });
         }
       } else {
         // Fallback: use channel alternatives if no utterances
-        const channels = response.result?.results?.channels || [];
+        const channels = data.results?.channels || [];
         for (const channel of channels) {
           const alternatives = channel.alternatives || [];
           for (const alt of alternatives) {
@@ -368,7 +379,7 @@ export class AIService {
 
       logger.info('[DEEPGRAM] Transcription complete', { 
         segments: segments.length,
-        duration: response.result?.metadata?.duration || 0 
+        duration: data.metadata?.duration || 0 
       });
 
       return segments;
