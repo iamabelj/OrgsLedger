@@ -71,6 +71,9 @@ const server = preCreatedServer || http.createServer(app);
 // Set up process-level error handlers (uncaughtException, unhandledRejection)
 setupProcessErrorHandlers();
 
+// Trust proxy for rate limiting behind nginx
+app.set('trust proxy', true);
+
 // Ensure upload directory exists
 const uploadDir = path.resolve(config.upload.dir);
 if (!fs.existsSync(uploadDir)) {

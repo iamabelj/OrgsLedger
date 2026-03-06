@@ -75,11 +75,6 @@ function AppShell() {
           <Stack.Screen name="admin" options={{ headerShown: false }} />
           <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
           <Stack.Screen name="organization" options={{ title: 'Join Organization' }} />
-          <Stack.Screen name="chat/[channelId]" options={{ title: 'Chat' }} />
-          <Stack.Screen name="meetings/[meetingId]" options={{ title: 'Meeting Details' }} />
-          <Stack.Screen name="meetings/create" options={{ title: 'New Meeting' }} />
-          <Stack.Screen name="financials/history" options={{ title: 'Payment History' }} />
-          <Stack.Screen name="financials/donate/[campaignId]" options={{ title: 'Make a Donation' }} />
           <Stack.Screen name="announcements" options={{ title: 'Announcements' }} />
           <Stack.Screen name="events" options={{ title: 'Events' }} />
           <Stack.Screen name="polls" options={{ title: 'Polls' }} />
@@ -89,7 +84,6 @@ function AppShell() {
           <Stack.Screen name="legal" options={{ headerShown: false }} />
           <Stack.Screen name="verify-email" options={{ title: 'Verify Email' }} />
           <Stack.Screen name="create-org" options={{ title: 'Create Organization' }} />
-          <Stack.Screen name="invite/[code]" options={{ title: 'Join Organization' }} />
           <Stack.Screen name="help" options={{ title: 'Help & Support' }} />
         </Stack>
 
