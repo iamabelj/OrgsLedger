@@ -10,6 +10,7 @@
 
 import { db } from '../db';
 import { logger } from '../logger';
+import { randomUUID } from 'crypto';
 
 describe('Meeting Integration Flow', () => {
   let meetingId: string;
@@ -39,20 +40,22 @@ describe('Meeting Integration Flow', () => {
     const meetingRes = await db('meetings').insert({
       organization_id: orgId,
       title: 'Language Integration Test',
-      scheduled_at: new Date(),
+      scheduled_start: new Date(),
       ai_enabled: true,
-      recording_enabled: false,
+      created_by: userId,
     }).returning('*');
     meetingId = meetingRes[0].id;
   });
 
   afterAll(async () => {
-    // Cleanup
-    await db('meeting_transcripts').where({ meeting_id: meetingId }).delete();
-    await db('meeting_minutes').where({ meeting_id: meetingId }).delete();
-    await db('meetings').where({ id: meetingId }).delete();
-    await db('users').where({ id: userId }).delete();
-    await db('organizations').where({ id: orgId }).delete();
+    // Cleanup (guard against undefined if beforeAll failed)
+    if (meetingId) {
+      await db('meeting_transcripts').where({ meeting_id: meetingId }).delete();
+      await db('meeting_minutes').where({ meeting_id: meetingId }).delete();
+      await db('meetings').where({ id: meetingId }).delete();
+    }
+    if (userId) await db('users').where({ id: userId }).delete();
+    if (orgId) await db('organizations').where({ id: orgId }).delete();
   });
 
   // ─────────────────────────────────────────────────────
@@ -121,7 +124,7 @@ describe('Meeting Integration Flow', () => {
 
     // Verify only finals are in DB (no interim duplicates)
     const count = await db('meeting_transcripts').where({ meeting_id: meetingId }).count('* as count').first();
-    expect(count?.count).toBeGreaterThan(0);
+    expect(Number(count?.count)).toBeGreaterThan(0);
   });
 
   // ─────────────────────────────────────────────────────
@@ -161,7 +164,7 @@ describe('Meeting Integration Flow', () => {
       .first();
 
     expect(paginatedResults.length).toBe(Math.min(limit, 100));
-    expect(totalCount?.count).toBeGreaterThanOrEqual(100);
+    expect(Number(totalCount?.count)).toBeGreaterThanOrEqual(100);
     logger.info(`[TEST] ✓ Pagination: fetched ${paginatedResults.length}/${totalCount?.count} items`);
   });
 
@@ -218,12 +221,15 @@ describe('Meeting Integration Flow', () => {
       meeting_id: meetingId,
       organization_id: orgId,
       status: 'generated',
-      content: JSON.stringify(minutesContent),
+      summary: JSON.stringify(minutesContent),
       generated_at: new Date(),
     }).returning('*');
 
     expect(minutesRes[0].id).toBeDefined();
-    expect(JSON.parse(minutesRes[0].content).transcripts_included).toBe(transcripts.length);
+    const parsedSummary = typeof minutesRes[0].summary === 'string'
+      ? JSON.parse(minutesRes[0].summary)
+      : minutesRes[0].summary;
+    expect(parsedSummary.transcripts_included).toBe(transcripts.length);
     logger.info('[TEST] ✓ Minutes generated with translation metadata');
   });
 
@@ -271,7 +277,9 @@ describe('Meeting Integration Flow', () => {
     logger.info('[FLOW] Step 4: Transcript persisted');
 
     // Step 5: Translations generated
-    const translationData = JSON.parse(transcript.translations || '{}');
+    const translationData = typeof transcript.translations === 'string'
+      ? JSON.parse(transcript.translations)
+      : (transcript.translations || {});
     logger.info(`[FLOW] Step 5: Generated ${Object.keys(translationData).length} translations`);
 
     // Step 6: Minutes generated
@@ -298,14 +306,55 @@ describe('Meeting Integration Flow', () => {
 });
 
 describe('Meeting Performance Metrics', () => {
+  let perfOrgId: string;
+  let perfUserId: string;
+  const perfMeetingIds: string[] = [];
+
+  beforeAll(async () => {
+    // Create real org and user for perf tests (UUID columns require valid refs)
+    const orgRes = await db('organizations').insert({
+      name: 'Perf Test Org',
+      slug: `perf-${Date.now()}`,
+    }).returning('*');
+    perfOrgId = orgRes[0].id;
+
+    const userRes = await db('users').insert({
+      first_name: 'Perf',
+      last_name: 'User',
+      email: `perf-${Date.now()}@example.com`,
+      password_hash: 'hashed',
+    }).returning('*');
+    perfUserId = userRes[0].id;
+  });
+
+  afterAll(async () => {
+    // Cleanup all perf test data
+    for (const mid of perfMeetingIds) {
+      await db('meeting_transcripts').where({ meeting_id: mid }).delete();
+      await db('meetings').where({ id: mid }).delete();
+    }
+    await db('users').where({ id: perfUserId }).delete();
+    await db('organizations').where({ id: perfOrgId }).delete();
+  });
+
   it('should measure transcript persistence latency (should be <100ms without interim DB writes)', async () => {
+    // Create a real meeting for this perf test
+    const meetRes = await db('meetings').insert({
+      organization_id: perfOrgId,
+      title: 'Perf Test Meeting',
+      scheduled_start: new Date(),
+      ai_enabled: false,
+      created_by: perfUserId,
+    }).returning('*');
+    const perfMeetingId = meetRes[0].id;
+    perfMeetingIds.push(perfMeetingId);
+
     const start = Date.now();
-    
-    // Simulate final transcript insertion only
+
     await db('meeting_transcripts').insert({
-      meeting_id: 'perf-test-' + Date.now(),
-      organization_id: 'org-perf',
-      speaker_id: 'user-perf',
+      meeting_id: perfMeetingId,
+      organization_id: perfOrgId,
+      speaker_id: perfUserId,
       speaker_name: 'Perf User',
       original_text: 'Performance test',
       source_lang: 'en',
@@ -319,13 +368,22 @@ describe('Meeting Performance Metrics', () => {
   });
 
   it('should measure pagination query latency (should be <50ms for 50-item page)', async () => {
-    const meetingId = 'perf-test-' + Date.now();
-    
+    // Create a real meeting for this perf test
+    const meetRes = await db('meetings').insert({
+      organization_id: perfOrgId,
+      title: 'Perf Pagination Test',
+      scheduled_start: new Date(),
+      ai_enabled: false,
+      created_by: perfUserId,
+    }).returning('*');
+    const perfMeetingId = meetRes[0].id;
+    perfMeetingIds.push(perfMeetingId);
+
     // Insert 1000 transcripts
     const batch = Array.from({ length: 1000 }, (_, i) => ({
-      meeting_id: meetingId,
-      organization_id: 'org-perf',
-      speaker_id: 'user-perf',
+      meeting_id: perfMeetingId,
+      organization_id: perfOrgId,
+      speaker_id: perfUserId,
       speaker_name: 'Perf User',
       original_text: `Item ${i}`,
       source_lang: 'en',
@@ -337,7 +395,7 @@ describe('Meeting Performance Metrics', () => {
 
     const start = Date.now();
     const page = await db('meeting_transcripts')
-      .where({ meeting_id: meetingId })
+      .where({ meeting_id: perfMeetingId })
       .orderBy('spoken_at', 'asc')
       .limit(50)
       .offset(0)
