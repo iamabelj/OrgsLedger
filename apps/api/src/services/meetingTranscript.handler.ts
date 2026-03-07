@@ -1,7 +1,8 @@
 // ============================================================
-// OrgsLedger API — Meeting Transcript Handler
+// OrgsLedger API — Meeting Transcript Handler  (v2)
 // Integrates Deepgram, translation pipeline, and Socket.IO
-// Maintains backward compatibility with existing events
+// Optimized: debounce interim, skip duplicate translations,
+//            cache org_id, parallel all translations
 // ============================================================
 
 import { db } from '../db';
@@ -9,6 +10,7 @@ import { logger } from '../logger';
 import { liveKitAudioBridgeService } from './livekitAudioBridge.service';
 import { multilingualTranslationPipeline } from './multilingualTranslation.service';
 import { deepgramRealtimeService, TranscriptSegment } from './deepgramRealtime.service';
+import { normalizeLang } from '../utils/langNormalize';
 
 interface MeetingTranscriptContext {
   meetingId: string;
@@ -30,6 +32,14 @@ interface BroadcastPayload {
 class MeetingTranscriptHandler {
   private contexts: Map<string, MeetingTranscriptContext> = new Map();
   private pendingTranscripts: Map<string, string> = new Map(); // For batching finals
+
+  // ── Debounce: coalesce rapid interim transcripts ────────
+  private interimTimers: Map<string, NodeJS.Timeout> = new Map();
+  private interimBuffers: Map<string, { segment: TranscriptSegment; context: MeetingTranscriptContext }> = new Map();
+  private readonly INTERIM_DEBOUNCE_MS = 200; // 200ms window
+
+  // ── Org-ID cache (avoid DB hit per final transcript) ────
+  private orgIdCache: Map<string, string> = new Map();
 
   /**
    * Initialize transcript handling for a participant in a meeting
@@ -76,7 +86,7 @@ class MeetingTranscriptHandler {
 
   /**
    * Handle interim (real-time) transcript
-   * Broadcast for live subtitles - KEEP EXISTING EVENT NAME
+   * Debounced: coalesces rapid updates within INTERIM_DEBOUNCE_MS window
    */
   private async handleInterimTranscript(
     contextId: string,
@@ -92,14 +102,43 @@ class MeetingTranscriptHandler {
         }
       }
 
-      // Get translations for interim
+      // Buffer this segment — if another arrives within INTERIM_DEBOUNCE_MS, we skip this one
+      this.interimBuffers.set(contextId, { segment, context });
+
+      // Clear existing timer for this speaker
+      const existingTimer = this.interimTimers.get(contextId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+
+      // Set debounce timer
+      this.interimTimers.set(
+        contextId,
+        setTimeout(() => this.flushInterim(contextId), this.INTERIM_DEBOUNCE_MS)
+      );
+    } catch (err) {
+      logger.error(`Failed to handle interim transcript for: ${contextId}`, err);
+    }
+  }
+
+  /**
+   * Flush the debounced interim transcript — translate and broadcast
+   */
+  private async flushInterim(contextId: string): Promise<void> {
+    const entry = this.interimBuffers.get(contextId);
+    if (!entry) return;
+    this.interimBuffers.delete(contextId);
+    this.interimTimers.delete(contextId);
+
+    const { segment, context } = entry;
+
+    try {
       const translations = await multilingualTranslationPipeline.translateToParticipants(
         segment.text,
         segment.language,
         context.meetingId
       );
 
-      // Build broadcast payload - USING EXISTING EVENT STRUCTURE
       const payload: BroadcastPayload = {
         speakerId: segment.speakerId,
         speakerName: segment.speakerName,
@@ -109,7 +148,6 @@ class MeetingTranscriptHandler {
         timestamp: segment.timestamp,
       };
 
-      // Emit existing event name to maintain backward compatibility
       context.io.to(`meeting:${context.meetingId}`).emit('translation:interim', payload);
 
       logger.debug(`Broadcast interim transcript: ${segment.speakerId}`, {
@@ -117,13 +155,13 @@ class MeetingTranscriptHandler {
         targetLanguages: Object.keys(payload.translations).length,
       });
     } catch (err) {
-      logger.error(`Failed to handle interim transcript for: ${contextId}`, err);
+      logger.error(`Failed to flush interim for: ${contextId}`, err);
     }
   }
 
   /**
    * Handle final transcript
-   * Store in DB and broadcast - KEEP EXISTING EVENT NAMES
+   * Store in DB and broadcast - cached org_id lookup
    */
   private async handleFinalTranscript(
     contextId: string,
@@ -134,6 +172,14 @@ class MeetingTranscriptHandler {
       // Skip empty transcripts
       if (!segment.text || segment.text.trim().length === 0) {
         return;
+      }
+
+      // Cancel any pending interim debounce — final supersedes it
+      const pendingTimer = this.interimTimers.get(contextId);
+      if (pendingTimer) {
+        clearTimeout(pendingTimer);
+        this.interimTimers.delete(contextId);
+        this.interimBuffers.delete(contextId);
       }
 
       // Get translations
@@ -152,17 +198,16 @@ class MeetingTranscriptHandler {
         timestamp: segment.timestamp,
       };
 
-      // Step 1: Broadcast final transcript - EXISTING EVENT
+      // Step 1: Broadcast final transcript
       context.io.to(`meeting:${context.meetingId}`).emit('translation:result', payload);
 
-      // Step 2: Store transcript in database
-      // Fetch organization_id from meeting
-      const meeting = await db('meetings').where({ id: context.meetingId }).select('organization_id').first();
-      
-      if (meeting) {
+      // Step 2: Store transcript in database (cached org_id)
+      const orgId = await this.getOrgId(context.meetingId);
+
+      if (orgId) {
         await db('meeting_transcripts').insert({
           meeting_id: context.meetingId,
-          organization_id: meeting.organization_id,
+          organization_id: orgId,
           speaker_id: segment.speakerId,
           speaker_name: segment.speakerName,
           original_text: segment.text,
@@ -172,7 +217,7 @@ class MeetingTranscriptHandler {
         });
       }
 
-      // Step 3: Emit stored event - EXISTING EVENT
+      // Step 3: Emit stored event
       context.io.to(`meeting:${context.meetingId}`).emit('transcript:stored', {
         meetingId: context.meetingId,
         speakerId: segment.speakerId,
@@ -189,6 +234,25 @@ class MeetingTranscriptHandler {
     } catch (err) {
       logger.error(`Failed to handle final transcript for: ${contextId}`, err);
     }
+  }
+
+  /**
+   * Cached org_id lookup — avoids DB query on every final transcript
+   */
+  private async getOrgId(meetingId: string): Promise<string | null> {
+    const cached = this.orgIdCache.get(meetingId);
+    if (cached) return cached;
+
+    try {
+      const meeting = await db('meetings').where({ id: meetingId }).select('organization_id').first();
+      if (meeting?.organization_id) {
+        this.orgIdCache.set(meetingId, meeting.organization_id);
+        return meeting.organization_id;
+      }
+    } catch (err) {
+      logger.error('Failed to fetch org_id for meeting', err);
+    }
+    return null;
   }
 
   /**
@@ -299,6 +363,11 @@ class MeetingTranscriptHandler {
       // Cleanup
       this.contexts.delete(contextId);
       this.pendingTranscripts.delete(contextId);
+      // Clean up debounce state
+      const timer = this.interimTimers.get(contextId);
+      if (timer) clearTimeout(timer);
+      this.interimTimers.delete(contextId);
+      this.interimBuffers.delete(contextId);
 
       logger.info(`Stopped transcript handling for: ${contextId}`);
       return true;

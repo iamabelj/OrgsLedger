@@ -60,6 +60,8 @@ import { initializeWorkerOrchestrator, shutdownWorkerOrchestrator } from './work
 import { ProcessingWorkerService } from './services/workers/processingWorker.service';
 import { MinutesWorkerService } from './services/workers/minutesWorker.service';
 import { initializeMinutesQueue } from './queues/minutes.queue';
+import { prewarmTranslationCache } from './services/translationPrewarm';
+import { startMetricsReporter, stopMetricsReporter } from './services/translationMetrics';
 
 const app = express();
 
@@ -557,6 +559,15 @@ function doPostStart(): void {
     } catch (err: any) {
       logger.error('[STARTUP] Worker orchestrator initialization failed (non-fatal):', err.message);
     }
+
+    // Start translation metrics reporter
+    startMetricsReporter();
+    logger.info('[STARTUP] ✓ Translation metrics reporter started');
+
+    // Prewarm translation cache in background (non-blocking)
+    prewarmTranslationCache().catch((err) => {
+      logger.warn('[STARTUP] Translation prewarm failed (non-fatal):', err.message || err);
+    });
   })();
 }
 
@@ -598,6 +609,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
   // 4. Stop worker orchestrator
   try {
+    stopMetricsReporter();
     await shutdownWorkerOrchestrator();
     logger.info('[SHUTDOWN] Worker orchestrator closed');
   } catch (err: any) {

@@ -8,6 +8,8 @@ import { logger } from '../../logger';
 import { broadcastToQueue } from '../../queues/broadcast.queue';
 import { translateText } from '../translation.service';
 import { transcriptService } from '../../services/transcript.service';
+import { getCachedTranslation, setCachedTranslation } from '../translationCache';
+import { normalizeLang } from '../../utils/langNormalize';
 
 import { deductTranslationWallet } from '../subscription.service';
 
@@ -62,26 +64,38 @@ export class ProcessingWorkerService implements ProcessingWorker {
       const interimTranslations: Record<string, string> = {};
       let finalTranslations: Record<string, string> | undefined;
 
-      // Translate to each target language
-      for (const targetLang of targetLanguages) {
-        try {
-          const result = await translateText(
-            originalText,
-            targetLang,
-            sourceLanguage
-          );
+      // Translate to all target languages IN PARALLEL with Redis cache
+      const batchSize = 5;
+      const normSource = normalizeLang(sourceLanguage);
+      const normTargets = [...new Set(targetLanguages.map(normalizeLang))].filter(t => t !== normSource);
 
-          interimTranslations[targetLang] = result.translatedText;
-        } catch (err) {
-          logger.warn(`Translation failed for language ${targetLang}`, {
-            meetingId,
-            speakerId,
-            targetLang,
-            error: err instanceof Error ? err.message : String(err),
-          });
-
-          // Store error but continue with other languages
-          interimTranslations[targetLang] = '';
+      for (let i = 0; i < normTargets.length; i += batchSize) {
+        const batch = normTargets.slice(i, i + batchSize);
+        const results = await Promise.all(
+          batch.map(async (targetLang) => {
+            try {
+              // Check Redis cache first
+              const cached = await getCachedTranslation(originalText, normSource, targetLang);
+              if (cached) {
+                return { lang: targetLang, text: cached };
+              }
+              const result = await translateText(originalText, targetLang, normSource);
+              // Store in Redis cache (fire-and-forget)
+              setCachedTranslation(originalText, normSource, targetLang, result.translatedText).catch(() => {});
+              return { lang: targetLang, text: result.translatedText };
+            } catch (err) {
+              logger.warn(`Translation failed for language ${targetLang}`, {
+                meetingId,
+                speakerId,
+                targetLang,
+                error: err instanceof Error ? err.message : String(err),
+              });
+              return { lang: targetLang, text: '' };
+            }
+          })
+        );
+        for (const r of results) {
+          interimTranslations[r.lang] = r.text;
         }
       }
 

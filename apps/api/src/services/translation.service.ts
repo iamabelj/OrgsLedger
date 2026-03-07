@@ -9,6 +9,8 @@ import { logger } from '../logger';
 import {
   getLanguageName,
 } from '@orgsledger/shared';
+import { getCachedTranslation, setCachedTranslation } from './translationCache';
+import { normalizeLang, isSameLang } from '../utils/langNormalize';
 
 // Re-export the shared language registry so existing imports still work
 export {
@@ -104,26 +106,40 @@ export async function translateText(
     return { translatedText: '' };
   }
 
+  const src = normalizeLang(sourceLang);
+  const tgt = normalizeLang(targetLang);
+
   // Same language → passthrough
-  if (sourceLang && sourceLang === targetLang) {
-    return { translatedText: text, detectedSourceLanguage: sourceLang };
+  if (isSameLang(src, tgt)) {
+    return { translatedText: text, detectedSourceLanguage: src };
   }
 
-  // ── Check cache ─────────────────────────────────────────
-  // Use full text in cache key (hashed for long strings)
+  // ── Check L1 in-process cache ──────────────────────────
   const textKey = text.length > 300 ? text.slice(0, 150) + '|' + text.length + '|' + text.slice(-100) : text;
-  const cacheKey = `${sourceLang || 'auto'}:${targetLang}:${textKey}`;
+  const cacheKey = `${src}:${tgt}:${textKey}`;
   const cached = getCached(cacheKey);
   if (cached) {
-    logger.debug(`[TRANSLATION] Cache hit: ${sourceLang || 'auto'} → ${targetLang}`);
-    return { translatedText: cached, detectedSourceLanguage: sourceLang };
+    logger.debug(`[TRANSLATION] L1 cache hit: ${src} → ${tgt}`);
+    return { translatedText: cached, detectedSourceLanguage: src };
+  }
+
+  // ── Check Redis cache (L2) ─────────────────────────────
+  try {
+    const redisCached = await getCachedTranslation(text, src, tgt);
+    if (redisCached) {
+      setCache(cacheKey, redisCached); // Promote to L1
+      logger.debug(`[TRANSLATION] Redis cache hit: ${src} → ${tgt}`);
+      return { translatedText: redisCached, detectedSourceLanguage: src };
+    }
+  } catch {
+    // Redis down — proceed without it
   }
 
   // Resolve human-readable language name for the GPT prompt
-  const targetName = getLanguageName(targetLang);
-  const sourceName = sourceLang ? getLanguageName(sourceLang) : null;
+  const targetName = getLanguageName(tgt);
+  const sourceName = src ? getLanguageName(src) : null;
 
-  logger.debug(`[TRANSLATION] Translating: "${text.slice(0, 60)}" from ${sourceName || 'auto'} (${sourceLang || 'auto'}) → ${targetName} (${targetLang})`);
+  logger.debug(`[TRANSLATION] Translating: "${text.slice(0, 60)}" from ${sourceName || 'auto'} (${src}) → ${targetName} (${tgt})`);
 
   // NOTE: AI proxy does not have a /translate endpoint — skip it.
   // Translation goes directly through GPT-4o-mini (primary) or Google Translate (fallback).
@@ -147,9 +163,11 @@ export async function translateText(
       });
 
       const translated = response.choices[0]?.message?.content?.trim() || text;
-      logger.debug(`[TRANSLATION] GPT result: "${text.slice(0, 60)}" → "${translated.slice(0, 60)}" (${sourceLang || 'auto'} → ${targetLang})`);
+      logger.debug(`[TRANSLATION] GPT result: "${text.slice(0, 60)}" → "${translated.slice(0, 60)}" (${src} → ${tgt})`);
       setCache(cacheKey, translated);
-      return { translatedText: translated, detectedSourceLanguage: sourceLang };
+      // Also store in Redis (fire-and-forget)
+      setCachedTranslation(text, src, tgt, translated).catch(() => {});
+      return { translatedText: translated, detectedSourceLanguage: src };
     } catch (err) {
       logger.warn('GPT translation failed, falling back to Google Translate', err);
     }
@@ -168,11 +186,11 @@ export async function translateText(
     const url = 'https://translation.googleapis.com/language/translate/v2';
     const body: any = {
       q: text,
-      target: targetLang,
+      target: tgt,
       format: 'text',
     };
-    if (sourceLang) {
-      body.source = sourceLang;
+    if (src && src !== 'en') {
+      body.source = src;
     }
 
     const res = await fetchWithTimeout(url, {
@@ -193,10 +211,12 @@ export async function translateText(
     const translation = data.data?.translations?.[0];
     const translated = translation?.translatedText || text;
     setCache(cacheKey, translated);
+    // Also store in Redis (fire-and-forget)
+    setCachedTranslation(text, src, tgt, translated).catch(() => {});
 
     return {
       translatedText: translated,
-      detectedSourceLanguage: translation?.detectedSourceLanguage || sourceLang,
+      detectedSourceLanguage: translation?.detectedSourceLanguage || src,
     };
   } catch (err) {
     logger.error('Google Translate API also failed', err);

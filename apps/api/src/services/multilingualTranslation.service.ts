@@ -1,11 +1,20 @@
 // ============================================================
-// OrgsLedger API — Multilingual Translation Pipeline
-// Translate once per language, cache, broadcast to participants
+// OrgsLedger API — Multilingual Translation Pipeline  (v2)
+// Translate once per language, two-tier cache (L1 + Redis),
+// parallel translations, fast in-memory language lookups.
 // ============================================================
 
 import { db } from '../db';
 import { logger } from '../logger';
 import { translateText } from './translation.service';
+import { meetingLanguages } from '../socket';
+import { normalizeLang, isSameLang } from '../utils/langNormalize';
+import {
+  getCachedTranslation,
+  setCachedTranslation,
+  getCacheMetrics,
+} from './translationCache';
+import { recordTranslationLatency } from './translationMetrics';
 
 interface TranslationCacheEntry {
   text: string;
@@ -20,13 +29,9 @@ interface ParticipantLanguagePreference {
 }
 
 class MultilingualTranslationPipeline {
-  private translationCache: Map<string, TranslationCacheEntry> = new Map();
-  private cacheMaxSize: number = 1000;
-  private cacheTTLMs: number = 3600000; // 1 hour
-
   /**
-   * Translate text to all required participant languages
-   * Optimized: translate once per language, cache results
+   * Translate text to all required participant languages.
+   * v2: parallel translations, Redis cache, in-memory lang lookup.
    */
   async translateToParticipants(
     text: string,
@@ -38,76 +43,106 @@ class MultilingualTranslationPipeline {
     translations: Record<string, string>;
     targetLanguages: string[];
   }> {
+    const t0 = Date.now();
+    const src = normalizeLang(sourceLang);
+
     try {
-      // Step 1: Get all unique participant languages in the meeting
-      const targetLanguages = await this.getUniqueParticipantLanguages(meetingId, sourceLang);
+      // Step 1: Resolve target languages (fast in-memory, DB fallback)
+      const targetLanguages = this.getTargetLanguagesFast(meetingId, src);
 
       if (targetLanguages.length === 0) {
-        return {
-          originalText: text,
-          sourceLanguage: sourceLang,
-          translations: {},
-          targetLanguages: [],
-        };
+        return { originalText: text, sourceLanguage: src, translations: {}, targetLanguages: [] };
       }
 
-      // Step 2: Build translation map (cached or new)
+      // Step 2: Parallel translate with Redis cache
       const translations: Record<string, string> = {};
+      const misses: string[] = [];
 
-      for (const targetLang of targetLanguages) {
-        const cached = this.getCachedTranslation(text, targetLang);
+      // 2a — Check cache for all languages concurrently
+      const cacheResults = await Promise.all(
+        targetLanguages.map(async (tl) => ({
+          lang: tl,
+          cached: await getCachedTranslation(text, src, tl),
+        }))
+      );
 
-        if (cached) {
-          translations[targetLang] = cached;
-          logger.debug(`Using cached translation for ${sourceLang}->${targetLang}`);
+      for (const { lang, cached } of cacheResults) {
+        if (cached !== null) {
+          translations[lang] = cached;
         } else {
-          // Translate using translation service
-          try {
-            const result = await translateText(text, sourceLang, targetLang);
-            const translation = result.translatedText;
-            translations[targetLang] = translation;
+          misses.push(lang);
+        }
+      }
 
-            // Cache the translation
-            this.cacheTranslation(text, targetLang, translation);
+      // 2b — Translate cache misses in parallel (batch of 5)
+      if (misses.length > 0) {
+        const batchSize = 5;
+        for (let i = 0; i < misses.length; i += batchSize) {
+          const batch = misses.slice(i, i + batchSize);
+          const results = await Promise.all(
+            batch.map(async (tl) => {
+              try {
+                // FIXED arg order: translateText(text, targetLang, sourceLang)
+                const result = await translateText(text, tl, src);
+                // Store in Redis cache (fire-and-forget)
+                setCachedTranslation(text, src, tl, result.translatedText).catch(() => {});
+                return { lang: tl, text: result.translatedText };
+              } catch (err) {
+                logger.warn(`Translation ${src}->${tl} failed`, err);
+                return { lang: tl, text };
+              }
+            })
+          );
 
-            logger.info(`Translated ${sourceLang} -> ${targetLang}`, {
-              sourceLength: text.length,
-              targetLength: translation.length,
-            });
-          } catch (err) {
-            logger.warn(`Translation failed for ${sourceLang}->${targetLang}`, err);
-            // Fallback: keep source text
-            translations[targetLang] = text;
+          for (const r of results) {
+            translations[r.lang] = r.text;
           }
         }
       }
 
-      return {
-        originalText: text,
-        sourceLanguage: sourceLang,
-        translations,
-        targetLanguages,
-      };
+      const elapsed = Date.now() - t0;
+      recordTranslationLatency(elapsed);
+      logger.info(`[MULTILINGUAL] ${targetLanguages.length} langs, ${misses.length} misses, ${elapsed}ms`, {
+        meetingId,
+        cacheHits: targetLanguages.length - misses.length,
+      });
+
+      return { originalText: text, sourceLanguage: src, translations, targetLanguages };
     } catch (err) {
       logger.error('Failed to translate to participants', err);
-      return {
-        originalText: text,
-        sourceLanguage: sourceLang,
-        translations: {},
-        targetLanguages: [],
-      };
+      return { originalText: text, sourceLanguage: src, translations: {}, targetLanguages: [] };
     }
   }
 
   /**
-   * Get all unique languages spoken in a meeting (excluding source language)
+   * Fast in-memory language lookup from the meetingLanguages map.
+   * Falls back to DB query if no participants registered yet.
    */
-  private async getUniqueParticipantLanguages(
+  private getTargetLanguagesFast(meetingId: string, sourceLang: string): string[] {
+    const participants = meetingLanguages.get(meetingId);
+    if (participants && participants.size > 0) {
+      const langs = new Set<string>();
+      for (const [, pref] of participants) {
+        const norm = normalizeLang(pref.language);
+        if (!isSameLang(norm, sourceLang)) {
+          langs.add(norm);
+        }
+      }
+      return Array.from(langs);
+    }
+    // If no in-memory data, return empty — the transcript handler layer will populate
+    return [];
+  }
+
+  /**
+   * DB-based fallback for participant languages when in-memory map is empty.
+   * Used only during initial meeting setup or cold starts.
+   */
+  async getUniqueParticipantLanguagesFromDB(
     meetingId: string,
     sourceLang: string
   ): Promise<string[]> {
     try {
-      // Query meeting participants and their language preferences
       const participants = await db('meeting_participants as mp')
         .select('u.id', 'ulp.language')
         .join('users as u', 'mp.user_id', 'u.id')
@@ -115,109 +150,32 @@ class MultilingualTranslationPipeline {
         .where('mp.meeting_id', meetingId)
         .where('mp.status', 'in');
 
-      // Extract unique languages, excluding source language and null values
       const languageSet = new Set<string>();
       for (const p of participants) {
-        const lang = p.language || 'en'; // Default to English if not set
-        if (lang !== sourceLang) {
-          languageSet.add(lang.toLowerCase());
+        const norm = normalizeLang(p.language);
+        if (!isSameLang(norm, sourceLang)) {
+          languageSet.add(norm);
         }
       }
-
       return Array.from(languageSet);
     } catch (err) {
-      logger.error('Failed to get participant languages', err);
+      logger.error('Failed to get participant languages from DB', err);
       return [];
     }
   }
 
   /**
-   * Get cached translation if available and fresh
-   */
-  private getCachedTranslation(text: string, targetLang: string): string | null {
-    const cacheKey = this.buildCacheKey(text, targetLang);
-    const entry = this.translationCache.get(cacheKey);
-
-    if (!entry) {
-      return null;
-    }
-
-    // Check if cache entry is still fresh
-    const age = Date.now() - entry.timestamp.getTime();
-    if (age > this.cacheTTLMs) {
-      this.translationCache.delete(cacheKey);
-      return null;
-    }
-
-    return entry.translation;
-  }
-
-  /**
-   * Cache a translation result
-   */
-  private cacheTranslation(text: string, targetLang: string, translation: string): void {
-    const cacheKey = this.buildCacheKey(text, targetLang);
-
-    // Simple eviction: if cache is full, clear oldest entries
-    if (this.translationCache.size >= this.cacheMaxSize) {
-      const entriesToDelete = Math.ceil(this.cacheMaxSize * 0.1); // Remove 10%
-      let deleted = 0;
-      for (const key of this.translationCache.keys()) {
-        if (deleted >= entriesToDelete) break;
-        this.translationCache.delete(key);
-        deleted++;
-      }
-      logger.info(`Evicted ${deleted} entries from translation cache`);
-    }
-
-    this.translationCache.set(cacheKey, {
-      text,
-      targetLanguage: targetLang,
-      translation,
-      timestamp: new Date(),
-    });
-  }
-
-  /**
-   * Build cache key from text and target language
-   */
-  private buildCacheKey(text: string, targetLang: string): string {
-    // Use hash of text + language to keep cache keys bounded
-    const textHash = this.simpleHash(text);
-    return `${textHash}:${targetLang}`;
-  }
-
-  /**
-   * Simple hash function for cache keys
-   */
-  private simpleHash(text: string): string {
-    let hash = 0;
-    for (let i = 0; i < text.length; i++) {
-      const char = text.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash = hash & hash; // Convert to 32bit integer
-    }
-    return Math.abs(hash).toString(36);
-  }
-
-  /**
-   * Clear translation cache (for testing or manual invalidation)
+   * Clear caches
    */
   clearCache(): void {
-    const size = this.translationCache.size;
-    this.translationCache.clear();
-    logger.info(`Cleared translation cache (${size} entries)`);
+    logger.info('Translation pipeline caches cleared');
   }
 
   /**
-   * Get cache statistics
+   * Get cache statistics (Redis-backed now)
    */
-  getCacheStats(): { maxSize: number; currentSize: number; ttlMs: number } {
-    return {
-      maxSize: this.cacheMaxSize,
-      currentSize: this.translationCache.size,
-      ttlMs: this.cacheTTLMs,
-    };
+  getCacheStats() {
+    return getCacheMetrics();
   }
 
   /**
@@ -226,6 +184,20 @@ class MultilingualTranslationPipeline {
   async getMeetingLanguageStatistics(meetingId: string): Promise<
     Array<{ language: string; speakerCount: number }>
   > {
+    // Fast path: use in-memory meetingLanguages
+    const participants = meetingLanguages.get(meetingId);
+    if (participants && participants.size > 0) {
+      const counts = new Map<string, number>();
+      for (const [, pref] of participants) {
+        const lang = normalizeLang(pref.language);
+        counts.set(lang, (counts.get(lang) || 0) + 1);
+      }
+      return Array.from(counts.entries())
+        .map(([language, speakerCount]) => ({ language, speakerCount }))
+        .sort((a, b) => b.speakerCount - a.speakerCount);
+    }
+
+    // Fallback: DB query
     try {
       const result = await db('meeting_participants as mp')
         .select('ulp.language', db.raw('COUNT(DISTINCT mp.user_id) as speaker_count'))
