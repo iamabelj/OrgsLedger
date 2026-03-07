@@ -292,7 +292,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
   }, [meetingId]);
 
   // ── Server-Side STT via Audio Streaming ─────────────────
-  // Web: MediaRecorder → audio/webm;codecs=opus → server → Google STT
+  // Web: MediaRecorder → audio/webm;codecs=opus → server → Deepgram STT
   // Mobile: Future native audio module support
   const startListening = useCallback(async () => {
     if (Platform.OS === 'web') {
@@ -321,7 +321,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
 
           const recorder = new MediaRecorder(stream, { mimeType });
 
-          // Tell server to start a Google STT session for this user
+          // Tell server to start a Deepgram STT session for this user
           socketClient.startAudioStream(meetingId, myLanguageRef.current, 'WEBM_OPUS');
 
           recorder.ondataavailable = (e: any) => {

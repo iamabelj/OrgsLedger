@@ -42,7 +42,7 @@ let langPrefsTableExists: boolean | null = null;
 const speechRateLimits = new Map<string, number>();
 const SPEECH_RATE_LIMIT_MS = 500; // Min interval between final speech events
 
-// Active Google STT sessions: socketId -> SpeechSession
+// Active Deepgram STT sessions: socketId -> SpeechSession
 const activeSttSessions = new Map<string, SpeechSession>();
 
 interface AuthenticatedSocket extends Socket {
@@ -140,7 +140,7 @@ async function this_persistTranscript(
 }
 
 // ── Helper: Process speech text (translate, persist, broadcast) ──
-// Shared by both translation:speech (text from client) and STT (text from Google)
+// Shared by both translation:speech (text from client) and STT (text from Deepgram)
 async function handleSpeechText(
   io: Server,
   socket: AuthenticatedSocket,
@@ -686,6 +686,27 @@ export function setupSocketIO(httpServer: HttpServer): Server {
 
       logger.info(`[STT] Starting audio stream: user=${userId}, meeting=${meetingId}, lang=${bcp47Lang}, encoding=${encoding || 'WEBM_OPUS'}`);
 
+      // Safety net: ensure user is registered in meetingLanguages
+      // so handleSpeechText knows about target languages.
+      // This covers cases where the client forgets to emit translation:set-language.
+      if (!meetingLanguages.has(meetingId)) {
+        meetingLanguages.set(meetingId, new Map());
+      }
+      if (!meetingLanguages.get(meetingId)!.has(userId)) {
+        meetingLanguages.get(meetingId)!.set(userId, {
+          language: langCode,
+          name: speakerName,
+          receiveVoice: true,
+        });
+        // Broadcast updated participant languages
+        const participants: Array<{ userId: string; name: string; language: string }> = [];
+        meetingLanguages.get(meetingId)!.forEach((val, uid) => {
+          participants.push({ userId: uid, name: val.name, language: val.language });
+        });
+        io.to(`meeting:${meetingId}`).emit('translation:participants', { meetingId, participants });
+        logger.debug(`[STT] Auto-registered user ${userId} with language ${langCode} in meetingLanguages`);
+      }
+
       const session = new SpeechSession({
         meetingId,
         userId,
@@ -694,7 +715,7 @@ export function setupSocketIO(httpServer: HttpServer): Server {
         encoding: encoding || 'WEBM_OPUS',
         sampleRateHertz: sampleRate,
         onTranscript: (text: string, isFinal: boolean) => {
-          // Feed Google STT results into the same translation pipeline
+          // Feed Deepgram STT results into the same translation pipeline
           handleSpeechText(io, socket, userId, meetingId, text, langCode, isFinal);
         },
         onError: (err: Error) => {

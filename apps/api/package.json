@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@deepgram/sdk": "^5.0.0",
-    "@google-cloud/speech": "^7.2.1",
     "@google-cloud/text-to-speech": "^6.4.0",
     "@livekit/rtc-node": "^0.13.24",
     "@orgsledger/shared": "*",

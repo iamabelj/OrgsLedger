@@ -236,6 +236,16 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
       }
     });
 
+    // Listen for auto-restored language preference from server
+    socketClient.on('translation:language-restored', (data) {
+      if (data is Map<String, dynamic> && mounted) {
+        final lang = data['language']?.toString();
+        if (lang != null && lang.isNotEmpty) {
+          setState(() => _myLanguage = lang);
+        }
+      }
+    });
+
     // Listen for meeting ended event
     socketClient.on('meeting:ended', (data) {
       if (mounted) {
@@ -253,7 +263,10 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
       await audioStreamService.stopStreaming();
       setState(() => _translationEnabled = false);
     } else {
-      // Start translation
+      // Register language preference FIRST so server knows target languages
+      socketClient.setTranslationLanguage(widget.meetingId, _myLanguage);
+
+      // Start audio streaming for STT
       final success = await audioStreamService.startStreaming(
         widget.meetingId,
         language: _myLanguage,
@@ -384,6 +397,7 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
     socketClient.off('translation:result');
     socketClient.off('meeting:minutes:ready');
     socketClient.off('meeting:ended');
+    socketClient.off('translation:language-restored');
     audioStreamService.stopStreaming();
     socketClient.leaveMeeting(widget.meetingId);
     super.dispose();
@@ -1117,6 +1131,11 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
                               : (val) {
                                   if (val != null) {
                                     setState(() => _myLanguage = val);
+                                    // Notify server of language change
+                                    socketClient.setTranslationLanguage(
+                                      widget.meetingId,
+                                      val,
+                                    );
                                   }
                                 },
                         ),

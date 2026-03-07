@@ -58,6 +58,23 @@ class SocketClient {
     _socket?.emit('meeting:leave', meetingId);
   }
 
+  // ── Translation Language ───────────────────────────────
+
+  /// Set the user's preferred language for a meeting.
+  /// This MUST be called before starting audio so the server
+  /// knows which languages to translate between.
+  void setTranslationLanguage(
+    String meetingId,
+    String language, {
+    bool receiveVoice = true,
+  }) {
+    _socket?.emit('translation:set-language', {
+      'meetingId': meetingId,
+      'language': language,
+      'receiveVoice': receiveVoice,
+    });
+  }
+
   // ── Audio Streaming (Server-Side STT) ───────────────────
 
   /// Start an audio stream for server-side speech-to-text

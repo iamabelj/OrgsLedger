@@ -212,7 +212,7 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
 
       const recorder = new MediaRecorder(stream, { mimeType });
 
-      // Tell server to start Google STT session with the user's selected language
+      // Tell server to start Deepgram STT session with the user's selected language
       socketClient.startAudioStream(gm.meetingId!, selectedLanguage, 'WEBM_OPUS');
 
       recorder.ondataavailable = (e: any) => {

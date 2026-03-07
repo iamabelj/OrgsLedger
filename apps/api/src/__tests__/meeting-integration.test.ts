@@ -82,7 +82,7 @@ describe('Meeting Integration Flow', () => {
   // ─────────────────────────────────────────────────────
   // Test 2: STT Language Binding
   // ─────────────────────────────────────────────────────
-  it('should pass correct language code to Google STT from user selection', async () => {
+  it('should pass correct language code to Deepgram STT from user selection', async () => {
     const selectedLanguage = 'es'; // User picked Spanish
     const bcp47Map: Record<string, string> = {
       en: 'en-US',
