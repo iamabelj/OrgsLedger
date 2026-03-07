@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as dev;
 import 'dart:typed_data';
 import 'package:record/record.dart';
 import '../socket/socket_client.dart';
@@ -20,7 +21,10 @@ class AudioStreamService {
   /// Start streaming audio to the server for STT.
   /// [meetingId] - The meeting to associate the audio with
   /// [language] - Language code (e.g., 'en', 'es', 'fr') for STT
-  Future<bool> startStreaming(String meetingId, {String language = 'en'}) async {
+  Future<bool> startStreaming(
+    String meetingId, {
+    String language = 'en',
+  }) async {
     if (_isStreaming) {
       await stopStreaming();
     }
@@ -31,7 +35,7 @@ class AudioStreamService {
       // Check permission
       final hasPermission = await _recorder!.hasPermission();
       if (!hasPermission) {
-        print('[AudioStream] Microphone permission denied');
+        dev.log('[AudioStream] Microphone permission denied');
         return false;
       }
 
@@ -66,19 +70,21 @@ class AudioStreamService {
           }
         },
         onError: (error) {
-          print('[AudioStream] Stream error: $error');
+          dev.log('[AudioStream] Stream error: $error');
           stopStreaming();
         },
         onDone: () {
-          print('[AudioStream] Stream done');
+          dev.log('[AudioStream] Stream done');
         },
       );
 
       _isStreaming = true;
-      print('[AudioStream] Started streaming for meeting: $meetingId, language: $language');
+      dev.log(
+        '[AudioStream] Started streaming for meeting: $meetingId, language: $language',
+      );
       return true;
     } catch (e) {
-      print('[AudioStream] Failed to start: $e');
+      dev.log('[AudioStream] Failed to start: $e');
       await _cleanup();
       return false;
     }
@@ -88,7 +94,7 @@ class AudioStreamService {
   Future<void> stopStreaming() async {
     if (!_isStreaming) return;
 
-    print('[AudioStream] Stopping stream for meeting: $_activeMeetingId');
+    dev.log('[AudioStream] Stopping stream for meeting: $_activeMeetingId');
 
     // Tell server to stop STT session
     if (_activeMeetingId != null) {

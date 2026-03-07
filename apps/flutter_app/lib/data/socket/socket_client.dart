@@ -61,7 +61,12 @@ class SocketClient {
   // ── Audio Streaming (Server-Side STT) ───────────────────
 
   /// Start an audio stream for server-side speech-to-text
-  void startAudioStream(String meetingId, {String? language, String encoding = 'LINEAR16', int sampleRate = 16000}) {
+  void startAudioStream(
+    String meetingId, {
+    String? language,
+    String encoding = 'LINEAR16',
+    int sampleRate = 16000,
+  }) {
     _socket?.emit('audio:start', {
       'meetingId': meetingId,
       'language': language ?? 'en',
@@ -72,10 +77,7 @@ class SocketClient {
 
   /// Send an audio chunk (raw PCM bytes)
   void sendAudioChunk(String meetingId, List<int> audioData) {
-    _socket?.emit('audio:chunk', {
-      'meetingId': meetingId,
-      'audio': audioData,
-    });
+    _socket?.emit('audio:chunk', {'meetingId': meetingId, 'audio': audioData});
   }
 
   /// Stop the audio stream

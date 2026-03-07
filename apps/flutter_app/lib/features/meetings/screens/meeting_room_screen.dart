@@ -739,7 +739,8 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
             _ControlButton(
               icon: Icons.translate,
               label: 'Translate',
-              active: _sidePanel == _SidePanel.translation || _translationEnabled,
+              active:
+                  _sidePanel == _SidePanel.translation || _translationEnabled,
               onTap: () => setState(() {
                 _sidePanel = _sidePanel == _SidePanel.translation
                     ? _SidePanel.none
@@ -1053,9 +1054,7 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
             color: _translationEnabled
                 ? Colors.green.withValues(alpha: 0.1)
                 : Colors.grey.withValues(alpha: 0.05),
-            border: const Border(
-              bottom: BorderSide(color: AppColors.border),
-            ),
+            border: const Border(bottom: BorderSide(color: AppColors.border)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1085,7 +1084,7 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
                           icon: const Icon(Icons.expand_more, size: 18),
                           style: const TextStyle(
                             fontSize: 13,
-                            color: AppColors.text,
+                            color: AppColors.textPrimary,
                           ),
                           items: _languages.map((lang) {
                             return DropdownMenuItem(
@@ -1116,8 +1115,9 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
                       style: const TextStyle(fontSize: 13),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                          _translationEnabled ? Colors.red : Colors.green,
+                      backgroundColor: _translationEnabled
+                          ? Colors.red
+                          : Colors.green,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,
@@ -1176,11 +1176,7 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.translate,
-                        size: 48,
-                        color: Colors.grey[400],
-                      ),
+                      Icon(Icons.translate, size: 48, color: Colors.grey[400]),
                       const SizedBox(height: 8),
                       Text(
                         _translationEnabled
@@ -1197,8 +1193,8 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
                   itemCount: _liveTranslations.length,
                   reverse: true,
                   itemBuilder: (context, index) {
-                    final t = _liveTranslations[
-                        _liveTranslations.length - 1 - index];
+                    final t =
+                        _liveTranslations[_liveTranslations.length - 1 - index];
                     final speaker = t['speaker'] ?? 'Unknown';
                     final text = t['text'] ?? '';
                     final isTranslation = t['isTranslation'] == true;
@@ -1217,8 +1213,9 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
-                                color:
-                                    isTranslation ? Colors.purple : Colors.blue,
+                                color: isTranslation
+                                    ? Colors.purple
+                                    : Colors.blue,
                               ),
                             ),
                           ),
@@ -1245,7 +1242,9 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
                                         ),
                                         decoration: BoxDecoration(
                                           color: Colors.purple[50],
-                                          borderRadius: BorderRadius.circular(3),
+                                          borderRadius: BorderRadius.circular(
+                                            3,
+                                          ),
                                         ),
                                         child: const Text(
                                           'translated',
