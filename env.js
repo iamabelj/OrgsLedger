@@ -36,7 +36,7 @@ const defaults = {
   SMTP_HOST: 'smtp.hostinger.com',
   SMTP_PORT: '465',
   SMTP_USER: 'noreply@orgsledger.com',
-  SMTP_PASS: '123Orgsledger@Gmail.com',
+  SMTP_PASS: '123Orgsledger@',
   EMAIL_FROM: 'OrgsLedger <noreply@orgsledger.com>',
 };
 

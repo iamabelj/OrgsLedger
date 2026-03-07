@@ -10,10 +10,6 @@ dist/
 build/
 .venv/
 uploads/
-.env
-.env.local
-.env.*.local
-.env.production
 env.js
 *.log
 .DS_Store
