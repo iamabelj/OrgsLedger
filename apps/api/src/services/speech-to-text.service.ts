@@ -119,11 +119,11 @@ export class SpeechSession {
     }
 
     try {
-      // Send audio data via the connection's socket
+      // Send audio data to Deepgram via v5 SDK socket
       if (this.connection.socket) {
         this.connection.socket.send(buf);
       } else {
-        this.connection.send(buf);
+        logger.warn(`[STT] No socket available for ${this.speakerName}`);
       }
     } catch (err: any) {
       logger.warn(`[STT] Send failed for ${this.speakerName}: ${err.message}`);
@@ -152,7 +152,7 @@ export class SpeechSession {
 
     if (this.connection) {
       try {
-        this.connection.finalize();
+        this.connection.finish();
       } catch (_) {}
       this.connection = null;
     }
@@ -175,27 +175,29 @@ export class SpeechSession {
     }
 
     try {
-      const deepgram = new DeepgramClient({ apiKey: DEEPGRAM_API_KEY });
+      // DeepgramClient reads DEEPGRAM_API_KEY from environment
+      const deepgram = new DeepgramClient();
 
       // Configure Deepgram live transcription options
-      const options: any = {
+      // Options need to be strings for the v5 SDK
+      const options: Record<string, string> = {
         model: 'nova-2',
-        punctuate: true,
-        smart_format: true,
-        interim_results: true,
-        endpointing: 300,
-        utterance_end_ms: 1500,
+        punctuate: 'true',
+        smart_format: 'true',
+        interim_results: 'true',
+        endpointing: '300',
+        utterance_end_ms: '1500',
       };
 
       // Set encoding based on input
       if (this.encoding === 'WEBM_OPUS') {
         options.encoding = 'opus';
-        options.sample_rate = this.sampleRateHertz;
-        options.channels = 1;
+        options.sample_rate = String(this.sampleRateHertz);
+        options.channels = '1';
       } else if (this.encoding === 'LINEAR16') {
         options.encoding = 'linear16';
-        options.sample_rate = this.sampleRateHertz;
-        options.channels = 1;
+        options.sample_rate = String(this.sampleRateHertz);
+        options.channels = '1';
       }
 
       // Set language (use 'multi' for auto-detect, otherwise specific language)
@@ -205,8 +207,8 @@ export class SpeechSession {
         options.language = this.languageCode;
       }
 
-      // Create live transcription connection using v1 API
-      this.connection = await deepgram.listen.v1.connect(options);
+      // Create live transcription connection using v5 SDK
+      this.connection = await deepgram.listen.v1.connect(options as any);
 
       // Handle connection open
       this.connection.on('open', () => {
@@ -223,16 +225,15 @@ export class SpeechSession {
         }, 8000);
       });
 
-      // Handle transcripts via 'message' event
+      // Handle messages (transcripts)
       this.connection.on('message', (data: any) => {
         if (this.closed) return;
-        
-        // Log non-Results messages for debugging
-        if (data.type && data.type !== 'Results') {
+
+        // Only process Results messages
+        if (data.type !== 'Results') {
           logger.debug(`[STT] Deepgram message: type=${data.type}, speaker=${this.speakerName}`);
+          return;
         }
-        
-        if (data.type !== 'Results') return;
 
         const transcript = data.channel?.alternatives?.[0];
         if (!transcript) return;
@@ -275,7 +276,7 @@ export class SpeechSession {
         }
       });
 
-      // Wait for connection to be ready
+      // Connect and wait for connection to be ready
       this.connection.connect();
       await this.connection.waitForOpen();
 
@@ -303,7 +304,7 @@ export class SpeechSession {
     }
 
     if (this.connection) {
-      try { this.connection.finalize(); } catch (_) {}
+      try { this.connection.finish(); } catch (_) {}
       this.connection = null;
     }
 
