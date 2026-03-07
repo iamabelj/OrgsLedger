@@ -11,7 +11,7 @@ set -e
 
 DOMAIN="${1:?Usage: bash deploy.sh yourdomain.com your@email.com}"
 EMAIL="${2:?Usage: bash deploy.sh yourdomain.com your@email.com}"
-APP_DIR="/var/www/orgsledger"
+APP_DIR="/opt/orgsledger"
 
 echo ""
 echo "╔══════════════════════════════════════════════════╗"

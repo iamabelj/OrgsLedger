@@ -4,12 +4,12 @@
 # Pulls latest code from GitHub and rebuilds all services.
 #
 # Usage: bash deploy/update.sh
-# Run from the project root: /var/www/orgsledger
+# Run from the project root: /opt/orgsledger
 # ============================================================
 
 set -e
 
-APP_DIR="${APP_DIR:-/var/www/orgsledger}"
+APP_DIR="${APP_DIR:-/opt/orgsledger}"
 cd "$APP_DIR"
 
 echo ""

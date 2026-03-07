@@ -185,9 +185,8 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
     // Listen for interim transcripts/translations (real-time subtitles)
     socketClient.on('translation:interim', (data) {
       if (data is Map<String, dynamic> && mounted) {
-        final text = data['originalText']?.toString() ??
-            data['text']?.toString() ??
-            '';
+        final text =
+            data['originalText']?.toString() ?? data['text']?.toString() ?? '';
         final speaker = data['speakerName']?.toString() ?? 'Unknown';
 
         if (text.isNotEmpty) {
@@ -216,7 +215,8 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
               'speaker': speaker,
               'text': displayText,
               'timestamp': DateTime.now().toIso8601String(),
-              'isTranslation': _myLanguage.isNotEmpty &&
+              'isTranslation':
+                  _myLanguage.isNotEmpty &&
                   translations.containsKey(_myLanguage),
             });
             _interimText = '';
@@ -349,7 +349,8 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
             _transcripts = tData.cast<Map<String, dynamic>>();
           }
           if (mData is Map<String, dynamic>) {
-            _minutes = mData['summary']?.toString() ??
+            _minutes =
+                mData['summary']?.toString() ??
                 mData['content']?.toString() ??
                 mData['minutes']?.toString();
           } else if (mData is String) {
