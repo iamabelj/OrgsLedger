@@ -642,8 +642,8 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       await handleSpeechText(io, socket, userId, meetingId, text, sourceLang, isFinal);
     });
 
-    // ── Server-Side Speech-to-Text (Google Cloud) ──────────
-    // Client streams raw audio → server transcribes via Google STT
+    // ── Server-Side Speech-to-Text (Deepgram) ──────────
+    // Client streams raw audio → server transcribes via Deepgram STT
     // Works for web (MediaRecorder WEBM_OPUS) and mobile clients
 
     socket.on('audio:start', async (data: {

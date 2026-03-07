@@ -1,32 +1,23 @@
 // ============================================================
-// OrgsLedger — Google Cloud Speech-to-Text Streaming Service
+// OrgsLedger — Deepgram Speech-to-Text Streaming Service
 // Per-user streaming recognition session. Receives audio chunks
 // from the client via Socket.IO and returns transcripts.
 // Supports WEBM_OPUS (browser MediaRecorder) and LINEAR16 (raw PCM).
 // Works for both web and mobile clients.
 // ============================================================
 
-import { SpeechClient } from '@google-cloud/speech';
-import path from 'path';
-import fs from 'fs';
+import { DeepgramClient } from '@deepgram/sdk';
 import { logger } from '../logger';
 
 // ── Credential Validation ────────────────────────────────
 
-const CRED_PATH = path.resolve(__dirname, '../../google-credentials.json');
-let credentialsValid = false;
+const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
+let credentialsValid = !!DEEPGRAM_API_KEY;
 
-try {
-  if (fs.existsSync(CRED_PATH)) {
-    const raw = fs.readFileSync(CRED_PATH, 'utf-8');
-    const parsed = JSON.parse(raw);
-    credentialsValid = !!(parsed.private_key && parsed.client_email);
-    logger.info(`[STT] Google credentials file found: ${CRED_PATH} (valid=${credentialsValid}, email=${parsed.client_email})`);
-  } else {
-    logger.error(`[STT] ❌ Google credentials file NOT FOUND at ${CRED_PATH} — Speech-to-Text will NOT work!`);
-  }
-} catch (err: any) {
-  logger.error(`[STT] ❌ Failed to read credentials: ${err.message}`);
+if (credentialsValid) {
+  logger.info(`[STT] Deepgram API key configured (key=${DEEPGRAM_API_KEY?.slice(0, 8)}...)`);
+} else {
+  logger.error(`[STT] ❌ DEEPGRAM_API_KEY not configured — Speech-to-Text will NOT work!`);
 }
 
 /** Check if STT credentials are available */
@@ -37,9 +28,9 @@ export function isSttAvailable(): boolean {
 /** Get credential diagnostic info */
 export function getSttDiagnostics() {
   return {
-    credentialsPath: CRED_PATH,
-    credentialsExist: fs.existsSync(CRED_PATH),
-    credentialsValid,
+    provider: 'deepgram',
+    apiKeyConfigured: credentialsValid,
+    apiKeyPrefix: DEEPGRAM_API_KEY ? DEEPGRAM_API_KEY.slice(0, 8) + '...' : 'NOT SET',
   };
 }
 
@@ -51,42 +42,23 @@ export interface SpeechSessionOptions {
   meetingId: string;
   userId: string;
   speakerName: string;
-  languageCode?: string; // BCP-47, e.g. 'en-US'
+  languageCode?: string; // BCP-47, e.g. 'en-US' or short code 'en'
   encoding?: AudioEncoding; // Default: WEBM_OPUS
   sampleRateHertz?: number; // Default: 48000 for WEBM_OPUS, 16000 for LINEAR16
   onTranscript: (text: string, isFinal: boolean) => void;
   onError?: (err: Error) => void;
 }
 
-// ── Constants ────────────────────────────────────────────
-
-const STREAMING_LIMIT_MS = 4 * 60 * 1000; // Google STT streams max ~5min; restart at 4min
-const RESTART_DELAY_MS = 300;
-
-// Shared client singleton (reuse across sessions for efficiency)
-let sharedClient: SpeechClient | null = null;
-
-function getClient(): SpeechClient {
-  if (!sharedClient) {
-    if (!credentialsValid) {
-      throw new Error('Google STT credentials not found or invalid — check google-credentials.json');
-    }
-    sharedClient = new SpeechClient({ keyFilename: CRED_PATH });
-    logger.info(`[STT] Google Speech client initialized (credentials: ${CRED_PATH})`);
-  }
-  return sharedClient;
-}
-
 // ── Session Class ────────────────────────────────────────
 
 export class SpeechSession {
-  private client: SpeechClient;
-  private recognizeStream: any = null;
+  private connection: any = null;
   private closed = false;
-  private restartTimer: ReturnType<typeof setTimeout> | null = null;
-  private restartCounter = 0;
-  private streamStartTime = 0;
   private bytesSent = 0;
+  private keepAliveInterval: NodeJS.Timeout | null = null;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
 
   private readonly meetingId: string;
   private readonly userId: string;
@@ -101,15 +73,14 @@ export class SpeechSession {
     this.meetingId = opts.meetingId;
     this.userId = opts.userId;
     this.speakerName = opts.speakerName;
-    this.languageCode = opts.languageCode || 'en-US';
+    // Convert BCP-47 to Deepgram language code (e.g., 'en-US' -> 'en')
+    this.languageCode = opts.languageCode?.split('-')[0] || 'en';
     this.encoding = opts.encoding || 'WEBM_OPUS';
     this.sampleRateHertz = opts.sampleRateHertz || (this.encoding === 'WEBM_OPUS' ? 48000 : 16000);
     this.onTranscript = opts.onTranscript;
     this.onError = opts.onError;
 
-    this.client = getClient();
-
-    logger.info(`[STT] Session created: speaker=${this.speakerName}, meeting=${this.meetingId}, lang=${this.languageCode}, encoding=${this.encoding}, rate=${this.sampleRateHertz}`);
+    logger.info(`[STT] Deepgram session created: speaker=${this.speakerName}, meeting=${this.meetingId}, lang=${this.languageCode}, encoding=${this.encoding}, rate=${this.sampleRateHertz}`);
   }
 
   // ── Public API ──────────────────────────────────────────
@@ -117,12 +88,16 @@ export class SpeechSession {
   /** Start the streaming recognition. */
   start(): void {
     if (this.closed) return;
-    this.createStream();
+    // Fire and forget - connection runs async
+    this.createConnection().catch((err) => {
+      logger.error(`[STT] Failed to start connection: ${err.message}`);
+      this.onError?.(err);
+    });
   }
 
   /** Push an audio chunk (Buffer, ArrayBuffer, or base64 string). */
   pushAudio(data: Buffer | ArrayBuffer | string): void {
-    if (this.closed || !this.recognizeStream) return;
+    if (this.closed || !this.connection) return;
 
     let buf: Buffer;
     if (typeof data === 'string') {
@@ -136,23 +111,17 @@ export class SpeechSession {
     this.bytesSent += buf.length;
 
     try {
-      if (this.recognizeStream && !this.recognizeStream.destroyed) {
-        this.recognizeStream.write(buf);
+      // Send audio data via the connection's socket
+      if (this.connection.socket) {
+        this.connection.socket.send(buf);
       } else {
-        logger.debug(`[STT] Stream not writable for ${this.speakerName}, restarting`);
-        this.restartStream();
-        return;
+        this.connection.send(buf);
       }
-    } catch (err) {
-      logger.debug(`[STT] Write failed for ${this.speakerName}, restarting stream`);
-      this.recognizeStream = null;
-      this.restartStream();
-    }
-
-    // Auto-restart before Google's streaming limit
-    if (Date.now() - this.streamStartTime > STREAMING_LIMIT_MS) {
-      logger.info(`[STT] Approaching stream limit, restarting: speaker=${this.speakerName}, bytes=${this.bytesSent}`);
-      this.restartStream();
+    } catch (err: any) {
+      logger.debug(`[STT] Send failed for ${this.speakerName}: ${err.message}`);
+      if (!this.reconnectTimer) {
+        this.reconnectStream();
+      }
     }
   }
 
@@ -161,18 +130,24 @@ export class SpeechSession {
     if (this.closed) return;
     this.closed = true;
 
-    logger.info(`[STT] Closing session: speaker=${this.speakerName}, meeting=${this.meetingId}, totalBytes=${this.bytesSent}, restarts=${this.restartCounter}`);
+    logger.info(`[STT] Closing Deepgram session: speaker=${this.speakerName}, meeting=${this.meetingId}, totalBytes=${this.bytesSent}`);
 
-    if (this.restartTimer) {
-      clearTimeout(this.restartTimer);
-      this.restartTimer = null;
+    if (this.keepAliveInterval) {
+      clearInterval(this.keepAliveInterval);
+      this.keepAliveInterval = null;
     }
 
-    if (this.recognizeStream) {
-      try { this.recognizeStream.end(); } catch (_) {}
-      this.recognizeStream = null;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
-    // Don't close the shared client
+
+    if (this.connection) {
+      try {
+        this.connection.finalize();
+      } catch (_) {}
+      this.connection = null;
+    }
   }
 
   get isClosed(): boolean {
@@ -181,96 +156,154 @@ export class SpeechSession {
 
   // ── Internals ──────────────────────────────────────────
 
-  private createStream(): void {
+  private async createConnection(): Promise<void> {
     if (this.closed) return;
 
-    const config: any = {
-      encoding: this.encoding,
-      languageCode: this.languageCode,
-      enableAutomaticPunctuation: true,
-      model: 'latest_long',
-      useEnhanced: true,
-      speechContexts: [{
-        phrases: ['meeting', 'agenda', 'motion', 'resolution', 'vote', 'minutes'],
-        boost: 5,
-      }],
-    };
+    if (!DEEPGRAM_API_KEY) {
+      const err = new Error('DEEPGRAM_API_KEY not configured');
+      logger.error(`[STT] ${err.message}`);
+      this.onError?.(err);
+      return;
+    }
 
-    // Always set sampleRateHertz explicitly — Google may fail to auto-detect
-    // from the WebM/Opus container header (returns 0), so be explicit.
-    config.sampleRateHertz = this.sampleRateHertz;
+    try {
+      const deepgram = new DeepgramClient({ apiKey: DEEPGRAM_API_KEY });
 
-    const request = {
-      config,
-      interimResults: true,
-    };
+      // Configure Deepgram live transcription options
+      const options: any = {
+        model: 'nova-2',
+        punctuate: true,
+        smart_format: true,
+        interim_results: true,
+        endpointing: 300,
+        utterance_end_ms: 1500,
+      };
 
-    this.recognizeStream = this.client.streamingRecognize(request)
-      .on('data', (response: any) => {
+      // Set encoding based on input
+      if (this.encoding === 'WEBM_OPUS') {
+        options.encoding = 'opus';
+        options.sample_rate = this.sampleRateHertz;
+        options.channels = 1;
+      } else if (this.encoding === 'LINEAR16') {
+        options.encoding = 'linear16';
+        options.sample_rate = this.sampleRateHertz;
+        options.channels = 1;
+      }
+
+      // Set language (use 'multi' for auto-detect, otherwise specific language)
+      if (this.languageCode === 'multi' || this.languageCode === 'auto') {
+        options.language = 'multi';
+      } else {
+        options.language = this.languageCode;
+      }
+
+      // Create live transcription connection using v1 API
+      this.connection = await deepgram.listen.v1.connect(options);
+
+      // Handle connection open
+      this.connection.on('open', () => {
+        logger.info(`[STT] Deepgram connection opened: speaker=${this.speakerName}`);
+        this.reconnectAttempts = 0;
+
+        // Send keep-alive every 8 seconds to prevent timeout
+        this.keepAliveInterval = setInterval(() => {
+          if (this.connection) {
+            try {
+              this.connection.keepAlive();
+            } catch (_) {}
+          }
+        }, 8000);
+      });
+
+      // Handle transcripts via 'message' event
+      this.connection.on('message', (data: any) => {
         if (this.closed) return;
-        const result = response.results?.[0];
-        if (!result?.alternatives?.[0]) return;
+        if (data.type !== 'Results') return;
 
-        const transcript = result.alternatives[0].transcript?.trim();
-        const isFinal = result.isFinal === true;
-
+        const transcript = data.channel?.alternatives?.[0];
         if (!transcript) return;
 
-        if (isFinal) {
-          logger.info(`[STT] Final: speaker=${this.speakerName}, text="${transcript.slice(0, 80)}${transcript.length > 80 ? '...' : ''}" (len=${transcript.length})`);
+        const text = transcript.transcript?.trim();
+        if (!text) return;
+
+        const isFinal = data.is_final === true;
+        const speechFinal = data.speech_final === true;
+
+        // For Deepgram, we emit on both interim and final
+        // speech_final=true means the utterance is complete
+        if (isFinal || speechFinal) {
+          logger.info(`[STT] Final: speaker=${this.speakerName}, text="${text.slice(0, 80)}${text.length > 80 ? '...' : ''}" (len=${text.length})`);
         }
 
-        this.onTranscript(transcript, isFinal);
-      })
-      .on('error', (err: any) => {
+        this.onTranscript(text, isFinal || speechFinal);
+      });
+
+      // Handle errors
+      this.connection.on('error', (err: any) => {
         if (this.closed) return;
 
-        // Code 11 = UNAVAILABLE, 4 = DEADLINE_EXCEEDED — normal stream timeout
-        if (err.code === 11 || err.code === 4) {
-          logger.debug(`[STT] Stream ended (code=${err.code}), restarting: speaker=${this.speakerName}`);
-          this.restartStream();
-          return;
+        logger.error(`[STT] Deepgram error for ${this.speakerName}: ${err.message || err}`);
+        this.onError?.(err instanceof Error ? err : new Error(String(err)));
+      });
+
+      // Handle connection close
+      this.connection.on('close', () => {
+        logger.info(`[STT] Deepgram connection closed: speaker=${this.speakerName}`);
+
+        if (this.keepAliveInterval) {
+          clearInterval(this.keepAliveInterval);
+          this.keepAliveInterval = null;
         }
 
-        logger.error(`[STT] Error for ${this.speakerName}: code=${err.code}, message=${err.message}`);
-
-        // Immediately null out the stream to prevent "write after destroyed" errors
-        this.recognizeStream = null;
-
-        this.onError?.(err);
-
-        // Try to restart on transient errors
-        if (err.code !== 3 && err.code !== 7) { // Not INVALID_ARGUMENT or PERMISSION_DENIED
-          this.restartStream();
-        }
-      })
-      .on('end', () => {
+        // Auto-reconnect if not intentionally closed
         if (!this.closed) {
-          logger.debug(`[STT] Stream ended normally, restarting: speaker=${this.speakerName}`);
-          this.restartStream();
+          this.reconnectStream();
         }
       });
 
-    this.streamStartTime = Date.now();
-    logger.debug(`[STT] Stream created: speaker=${this.speakerName}, lang=${this.languageCode}, encoding=${this.encoding}, restart#=${this.restartCounter}`);
+      // Wait for connection to be ready
+      this.connection.connect();
+      await this.connection.waitForOpen();
+
+    } catch (err: any) {
+      logger.error(`[STT] Failed to create Deepgram connection: ${err.message}`);
+      this.onError?.(err);
+      this.reconnectStream();
+    }
   }
 
-  private restartStream(): void {
+  private reconnectStream(): void {
     if (this.closed) return;
+    if (this.reconnectTimer) return;
 
-    if (this.recognizeStream) {
-      try { this.recognizeStream.end(); } catch (_) {}
-      this.recognizeStream = null;
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      logger.error(`[STT] Max reconnect attempts reached for ${this.speakerName}`);
+      this.onError?.(new Error('Max reconnect attempts reached'));
+      return;
     }
 
-    if (this.restartTimer) return;
+    // Clean up old connection
+    if (this.keepAliveInterval) {
+      clearInterval(this.keepAliveInterval);
+      this.keepAliveInterval = null;
+    }
 
-    this.restartTimer = setTimeout(() => {
-      this.restartTimer = null;
+    if (this.connection) {
+      try { this.connection.finalize(); } catch (_) {}
+      this.connection = null;
+    }
+
+    // Exponential backoff: 500ms, 1s, 2s, 4s, 8s
+    const delay = Math.min(500 * Math.pow(2, this.reconnectAttempts), 8000);
+    this.reconnectAttempts++;
+
+    logger.info(`[STT] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}): speaker=${this.speakerName}`);
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
       if (!this.closed) {
-        this.restartCounter++;
-        this.createStream();
+        this.createConnection();
       }
-    }, RESTART_DELAY_MS);
+    }, delay);
   }
 }

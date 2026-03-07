@@ -182,7 +182,7 @@ function FullMeetingOverlay({ lk }: { lk: ReturnType<typeof useLiveKitRoom> }) {
   const aiEnabled = gm.meeting?.ai_enabled ?? false;
 
   // ── Start/stop transcription using LiveKit's mic track ──
-  // Streams audio via MediaRecorder → socketClient → server → Google STT.
+  // Streams audio via MediaRecorder → socketClient → server → Deepgram STT.
   // Uses LiveKit's EXISTING mic MediaStreamTrack — no second getUserMedia().
   const startTranscription = useCallback(() => {
     if (Platform.OS !== 'web' || isTranscribing || !lk.isConnected) return;
