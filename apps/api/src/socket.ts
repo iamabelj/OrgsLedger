@@ -716,7 +716,12 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       audio: ArrayBuffer | Buffer | string;
     }) => {
       const session = activeSttSessions.get(socket.id);
-      if (!session || session.isClosed) return;
+      if (!session || session.isClosed) {
+        logger.debug(`[STT] audio:chunk ignored: hasSession=${!!session}, isClosed=${session?.isClosed}`);
+        return;
+      }
+      const audioSize = data.audio ? (data.audio instanceof ArrayBuffer ? data.audio.byteLength : (Buffer.isBuffer(data.audio) ? data.audio.length : data.audio.length)) : 0;
+      logger.debug(`[STT] audio:chunk received: user=${userId}, size=${audioSize}`);
       session.pushAudio(data.audio);
     });
 

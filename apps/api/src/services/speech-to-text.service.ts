@@ -97,7 +97,10 @@ export class SpeechSession {
 
   /** Push an audio chunk (Buffer, ArrayBuffer, or base64 string). */
   pushAudio(data: Buffer | ArrayBuffer | string): void {
-    if (this.closed || !this.connection) return;
+    if (this.closed || !this.connection) {
+      logger.debug(`[STT] pushAudio ignored: closed=${this.closed}, hasConnection=${!!this.connection}`);
+      return;
+    }
 
     let buf: Buffer;
     if (typeof data === 'string') {
@@ -110,6 +113,11 @@ export class SpeechSession {
 
     this.bytesSent += buf.length;
 
+    // Log every 10th chunk to avoid spam
+    if (this.bytesSent % 10000 < buf.length) {
+      logger.debug(`[STT] Audio chunk: speaker=${this.speakerName}, chunkSize=${buf.length}, totalBytes=${this.bytesSent}`);
+    }
+
     try {
       // Send audio data via the connection's socket
       if (this.connection.socket) {
@@ -118,7 +126,7 @@ export class SpeechSession {
         this.connection.send(buf);
       }
     } catch (err: any) {
-      logger.debug(`[STT] Send failed for ${this.speakerName}: ${err.message}`);
+      logger.warn(`[STT] Send failed for ${this.speakerName}: ${err.message}`);
       if (!this.reconnectTimer) {
         this.reconnectStream();
       }
@@ -218,6 +226,12 @@ export class SpeechSession {
       // Handle transcripts via 'message' event
       this.connection.on('message', (data: any) => {
         if (this.closed) return;
+        
+        // Log non-Results messages for debugging
+        if (data.type && data.type !== 'Results') {
+          logger.debug(`[STT] Deepgram message: type=${data.type}, speaker=${this.speakerName}`);
+        }
+        
         if (data.type !== 'Results') return;
 
         const transcript = data.channel?.alternatives?.[0];
@@ -248,7 +262,7 @@ export class SpeechSession {
 
       // Handle connection close
       this.connection.on('close', () => {
-        logger.info(`[STT] Deepgram connection closed: speaker=${this.speakerName}`);
+        logger.info(`[STT] Deepgram connection closed: speaker=${this.speakerName}, bytesSent=${this.bytesSent}`);
 
         if (this.keepAliveInterval) {
           clearInterval(this.keepAliveInterval);
