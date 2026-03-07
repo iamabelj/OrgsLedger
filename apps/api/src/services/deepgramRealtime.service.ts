@@ -198,7 +198,7 @@ class DeepgramRealtimeService {
 
       const text = transcript.transcript || '';
       const confidence = transcript.confidence || 0;
-      const isFinal = !data.is_final === false; // Invert to get boolean
+      const isFinal = data.is_final === true;
       const language = this.extractLanguage(data);
 
       // Extract speaker information if diarization is enabled

@@ -98,11 +98,11 @@ class BroadcastWorker {
       };
 
       // Broadcast to all clients in the meeting room
-      this.ioServer.to(meetingId).emit(eventName, payload);
+      this.ioServer.to(`meeting:${meetingId}`).emit(eventName, payload);
 
       // Additional event for transcript stored (only on final)
       if (isFinal) {
-        this.ioServer.to(meetingId).emit('transcript:stored', {
+        this.ioServer.to(`meeting:${meetingId}`).emit('transcript:stored', {
           meetingId,
           speakerId,
           timestamp: job.data.timestamp,

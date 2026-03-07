@@ -113,6 +113,7 @@ export class ProcessingWorkerService implements ProcessingWorker {
               sourceLanguage,
               translations: interimTranslations,
               isFinal: true,
+              organizationId,
             });
 
             // Deduct from translation wallet if organization provided

@@ -110,7 +110,7 @@ class MeetingTranscriptHandler {
       };
 
       // Emit existing event name to maintain backward compatibility
-      context.io.to(context.meetingId).emit('translation:interim', payload);
+      context.io.to(`meeting:${context.meetingId}`).emit('translation:interim', payload);
 
       logger.debug(`Broadcast interim transcript: ${segment.speakerId}`, {
         textLength: segment.text.length,
@@ -153,7 +153,7 @@ class MeetingTranscriptHandler {
       };
 
       // Step 1: Broadcast final transcript - EXISTING EVENT
-      context.io.to(context.meetingId).emit('translation:result', payload);
+      context.io.to(`meeting:${context.meetingId}`).emit('translation:result', payload);
 
       // Step 2: Store transcript in database
       // Fetch organization_id from meeting
@@ -173,7 +173,7 @@ class MeetingTranscriptHandler {
       }
 
       // Step 3: Emit stored event - EXISTING EVENT
-      context.io.to(context.meetingId).emit('transcript:stored', {
+      context.io.to(`meeting:${context.meetingId}`).emit('transcript:stored', {
         meetingId: context.meetingId,
         speakerId: segment.speakerId,
         timestamp: segment.timestamp,
@@ -208,7 +208,7 @@ class MeetingTranscriptHandler {
       logger.info(`Detected language for ${contextId}: ${language}`);
 
       // Optionally emit language detection event (for UI feedback)
-      context.io.to(context.meetingId).emit('transcript:language-detected', {
+      context.io.to(`meeting:${context.meetingId}`).emit('transcript:language-detected', {
         speakerId: context.participantId,
         language,
         timestamp: new Date(),
@@ -229,7 +229,7 @@ class MeetingTranscriptHandler {
     logger.error(`Stream error for ${contextId}:`, error);
 
     // Notify client of error (non-blocking)
-    context.io.to(context.meetingId).emit('transcript:error', {
+    context.io.to(`meeting:${context.meetingId}`).emit('transcript:error', {
       speakerId: context.participantId,
       error: error.message,
       timestamp: new Date(),

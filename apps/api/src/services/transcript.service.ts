@@ -9,10 +9,12 @@ import { db } from '../db';
 
 export interface TranscriptEntry {
   speakerId: string;
+  speakerName?: string;
   originalText: string;
   sourceLanguage: string;
   translations: Record<string, string>;
   isFinal: boolean;
+  organizationId?: string;
 }
 
 /**
@@ -24,15 +26,34 @@ export class TranscriptService {
    */
   async addTranscriptEntry(meetingId: string, entry: TranscriptEntry): Promise<void> {
     try {
-      // Insert transcript segment
+      // Resolve organization_id — required NOT NULL column
+      let orgId = entry.organizationId;
+      if (!orgId) {
+        const meeting = await db('meetings').where({ id: meetingId }).select('organization_id').first();
+        orgId = meeting?.organization_id;
+      }
+      if (!orgId) {
+        logger.warn('[TRANSCRIPT] Cannot store transcript — organization_id could not be resolved', { meetingId });
+        return;
+      }
+
+      // Resolve speaker_name — required NOT NULL column
+      let speakerName = entry.speakerName || '';
+      if (!speakerName) {
+        const user = await db('users').where({ id: entry.speakerId }).select('first_name', 'last_name').first();
+        speakerName = user ? `${user.first_name} ${user.last_name}`.trim() : 'Unknown';
+      }
+
+      // Insert transcript segment — use correct column names matching migration 021
       await db('meeting_transcripts').insert({
         meeting_id: meetingId,
+        organization_id: orgId,
         speaker_id: entry.speakerId,
+        speaker_name: speakerName,
         original_text: entry.originalText,
-        source_language: entry.sourceLanguage,
+        source_lang: entry.sourceLanguage,
         translations: JSON.stringify(entry.translations),
-        is_final: entry.isFinal,
-        created_at: new Date(),
+        spoken_at: Date.now(),
       });
 
       logger.debug('Transcript entry stored', {
@@ -66,10 +87,11 @@ export class TranscriptService {
 
       return rows.map((row: any) => ({
         speakerId: row.speaker_id,
+        speakerName: row.speaker_name,
         originalText: row.original_text,
-        sourceLanguage: row.source_language,
+        sourceLanguage: row.source_lang,
         translations: typeof row.translations === 'string' ? JSON.parse(row.translations) : row.translations,
-        isFinal: row.is_final,
+        isFinal: true,
       }));
     } catch (err) {
       logger.error('Failed to get transcript', {

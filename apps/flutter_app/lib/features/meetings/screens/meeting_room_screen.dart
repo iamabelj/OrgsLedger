@@ -182,19 +182,42 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
   }
 
   void _listenForTranslations() {
-    // Listen for real-time transcripts
-    socketClient.on('transcript', (data) {
+    // Listen for interim transcripts/translations (real-time subtitles)
+    socketClient.on('translation:interim', (data) {
       if (data is Map<String, dynamic> && mounted) {
-        final text = data['text']?.toString() ?? '';
-        final isFinal = data['isFinal'] == true;
+        final text = data['originalText']?.toString() ??
+            data['text']?.toString() ??
+            '';
         final speaker = data['speakerName']?.toString() ?? 'Unknown';
 
-        if (isFinal && text.isNotEmpty) {
+        if (text.isNotEmpty) {
+          setState(() => _interimText = '[$speaker]: $text');
+        }
+      }
+    });
+
+    // Listen for final transcripts with translations
+    socketClient.on('translation:result', (data) {
+      if (data is Map<String, dynamic> && mounted) {
+        final originalText = data['originalText']?.toString() ?? '';
+        final speaker = data['speakerName']?.toString() ?? 'Unknown';
+        final translations =
+            data['translations'] as Map<String, dynamic>? ?? {};
+
+        // Show translated text in user's language if available, else original
+        String displayText = originalText;
+        if (_myLanguage.isNotEmpty && translations.containsKey(_myLanguage)) {
+          displayText = translations[_myLanguage]?.toString() ?? originalText;
+        }
+
+        if (displayText.isNotEmpty) {
           setState(() {
             _liveTranslations.add({
               'speaker': speaker,
-              'text': text,
+              'text': displayText,
               'timestamp': DateTime.now().toIso8601String(),
+              'isTranslation': _myLanguage.isNotEmpty &&
+                  translations.containsKey(_myLanguage),
             });
             _interimText = '';
             // Keep only last 50 translations
@@ -202,31 +225,24 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
               _liveTranslations.removeAt(0);
             }
           });
-        } else if (!isFinal) {
-          setState(() => _interimText = text);
         }
       }
     });
 
-    // Listen for translations in user's language
-    socketClient.on('translation', (data) {
-      if (data is Map<String, dynamic> && mounted) {
-        final targetLang = data['targetLanguage']?.toString();
-        if (targetLang == _myLanguage) {
-          final text = data['translatedText']?.toString() ?? '';
-          final speaker = data['speakerName']?.toString() ?? 'Unknown';
-          setState(() {
-            _liveTranslations.add({
-              'speaker': speaker,
-              'text': text,
-              'timestamp': DateTime.now().toIso8601String(),
-              'isTranslation': true,
-            });
-            if (_liveTranslations.length > 50) {
-              _liveTranslations.removeAt(0);
-            }
-          });
-        }
+    // Listen for minutes ready event (auto-refresh after meeting ends)
+    socketClient.on('meeting:minutes:ready', (data) {
+      if (mounted) {
+        _loadTranscriptsAndMinutes();
+      }
+    });
+
+    // Listen for meeting ended event
+    socketClient.on('meeting:ended', (data) {
+      if (mounted) {
+        // Refresh transcripts and minutes after meeting ends
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) _loadTranscriptsAndMinutes();
+        });
       }
     });
   }
@@ -333,8 +349,9 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
             _transcripts = tData.cast<Map<String, dynamic>>();
           }
           if (mData is Map<String, dynamic>) {
-            _minutes =
-                mData['content']?.toString() ?? mData['minutes']?.toString();
+            _minutes = mData['summary']?.toString() ??
+                mData['content']?.toString() ??
+                mData['minutes']?.toString();
           } else if (mData is String) {
             _minutes = mData;
           }
@@ -362,8 +379,10 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
     _room?.disconnect();
     _chatController.dispose();
     socketClient.off('chat:new');
-    socketClient.off('transcript');
-    socketClient.off('translation');
+    socketClient.off('translation:interim');
+    socketClient.off('translation:result');
+    socketClient.off('meeting:minutes:ready');
+    socketClient.off('meeting:ended');
     audioStreamService.stopStreaming();
     socketClient.leaveMeeting(widget.meetingId);
     super.dispose();
