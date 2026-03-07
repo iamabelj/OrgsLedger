@@ -10,6 +10,7 @@ import '../../../core/theme/app_typography.dart';
 import '../../../data/providers/auth_provider.dart';
 import '../../../data/api/api_client.dart';
 import '../../../data/socket/socket_client.dart';
+import '../../../data/services/audio_stream_service.dart';
 
 /// Full-screen LiveKit video meeting room.
 class MeetingRoomScreen extends ConsumerStatefulWidget {
@@ -57,12 +58,33 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
   bool _loadingMinutes = false;
   bool _generatingMinutes = false;
 
+  // Live Translation state
+  bool _translationEnabled = false;
+  String _myLanguage = 'en';
+  final List<Map<String, dynamic>> _liveTranslations = [];
+  String _interimText = '';
+
+  // Available languages for translation
+  static const _languages = [
+    {'code': 'en', 'name': 'English'},
+    {'code': 'es', 'name': 'Spanish'},
+    {'code': 'fr', 'name': 'French'},
+    {'code': 'de', 'name': 'German'},
+    {'code': 'pt', 'name': 'Portuguese'},
+    {'code': 'zh', 'name': 'Chinese'},
+    {'code': 'ja', 'name': 'Japanese'},
+    {'code': 'ko', 'name': 'Korean'},
+    {'code': 'ar', 'name': 'Arabic'},
+    {'code': 'hi', 'name': 'Hindi'},
+  ];
+
   @override
   void initState() {
     super.initState();
     _connectToRoom();
     socketClient.joinMeeting(widget.meetingId);
     _listenForChatMessages();
+    _listenForTranslations();
     _loadTranscriptsAndMinutes();
   }
 
@@ -157,6 +179,73 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
         });
       }
     });
+  }
+
+  void _listenForTranslations() {
+    // Listen for real-time transcripts
+    socketClient.on('transcript', (data) {
+      if (data is Map<String, dynamic> && mounted) {
+        final text = data['text']?.toString() ?? '';
+        final isFinal = data['isFinal'] == true;
+        final speaker = data['speakerName']?.toString() ?? 'Unknown';
+
+        if (isFinal && text.isNotEmpty) {
+          setState(() {
+            _liveTranslations.add({
+              'speaker': speaker,
+              'text': text,
+              'timestamp': DateTime.now().toIso8601String(),
+            });
+            _interimText = '';
+            // Keep only last 50 translations
+            if (_liveTranslations.length > 50) {
+              _liveTranslations.removeAt(0);
+            }
+          });
+        } else if (!isFinal) {
+          setState(() => _interimText = text);
+        }
+      }
+    });
+
+    // Listen for translations in user's language
+    socketClient.on('translation', (data) {
+      if (data is Map<String, dynamic> && mounted) {
+        final targetLang = data['targetLanguage']?.toString();
+        if (targetLang == _myLanguage) {
+          final text = data['translatedText']?.toString() ?? '';
+          final speaker = data['speakerName']?.toString() ?? 'Unknown';
+          setState(() {
+            _liveTranslations.add({
+              'speaker': speaker,
+              'text': text,
+              'timestamp': DateTime.now().toIso8601String(),
+              'isTranslation': true,
+            });
+            if (_liveTranslations.length > 50) {
+              _liveTranslations.removeAt(0);
+            }
+          });
+        }
+      }
+    });
+  }
+
+  Future<void> _toggleTranslation() async {
+    if (_translationEnabled) {
+      // Stop translation
+      await audioStreamService.stopStreaming();
+      setState(() => _translationEnabled = false);
+    } else {
+      // Start translation
+      final success = await audioStreamService.startStreaming(
+        widget.meetingId,
+        language: _myLanguage,
+      );
+      if (success && mounted) {
+        setState(() => _translationEnabled = true);
+      }
+    }
   }
 
   Future<void> _toggleMic() async {
@@ -273,6 +362,9 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
     _room?.disconnect();
     _chatController.dispose();
     socketClient.off('chat:new');
+    socketClient.off('transcript');
+    socketClient.off('translation');
+    audioStreamService.stopStreaming();
     socketClient.leaveMeeting(widget.meetingId);
     super.dispose();
   }
@@ -642,6 +734,18 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
                 });
               },
             ),
+            const SizedBox(width: AppSpacing.md),
+            // Translation
+            _ControlButton(
+              icon: Icons.translate,
+              label: 'Translate',
+              active: _sidePanel == _SidePanel.translation || _translationEnabled,
+              onTap: () => setState(() {
+                _sidePanel = _sidePanel == _SidePanel.translation
+                    ? _SidePanel.none
+                    : _SidePanel.translation;
+              }),
+            ),
             const SizedBox(width: AppSpacing.xl),
             // Leave
             _ControlButton(
@@ -681,6 +785,8 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
                       ? Icons.chat
                       : _sidePanel == _SidePanel.transcription
                       ? Icons.subtitles
+                      : _sidePanel == _SidePanel.translation
+                      ? Icons.translate
                       : Icons.people,
                   color: AppColors.highlight,
                   size: 20,
@@ -692,6 +798,8 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
                         ? 'Chat'
                         : _sidePanel == _SidePanel.transcription
                         ? 'Transcription & Minutes'
+                        : _sidePanel == _SidePanel.translation
+                        ? 'Live Translation'
                         : 'Participants',
                     style: AppTypography.h4,
                   ),
@@ -714,6 +822,8 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
                 ? _buildChatPanel()
                 : _sidePanel == _SidePanel.transcription
                 ? _buildTranscriptionPanel()
+                : _sidePanel == _SidePanel.translation
+                ? _buildTranslationPanel()
                 : _buildParticipantsList(),
           ),
         ],
@@ -933,6 +1043,239 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
     );
   }
 
+  Widget _buildTranslationPanel() {
+    return Column(
+      children: [
+        // Language selector and toggle
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: _translationEnabled
+                ? Colors.green.withValues(alpha: 0.1)
+                : Colors.grey.withValues(alpha: 0.05),
+            border: const Border(
+              bottom: BorderSide(color: AppColors.border),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Your Language',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: AppColors.border),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _myLanguage,
+                          isExpanded: true,
+                          icon: const Icon(Icons.expand_more, size: 18),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.text,
+                          ),
+                          items: _languages.map((lang) {
+                            return DropdownMenuItem(
+                              value: lang['code'] as String,
+                              child: Text(lang['name'] as String),
+                            );
+                          }).toList(),
+                          onChanged: _translationEnabled
+                              ? null
+                              : (val) {
+                                  if (val != null) {
+                                    setState(() => _myLanguage = val);
+                                  }
+                                },
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton.icon(
+                    onPressed: _toggleTranslation,
+                    icon: Icon(
+                      _translationEnabled ? Icons.stop : Icons.mic,
+                      size: 18,
+                    ),
+                    label: Text(
+                      _translationEnabled ? 'Stop' : 'Start',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor:
+                          _translationEnabled ? Colors.red : Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (_translationEnabled) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Colors.green,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Listening... Speak to translate',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.green,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+        // Interim text (current speech)
+        if (_interimText.isNotEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            color: Colors.yellow.withValues(alpha: 0.15),
+            child: Text(
+              _interimText,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[700],
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        // Live translations
+        Expanded(
+          child: _liveTranslations.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.translate,
+                        size: 48,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _translationEnabled
+                            ? 'Listening...\nTranslations will appear here.'
+                            : 'Start translation to see\nlive transcripts here.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(8),
+                  itemCount: _liveTranslations.length,
+                  reverse: true,
+                  itemBuilder: (context, index) {
+                    final t = _liveTranslations[
+                        _liveTranslations.length - 1 - index];
+                    final speaker = t['speaker'] ?? 'Unknown';
+                    final text = t['text'] ?? '';
+                    final isTranslation = t['isTranslation'] == true;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          CircleAvatar(
+                            radius: 14,
+                            backgroundColor: isTranslation
+                                ? Colors.purple[100]
+                                : Colors.blue[100],
+                            child: Text(
+                              speaker.substring(0, 1).toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color:
+                                    isTranslation ? Colors.purple : Colors.blue,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      speaker,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    if (isTranslation) ...[
+                                      const SizedBox(width: 4),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 4,
+                                          vertical: 1,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.purple[50],
+                                          borderRadius: BorderRadius.circular(3),
+                                        ),
+                                        child: const Text(
+                                          'translated',
+                                          style: TextStyle(
+                                            fontSize: 9,
+                                            color: Colors.purple,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  text,
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildChatPanel() {
     return Column(
       children: [
@@ -1035,7 +1378,7 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
 //  Supporting Types
 // ═══════════════════════════════════════════════════════
 
-enum _SidePanel { none, chat, participants, transcription }
+enum _SidePanel { none, chat, participants, transcription, translation }
 
 class _ControlButton extends StatelessWidget {
   final IconData icon;

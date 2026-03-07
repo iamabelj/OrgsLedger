@@ -58,6 +58,31 @@ class SocketClient {
     _socket?.emit('meeting:leave', meetingId);
   }
 
+  // ── Audio Streaming (Server-Side STT) ───────────────────
+
+  /// Start an audio stream for server-side speech-to-text
+  void startAudioStream(String meetingId, {String? language, String encoding = 'LINEAR16', int sampleRate = 16000}) {
+    _socket?.emit('audio:start', {
+      'meetingId': meetingId,
+      'language': language ?? 'en',
+      'encoding': encoding,
+      'sampleRateHertz': sampleRate,
+    });
+  }
+
+  /// Send an audio chunk (raw PCM bytes)
+  void sendAudioChunk(String meetingId, List<int> audioData) {
+    _socket?.emit('audio:chunk', {
+      'meetingId': meetingId,
+      'audio': audioData,
+    });
+  }
+
+  /// Stop the audio stream
+  void stopAudioStream(String meetingId) {
+    _socket?.emit('audio:stop', {'meetingId': meetingId});
+  }
+
   // ── Event Listeners ───────────────────────────────────
   void on(String event, Function(dynamic) handler) {
     _socket?.on(event, handler);
