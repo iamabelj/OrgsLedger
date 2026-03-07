@@ -8,7 +8,13 @@
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["src/__tests__/**"],
+  "exclude": [
+    "src/__tests__/**",
+    "src/infrastructure/**",
+    "src/workers/standalone/**",
+    "src/services/eventBridge.ts",
+    "src/services/integrationHooks.ts"
+  ],
   "references": [
     { "path": "../../packages/shared" }
   ]
