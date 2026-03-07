@@ -9,6 +9,7 @@ import '../../../core/widgets/app_shell.dart';
 import '../../../data/providers/auth_provider.dart';
 import '../../../data/api/api_client.dart';
 import '../../../data/models/models.dart';
+import '../../../data/socket/socket_client.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -22,11 +23,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _loading = true;
   String? _lastOrgId;
   String _currency = 'USD';
+  String? _error;
 
   @override
   void initState() {
     super.initState();
     // Defer to didChangeDependencies so ref.listen works
+    _listenSocket();
+  }
+
+  void _listenSocket() {
+    socketClient.on('meeting:started', (_) => _loadDashboard());
+    socketClient.on('meeting:ended', (_) => _loadDashboard());
+    socketClient.on('meeting:scheduled', (_) => _loadDashboard());
+  }
+
+  @override
+  void dispose() {
+    socketClient.off('meeting:started');
+    socketClient.off('meeting:ended');
+    socketClient.off('meeting:scheduled');
+    super.dispose();
   }
 
   @override
@@ -49,7 +66,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       setState(() => _loading = false);
       return;
     }
-    if (!_loading) setState(() => _loading = true);
+    if (!_loading)
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
     try {
       final results = await Future.wait([
         api.getMeetings(orgId),
@@ -98,7 +119,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Could not load dashboard. Pull to refresh.';
+        });
+      }
     }
   }
 
@@ -136,6 +162,44 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       body: _loading
           ? const Center(
               child: CircularProgressIndicator(color: AppColors.highlight),
+            )
+          : _error != null && _upcomingMeetings.isEmpty
+          ? RefreshIndicator(
+              onRefresh: _loadDashboard,
+              color: AppColors.highlight,
+              child: ListView(
+                children: [
+                  SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.5,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.cloud_off,
+                            size: 64,
+                            color: AppColors.textLight,
+                          ),
+                          const SizedBox(height: AppSpacing.md),
+                          Text(
+                            _error!,
+                            style: AppTypography.body.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: AppSpacing.lg),
+                          ElevatedButton.icon(
+                            onPressed: _loadDashboard,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             )
           : RefreshIndicator(
               onRefresh: _loadDashboard,

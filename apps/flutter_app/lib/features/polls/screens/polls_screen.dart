@@ -6,6 +6,7 @@ import '../../../core/theme/app_typography.dart';
 import '../../../data/providers/auth_provider.dart';
 import '../../../data/api/api_client.dart';
 import '../../../data/models/models.dart';
+import '../../../core/widgets/app_shell.dart';
 
 class PollsScreen extends ConsumerStatefulWidget {
   const PollsScreen({super.key});
@@ -267,7 +268,15 @@ class _PollsScreenState extends ConsumerState<PollsScreen> {
     final isAdmin = ref.watch(authProvider).isAdmin;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Polls')),
+      appBar: AppBar(
+        leading: MediaQuery.of(context).size.width < 1024
+            ? IconButton(
+                icon: const Icon(Icons.menu, color: AppColors.highlight),
+                onPressed: () => AppShell.openDrawer(),
+              )
+            : null,
+        title: const Text('Polls'),
+      ),
       floatingActionButton: isAdmin
           ? FloatingActionButton(
               onPressed: _showCreatePollDialog,

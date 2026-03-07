@@ -6,6 +6,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../data/providers/auth_provider.dart';
 import '../../../data/api/api_client.dart';
+import '../../../core/widgets/app_shell.dart';
 
 class MembersScreen extends ConsumerStatefulWidget {
   const MembersScreen({super.key});
@@ -81,7 +82,7 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
               const Text('Generate an invite link to share with new members.'),
               const SizedBox(height: AppSpacing.md),
               DropdownButtonFormField<String>(
-                initialValue: role,
+                value: role,
                 dropdownColor: AppColors.surface,
                 style: const TextStyle(color: AppColors.textPrimary),
                 decoration: const InputDecoration(labelText: 'Role'),
@@ -207,6 +208,12 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: MediaQuery.of(context).size.width < 1024
+            ? IconButton(
+                icon: const Icon(Icons.menu, color: AppColors.highlight),
+                onPressed: () => AppShell.openDrawer(),
+              )
+            : null,
         title: const Text('Members'),
         actions: [
           if (isAdmin)

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../data/api/api_client.dart';
 import '../../../data/models/models.dart';
+import '../../../core/widgets/app_shell.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
@@ -67,10 +69,78 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     }
   }
 
+  void _onNotificationTap(AppNotification n) async {
+    // Mark as read
+    if (!n.isRead) {
+      try {
+        await api.markNotificationRead(n.id);
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+
+    // Navigate based on type
+    final data = n.data;
+    switch (n.type) {
+      case 'meeting':
+        final meetingId =
+            data?['meetingId']?.toString() ?? data?['meeting_id']?.toString();
+        if (meetingId != null) context.push('/meetings/$meetingId');
+        break;
+      case 'chat':
+        final channelId =
+            data?['channelId']?.toString() ?? data?['channel_id']?.toString();
+        if (channelId != null) {
+          context.push('/chat/$channelId');
+        } else {
+          context.push('/chat');
+        }
+        break;
+      case 'poll':
+        context.push('/polls');
+        break;
+      case 'event':
+        context.push('/events');
+        break;
+      case 'payment':
+      case 'financial':
+        context.push('/financials');
+        break;
+      case 'member':
+        context.push('/members');
+        break;
+      case 'announcement':
+        context.push('/announcements');
+        break;
+      default:
+        break;
+    }
+
+    _loadNotifications();
+  }
+
+  String _formatTimestamp(String createdAt) {
+    final dt = DateTime.tryParse(createdAt);
+    if (dt == null) return '';
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${dt.day}/${dt.month}/${dt.year}';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: MediaQuery.of(context).size.width < 1024
+            ? IconButton(
+                icon: const Icon(Icons.menu, color: AppColors.highlight),
+                onPressed: () => AppShell.openDrawer(),
+              )
+            : null,
         title: const Text('Notifications'),
         actions: [
           TextButton(
@@ -133,14 +203,28 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                               : FontWeight.w600,
                         ),
                       ),
-                      subtitle: n.body != null
-                          ? Text(
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (n.body != null)
+                            Text(
                               n.body!,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: AppTypography.caption,
-                            )
-                          : null,
+                            ),
+                          if (n.createdAt.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              _formatTimestamp(n.createdAt),
+                              style: AppTypography.caption.copyWith(
+                                color: AppColors.textSecondary,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                       trailing: !n.isRead
                           ? Container(
                               width: 8,
@@ -151,6 +235,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                               ),
                             )
                           : null,
+                      onTap: () => _onNotificationTap(n),
                     ),
                   );
                 },

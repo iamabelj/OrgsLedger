@@ -6,6 +6,7 @@ import '../../../core/theme/app_typography.dart';
 import '../../../data/providers/auth_provider.dart';
 import '../../../data/api/api_client.dart';
 import '../../../data/models/models.dart';
+import '../../../core/widgets/app_shell.dart';
 
 class EventsScreen extends ConsumerStatefulWidget {
   const EventsScreen({super.key});
@@ -129,7 +130,7 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
                   },
                 ),
                 DropdownButtonFormField<String>(
-                  initialValue: category,
+                  value: category,
                   dropdownColor: AppColors.surface,
                   style: const TextStyle(color: AppColors.textPrimary),
                   decoration: const InputDecoration(labelText: 'Category'),
@@ -249,7 +250,15 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
     final isAdmin = ref.watch(authProvider).isAdmin;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Events')),
+      appBar: AppBar(
+        leading: MediaQuery.of(context).size.width < 1024
+            ? IconButton(
+                icon: const Icon(Icons.menu, color: AppColors.highlight),
+                onPressed: () => AppShell.openDrawer(),
+              )
+            : null,
+        title: const Text('Events'),
+      ),
       floatingActionButton: isAdmin
           ? FloatingActionButton(
               onPressed: () => _showCreateOrEditDialog(),

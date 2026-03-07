@@ -181,7 +181,7 @@ class _OrgSettingsScreenState extends ConsumerState<OrgSettingsScreen> {
                   Text('Currency', style: AppTypography.label),
                   const SizedBox(height: AppSpacing.xs),
                   DropdownButtonFormField<String>(
-                    initialValue: _currency,
+                    value: _currency,
                     dropdownColor: AppColors.surface,
                     style: const TextStyle(color: AppColors.textPrimary),
                     decoration: const InputDecoration(),

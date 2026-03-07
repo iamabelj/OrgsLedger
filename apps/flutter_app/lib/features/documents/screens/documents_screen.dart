@@ -7,6 +7,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../data/providers/auth_provider.dart';
 import '../../../data/api/api_client.dart';
+import '../../../core/widgets/app_shell.dart';
 
 class DocumentsScreen extends ConsumerStatefulWidget {
   const DocumentsScreen({super.key});
@@ -166,7 +167,15 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Documents')),
+      appBar: AppBar(
+        leading: MediaQuery.of(context).size.width < 1024
+            ? IconButton(
+                icon: const Icon(Icons.menu, color: AppColors.highlight),
+                onPressed: () => AppShell.openDrawer(),
+              )
+            : null,
+        title: const Text('Documents'),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _uploading ? null : _pickAndUploadFile,
         backgroundColor: AppColors.highlight,

@@ -153,27 +153,94 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen>
         itemBuilder: (_, i) {
           final m = meetings[i];
           final isLive = m.status == 'live';
+          final isEnded = m.status == 'ended' || m.status == 'cancelled';
+
+          // Compute duration for ended meetings
+          String? durationText;
+          if (isEnded && m.actualStart != null && m.actualEnd != null) {
+            final start = DateTime.tryParse(m.actualStart!);
+            final end = DateTime.tryParse(m.actualEnd!);
+            if (start != null && end != null) {
+              final d = end.difference(start);
+              durationText = d.inHours > 0
+                  ? '${d.inHours}h ${d.inMinutes.remainder(60)}m'
+                  : '${d.inMinutes}m';
+            }
+          }
+
           return Card(
             margin: const EdgeInsets.only(bottom: AppSpacing.sm),
             child: ListTile(
               leading: CircleAvatar(
                 backgroundColor: isLive
                     ? AppColors.success
+                    : isEnded
+                    ? AppColors.surfaceAlt
                     : AppColors.primaryLight,
                 child: Icon(
-                  isLive ? Icons.videocam : Icons.event,
-                  color: isLive ? Colors.white : AppColors.highlight,
+                  isLive
+                      ? Icons.videocam
+                      : isEnded
+                      ? Icons.event_available
+                      : Icons.event,
+                  color: isLive
+                      ? Colors.white
+                      : isEnded
+                      ? AppColors.textSecondary
+                      : AppColors.highlight,
                   size: 20,
                 ),
               ),
               title: Text(m.title, style: AppTypography.body),
-              subtitle: Text(
-                m.scheduledStart != null
-                    ? _formatDate(
-                        DateTime.tryParse(m.scheduledStart!) ?? DateTime.now(),
-                      )
-                    : 'No date set',
-                style: AppTypography.caption,
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    m.scheduledStart != null
+                        ? _formatDate(
+                            DateTime.tryParse(m.scheduledStart!) ??
+                                DateTime.now(),
+                          )
+                        : 'No date set',
+                    style: AppTypography.caption,
+                  ),
+                  if (isEnded) ...[
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        if (m.attendance.isNotEmpty) ...[
+                          Icon(
+                            Icons.people,
+                            size: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            '${m.attendance.length}',
+                            style: AppTypography.caption.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                        ],
+                        if (durationText != null) ...[
+                          Icon(
+                            Icons.timer,
+                            size: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            durationText,
+                            style: AppTypography.caption.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ],
               ),
               trailing: isLive
                   ? ElevatedButton(

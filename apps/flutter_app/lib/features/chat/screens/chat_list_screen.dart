@@ -8,6 +8,7 @@ import '../../../core/widgets/app_shell.dart';
 import '../../../data/providers/auth_provider.dart';
 import '../../../data/api/api_client.dart';
 import '../../../data/models/models.dart';
+import '../../../data/socket/socket_client.dart';
 
 class ChatListScreen extends ConsumerStatefulWidget {
   const ChatListScreen({super.key});
@@ -18,11 +19,25 @@ class ChatListScreen extends ConsumerStatefulWidget {
 class _ChatListScreenState extends ConsumerState<ChatListScreen> {
   List<ChatChannel> _channels = [];
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
     _loadChannels();
+    _listenSocket();
+  }
+
+  void _listenSocket() {
+    socketClient.on('message:new', (_) => _loadChannels());
+    socketClient.on('channel:created', (_) => _loadChannels());
+  }
+
+  @override
+  void dispose() {
+    socketClient.off('message:new');
+    socketClient.off('channel:created');
+    super.dispose();
   }
 
   Future<void> _loadChannels() async {
@@ -41,7 +56,12 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Failed to load channels';
+        });
+      }
     }
   }
 
@@ -64,6 +84,32 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
       body: _loading
           ? const Center(
               child: CircularProgressIndicator(color: AppColors.highlight),
+            )
+          : _error != null
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    size: 48,
+                    color: AppColors.error,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Text(_error!, style: AppTypography.body),
+                  const SizedBox(height: AppSpacing.md),
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        _error = null;
+                        _loading = true;
+                      });
+                      _loadChannels();
+                    },
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
             )
           : _channels.isEmpty
           ? Center(
@@ -163,9 +209,17 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
             onPressed: () async {
               final orgId = ref.read(authProvider).currentOrgId;
               if (orgId == null || nameCtrl.text.trim().isEmpty) return;
-              await api.createChannel(orgId, {'name': nameCtrl.text.trim()});
-              if (ctx.mounted) Navigator.pop(ctx);
-              _loadChannels();
+              try {
+                await api.createChannel(orgId, {'name': nameCtrl.text.trim()});
+                if (ctx.mounted) Navigator.pop(ctx);
+                _loadChannels();
+              } catch (_) {
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Failed to create channel')),
+                  );
+                }
+              }
             },
             child: const Text('Create'),
           ),

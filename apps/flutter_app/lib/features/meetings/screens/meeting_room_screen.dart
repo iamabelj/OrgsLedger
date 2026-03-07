@@ -64,6 +64,18 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
   final List<Map<String, dynamic>> _liveTranslations = [];
   String _interimText = '';
 
+  // View mode for large meetings
+  bool _speakerView = false;
+  int _gridPage = 0;
+  static const int _gridPageSize = 16;
+
+  // Hand raise
+  bool _handRaised = false;
+  final Set<String> _raisedHands = {};
+
+  // Dominant speaker tracking
+  String? _dominantSpeakerId;
+
   // Available languages for translation
   static const _languages = [
     {'code': 'en', 'name': 'English'},
@@ -85,6 +97,7 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
     socketClient.joinMeeting(widget.meetingId);
     _listenForChatMessages();
     _listenForTranslations();
+    _listenForHandRaises();
     _loadTranscriptsAndMinutes();
   }
 
@@ -116,6 +129,10 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
             ..clear()
             ..addAll(room.remoteParticipants.values);
           _connecting = false;
+          // Auto-enable speaker view for large meetings
+          if (_remoteParticipants.length > 4) {
+            _speakerView = true;
+          }
         });
       }
     } catch (e) {
@@ -160,6 +177,13 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
       })
       ..on<RoomDisconnectedEvent>((_) {
         if (mounted) _handleDisconnect();
+      })
+      ..on<ActiveSpeakersChangedEvent>((event) {
+        if (mounted && event.speakers.isNotEmpty) {
+          setState(() {
+            _dominantSpeakerId = event.speakers.first.identity.toString();
+          });
+        }
       });
   }
 
@@ -254,6 +278,32 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
           if (mounted) _loadTranscriptsAndMinutes();
         });
       }
+    });
+  }
+
+  void _listenForHandRaises() {
+    socketClient.on('meeting:hand-raised', (data) {
+      if (data is Map<String, dynamic> && mounted) {
+        final participantId = data['participantId']?.toString();
+        final raised = data['raised'] == true;
+        if (participantId != null) {
+          setState(() {
+            if (raised) {
+              _raisedHands.add(participantId);
+            } else {
+              _raisedHands.remove(participantId);
+            }
+          });
+        }
+      }
+    });
+  }
+
+  void _toggleHandRaise() {
+    setState(() => _handRaised = !_handRaised);
+    socketClient.emit('meeting:hand-raise', {
+      'meetingId': widget.meetingId,
+      'raised': _handRaised,
     });
   }
 
@@ -398,6 +448,7 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
     socketClient.off('meeting:minutes:ready');
     socketClient.off('meeting:ended');
     socketClient.off('translation:language-restored');
+    socketClient.off('meeting:hand-raised');
     audioStreamService.stopStreaming();
     socketClient.leaveMeeting(widget.meetingId);
     super.dispose();
@@ -459,30 +510,62 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: Row(
-          children: [
-            // Main content (video grid + controls)
-            Expanded(
-              child: Column(
-                children: [
-                  // Top bar
-                  _buildTopBar(),
-                  // Video grid
-                  Expanded(child: _buildVideoGrid()),
-                  // Control bar
-                  _buildControlBar(),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isNarrow = constraints.maxWidth < 768;
+            return Stack(
+              children: [
+                Row(
+                  children: [
+                    // Main content (video + controls)
+                    Expanded(
+                      child: Column(
+                        children: [
+                          _buildTopBar(),
+                          Expanded(child: _buildVideoArea()),
+                          // Live subtitle overlay
+                          if (_translationEnabled &&
+                              (_interimText.isNotEmpty ||
+                                  _liveTranslations.isNotEmpty))
+                            _buildSubtitleOverlay(),
+                          _buildControlBar(),
+                        ],
+                      ),
+                    ),
+                    // Side panel on wide screens
+                    if (_sidePanel != _SidePanel.none && !isNarrow)
+                      _buildSidePanel(),
+                  ],
+                ),
+                // Side panel overlay on narrow screens
+                if (_sidePanel != _SidePanel.none && isNarrow) ...[
+                  Positioned.fill(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _sidePanel = _SidePanel.none),
+                      child: Container(color: Colors.black54),
+                    ),
+                  ),
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: (constraints.maxWidth * 0.85).clamp(0, 360),
+                    child: _buildSidePanel(),
+                  ),
                 ],
-              ),
-            ),
-            // Side panel
-            if (_sidePanel != _SidePanel.none) _buildSidePanel(),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );
   }
 
   Widget _buildTopBar() {
+    final totalParticipants =
+        _remoteParticipants.length + (_localParticipant != null ? 1 : 0);
+    final handsUp = _raisedHands.length + (_handRaised ? 1 : 0);
+
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.md,
@@ -508,12 +591,65 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
             ),
           ),
           const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Text(
-              '${_remoteParticipants.length + 1} participant${_remoteParticipants.isNotEmpty ? 's' : ''}',
-              style: AppTypography.bodySmall,
+          // Participant count badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.people,
+                  size: 14,
+                  color: AppColors.textSecondary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '$totalParticipants',
+                  style: AppTypography.caption.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
           ),
+          // Hand raises indicator
+          if (handsUp > 0) ...[
+            const SizedBox(width: AppSpacing.sm),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.back_hand, size: 14, color: Colors.amber),
+                  const SizedBox(width: 4),
+                  Text(
+                    '$handsUp',
+                    style: AppTypography.caption.copyWith(
+                      color: Colors.amber,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const Spacer(),
+          // View mode indicator
+          Text(
+            _speakerView ? 'Speaker View' : 'Grid View',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
           // AI toggle (visible to all, actionable by admin)
           _togglingAi
               ? const SizedBox(
@@ -543,9 +679,9 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
     );
   }
 
-  Widget _buildVideoGrid() {
+  Widget _buildVideoArea() {
     final allParticipants = <Participant>[
-      ?_localParticipant,
+      if (_localParticipant != null) _localParticipant!,
       ..._remoteParticipants,
     ];
 
@@ -555,32 +691,180 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
       );
     }
 
-    final count = allParticipants.length;
+    if (_speakerView) {
+      return _buildSpeakerLayout(allParticipants);
+    }
+    return _buildGridLayout(allParticipants);
+  }
+
+  Widget _buildSpeakerLayout(List<Participant> participants) {
+    // Find the dominant speaker or default to first participant
+    Participant speaker = participants.first;
+    if (_dominantSpeakerId != null) {
+      final found = participants.where(
+        (p) => p.identity.toString() == _dominantSpeakerId,
+      );
+      if (found.isNotEmpty) speaker = found.first;
+    }
+
+    final others = participants.where((p) => p != speaker).toList();
+    final isLocalSpeaker = speaker == _localParticipant;
+
+    return Column(
+      children: [
+        // Participant strip (horizontal scroll)
+        if (others.isNotEmpty)
+          SizedBox(
+            height: 96,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.sm,
+                vertical: AppSpacing.xs,
+              ),
+              itemCount: others.length > 50 ? 50 : others.length,
+              itemBuilder: (_, i) {
+                final isLocal = others[i] == _localParticipant;
+                return Padding(
+                  padding: const EdgeInsets.only(right: AppSpacing.xs),
+                  child: SizedBox(
+                    width: 130,
+                    child: _buildParticipantTile(others[i], isLocal: isLocal),
+                  ),
+                );
+              },
+            ),
+          ),
+        // Dominant speaker (large)
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.sm,
+              vertical: AppSpacing.xs,
+            ),
+            child: _buildParticipantTile(speaker, isLocal: isLocalSpeaker),
+          ),
+        ),
+        // Overflow count
+        if (others.length > 50)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+            child: Text(
+              '+ ${others.length - 50} more participants',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildGridLayout(List<Participant> participants) {
+    final count = participants.length;
+    final totalPages = count <= _gridPageSize
+        ? 1
+        : (count / _gridPageSize).ceil();
+
+    // Clamp page
+    if (_gridPage >= totalPages) _gridPage = totalPages - 1;
+    if (_gridPage < 0) _gridPage = 0;
+
+    final startIdx = _gridPage * _gridPageSize;
+    final endIdx = (startIdx + _gridPageSize).clamp(0, count);
+    final pageParticipants = participants.sublist(startIdx, endIdx);
+
     int crossAxisCount;
-    if (count <= 1) {
+    if (pageParticipants.length <= 1) {
       crossAxisCount = 1;
-    } else if (count <= 4) {
+    } else if (pageParticipants.length <= 4) {
       crossAxisCount = 2;
-    } else if (count <= 9) {
+    } else if (pageParticipants.length <= 9) {
       crossAxisCount = 3;
     } else {
       crossAxisCount = 4;
     }
 
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.sm),
-      child: GridView.builder(
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: crossAxisCount,
-          crossAxisSpacing: AppSpacing.sm,
-          mainAxisSpacing: AppSpacing.sm,
-          childAspectRatio: 16 / 9,
+    return Column(
+      children: [
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            child: GridView.builder(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                crossAxisSpacing: AppSpacing.sm,
+                mainAxisSpacing: AppSpacing.sm,
+                childAspectRatio: 16 / 9,
+              ),
+              itemCount: pageParticipants.length,
+              itemBuilder: (_, i) {
+                final actualIdx = startIdx + i;
+                return _buildParticipantTile(
+                  pageParticipants[i],
+                  isLocal: actualIdx == 0 && _localParticipant != null,
+                );
+              },
+            ),
+          ),
         ),
-        itemCount: count,
-        itemBuilder: (_, i) => _buildParticipantTile(
-          allParticipants[i],
-          isLocal: i == 0 && _localParticipant != null,
-        ),
+        if (totalPages > 1)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  onPressed: _gridPage > 0
+                      ? () => setState(() => _gridPage--)
+                      : null,
+                  icon: const Icon(Icons.chevron_left, size: 20),
+                  color: AppColors.textSecondary,
+                  disabledColor: AppColors.border,
+                  visualDensity: VisualDensity.compact,
+                ),
+                Text(
+                  '${_gridPage + 1} / $totalPages  ·  $count participants',
+                  style: AppTypography.caption,
+                ),
+                IconButton(
+                  onPressed: _gridPage < totalPages - 1
+                      ? () => setState(() => _gridPage++)
+                      : null,
+                  icon: const Icon(Icons.chevron_right, size: 20),
+                  color: AppColors.textSecondary,
+                  disabledColor: AppColors.border,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildSubtitleOverlay() {
+    String text = '';
+    if (_interimText.isNotEmpty) {
+      text = _interimText;
+    } else if (_liveTranslations.isNotEmpty) {
+      final last = _liveTranslations.last;
+      text = '[${last['speaker']}]: ${last['text']}';
+    }
+    if (text.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.sm,
+      ),
+      color: Colors.black.withValues(alpha: 0.75),
+      child: Text(
+        text,
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+        textAlign: TextAlign.center,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }
@@ -684,6 +968,25 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
               ),
             ),
           ),
+          // Hand raise indicator
+          if (_raisedHands.contains(participant.identity.toString()) ||
+              (isLocal && _handRaised))
+            Positioned(
+              top: AppSpacing.xs,
+              right: AppSpacing.xs,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                ),
+                child: const Icon(
+                  Icons.back_hand,
+                  size: 16,
+                  color: Colors.white,
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -780,6 +1083,25 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
                     ? _SidePanel.none
                     : _SidePanel.translation;
               }),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            // View Mode Toggle
+            _ControlButton(
+              icon: _speakerView ? Icons.grid_view : Icons.person_pin,
+              label: _speakerView ? 'Grid' : 'Speaker',
+              active: false,
+              onTap: () => setState(() {
+                _speakerView = !_speakerView;
+                _gridPage = 0;
+              }),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            // Hand Raise
+            _ControlButton(
+              icon: Icons.back_hand,
+              label: _handRaised ? 'Lower' : 'Raise',
+              active: _handRaised,
+              onTap: _toggleHandRaise,
             ),
             const SizedBox(width: AppSpacing.xl),
             // Leave
