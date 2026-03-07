@@ -24,12 +24,11 @@ const COMMON_PHRASES = [
 ];
 
 // Top language pairs to prewarm (source → targets)
+// Only prewarm en → other langs because our phrases are in English.
+// Prewarming es→en etc. with English phrases confuses GPT (it doesn't
+// know the text is already in English and produces garbage).
 const PREWARM_PAIRS: Array<{ source: string; targets: string[] }> = [
   { source: 'en', targets: ['es', 'fr', 'de', 'pt', 'ar', 'zh', 'ja', 'ko', 'hi', 'ru'] },
-  { source: 'es', targets: ['en'] },
-  { source: 'fr', targets: ['en'] },
-  { source: 'ar', targets: ['en'] },
-  { source: 'zh', targets: ['en'] },
 ];
 
 /**
