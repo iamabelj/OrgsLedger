@@ -14,6 +14,7 @@ import { getOrgSubscription, getTranslationWallet, deductTranslationWallet } fro
 import { writeAuditLog } from './middleware/audit';
 import { SpeechSession, AudioEncoding } from './services/speech-to-text.service';
 import { submitProcessingJob } from './queues/processing.queue';
+import { registerMultilingualMeetingHandlers } from './services/multilingualMeeting.socket';
 
 // In-memory store for meeting translation sessions
 // meetingId -> Map<userId, { language, name, receiveVoice }>
@@ -360,6 +361,9 @@ export function setupSocketIO(httpServer: HttpServer): Server {
     } catch (err) {
       logger.error('Error joining rooms', err);
     }
+
+    // ── Register Deepgram Multilingual Meeting Handlers ──────
+    registerMultilingualMeetingHandlers(io, socket);
 
     // ── Channel Events ──────────────────────────────────
     socket.on('channel:join', async (channelId: string) => {
