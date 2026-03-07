@@ -1,0 +1,65 @@
+# ============================================================
+# OpenTelemetry Collector Configuration for OrgsLedger
+# Receives traces and metrics from all services, exports
+# to Prometheus (metrics) and logs traces to console/Jaeger.
+# ============================================================
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    send_batch_size: 1024
+    timeout: 5s
+
+  # Drop low-value spans to reduce storage costs
+  filter:
+    traces:
+      span:
+        - 'attributes["http.route"] == "/health"'
+        - 'attributes["http.route"] == "/metrics"'
+
+  # Add resource attributes to all telemetry
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: production
+        action: upsert
+      - key: service.namespace
+        value: orgsledger
+        action: upsert
+
+exporters:
+  # Console logging for debugging (remove in high-traffic production)
+  logging:
+    loglevel: warn
+
+  # Prometheus exporter — scraped by Prometheus service
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    namespace: orgsledger
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Jaeger (uncomment when Jaeger is deployed)
+  # otlp/jaeger:
+  #   endpoint: jaeger:4317
+  #   tls:
+  #     insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, filter, resource]
+      exporters: [logging]  # Add otlp/jaeger when available
+
+    metrics:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [prometheus, logging]

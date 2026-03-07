@@ -1,0 +1,159 @@
+# ============================================================
+# OrgsLedger — Standalone Worker Deployments
+# Each worker type is independently scalable.
+# ============================================================
+
+# ── Translation Worker ───────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: translation-worker
+  namespace: orgsledger
+  labels:
+    app: translation-worker
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: translation-worker
+  template:
+    metadata:
+      labels:
+        app: translation-worker
+    spec:
+      containers:
+        - name: worker
+          image: orgsledger/worker:latest
+          env:
+            - name: WORKER_TYPE
+              value: translation
+          envFrom:
+            - configMapRef:
+                name: orgsledger-config
+            - secretRef:
+                name: orgsledger-secrets
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+      terminationGracePeriodSeconds: 30
+
+---
+# ── Broadcast Worker ─────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: broadcast-worker
+  namespace: orgsledger
+  labels:
+    app: broadcast-worker
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: broadcast-worker
+  template:
+    metadata:
+      labels:
+        app: broadcast-worker
+    spec:
+      containers:
+        - name: worker
+          image: orgsledger/worker:latest
+          env:
+            - name: WORKER_TYPE
+              value: broadcast
+          envFrom:
+            - configMapRef:
+                name: orgsledger-config
+            - secretRef:
+                name: orgsledger-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      terminationGracePeriodSeconds: 15
+
+---
+# ── Transcription Worker ─────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transcription-worker
+  namespace: orgsledger
+  labels:
+    app: transcription-worker
+spec:
+  replicas: 10
+  selector:
+    matchLabels:
+      app: transcription-worker
+  template:
+    metadata:
+      labels:
+        app: transcription-worker
+    spec:
+      containers:
+        - name: worker
+          image: orgsledger/worker:latest
+          env:
+            - name: WORKER_TYPE
+              value: transcription
+          envFrom:
+            - configMapRef:
+                name: orgsledger-config
+            - secretRef:
+                name: orgsledger-secrets
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+      terminationGracePeriodSeconds: 30
+
+---
+# ── Minutes Worker ───────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minutes-worker
+  namespace: orgsledger
+  labels:
+    app: minutes-worker
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: minutes-worker
+  template:
+    metadata:
+      labels:
+        app: minutes-worker
+    spec:
+      containers:
+        - name: worker
+          image: orgsledger/worker:latest
+          env:
+            - name: WORKER_TYPE
+              value: minutes
+          envFrom:
+            - configMapRef:
+                name: orgsledger-config
+            - secretRef:
+                name: orgsledger-secrets
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      terminationGracePeriodSeconds: 60

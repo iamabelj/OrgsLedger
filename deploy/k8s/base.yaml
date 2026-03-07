@@ -1,0 +1,39 @@
+# ============================================================
+# OrgsLedger — Kubernetes Deployment Manifests
+# For scaling to 100K simultaneous meetings.
+#
+# Deploy order:
+#   1. kubectl apply -f namespace.yaml
+#   2. kubectl apply -f nats.yaml
+#   3. kubectl apply -f redis.yaml
+#   4. kubectl apply -f api.yaml
+#   5. kubectl apply -f workers.yaml
+#   6. kubectl apply -f hpa.yaml
+#   7. kubectl apply -f monitoring.yaml
+# ============================================================
+
+---
+# ── Namespace ────────────────────────────────────────────
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: orgsledger
+  labels:
+    app.kubernetes.io/part-of: orgsledger
+
+---
+# ── ConfigMap — Shared Environment ───────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orgsledger-config
+  namespace: orgsledger
+data:
+  NODE_ENV: "production"
+  NATS_URL: "nats://nats.orgsledger.svc.cluster.local:4222"
+  REDIS_HOST: "redis.orgsledger.svc.cluster.local"
+  REDIS_PORT: "6379"
+  SOCKETIO_REDIS_ADAPTER: "true"
+  OTEL_ENABLED: "true"
+  OTEL_SERVICE_NAME: "orgsledger-api"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.orgsledger.svc.cluster.local:4318"

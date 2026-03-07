@@ -1,0 +1,79 @@
+# ============================================================
+# NATS JetStream — Event Streaming
+# Single-node for <10K meetings, cluster for 100K.
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nats
+  namespace: orgsledger
+  labels:
+    app: nats
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nats
+  template:
+    metadata:
+      labels:
+        app: nats
+    spec:
+      containers:
+        - name: nats
+          image: nats:2.10-alpine
+          args:
+            - "--js"
+            - "--sd"
+            - "/data"
+            - "-m"
+            - "8222"
+            - "--max_payload"
+            - "1048576"
+          ports:
+            - containerPort: 4222
+              name: client
+            - containerPort: 8222
+              name: monitor
+          resources:
+            requests:
+              cpu: 250m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8222
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8222
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          volumeMounts:
+            - name: nats-data
+              mountPath: /data
+      volumes:
+        - name: nats-data
+          emptyDir:
+            sizeLimit: 5Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats
+  namespace: orgsledger
+spec:
+  selector:
+    app: nats
+  ports:
+    - port: 4222
+      name: client
+    - port: 8222
+      name: monitor
