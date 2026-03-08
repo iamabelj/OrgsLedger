@@ -19,6 +19,13 @@ export interface TranscriptSegment {
   segmentIndex: number;
   startTime?: number; // ms offset from meeting start
   endTime?: number;
+  /**
+   * When true, the transcript row has already been persisted to PostgreSQL
+   * by an upstream durability layer (e.g., Socket.IO safety-net).
+   * Storage worker should still store the segment in Redis meeting state
+   * but must skip DB insert to avoid duplicates.
+   */
+  alreadyPersisted?: boolean;
 }
 
 /**

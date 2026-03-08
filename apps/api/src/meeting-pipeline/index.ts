@@ -249,6 +249,10 @@ export async function submitProcessingJob(data: {
   targetLanguages: string[];
   isFinal: boolean;
   organizationId?: string;
+  /** Optional stable timestamp (ms) for deterministic spoken_at */
+  timestamp?: number;
+  /** When true, storage worker should skip DB insert */
+  alreadyPersisted?: boolean;
 }): Promise<string> {
   const sourceLanguage = normalizeLang(data.sourceLanguage);
   const targetLanguages = (data.targetLanguages || []).map((l) => normalizeLang(l));
@@ -262,6 +266,7 @@ export async function submitProcessingJob(data: {
   }
 
   const segmentIndex = ++segmentCounter;
+  const tsMs = typeof data.timestamp === 'number' ? data.timestamp : Date.now();
   const segment = {
     meetingId: data.meetingId,
     organizationId: data.organizationId,
@@ -269,8 +274,9 @@ export async function submitProcessingJob(data: {
     text: data.originalText,
     language: sourceLanguage,
     isFinal: data.isFinal,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(tsMs).toISOString(),
     segmentIndex,
+    alreadyPersisted: data.alreadyPersisted,
   };
 
   return transcriptStream.submit(segment);

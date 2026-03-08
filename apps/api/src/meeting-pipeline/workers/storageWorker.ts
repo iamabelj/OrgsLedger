@@ -86,6 +86,10 @@ class StorageWorkerManager {
     // Store in meeting state for minutes generation
     await meetingStateManager.storeSegment(segment);
 
+    // If an upstream layer already persisted this transcript to PostgreSQL,
+    // skip DB insert here to avoid duplicate rows.
+    if (segment.alreadyPersisted) return;
+
     // Add to batch buffer
     let buffer = this.buffers.get(segment.meetingId);
     if (!buffer) {

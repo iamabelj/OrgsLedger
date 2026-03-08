@@ -106,7 +106,8 @@ async function this_persistTranscript(
   speakerName: string,
   originalText: string,
   sourceLang: string,
-  translations: Record<string, string>
+  translations: Record<string, string>,
+  spokenAtMs?: number
 ): Promise<void> {
   try {
     // Check table existence once and cache result
@@ -134,7 +135,7 @@ async function this_persistTranscript(
       original_text: originalText,
       source_lang: normalizedSourceLang,
       translations: JSON.stringify(translations),
-      spoken_at: Date.now(),
+      spoken_at: typeof spokenAtMs === 'number' ? spokenAtMs : Date.now(),
     });
     logger.debug(`[TRANSLATION] Transcript persisted: meeting=${meetingId}, speaker=${speakerName}, lang=${normalizedSourceLang}`);
   } catch (dbErr) {
@@ -192,6 +193,36 @@ async function handleSpeechText(
   // Get cached organization_id (needed for transcript storage)
   let organizationId: string | null = await getCachedMeetingOrg(meetingId);
 
+  // Use a stable timestamp for DB + socket events + queued job
+  const spokenAtMs = Date.now();
+
+  // Durability: best-effort persist + emit immediately, regardless of queue health.
+  // This prevents permanent data loss if BullMQ workers are down/crashing.
+  if (organizationId) {
+    await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, normalizedSourceLang, {}, spokenAtMs);
+    io.to(`meeting:${meetingId}`).emit('transcript:stored', {
+      meetingId,
+      speakerId: userId,
+      speakerName,
+      originalText: text,
+      sourceLang: normalizedSourceLang,
+      translations: {},
+      timestamp: spokenAtMs,
+    });
+  } else {
+    // Still emit so UIs can render something even if DB write is impossible
+    io.to(`meeting:${meetingId}`).emit('transcript:stored', {
+      meetingId,
+      speakerId: userId,
+      speakerName,
+      originalText: text,
+      sourceLang: normalizedSourceLang,
+      translations: {},
+      timestamp: spokenAtMs,
+    });
+    logger.warn('[TRANSLATION] organizationId missing; transcript not persisted (schema requires NOT NULL)', { meetingId });
+  }
+
   // Collect target languages (Redis-backed, multi-instance safe)
   const targetLangList = await meetingStateManager.getTargetLanguages(meetingId, normalizedSourceLang);
   const targetLangs = new Set<string>(targetLangList);
@@ -211,7 +242,7 @@ async function handleSpeechText(
             code: 'WALLET_EMPTY',
           });
           logger.warn('[TRANSLATION] Wallet empty, rejecting translation job', { meetingId, orgId: organizationId });
-          return;
+          return; // transcript already persisted/emitted above
         }
 
         // Submit translation job to processing queue (non-blocking)
@@ -223,20 +254,10 @@ async function handleSpeechText(
           targetLanguages: [...targetLangs],
           isFinal: true,
           organizationId, // Pass org ID for wallet deduction in worker
+          timestamp: spokenAtMs,
+          alreadyPersisted: true,
         });
         logger.info(`[TRANSLATION] ✓ Job submitted to queue: jobId=${jobId}, meeting=${meetingId}, speaker=${speakerName}, targets=${targetLangs.size}`);
-
-        // Safety-net persistence: store original transcript immediately (original-only)
-        await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, normalizedSourceLang, {});
-        io.to(`meeting:${meetingId}`).emit('transcript:stored', {
-          meetingId,
-          speakerId: userId,
-          speakerName,
-          originalText: text,
-          sourceLang: normalizedSourceLang,
-          translations: {},
-          timestamp: Date.now(),
-        });
 
         await writeAuditLog({
           userId,
@@ -254,31 +275,18 @@ async function handleSpeechText(
           sourceLanguage: normalizedSourceLang,
           targetLanguages: [...targetLangs],
           isFinal: true,
+          timestamp: spokenAtMs,
+          alreadyPersisted: false,
         });
         logger.info(`[TRANSLATION] ✓ Job submitted (no org): jobId=${jobId}, meeting=${meetingId}, speaker=${speakerName}`);
       }
     } else {
-      // No target languages: store original only (no translation needed)
-      if (organizationId) {
-        await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, normalizedSourceLang, {});
-        logger.info(`[TRANSCRIPT] ✓ Stored (original only): meeting=${meetingId}, speaker=${speakerName}`);
-        io.to(`meeting:${meetingId}`).emit('transcript:stored', {
-          meetingId, speakerId: userId, speakerName, originalText: text,
-          sourceLang: normalizedSourceLang, translations: {}, timestamp: Date.now(),
-        });
-      }
+      // No target languages: nothing to enqueue (durability already handled above)
+      logger.info(`[TRANSCRIPT] ✓ Stored (original only): meeting=${meetingId}, speaker=${speakerName}`);
     }
   } catch (err) {
     logger.error('[TRANSLATION] Failed to submit translation job', err);
-    // Fallback: store original text without translation
-    if (organizationId) {
-      await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, normalizedSourceLang, {});
-      logger.info(`[TRANSCRIPT] ✓ Stored (error fallback): meeting=${meetingId}, speaker=${speakerName}`);
-      io.to(`meeting:${meetingId}`).emit('transcript:stored', {
-        meetingId, speakerId: userId, speakerName, originalText: text,
-        sourceLang: normalizedSourceLang, translations: {}, timestamp: Date.now(),
-      });
-    }
+    // Transcript already persisted/emitted above; here we only surface the error to the client
     socket.emit('translation:error', {
       meetingId,
       error: 'Failed to process translation. Please try again.',
