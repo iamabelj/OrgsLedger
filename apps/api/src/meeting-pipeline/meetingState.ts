@@ -11,7 +11,16 @@ import { normalizeLang } from '../utils/langNormalize';
 const MEETING_KEY = (id: string) => `meeting:state:${id}`;
 const SEGMENTS_KEY = (id: string) => `meeting:segments:${id}`;
 const LANGUAGES_KEY = (id: string) => `meeting:languages:${id}`;
+const PARTICIPANTS_KEY = (id: string) => `meeting:participants:${id}`;
 const TTL_SECONDS = 86400; // 24 hours
+
+export interface MeetingParticipantPrefs {
+  userId: string;
+  name: string;
+  language: string;
+  receiveVoice: boolean;
+  updatedAt: string; // ISO
+}
 
 class MeetingStateManager {
   /**
@@ -175,6 +184,64 @@ class MeetingStateManager {
   }
 
   /**
+   * Upsert a participant's translation preferences for this meeting.
+   * This is the authoritative source of per-user language prefs for multi-instance deployments.
+   */
+  async upsertParticipantPrefs(
+    meetingId: string,
+    prefs: Omit<MeetingParticipantPrefs, 'updatedAt'>
+  ): Promise<void> {
+    const redis = await getRedisClient();
+    const key = PARTICIPANTS_KEY(meetingId);
+
+    const normalizedLang = normalizeLang(prefs.language);
+    const record: MeetingParticipantPrefs = {
+      userId: prefs.userId,
+      name: prefs.name,
+      language: normalizedLang,
+      receiveVoice: prefs.receiveVoice,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await redis.hset(key, prefs.userId, JSON.stringify(record));
+    await redis.expire(key, TTL_SECONDS);
+
+    // Best-effort: keep meeting-level language set in sync (union) for backward compat
+    if (normalizedLang) {
+      await redis.sadd(LANGUAGES_KEY(meetingId), normalizedLang);
+      await redis.expire(LANGUAGES_KEY(meetingId), TTL_SECONDS);
+    }
+  }
+
+  /** Remove a participant from meeting prefs */
+  async removeParticipantPrefs(meetingId: string, userId: string): Promise<void> {
+    const redis = await getRedisClient();
+    const key = PARTICIPANTS_KEY(meetingId);
+    await redis.hdel(key, userId);
+    await redis.expire(key, TTL_SECONDS);
+  }
+
+  /** Get all participant prefs for a meeting */
+  async getParticipantPrefs(meetingId: string): Promise<MeetingParticipantPrefs[]> {
+    const redis = await getRedisClient();
+    const key = PARTICIPANTS_KEY(meetingId);
+    const values = await redis.hvals(key);
+    const parsed: MeetingParticipantPrefs[] = [];
+    for (const v of values) {
+      try {
+        const p = JSON.parse(v) as MeetingParticipantPrefs;
+        parsed.push({
+          ...p,
+          language: normalizeLang(p.language),
+        });
+      } catch {
+        // ignore malformed entry
+      }
+    }
+    return parsed;
+  }
+
+  /**
    * Get target languages for translation
    */
   async getTargetLanguages(
@@ -182,11 +249,28 @@ class MeetingStateManager {
     excludeLanguage?: string
   ): Promise<string[]> {
     const redis = await getRedisClient();
-    const key = LANGUAGES_KEY(meetingId);
-    const languages = await redis.smembers(key);
-
     const exclude = excludeLanguage ? normalizeLang(excludeLanguage) : undefined;
 
+    // Prefer per-participant prefs when available (multi-instance safe)
+    const participantValues = await redis.hvals(PARTICIPANTS_KEY(meetingId));
+    if (participantValues.length > 0) {
+      const langSet = new Set<string>();
+      for (const v of participantValues) {
+        try {
+          const p = JSON.parse(v) as { language?: string };
+          const l = p.language ? normalizeLang(p.language) : '';
+          if (l) langSet.add(l);
+        } catch {
+          // ignore
+        }
+      }
+      const langs = Array.from(langSet);
+      return exclude ? langs.filter((l) => l !== exclude) : langs;
+    }
+
+    // Fallback to legacy meeting-level set
+    const key = LANGUAGES_KEY(meetingId);
+    const languages = await redis.smembers(key);
     if (exclude) {
       return languages
         .map((l: string) => normalizeLang(l))
@@ -233,6 +317,7 @@ class MeetingStateManager {
       redis.del(MEETING_KEY(meetingId)),
       redis.del(SEGMENTS_KEY(meetingId)),
       redis.del(LANGUAGES_KEY(meetingId)),
+      redis.del(PARTICIPANTS_KEY(meetingId)),
     ]);
     logger.debug('[MEETING_STATE] Cleaned up', { meetingId });
   }

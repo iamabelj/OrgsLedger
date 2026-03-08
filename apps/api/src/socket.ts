@@ -13,7 +13,7 @@ import { translateToMultiple, isTtsSupported } from './services/translation.serv
 import { getOrgSubscription, getTranslationWallet, deductTranslationWallet } from './services/subscription.service';
 import { writeAuditLog } from './middleware/audit';
 import { SpeechSession, AudioEncoding } from './services/speech-to-text.service';
-import { submitProcessingJob } from './meeting-pipeline';
+import { submitProcessingJob, meetingStateManager } from './meeting-pipeline';
 import { registerMultilingualMeetingHandlers } from './services/multilingualMeeting.socket';
 import { normalizeLang } from './utils/langNormalize';
 
@@ -169,16 +169,8 @@ async function handleSpeechText(
     speechRateLimits.set(rateLimitKey, now);
   }
 
-  const langMap = meetingLanguages.get(meetingId);
-
   // Get speaker name (use cache to avoid DB lookup in hot path)
-  let speakerName = 'Unknown';
-  const speaker = langMap?.get(userId);
-  if (speaker?.name) {
-    speakerName = speaker.name;
-  } else {
-    speakerName = await getCachedUserName(userId);
-  }
+  const speakerName = await getCachedUserName(userId);
 
   logger.debug(`[TRANSCRIPT] Speech: speaker=${speakerName}, isFinal=${isFinal}, lang=${sourceLang}, len=${text.length}`);
 
@@ -200,16 +192,9 @@ async function handleSpeechText(
   // Get cached organization_id (needed for transcript storage)
   let organizationId: string | null = await getCachedMeetingOrg(meetingId);
 
-  // Collect target languages
-  const targetLangs = new Set<string>();
-  if (langMap) {
-    langMap.forEach((val) => {
-      const normalizedTarget = normalizeLang(val.language);
-      if (normalizedTarget !== normalizedSourceLang) {
-        targetLangs.add(normalizedTarget);
-      }
-    });
-  }
+  // Collect target languages (Redis-backed, multi-instance safe)
+  const targetLangList = await meetingStateManager.getTargetLanguages(meetingId, normalizedSourceLang);
+  const targetLangs = new Set<string>(targetLangList);
 
   try {
     if (targetLangs.size > 0) {
@@ -500,13 +485,10 @@ export function setupSocketIO(httpServer: HttpServer): Server {
               .first();
             if (pref?.preferred_language) {
               const normalizedPrefLang = normalizeLang(pref.preferred_language);
-              // Set in memory map so translation routing works immediately
-              if (!meetingLanguages.has(meetingId)) {
-                meetingLanguages.set(meetingId, new Map());
-              }
-              meetingLanguages.get(meetingId)!.set(userId, {
-                language: normalizedPrefLang,
+              await meetingStateManager.upsertParticipantPrefs(meetingId, {
+                userId,
                 name,
+                language: normalizedPrefLang,
                 receiveVoice: pref.receive_voice !== false,
               });
 
@@ -518,10 +500,8 @@ export function setupSocketIO(httpServer: HttpServer): Server {
               });
 
               // Broadcast updated participant languages
-              const participants: Array<{ userId: string; name: string; language: string }> = [];
-              meetingLanguages.get(meetingId)!.forEach((val, uid) => {
-                participants.push({ userId: uid, name: val.name, language: val.language });
-              });
+              const prefs = await meetingStateManager.getParticipantPrefs(meetingId);
+              const participants = prefs.map((p) => ({ userId: p.userId, name: p.name, language: p.language }));
               io.to(`meeting:${meetingId}`).emit('translation:participants', { meetingId, participants });
 
               logger.debug(`[TRANSLATION] Auto-loaded language ${pref.preferred_language} for user ${userId} in meeting ${meetingId}`);
@@ -529,6 +509,25 @@ export function setupSocketIO(httpServer: HttpServer): Server {
           }
         } catch (prefErr) {
           logger.warn('[TRANSLATION] Failed to auto-load language preference', prefErr);
+        }
+
+        // Ensure participant exists in Redis even if no saved prefs
+        // (prevents split-brain + makes translation routing multi-instance safe)
+        try {
+          const existing = await meetingStateManager.getParticipantPrefs(meetingId);
+          if (!existing.some((p) => p.userId === userId)) {
+            await meetingStateManager.upsertParticipantPrefs(meetingId, {
+              userId,
+              name,
+              language: 'en',
+              receiveVoice: true,
+            });
+            const participants = (await meetingStateManager.getParticipantPrefs(meetingId))
+              .map((p) => ({ userId: p.userId, name: p.name, language: p.language }));
+            io.to(`meeting:${meetingId}`).emit('translation:participants', { meetingId, participants });
+          }
+        } catch (e) {
+          logger.warn('[TRANSLATION] Failed to ensure participant prefs', e);
         }
 
         logger.debug(`User ${userId} (${name}) joined meeting ${meetingId}`);
@@ -597,10 +596,12 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       const name = user ? `${user.first_name} ${user.last_name}` : 'Unknown';
 
       // Store in memory (per-user preference including voice toggle)
-      if (!meetingLanguages.has(meetingId)) {
-        meetingLanguages.set(meetingId, new Map());
-      }
-      meetingLanguages.get(meetingId)!.set(userId, { language: normalizedLanguage, name, receiveVoice });
+      await meetingStateManager.upsertParticipantPrefs(meetingId, {
+        userId,
+        name,
+        language: normalizedLanguage,
+        receiveVoice,
+      });
 
       // Persist to DB for future meetings
       try {
@@ -627,10 +628,8 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       }
 
       // Broadcast updated participant languages to everyone in the meeting
-      const participants: Array<{ userId: string; name: string; language: string }> = [];
-      meetingLanguages.get(meetingId)!.forEach((val, uid) => {
-        participants.push({ userId: uid, name: val.name, language: val.language });
-      });
+      const prefs = await meetingStateManager.getParticipantPrefs(meetingId);
+      const participants = prefs.map((p) => ({ userId: p.userId, name: p.name, language: p.language }));
 
       io.to(`meeting:${meetingId}`).emit('translation:participants', {
         meetingId,
@@ -689,9 +688,9 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       const speakerName = await getCachedUserName(userId);
 
       // Determine language code (from language picker or default en-US)
-      const langMap = meetingLanguages.get(meetingId);
-      const userPrefs = langMap?.get(userId);
-      const langCode = normalizeLang(language || userPrefs?.language || 'en');
+      const prefs = await meetingStateManager.getParticipantPrefs(meetingId);
+      const myPref = prefs.find((p) => p.userId === userId);
+      const langCode = normalizeLang(language || myPref?.language || 'en');
 
       // Map our short language codes to BCP-47
       const bcp47Map: Record<string, string> = {
@@ -711,22 +710,18 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       // Safety net: ensure user is registered in meetingLanguages
       // so handleSpeechText knows about target languages.
       // This covers cases where the client forgets to emit translation:set-language.
-      if (!meetingLanguages.has(meetingId)) {
-        meetingLanguages.set(meetingId, new Map());
-      }
-      if (!meetingLanguages.get(meetingId)!.has(userId)) {
-        meetingLanguages.get(meetingId)!.set(userId, {
-          language: langCode,
+      try {
+        await meetingStateManager.upsertParticipantPrefs(meetingId, {
+          userId,
           name: speakerName,
+          language: langCode,
           receiveVoice: true,
         });
-        // Broadcast updated participant languages
-        const participants: Array<{ userId: string; name: string; language: string }> = [];
-        meetingLanguages.get(meetingId)!.forEach((val, uid) => {
-          participants.push({ userId: uid, name: val.name, language: val.language });
-        });
+        const participants = (await meetingStateManager.getParticipantPrefs(meetingId))
+          .map((p) => ({ userId: p.userId, name: p.name, language: p.language }));
         io.to(`meeting:${meetingId}`).emit('translation:participants', { meetingId, participants });
-        logger.debug(`[STT] Auto-registered user ${userId} with language ${langCode} in meetingLanguages`);
+      } catch (e) {
+        logger.warn('[STT] Failed to upsert participant prefs', e);
       }
 
       const session = new SpeechSession({
@@ -889,21 +884,14 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       // Clean up rate limiter for this user+meeting
       speechRateLimits.delete(`${userId}:${meetingId}`);
 
-      // Remove from translation map
-      const langMap = meetingLanguages.get(meetingId);
-      if (langMap) {
-        langMap.delete(userId);
-        if (langMap.size === 0) {
-          meetingLanguages.delete(meetingId);
-        } else {
-          // Broadcast updated participants
-          const participants: Array<{ userId: string; name: string; language: string }> = [];
-          langMap.forEach((val, uid) => {
-            participants.push({ userId: uid, name: val.name, language: val.language });
-          });
+      // Remove from Redis participant prefs
+      meetingStateManager.removeParticipantPrefs(meetingId, userId)
+        .then(async () => {
+          const prefs = await meetingStateManager.getParticipantPrefs(meetingId);
+          const participants = prefs.map((p) => ({ userId: p.userId, name: p.name, language: p.language }));
           io.to(`meeting:${meetingId}`).emit('translation:participants', { meetingId, participants });
-        }
-      }
+        })
+        .catch((e) => logger.warn('[TRANSLATION] Failed to remove participant prefs on leave', e));
     });
 
     // ── Financial Updates ───────────────────────────────
@@ -935,23 +923,19 @@ export function setupSocketIO(httpServer: HttpServer): Server {
         logger.debug(`[STT] Cleaned up session on disconnect: user=${userId}`);
       }
 
-      // Clean up translation data for any meetings this user was in
-      meetingLanguages.forEach((langMap, meetingId) => {
-        if (langMap.has(userId)) {
-          langMap.delete(userId);
-          // Clean up rate limiter for this user+meeting
-          speechRateLimits.delete(`${userId}:${meetingId}`);
-          if (langMap.size === 0) {
-            meetingLanguages.delete(meetingId);
-          } else {
-            const participants: Array<{ userId: string; name: string; language: string }> = [];
-            langMap.forEach((val, uid) => {
-              participants.push({ userId: uid, name: val.name, language: val.language });
-            });
+      // Clean up Redis participant prefs for the meeting this socket was associated with
+      const meetingId = (socket as any)._meetingId as string | null;
+      if (meetingId) {
+        meetingStateManager.removeParticipantPrefs(meetingId, userId)
+          .then(async () => {
+            // Clean up rate limiter for this user+meeting
+            speechRateLimits.delete(`${userId}:${meetingId}`);
+            const prefs = await meetingStateManager.getParticipantPrefs(meetingId);
+            const participants = prefs.map((p) => ({ userId: p.userId, name: p.name, language: p.language }));
             io.to(`meeting:${meetingId}`).emit('translation:participants', { meetingId, participants });
-          }
-        }
-      });
+          })
+          .catch((e) => logger.warn('[TRANSLATION] Failed to remove participant prefs on disconnect', e));
+      }
     });
   });
 
@@ -983,6 +967,13 @@ export async function forceDisconnectMeeting(
 
   // Clean up translation session data for this meeting
   meetingLanguages.delete(meetingId);
+  try {
+    // Best-effort cleanup of Redis participant prefs
+    const prefs = await meetingStateManager.getParticipantPrefs(meetingId);
+    await Promise.all(prefs.map((p) => meetingStateManager.removeParticipantPrefs(meetingId, p.userId)));
+  } catch (e) {
+    logger.warn('[TRANSLATION] Failed to cleanup participant prefs on force disconnect', e);
+  }
 
   logger.info(`Force-disconnected ${sockets.length} sockets from meeting ${meetingId}`);
 }

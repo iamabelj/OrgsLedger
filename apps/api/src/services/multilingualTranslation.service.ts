@@ -7,8 +7,8 @@
 import { db } from '../db';
 import { logger } from '../logger';
 import { translateText } from './translation.service';
-import { meetingLanguages } from '../socket';
 import { normalizeLang, isSameLang } from '../utils/langNormalize';
+import { meetingStateManager } from '../meeting-pipeline';
 import {
   getCachedTranslation,
   setCachedTranslation,
@@ -47,8 +47,8 @@ class MultilingualTranslationPipeline {
     const src = normalizeLang(sourceLang);
 
     try {
-      // Step 1: Resolve target languages (fast in-memory, DB fallback)
-      const targetLanguages = this.getTargetLanguagesFast(meetingId, src);
+      // Step 1: Resolve target languages (Redis-backed participant prefs)
+      const targetLanguages = await meetingStateManager.getTargetLanguages(meetingId, src);
 
       if (targetLanguages.length === 0) {
         return { originalText: text, sourceLanguage: src, translations: {}, targetLanguages: [] };
@@ -115,26 +115,6 @@ class MultilingualTranslationPipeline {
   }
 
   /**
-   * Fast in-memory language lookup from the meetingLanguages map.
-   * Falls back to DB query if no participants registered yet.
-   */
-  private getTargetLanguagesFast(meetingId: string, sourceLang: string): string[] {
-    const participants = meetingLanguages.get(meetingId);
-    if (participants && participants.size > 0) {
-      const langs = new Set<string>();
-      for (const [, pref] of participants) {
-        const norm = normalizeLang(pref.language);
-        if (!isSameLang(norm, sourceLang)) {
-          langs.add(norm);
-        }
-      }
-      return Array.from(langs);
-    }
-    // If no in-memory data, return empty — the transcript handler layer will populate
-    return [];
-  }
-
-  /**
    * DB-based fallback for participant languages when in-memory map is empty.
    * Used only during initial meeting setup or cold starts.
    */
@@ -184,17 +164,21 @@ class MultilingualTranslationPipeline {
   async getMeetingLanguageStatistics(meetingId: string): Promise<
     Array<{ language: string; speakerCount: number }>
   > {
-    // Fast path: use in-memory meetingLanguages
-    const participants = meetingLanguages.get(meetingId);
-    if (participants && participants.size > 0) {
-      const counts = new Map<string, number>();
-      for (const [, pref] of participants) {
-        const lang = normalizeLang(pref.language);
-        counts.set(lang, (counts.get(lang) || 0) + 1);
+    // Prefer Redis participant prefs (multi-instance safe)
+    try {
+      const prefs = await meetingStateManager.getParticipantPrefs(meetingId);
+      if (prefs.length > 0) {
+        const counts = new Map<string, number>();
+        for (const pref of prefs) {
+          const lang = normalizeLang(pref.language);
+          counts.set(lang, (counts.get(lang) || 0) + 1);
+        }
+        return Array.from(counts.entries())
+          .map(([language, speakerCount]) => ({ language, speakerCount }))
+          .sort((a, b) => b.speakerCount - a.speakerCount);
       }
-      return Array.from(counts.entries())
-        .map(([language, speakerCount]) => ({ language, speakerCount }))
-        .sort((a, b) => b.speakerCount - a.speakerCount);
+    } catch {
+      // fall back to DB
     }
 
     // Fallback: DB query
