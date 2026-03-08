@@ -192,8 +192,9 @@ export class SpeechSession {
       // Set encoding based on input
       if (this.encoding === 'WEBM_OPUS') {
         // MediaRecorder sends a WebM container with Opus audio frames.
-        // Deepgram live streaming expects the container type for WebM payloads.
-        options.encoding = 'webm';
+        // Deepgram live streaming expects the codec in `encoding` and the container separately.
+        options.encoding = 'opus';
+        options.container = 'webm';
         options.sample_rate = String(this.sampleRateHertz);
         options.channels = '1';
       } else if (this.encoding === 'LINEAR16') {
