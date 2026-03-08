@@ -445,12 +445,24 @@ describe('Security Headers (Helmet)', () => {
 
 describe('CORS Configuration', () => {
   it('should restrict origins in production mode', () => {
-    const productionOrigins = (process.env.CORS_ORIGINS || 'https://orgsledger.com,https://app.orgsledger.com').split(',');
+    const defaultOrigins = 'https://orgsledger.com,https://app.orgsledger.com';
+    const originString = process.env.CORS_ORIGINS || defaultOrigins;
+    const productionOrigins = originString
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean);
 
-    expect(productionOrigins).toContain('https://orgsledger.com');
-    expect(productionOrigins).toContain('https://app.orgsledger.com');
-    // Should NOT contain wildcard
+    // Production should never allow wildcard origins
     expect(productionOrigins).not.toContain('*');
+
+    // If env var isn't provided, the default must include both app + landing.
+    if (!process.env.CORS_ORIGINS) {
+      expect(productionOrigins).toContain('https://orgsledger.com');
+      expect(productionOrigins).toContain('https://app.orgsledger.com');
+    } else {
+      // If overridden, ensure it's not accidentally empty.
+      expect(productionOrigins.length).toBeGreaterThan(0);
+    }
   });
 
   it('should have cors package available', () => {

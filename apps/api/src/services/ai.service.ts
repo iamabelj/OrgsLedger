@@ -57,6 +57,12 @@ function getOpenAI() {
 export class AIService {
   private io: any;
 
+  private shouldUseMockTranscripts(): boolean {
+    // Mock transcripts are only intended for local/dev smoke tests.
+    // In production, returning a placeholder transcript can mask pipeline failures.
+    return config.env !== 'production' && process.env.ALLOW_MOCK_TRANSCRIPTS === 'true';
+  }
+
   constructor(io?: any) {
     this.io = io;
   }
@@ -146,7 +152,8 @@ export class AIService {
         // ── LAYER 9 — Confirm transcript rows exist ─────
         logger.info('[MINUTES_PIPELINE] Using live transcripts from DB', { meetingId, segments: transcript.length });
         if (transcript.length === 0) {
-          logger.warn('[MINUTES_PIPELINE] No transcripts found in DB — minutes will be empty', { meetingId });
+          // Fail hard: minutes without audio or transcripts is always meaningless.
+          throw new Error('No transcripts available (meeting_transcripts empty and meeting has no audio_storage_url)');
         }
       }
 
@@ -564,14 +571,17 @@ Be thorough and accurate. Identify all decisions, motions, and action items.`;
 
   /**
    * Get transcripts from the meeting_transcripts table (live translation data).
-   * Falls back to mock if table doesn't exist or is empty.
+   * In production: returns [] when missing/empty (caller should treat as failure).
+   * In non-prod: can optionally return a mock transcript when ALLOW_MOCK_TRANSCRIPTS=true.
    */
   private async getTranscriptsFromDB(meetingId: string): Promise<TranscriptSegment[]> {
+    const allowMock = this.shouldUseMockTranscripts();
+
     try {
       const hasTable = await db.schema.hasTable('meeting_transcripts');
       if (!hasTable) {
         logger.warn('[AI] meeting_transcripts table does not exist');
-        return this.getMockTranscript();
+        return allowMock ? this.getMockTranscript() : [];
       }
 
       const rows = await db('meeting_transcripts')
@@ -581,7 +591,7 @@ Be thorough and accurate. Identify all decisions, motions, and action items.`;
 
       if (rows.length === 0) {
         logger.warn('[AI] No live transcripts found for meeting', { meetingId });
-        return this.getMockTranscript();
+        return allowMock ? this.getMockTranscript() : [];
       }
 
       // Convert to TranscriptSegment format using real spoken_at timestamps
@@ -603,7 +613,7 @@ Be thorough and accurate. Identify all decisions, motions, and action items.`;
       });
     } catch (err) {
       logger.error('[AI] Failed to get transcripts from DB', err);
-      return this.getMockTranscript();
+      return allowMock ? this.getMockTranscript() : [];
     }
   }
 

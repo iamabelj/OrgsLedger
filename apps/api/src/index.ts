@@ -22,7 +22,7 @@ import { idempotencyMiddleware } from './middleware/idempotency';
 import { etagMiddleware } from './middleware/etag';
 import { sessionExpiry } from './middleware/session-expiry';
 import { mountLandingGateway, mountWebFrontend, mountSpaFallback } from './middleware/landing-gateway';
-import { setupSocketIO, meetingLanguages } from './socket';
+import { setupSocketIO } from './socket';
 import { AIService } from './services/ai.service';
 import { services } from './services/registry';
 import { initBotManager } from './services/bot';
@@ -92,7 +92,7 @@ services.register('aiService', aiService);
 // ── Transcription Bot Manager ─────────────────────────────
 // Bot disabled — client-side Whisper handles all transcription.
 // BotManager is NOT initialized to prevent any bot from joining meetings.
-// const botManager = initBotManager({ io, meetingLanguages });
+// const botManager = initBotManager({ io });
 // services.register('botManager', botManager);
 
 // ── Global Middleware ─────────────────────────────────────
@@ -482,6 +482,14 @@ async function ensureMeetingTables(): Promise<void> {
 // When launched via server.js (production), port is already bound.
 // When launched directly (dev), we bind here.
 function doPostStart(): void {
+  // In some deploy setups this module can be evaluated more than once.
+  // Make post-start tasks idempotent so workers and schedulers can't double-start.
+  if ((global as any).__orgsPostStartRan) {
+    logger.warn('[STARTUP] doPostStart already ran; skipping duplicate initialization');
+    return;
+  }
+  (global as any).__orgsPostStartRan = true;
+
   logger.info(`OrgsLedger API running on port ${config.port}`);
   logger.info(`Environment: ${config.env}`);
   logger.info(`Socket.io enabled`);

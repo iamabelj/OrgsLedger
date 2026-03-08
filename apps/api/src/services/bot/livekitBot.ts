@@ -10,6 +10,7 @@ import { AccessToken } from 'livekit-server-sdk';
 import { config } from '../../config';
 import { logger } from '../../logger';
 import db from '../../db';
+import { meetingStateManager } from '../../meeting-pipeline';
 import { RealtimeSession, TranscriptRow } from './realtimeSession';
 import { translateToMultiple, isTtsSupported } from '../translation.service';
 import { getTranslationWallet, deductTranslationWallet } from '../subscription.service';
@@ -31,8 +32,6 @@ export interface LivekitBotOptions {
   roomName: string;
   /** Socket.IO server instance for broadcasting */
   io: any;
-  /** In-memory language prefs map from socket.ts */
-  meetingLanguages?: Map<string, Map<string, { language: string; name: string; receiveVoice: boolean }>>;
 }
 
 // ── Constants ────────────────────────────────────────────────
@@ -55,14 +54,12 @@ export class LivekitBot {
   private readonly organizationId: string;
   private readonly roomName: string;
   private readonly io: any;
-  private readonly meetingLanguages?: Map<string, Map<string, { language: string; name: string; receiveVoice: boolean }>>;
 
   constructor(opts: LivekitBotOptions) {
     this.meetingId = opts.meetingId;
     this.organizationId = opts.organizationId;
     this.roomName = opts.roomName;
     this.io = opts.io;
-    this.meetingLanguages = opts.meetingLanguages;
 
     logger.info(`[LivekitBot] Created for meeting=${this.meetingId}, room=${this.roomName}`);
   }
@@ -242,9 +239,14 @@ export class LivekitBot {
       const meta = participant.metadata ? JSON.parse(participant.metadata) : {};
       if (meta.language) sourceLang = meta.language;
     } catch (_) { /* default */ }
-    const langMap = this.meetingLanguages?.get(this.meetingId);
-    if (langMap?.has(speakerId)) {
-      sourceLang = langMap.get(speakerId)!.language;
+    try {
+      const prefs = await meetingStateManager.getParticipantPrefs(this.meetingId);
+      const speakerPrefs = prefs.find((p) => p.userId === speakerId);
+      if (speakerPrefs?.language) {
+        sourceLang = speakerPrefs.language;
+      }
+    } catch (err) {
+      logger.warn('[LivekitBot] Failed to read participant prefs for source language (non-critical)', err);
     }
 
     // Create the RealtimeSession (one per speaker)
@@ -365,36 +367,27 @@ export class LivekitBot {
     logger.info(`[Translation] Translating transcript for meeting ${meetingId}: speaker=${speakerName}, textLen=${text.length}, sourceLang=${sourceLang}`);
 
     try {
-      const langMap = this.meetingLanguages?.get(meetingId);
-      const targetLangs = new Set<string>();
-
-      if (langMap) {
-        langMap.forEach((val) => {
-          if (val.language !== sourceLang) {
-            targetLangs.add(val.language);
-          }
-        });
-      }
+      const targetLangs = await meetingStateManager.getTargetLanguages(meetingId, sourceLang);
 
       let translations: Record<string, string> = {};
 
-      if (targetLangs.size > 0 && organizationId) {
+      if (targetLangs.length > 0 && organizationId) {
         const wallet = await getTranslationWallet(organizationId);
         const balance = parseFloat(wallet.balance_minutes);
-        logger.info(`[TRANSLATION_PIPELINE] Wallet check: org=${organizationId}, balance=${balance.toFixed(2)} min, targetLangs=${[...targetLangs].join(',')}`);
+        logger.info(`[TRANSLATION_PIPELINE] Wallet check: org=${organizationId}, balance=${balance.toFixed(2)} min, targetLangs=${targetLangs.join(',')}`);
 
         if (balance > 0) {
-          translations = await translateToMultiple(text, [...targetLangs], sourceLang);
+          translations = await translateToMultiple(text, targetLangs, sourceLang);
           logger.info(`[TRANSLATION_PIPELINE] Translation SUCCESS: ${Object.keys(translations).length} languages translated`);
 
           // Deduct wallet — scaled by content length × target languages
           const speakingSeconds = Math.max(5, Math.ceil(text.length / 15));
-          const langMultiplier = Math.max(1, targetLangs.size);
+          const langMultiplier = Math.max(1, targetLangs.length);
           const deductMinutes = (speakingSeconds * langMultiplier) / 60;
           await deductTranslationWallet(
             organizationId,
             Math.round(deductMinutes * 100) / 100,
-            `Bot transcription translation: ${targetLangs.size} lang(s), ${text.length} chars`
+            `Bot transcription translation: ${targetLangs.length} lang(s), ${text.length} chars`
           ).catch((err: any) => logger.warn('[LivekitBot] Wallet deduction failed', err));
         } else {
           logger.warn('[LivekitBot] Translation wallet empty — skipping translation');
@@ -427,13 +420,14 @@ export class LivekitBot {
       logger.info(`[Socket] Emitted transcript:stored to room meeting:${meetingId} (langs=${Object.keys(translations).join(',')})`);
 
       // Per-user routing with TTS availability
-      if (langMap) {
+      const prefsList = await meetingStateManager.getParticipantPrefs(meetingId);
+      if (prefsList.length > 0) {
         const allSockets = await this.io.in(`meeting:${meetingId}`).fetchSockets();
         let routed = 0;
-        for (const [targetUserId, prefs] of langMap.entries()) {
-          if (targetUserId === speakerId) continue;
+        for (const prefs of prefsList) {
+          if (prefs.userId === speakerId) continue;
           const targetSocket = allSockets.find(
-            (s: any) => s.userId === targetUserId || s.data?.userId === targetUserId
+            (s: any) => s.userId === prefs.userId || s.data?.userId === prefs.userId
           );
           if (targetSocket) {
             const ttsAvailable = isTtsSupported(prefs.language) && prefs.receiveVoice;

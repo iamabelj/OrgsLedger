@@ -16,8 +16,6 @@ import { LivekitBot, LivekitBotOptions } from './livekitBot';
 export interface BotManagerDeps {
   /** Socket.IO server instance for broadcasting */
   io: any;
-  /** Shared in-memory language prefs map from socket.ts */
-  meetingLanguages?: Map<string, Map<string, { language: string; name: string; receiveVoice: boolean }>>;
 }
 
 // ── Bot Manager ──────────────────────────────────────────────
@@ -25,11 +23,9 @@ export interface BotManagerDeps {
 export class BotManager {
   private bots = new Map<string, LivekitBot>();
   private readonly io: any;
-  private readonly meetingLanguages?: Map<string, Map<string, { language: string; name: string; receiveVoice: boolean }>>;
 
   constructor(deps: BotManagerDeps) {
     this.io = deps.io;
-    this.meetingLanguages = deps.meetingLanguages;
     logger.info('[BotManager] Initialized');
   }
 
@@ -77,7 +73,6 @@ export class BotManager {
       organizationId,
       roomName,
       io: this.io,
-      meetingLanguages: this.meetingLanguages,
     });
 
     this.bots.set(meetingId, bot);

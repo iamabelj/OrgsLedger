@@ -17,10 +17,6 @@ import { submitProcessingJob, meetingStateManager } from './meeting-pipeline';
 import { registerMultilingualMeetingHandlers } from './services/multilingualMeeting.socket';
 import { normalizeLang } from './utils/langNormalize';
 
-// In-memory store for meeting translation sessions
-// meetingId -> Map<userId, { language, name, receiveVoice }>
-export const meetingLanguages = new Map<string, Map<string, { language: string; name: string; receiveVoice: boolean }>>();
-
 // Cache for user info to avoid repeated DB lookups in hot path
 // userId -> { firstName, lastName, name }
 const userCache = new Map<string, { firstName: string; lastName: string; name: string }>();
@@ -238,8 +234,9 @@ async function handleSpeechText(
         if (balance <= 0) {
           socket.emit('translation:error', {
             meetingId,
-            error: 'Translation wallet empty. Please top up to continue translations.',
-            code: 'WALLET_EMPTY',
+            error: 'Translations disabled (translation wallet empty). Original transcript was still saved.',
+            code: 'TRANSLATIONS_DISABLED',
+            reason: 'WALLET_EMPTY',
           });
           logger.warn('[TRANSLATION] Wallet empty, rejecting translation job', { meetingId, orgId: organizationId });
           return; // transcript already persisted/emitted above
@@ -715,8 +712,8 @@ export function setupSocketIO(httpServer: HttpServer): Server {
 
       logger.info(`[STT] Starting audio stream: user=${userId}, meeting=${meetingId}, lang=${bcp47Lang}, encoding=${encoding || 'WEBM_OPUS'}`);
 
-      // Safety net: ensure user is registered in meetingLanguages
-      // so handleSpeechText knows about target languages.
+      // Safety net: ensure user has Redis-backed participant prefs
+      // so translation fan-out can determine target languages.
       // This covers cases where the client forgets to emit translation:set-language.
       try {
         await meetingStateManager.upsertParticipantPrefs(meetingId, {
@@ -973,8 +970,6 @@ export async function forceDisconnectMeeting(
     s.leave(roomName);
   }
 
-  // Clean up translation session data for this meeting
-  meetingLanguages.delete(meetingId);
   try {
     // Best-effort cleanup of Redis participant prefs
     const prefs = await meetingStateManager.getParticipantPrefs(meetingId);

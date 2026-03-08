@@ -6,8 +6,32 @@ import Knex from 'knex';
 import { config } from './config';
 import { logger } from './logger';
 
+function normalizePgSslModeInUrl(rawUrl: string): string {
+  // `pg-connection-string` warns that sslmode values like 'require' will change semantics
+  // in the next major version. Today they alias to 'verify-full'. Make that explicit.
+  try {
+    const url = new URL(rawUrl);
+    const sslmode = url.searchParams.get('sslmode');
+    if (!sslmode) return rawUrl;
+
+    const needsNormalization = sslmode === 'prefer' || sslmode === 'require' || sslmode === 'verify-ca';
+    if (!needsNormalization) return rawUrl;
+
+    // If the user explicitly opted into libpq compatibility, don't override their intent.
+    if (url.searchParams.get('uselibpqcompat') === 'true') return rawUrl;
+
+    url.searchParams.set('sslmode', 'verify-full');
+    return url.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
 const connection = process.env.DATABASE_URL
-  ? { connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } }
+  ? {
+      connectionString: normalizePgSslModeInUrl(process.env.DATABASE_URL),
+      ssl: { rejectUnauthorized: false },
+    }
   : {
       host: config.db.host,
       port: config.db.port,
@@ -39,13 +63,16 @@ export const db = Knex({
   },
 });
 
-// Test connection on startup
-db.raw('SELECT 1')
-  .then(() => logger.info('Database connected successfully'))
-  .catch((err) => {
-    logger.error('Database connection failed on startup', { error: err.message });
-    logger.error('App will continue but database queries will fail');
-  });
+// Test connection on startup (skip during Jest to avoid open-handle leaks)
+const _isJest = typeof process.env.JEST_WORKER_ID !== 'undefined' || process.env.NODE_ENV === 'test';
+if (!_isJest) {
+  db.raw('SELECT 1')
+    .then(() => logger.info('Database connected successfully'))
+    .catch((err) => {
+      logger.error('Database connection failed on startup', { error: err.message });
+      logger.error('App will continue but database queries will fail');
+    });
+}
 
 // ── Table Existence Cache ────────────────────────────────
 // Avoids expensive db.schema.hasTable() calls on every request

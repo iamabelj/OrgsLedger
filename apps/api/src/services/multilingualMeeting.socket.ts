@@ -9,6 +9,7 @@ import { db } from '../db';
 import { logger } from '../logger';
 import { meetingTranscriptHandler, MeetingTranscriptContext } from './meetingTranscript.handler';
 import { deepgramRealtimeService } from './deepgramRealtime.service';
+import { meetingStateManager } from '../meeting-pipeline';
 
 /**
  * Register multilingual meeting transcript handlers
@@ -45,6 +46,28 @@ export function registerMultilingualMeetingHandlers(io: Server, socket: Socket):
         .first();
       const userLanguage = userLangPref?.language || 'en';
 
+      // Ensure meeting state exists (best-effort) and register participant language prefs
+      // This drives the translation worker's target language selection.
+      try {
+        const meeting = await db('meetings')
+          .where({ id: meetingId })
+          .select('organization_id')
+          .first();
+
+        await meetingStateManager.startMeeting(meetingId, {
+          organizationId: meeting?.organization_id || undefined,
+        });
+
+        await meetingStateManager.upsertParticipantPrefs(meetingId, {
+          userId: participantId,
+          name: participantName,
+          language: userLanguage,
+          receiveVoice: false,
+        });
+      } catch (err) {
+        logger.warn('Failed to initialize meeting language prefs (non-fatal)', err);
+      }
+
       // Initialize transcript handler
       const contextId = await meetingTranscriptHandler.initializeParticipantTranscript({
         meetingId,
@@ -57,6 +80,8 @@ export function registerMultilingualMeetingHandlers(io: Server, socket: Socket):
       if (contextId) {
         // Store contextId on socket for later cleanup
         socket.data.transcriptContextId = contextId;
+        socket.data.meetingId = meetingId;
+        socket.data.participantId = participantId;
         socket.emit('meeting:transcript:started', { contextId });
 
         logger.info(`Participant started transcript: ${participantId}`, { meetingId });
@@ -101,6 +126,14 @@ export function registerMultilingualMeetingHandlers(io: Server, socket: Socket):
         await meetingTranscriptHandler.stopParticipantTranscript(contextId);
         delete socket.data.transcriptContextId;
 
+        const meetingId = socket.data.meetingId as string | undefined;
+        const participantId = socket.data.participantId as string | undefined;
+        if (meetingId && participantId) {
+          await meetingStateManager.removeParticipantPrefs(meetingId, participantId);
+        }
+        delete socket.data.meetingId;
+        delete socket.data.participantId;
+
         logger.info(`Participant stopped transcript: ${contextId}`);
       }
     } catch (err) {
@@ -114,6 +147,11 @@ export function registerMultilingualMeetingHandlers(io: Server, socket: Socket):
       const contextId = socket.data.transcriptContextId;
       if (contextId) {
         await meetingTranscriptHandler.stopParticipantTranscript(contextId);
+        const meetingId = socket.data.meetingId as string | undefined;
+        const participantId = socket.data.participantId as string | undefined;
+        if (meetingId && participantId) {
+          await meetingStateManager.removeParticipantPrefs(meetingId, participantId);
+        }
         logger.info(`Cleaned up transcript on disconnect: ${contextId}`);
       }
     } catch (err) {
