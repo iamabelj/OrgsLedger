@@ -179,14 +179,14 @@ class MinutesWorkerManager {
       if (dbSegments.length > 0) {
         return dbSegments.map((row) => ({
           meetingId: row.meeting_id,
-          segmentIndex: row.segment_index,
-          text: row.text,
+          segmentIndex: 0,
+          text: row.original_text,
           speakerId: row.speaker_id,
           speakerName: row.speaker_name,
-          timestamp: row.timestamp,
+          timestamp: new Date(parseInt(row.spoken_at)).toISOString(),
           isFinal: true,
-          language: row.language,
-          confidence: row.confidence,
+          language: row.source_lang,
+          confidence: 1.0,
         }));
       }
 

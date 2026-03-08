@@ -129,23 +129,18 @@ class StorageWorkerManager {
       // Build records for batch insert
       const records = segments.map((s) => ({
         meeting_id: s.meetingId,
-        organization_id: s.organizationId,
-        speaker_id: s.speakerId,
-        speaker_name: s.speakerName,
+        organization_id: s.organizationId || null,
+        speaker_id: s.speakerId || null,
+        speaker_name: s.speakerName || 'Unknown',
         original_text: s.text,
-        source_lang: s.language,
+        source_lang: s.language || 'en',
         translations: JSON.stringify({}),
-        spoken_at: s.timestamp,
-        confidence: s.confidence,
-        is_final: s.isFinal,
-        segment_index: s.segmentIndex,
+        spoken_at: s.startTime || Date.parse(s.timestamp) || Date.now(),
       }));
 
-      // Batch insert with conflict handling
+      // Batch insert (no conflict handling - spoken_at is not unique)
       await db('meeting_transcripts')
-        .insert(records)
-        .onConflict(['meeting_id', 'segment_index'])
-        .ignore();
+        .insert(records);
 
       this.storedCount += segments.length;
       this.batchedCount++;
