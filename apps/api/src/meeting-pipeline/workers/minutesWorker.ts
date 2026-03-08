@@ -173,7 +173,7 @@ class MinutesWorkerManager {
       // Try database first
       const dbSegments = await db('meeting_transcripts')
         .where({ meeting_id: meetingId })
-        .orderBy('segment_index', 'asc')
+        .orderBy('spoken_at', 'asc')
         .select('*');
 
       if (dbSegments.length > 0) {
