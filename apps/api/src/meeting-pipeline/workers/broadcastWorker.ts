@@ -133,22 +133,26 @@ class BroadcastWorkerManager {
     meetingId: string,
     speakerId: string,
     speakerName: string,
+    originalText: string,
+    sourceLang: string,
     translations: Record<string, string>,
+    timestamp: number,
     isFinal: boolean
   ): void {
     if (!this.ioServer) return;
 
-    const payload: BroadcastPayload = {
-      type: 'translation',
+    // Match client expectations (web + Flutter):
+    // { meetingId, speakerId, speakerName, originalText, sourceLang, translations, timestamp }
+    this.ioServer.to(`meeting:${meetingId}`).emit('translation:result', {
       meetingId,
       speakerId,
       speakerName,
+      originalText,
+      sourceLang,
       translations,
       isFinal,
-      timestamp: new Date().toISOString(),
-    };
-
-    this.ioServer.to(`meeting:${meetingId}`).emit('translation:result', payload);
+      timestamp,
+    });
     logger.debug('[BROADCAST_WORKER] Translation broadcast', { meetingId });
   }
 

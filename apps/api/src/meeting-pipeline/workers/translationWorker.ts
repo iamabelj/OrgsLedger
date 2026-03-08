@@ -98,37 +98,37 @@ class TranslationWorkerManager {
         segment.language // Exclude source language
       );
 
+      const sourceLanguage = segment.language || 'en';
+      const timestampMs = Date.parse(segment.timestamp) || Date.now();
+
+      // Always include source language (so clients can render even without translations)
+      const translations: Record<string, string> = { [sourceLanguage]: segment.text };
+      let fromCache = true;
+
       if (targetLanguages.length === 0) {
-        logger.debug('[TRANSLATION_WORKER] No target languages', {
+        logger.debug('[TRANSLATION_WORKER] No target languages; broadcasting original only', {
           meetingId: segment.meetingId,
         });
-        return;
       }
 
-      // Translate to each target language
-      const translations: Record<string, string> = {};
-      let fromCache = true;
-      const sourceLanguage = segment.language || 'en';
-
-      await Promise.all(
-        targetLanguages.map(async (targetLang: string) => {
-          const translated = await this.translate(
-            segment.text,
-            sourceLanguage,
-            targetLang
-          );
-          if (translated) {
-            translations[targetLang] = translated.text;
-            if (!translated.fromCache) fromCache = false;
-          }
-        })
-      );
-
-      if (Object.keys(translations).length === 0) {
-        logger.warn('[TRANSLATION_WORKER] No translations produced', {
+      if (targetLanguages.length > 0 && this.openai) {
+        await Promise.all(
+          targetLanguages.map(async (targetLang: string) => {
+            const translated = await this.translate(
+              segment.text,
+              sourceLanguage,
+              targetLang
+            );
+            if (translated) {
+              translations[targetLang] = translated.text;
+              if (!translated.fromCache) fromCache = false;
+            }
+          })
+        );
+      } else if (targetLanguages.length > 0 && !this.openai) {
+        logger.warn('[TRANSLATION_WORKER] OpenAI not configured; broadcasting original only', {
           meetingId: segment.meetingId,
         });
-        return;
       }
 
       const latency = Date.now() - startTime;
@@ -139,7 +139,10 @@ class TranslationWorkerManager {
         segment.meetingId,
         segment.speakerId || 'unknown',
         segment.speakerName || 'Unknown',
+        segment.text,
+        sourceLanguage,
         translations,
+        timestampMs,
         segment.isFinal
       );
 
