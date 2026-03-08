@@ -85,8 +85,16 @@ else
     docker logs orgsledger_api --tail 20
 fi
 
-# Check API health
-API_STATUS=$(docker exec orgsledger_api wget -qO- http://localhost:3000/api/health 2>/dev/null || echo '{"status":"unreachable"}')
+# Check API health (use Node inside the container; wget may not exist)
+# Note: API implements GET /health (not /api/health)
+API_STATUS=$(docker exec orgsledger_api node -e "
+    const http = require('http');
+    http.get('http://127.0.0.1:3000/health', (res) => {
+        let data = '';
+        res.on('data', (c) => (data += c));
+        res.on('end', () => process.stdout.write(data || JSON.stringify({ status: 'empty' })));
+    }).on('error', () => process.exit(1));
+" 2>/dev/null || echo '{"status":"unreachable"}')
 echo "  API Health: $API_STATUS"
 
 echo ""
