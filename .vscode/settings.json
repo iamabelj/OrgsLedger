@@ -1,0 +1,4 @@
+{
+  "docker.imageScanningEnabled": false,
+  "docker.containers.imageScanning": false
+}

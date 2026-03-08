@@ -1,6 +1,7 @@
 // ============================================================
-// OrgsLedger API — Processing Worker
+// OrgsLedger API — Processing Worker (Enhanced)
 // Processes translation jobs from processing queue
+// Features: DLQ integration, metrics, timeout handling
 // Calls translation service and manages job lifecycle
 // ============================================================
 
@@ -8,6 +9,13 @@ import { Worker, Job } from 'bullmq';
 import { createBullMQConnection } from '../infrastructure/redisClient';
 import { logger } from '../logger';
 import { ProcessingWorker as IProcessingWorkerService } from '../services/workers/processingWorker.service';
+import { sendToDeadLetterQueue } from '../queues/dlq.queue';
+import { pipelineMetrics } from '../services/pipeline/metrics';
+
+// ── Configuration ─────────────────────────────────────────────
+
+const PROCESSING_TIMEOUT_MS = parseInt(process.env.PROCESSING_TIMEOUT_MS || '20000', 10);
+const MAX_RETRIES = parseInt(process.env.PROCESSING_MAX_RETRIES || '3', 10);
 
 // ProcessingJobData interface definition
 export interface ProcessingJobData {
@@ -21,11 +29,33 @@ export interface ProcessingJobData {
   chunkIndex?: number;
 }
 
+// ── Timeout wrapper ───────────────────────────────────────────
+
+function withTimeout<T>(promise: Promise<T>, ms: number, operation: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${operation} timed out after ${ms}ms`));
+    }, ms);
+
+    promise
+      .then((result) => {
+        clearTimeout(timer);
+        resolve(result);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
 
 class ProcessingWorker {
   private worker: Worker<ProcessingJobData> | null = null;
   private processingService: IProcessingWorkerService | null = null;
   private isRunning = false;
+  private processedCount = 0;
+  private failedCount = 0;
 
   /**
    * Initialize processing worker
@@ -60,16 +90,41 @@ class ProcessingWorker {
         logger.error('Processing worker error', err);
       });
 
-      this.worker.on('failed', (job: Job<ProcessingJobData> | undefined, err: Error) => {
-        logger.warn(`Processing job ${job?.id} failed after max retries`, {
-          jobId: job?.id,
-          meetingId: job?.data.meetingId,
-          speakerId: job?.data.speakerId,
-          error: err.message,
-        });
+      this.worker.on('failed', async (job: Job<ProcessingJobData> | undefined, err: Error) => {
+        this.failedCount++;
+        
+        if (job) {
+          const isLastAttempt = job.attemptsMade >= (job.opts.attempts || MAX_RETRIES);
+          
+          logger.warn(`Processing job ${job.id} failed`, {
+            jobId: job.id,
+            meetingId: job.data.meetingId,
+            speakerId: job.data.speakerId,
+            error: err.message,
+            attempt: job.attemptsMade,
+            maxAttempts: job.opts.attempts,
+            isLastAttempt,
+          });
+
+          // Send to DLQ if max retries exceeded
+          if (isLastAttempt) {
+            await sendToDeadLetterQueue(
+              'translation-processing',
+              job.id || 'unknown',
+              job.data,
+              err.message,
+              job.attemptsMade,
+              job.opts.attempts || MAX_RETRIES
+            );
+
+            // Record metrics
+            pipelineMetrics.recordError('processing', job.data.meetingId, err.message);
+          }
+        }
       });
 
       this.worker.on('completed', (job: Job<ProcessingJobData>) => {
+        this.processedCount++;
         logger.debug(`Processing job ${job.id} completed`, {
           jobId: job.id,
           meetingId: job.data.meetingId,
@@ -79,6 +134,7 @@ class ProcessingWorker {
 
       logger.info('Processing worker initialized', {
         concurrency: this.worker.opts.concurrency,
+        timeout: PROCESSING_TIMEOUT_MS,
       });
     } catch (err) {
       logger.error('Failed to initialize processing worker', err);
@@ -87,7 +143,7 @@ class ProcessingWorker {
   }
 
   /**
-   * Process translation job
+   * Process translation job with timeout
    */
   private async processTranslation(
     job: Job<ProcessingJobData>
@@ -121,18 +177,25 @@ class ProcessingWorker {
         textLength: originalText.length,
       });
 
-      // Call processing service to handle translation
-      const result = await this.processingService.processTranslation(
-        meetingId,
-        speakerId,
-        originalText,
-        sourceLanguage,
-        targetLanguages,
-        isFinal,
-        organizationId
+      // Call processing service with timeout
+      const result = await withTimeout(
+        this.processingService.processTranslation(
+          meetingId,
+          speakerId,
+          originalText,
+          sourceLanguage,
+          targetLanguages,
+          isFinal,
+          organizationId
+        ),
+        PROCESSING_TIMEOUT_MS,
+        'Processing'
       );
 
       const processingTime = Date.now() - startTime;
+
+      // Record metrics
+      pipelineMetrics.recordTranscriptLatency(meetingId, processingTime);
 
       logger.debug('Translation processed', {
         jobId: job.id,
@@ -179,8 +242,8 @@ class ProcessingWorker {
   }> {
     return {
       running: this.isRunning,
-      processed: 0,
-      failed: 0,
+      processed: this.processedCount,
+      failed: this.failedCount,
       paused: this.worker?.isPaused() || false,
     };
   }

@@ -70,6 +70,54 @@ class MinutesQueueManager {
   isInitialized(): boolean {
     return this.initialized;
   }
+
+  /**
+   * Get queue status
+   */
+  async getStatus(): Promise<{
+    size: number;
+    activeCount: number;
+    waitingCount: number;
+    failedCount: number;
+    delayedCount: number;
+  }> {
+    try {
+      if (!this.queue) {
+        return {
+          size: 0,
+          activeCount: 0,
+          waitingCount: 0,
+          failedCount: 0,
+          delayedCount: 0,
+        };
+      }
+
+      const [size, activeCount, waitingCount, failedCount, delayedCount] = await Promise.all([
+        this.queue.count(),
+        this.queue.getActiveCount(),
+        this.queue.getWaitingCount(),
+        this.queue.getFailedCount(),
+        this.queue.getDelayedCount(),
+      ]);
+
+      return {
+        size,
+        activeCount,
+        waitingCount,
+        failedCount,
+        delayedCount,
+      };
+    } catch (err) {
+      logger.error('Failed to get minutes queue status', err);
+      return {
+        size: 0,
+        activeCount: 0,
+        waitingCount: 0,
+        failedCount: 0,
+        delayedCount: 0,
+      };
+    }
+  }
 }
 
 // Singleton instance

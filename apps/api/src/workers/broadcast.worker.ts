@@ -1,7 +1,10 @@
 // ============================================================
-// OrgsLedger API — Broadcast Worker
-// Emits Socket.IO events from broadcast queue
-// Ensures non-blocking broadcasting with retry support
+// OrgsLedger API — Broadcast Worker (Real-Time UX Path)
+// Emits Socket.IO events for live captions
+// TWO PATHS:
+//   1. REAL-TIME PATH: Captions from transcript-events (50-120ms)
+//   2. AI PATH: Translations from broadcast-events (async)
+// The real-time UX path ≠ AI processing path
 // ============================================================
 
 import { Worker, Job } from 'bullmq';
@@ -9,209 +12,303 @@ import { Server as SocketIOServer } from 'socket.io';
 import { createBullMQConnection } from '../infrastructure/redisClient';
 import { logger } from '../logger';
 import { BroadcastJobData } from '../queues/broadcast.queue';
+import { TranscriptEventData } from '../queues/transcriptEvents.queue';
+
+// ── Configuration ─────────────────────────────────────────────
+
+const REALTIME_CONCURRENCY = parseInt(process.env.BROADCAST_REALTIME_CONCURRENCY || '50', 10);
+const TRANSLATION_CONCURRENCY = parseInt(process.env.BROADCAST_TRANSLATION_CONCURRENCY || '20', 10);
+const LATENCY_THRESHOLD_MS = 120; // Target: 50-120ms
+
+// ── Worker Class ──────────────────────────────────────────────
 
 class BroadcastWorker {
-  private worker: Worker<BroadcastJobData> | null = null;
+  private realtimeWorker: Worker<TranscriptEventData> | null = null;
+  private translationWorker: Worker<BroadcastJobData> | null = null;
   private ioServer: SocketIOServer | null = null;
   private isRunning = false;
+  private realtimeBroadcasts = 0;
+  private translationBroadcasts = 0;
+  private latencySum = 0;
+  private latencyCount = 0;
 
   /**
-   * Initialize broadcast worker with Socket.IO server
+   * Initialize BOTH real-time and translation broadcast workers
    */
   async initialize(ioServer: SocketIOServer): Promise<void> {
     try {
       this.ioServer = ioServer;
       const redis = createBullMQConnection();
 
-      this.worker = new Worker<BroadcastJobData>(
-        'broadcast-events',
-        async (job: Job<BroadcastJobData>) => {
-          return this.broadcastEvent(job);
+      // ── REAL-TIME PATH: Captions directly from transcript-events ──
+      // This path is FAST (50-120ms) and does NOT wait for translation
+      this.realtimeWorker = new Worker<TranscriptEventData>(
+        'transcript-events',
+        async (job: Job<TranscriptEventData>) => {
+          return this.broadcastCaption(job);
         },
         {
           connection: redis as any,
-          concurrency: parseInt(process.env.BROADCAST_WORKER_CONCURRENCY || '20', 10),
+          concurrency: REALTIME_CONCURRENCY, // High concurrency for real-time
+          maxStalledCount: 1,
+          stalledInterval: 2000,
+          lockDuration: 5000, // Short lock for speed
+          lockRenewTime: 2000,
+          name: 'broadcast-realtime', // Distinguish from other transcript-events consumers
+        }
+      );
+
+      // ── AI PATH: Translations from broadcast-events ──
+      // This path delivers translations AFTER AI processing
+      this.translationWorker = new Worker<BroadcastJobData>(
+        'broadcast-events',
+        async (job: Job<BroadcastJobData>) => {
+          return this.broadcastTranslation(job);
+        },
+        {
+          connection: redis as any,
+          concurrency: TRANSLATION_CONCURRENCY,
           maxStalledCount: 2,
           stalledInterval: 5000,
-          lockDuration: 10000, // Shorter lock for broadcasts
+          lockDuration: 10000,
           lockRenewTime: 5000,
         }
       );
 
-      // Setup event handlers
-      this.worker.on('ready', () => {
-        logger.info('Broadcast worker ready');
+      // Setup event handlers for real-time worker
+      this.realtimeWorker.on('ready', () => {
+        logger.info('[BROADCAST] Real-time caption worker ready', {
+          concurrency: REALTIME_CONCURRENCY,
+        });
+      });
+
+      this.realtimeWorker.on('error', (err: Error) => {
+        logger.error('[BROADCAST] Real-time worker error', err);
+      });
+
+      // Setup event handlers for translation worker
+      this.translationWorker.on('ready', () => {
+        logger.info('[BROADCAST] Translation broadcast worker ready', {
+          concurrency: TRANSLATION_CONCURRENCY,
+        });
         this.isRunning = true;
       });
 
-      this.worker.on('error', (err: Error) => {
-        logger.error('Broadcast worker error', err);
+      this.translationWorker.on('error', (err: Error) => {
+        logger.error('[BROADCAST] Translation worker error', err);
       });
 
-      this.worker.on('failed', (job: Job<BroadcastJobData> | undefined, err: Error) => {
-        logger.warn(`Broadcast job ${job?.id} failed after max retries`, {
-          jobId: job?.id,
-          meetingId: job?.data.meetingId,
-          error: err.message,
-        });
-      });
-
-      this.worker.on('completed', (job: Job<BroadcastJobData>) => {
-        logger.debug(`Broadcast job ${job.id} completed`, {
-          jobId: job.id,
-          meetingId: job.data.meetingId,
-        });
-      });
-
-      logger.info('Broadcast worker initialized', {
-        concurrency: this.worker.opts.concurrency,
+      logger.info('[BROADCAST] Workers initialized', {
+        realtimeConcurrency: REALTIME_CONCURRENCY,
+        translationConcurrency: TRANSLATION_CONCURRENCY,
+        latencyTarget: `${LATENCY_THRESHOLD_MS}ms`,
       });
     } catch (err) {
-      logger.error('Failed to initialize broadcast worker', err);
+      logger.error('[BROADCAST] Failed to initialize', err);
       throw err;
     }
   }
 
   /**
-   * Process a single broadcast job
+   * REAL-TIME PATH: Broadcast caption immediately (no translation)
+   * Target latency: 50-120ms from speech to caption
    */
-  private async broadcastEvent(job: Job<BroadcastJobData>): Promise<void> {
+  private async broadcastCaption(job: Job<TranscriptEventData>): Promise<void> {
     const startTime = Date.now();
-    const { meetingId, isFinal, speakerId, originalText } = job.data;
+    const data = job.data;
 
     try {
       if (!this.ioServer) {
         throw new Error('Socket.IO server not initialized');
       }
 
-      // Determine which event to emit
-      const eventName = isFinal ? 'translation:result' : 'translation:interim';
+      // Event name based on final/interim
+      const eventName = data.isFinal ? 'caption:final' : 'caption:interim';
 
-      // Build payload (matches existing Socket.IO event structure)
+      // Build caption payload (original language only - no translation wait)
       const payload = {
-        speakerId: job.data.speakerId,
-        speakerName: job.data.speakerName,
-        originalText: job.data.originalText,
-        sourceLanguage: job.data.sourceLanguage,
-        translations: job.data.translations,
-        timestamp: job.data.timestamp,
+        speakerId: data.speakerId,
+        speakerName: data.speakerName,
+        text: data.text,
+        language: data.language,
+        timestamp: data.timestamp,
+        segmentIndex: data.segmentIndex,
+        isFinal: data.isFinal,
       };
 
-      // Broadcast to all clients in the meeting room
-      this.ioServer.to(`meeting:${meetingId}`).emit(eventName, payload);
+      // Broadcast to meeting room
+      this.ioServer.to(`meeting:${data.meetingId}`).emit(eventName, payload);
 
-      // Additional event for transcript stored (only on final)
-      if (isFinal) {
-        this.ioServer.to(`meeting:${meetingId}`).emit('transcript:stored', {
-          meetingId,
-          speakerId,
-          timestamp: job.data.timestamp,
+      // Track latency
+      const broadcastLatency = Date.now() - startTime;
+      const totalLatency = Date.now() - new Date(data.timestamp).getTime();
+
+      this.realtimeBroadcasts++;
+      this.latencySum += totalLatency;
+      this.latencyCount++;
+
+      // Log if exceeding target
+      if (totalLatency > LATENCY_THRESHOLD_MS) {
+        logger.warn('[BROADCAST] Caption latency exceeded target', {
+          meetingId: data.meetingId,
+          latencyMs: totalLatency,
+          target: LATENCY_THRESHOLD_MS,
+          broadcastMs: broadcastLatency,
         });
       }
 
-      const broadcastTime = Date.now() - startTime;
-
-      logger.debug('Socket.IO event broadcasted', {
-        jobId: job.id,
-        meetingId,
+      logger.debug('[BROADCAST] Caption sent', {
+        meetingId: data.meetingId,
         eventName,
-        speakerId,
-        textLength: originalText.length,
-        recipients: `meeting:${meetingId}`,
-        broadcastTimeMs: broadcastTime,
+        latencyMs: totalLatency,
+        textLength: data.text.length,
       });
-
-      // Track broadcast latency
-      if (job.data.timestamp) {
-        const latencyMs = Date.now() - new Date(job.data.timestamp).getTime();
-        if (latencyMs > 2000) {
-          logger.warn('High broadcast latency detected', {
-            jobId: job.id,
-            meetingId,
-            latencyMs,
-            threshold: 2000,
-          });
-        }
-      }
     } catch (err) {
-      logger.error(`Broadcast job ${job.id} error`, {
-        jobId: job.id,
-        meetingId,
+      logger.error('[BROADCAST] Caption broadcast failed', {
+        meetingId: data.meetingId,
         error: err instanceof Error ? err.message : String(err),
-        attempt: job.attemptsMade,
-        maxAttempts: job.opts.attempts,
       });
-
-      throw err; // Re-throw to trigger BullMQ retry logic
+      throw err;
     }
   }
 
   /**
-   * Get worker status
+   * AI PATH: Broadcast translation (async, after AI processing)
+   */
+  private async broadcastTranslation(job: Job<BroadcastJobData>): Promise<void> {
+    const startTime = Date.now();
+    const data = job.data;
+
+    try {
+      if (!this.ioServer) {
+        throw new Error('Socket.IO server not initialized');
+      }
+
+      const eventName = data.isFinal ? 'translation:result' : 'translation:interim';
+
+      const payload = {
+        speakerId: data.speakerId,
+        speakerName: data.speakerName,
+        originalText: data.originalText,
+        sourceLanguage: data.sourceLanguage,
+        translations: data.translations,
+        timestamp: data.timestamp,
+        isFinal: data.isFinal,
+      };
+
+      this.ioServer.to(`meeting:${data.meetingId}`).emit(eventName, payload);
+
+      // Emit storage event for final transcripts
+      if (data.isFinal) {
+        this.ioServer.to(`meeting:${data.meetingId}`).emit('transcript:stored', {
+          meetingId: data.meetingId,
+          speakerId: data.speakerId,
+          timestamp: data.timestamp,
+        });
+      }
+
+      this.translationBroadcasts++;
+
+      const broadcastMs = Date.now() - startTime;
+
+      logger.debug('[BROADCAST] Translation sent', {
+        meetingId: data.meetingId,
+        eventName,
+        languages: Object.keys(data.translations).length,
+        broadcastMs,
+      });
+    } catch (err) {
+      logger.error('[BROADCAST] Translation broadcast failed', {
+        meetingId: data.meetingId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+  }
+
+  /**
+   * Get worker status with latency metrics
    */
   async getStatus(): Promise<{
     running: boolean;
     processed: number;
     failed: number;
     paused: boolean;
+    realtimeBroadcasts: number;
+    translationBroadcasts: number;
+    avgLatencyMs: number;
   }> {
+    const avgLatency = this.latencyCount > 0
+      ? Math.round(this.latencySum / this.latencyCount)
+      : 0;
+
     return {
       running: this.isRunning,
-      processed: 0,
+      processed: this.realtimeBroadcasts + this.translationBroadcasts,
       failed: 0,
-      paused: this.worker?.isPaused() || false,
+      paused: (this.realtimeWorker?.isPaused() || false) && (this.translationWorker?.isPaused() || false),
+      realtimeBroadcasts: this.realtimeBroadcasts,
+      translationBroadcasts: this.translationBroadcasts,
+      avgLatencyMs: avgLatency,
     };
   }
 
   /**
-   * Pause worker
+   * Pause both workers
    */
   async pause(): Promise<void> {
     try {
-      if (this.worker) {
-        await this.worker.pause();
-        logger.info('Broadcast worker paused');
-      }
+      await Promise.all([
+        this.realtimeWorker?.pause(),
+        this.translationWorker?.pause(),
+      ]);
+      logger.info('[BROADCAST] Workers paused');
     } catch (err) {
-      logger.error('Failed to pause broadcast worker', err);
+      logger.error('[BROADCAST] Failed to pause', err);
     }
   }
 
   /**
-   * Resume worker
+   * Resume both workers
    */
   async resume(): Promise<void> {
     try {
-      if (this.worker) {
-        await this.worker.resume();
-        logger.info('Broadcast worker resumed');
-      }
+      await Promise.all([
+        this.realtimeWorker?.resume(),
+        this.translationWorker?.resume(),
+      ]);
+      logger.info('[BROADCAST] Workers resumed');
     } catch (err) {
-      logger.error('Failed to resume broadcast worker', err);
+      logger.error('[BROADCAST] Failed to resume', err);
     }
   }
 
   /**
-   * Close worker gracefully
+   * Close both workers gracefully
    */
   async close(): Promise<void> {
     try {
-      if (this.worker) {
-        await this.worker.close();
-        this.worker = null;
-        this.isRunning = false;
-        logger.info('Broadcast worker closed');
-      }
+      await Promise.all([
+        this.realtimeWorker?.close(),
+        this.translationWorker?.close(),
+      ]);
+      this.realtimeWorker = null;
+      this.translationWorker = null;
+      this.isRunning = false;
+      logger.info('[BROADCAST] Workers closed', {
+        realtimeBroadcasts: this.realtimeBroadcasts,
+        translationBroadcasts: this.translationBroadcasts,
+      });
     } catch (err) {
-      logger.error('Error closing broadcast worker', err);
+      logger.error('[BROADCAST] Error closing workers', err);
     }
   }
 
   /**
-   * Check if worker is healthy
+   * Check if workers are healthy
    */
   isHealthy(): boolean {
-    return this.isRunning && this.worker !== null && this.ioServer !== null;
+    return this.isRunning && this.ioServer !== null;
   }
 }
 
