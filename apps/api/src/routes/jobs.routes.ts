@@ -184,9 +184,6 @@ router.post('/jobs/dlq/:jobId/replay', authenticate, requireRole('admin'), async
     }
 
     const queues: Record<string, any> = {
-      minutes: getMinutesQueueManager(),
-      processing: processingQueueManager,
-      broadcast: broadcastQueueManager,
       email: getEmailQueueManager(),
       notification: getNotificationQueueManager(),
       bot: getBotQueueManager(),
@@ -194,10 +191,11 @@ router.post('/jobs/dlq/:jobId/replay', authenticate, requireRole('admin'), async
 
     const targetManager = queues[dlqJob.originalQueue];
     if (!targetManager) {
-      return res.status(400).json({ error: `Unknown target queue: ${dlqJob.originalQueue}` });
+      // Meeting pipeline queues are not replayable via this endpoint
+      return res.status(400).json({ error: `Queue ${dlqJob.originalQueue} not supported for replay` });
     }
 
-    const targetQueue = targetManager.getQueue();
+    const targetQueue = targetManager?.getQueue?.();
     if (!targetQueue) {
       return res.status(503).json({ error: 'Target queue not initialized' });
     }
