@@ -11,6 +11,8 @@ import { TranscriptSegment, TranslationResult } from '../types';
 import { meetingStateManager } from '../meetingState';
 import { broadcastWorkerManager } from './broadcastWorker';
 import OpenAI from 'openai';
+import { db } from '../../db';
+import { deductTranslationWallet, getTranslationWallet } from '../../services/subscription.service';
 
 const QUEUE_NAME = 'translation-queue';
 const WORKER_NAME = 'translation-worker';
@@ -101,6 +103,8 @@ class TranslationWorkerManager {
       const sourceLanguage = segment.language || 'en';
       const timestampMs = Date.parse(segment.timestamp) || Date.now();
 
+      const organizationId = await this.resolveOrganizationId(segment);
+
       // Always include source language (so clients can render even without translations)
       const translations: Record<string, string> = { [sourceLanguage]: segment.text };
       let fromCache = true;
@@ -112,6 +116,54 @@ class TranslationWorkerManager {
       }
 
       if (targetLanguages.length > 0 && this.openai) {
+        // Enforce translation wallet when organizationId is known.
+        if (organizationId) {
+          const wallet = await getTranslationWallet(organizationId);
+          const balance = parseFloat(wallet.balance_minutes);
+          if (!Number.isFinite(balance) || balance <= 0) {
+            logger.warn('[TRANSLATION_WORKER] Wallet empty; broadcasting original only', {
+              meetingId: segment.meetingId,
+              orgId: organizationId,
+            });
+            broadcastWorkerManager.broadcastTranslation(
+              segment.meetingId,
+              segment.speakerId || 'unknown',
+              segment.speakerName || 'Unknown',
+              segment.text,
+              sourceLanguage,
+              translations,
+              timestampMs,
+              segment.isFinal
+            );
+            return;
+          }
+
+          const minutesToDeduct = this.estimateTranslationMinutes(segment.text, targetLanguages.length);
+          const deduction = await deductTranslationWallet(
+            organizationId,
+            minutesToDeduct,
+            `Live translation: ${targetLanguages.length} lang(s), ${segment.text.length} chars`
+          );
+          if (!deduction.success) {
+            logger.warn('[TRANSLATION_WORKER] Wallet deduction failed; broadcasting original only', {
+              meetingId: segment.meetingId,
+              orgId: organizationId,
+              error: deduction.error,
+            });
+            broadcastWorkerManager.broadcastTranslation(
+              segment.meetingId,
+              segment.speakerId || 'unknown',
+              segment.speakerName || 'Unknown',
+              segment.text,
+              sourceLanguage,
+              translations,
+              timestampMs,
+              segment.isFinal
+            );
+            return;
+          }
+        }
+
         await Promise.all(
           targetLanguages.map(async (targetLang: string) => {
             const translated = await this.translate(
@@ -157,6 +209,40 @@ class TranslationWorkerManager {
         meetingId: segment.meetingId,
         error: err instanceof Error ? err.message : String(err),
       });
+    }
+  }
+
+  private estimateTranslationMinutes(text: string, targetLanguageCount: number): number {
+    // Keep parity with LivekitBot heuristic:
+    // speakingSeconds = max(5, ceil(chars / 15)); deductMinutes = (speakingSeconds * langCount) / 60
+    const speakingSeconds = Math.max(5, Math.ceil((text || '').length / 15));
+    const langMultiplier = Math.max(1, targetLanguageCount || 1);
+    const minutes = (speakingSeconds * langMultiplier) / 60;
+    return Math.round(minutes * 100) / 100;
+  }
+
+  private async resolveOrganizationId(segment: TranscriptSegment): Promise<string | null> {
+    if (segment.organizationId && String(segment.organizationId).trim().length > 0) {
+      return String(segment.organizationId).trim();
+    }
+
+    try {
+      const state = await meetingStateManager.getMeeting(segment.meetingId);
+      const orgId = state?.organizationId?.trim();
+      if (orgId) return orgId;
+    } catch {
+      // ignore
+    }
+
+    try {
+      const meeting = await db('meetings')
+        .where({ id: segment.meetingId })
+        .select('organization_id')
+        .first();
+      const orgId = meeting?.organization_id ? String(meeting.organization_id).trim() : '';
+      return orgId || null;
+    } catch {
+      return null;
     }
   }
 

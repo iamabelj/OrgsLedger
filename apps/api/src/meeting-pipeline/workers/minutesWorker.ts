@@ -14,6 +14,7 @@ import { db } from '../../db';
 import OpenAI from 'openai';
 import { AIService } from '../../services/ai.service';
 import { services } from '../../services/registry';
+import { randomUUID } from 'crypto';
 
 const QUEUE_NAME = 'meeting-minutes';
 const WORKER_NAME = 'minutes-worker';
@@ -299,7 +300,7 @@ Return as JSON:
         keyTopics: parsed.keyTopics || [],
         decisions: parsed.decisions || [],
         actionItems: (parsed.actionItems || []).map((item: any) => ({
-          id: item.id || crypto.randomUUID(),
+          id: item.id || randomUUID(),
           description: item.description,
           assignee: item.assignee,
           dueDate: item.dueDate,

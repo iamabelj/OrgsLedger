@@ -28,6 +28,9 @@ class StorageWorkerManager {
   private storedCount = 0;
   private batchedCount = 0;
 
+  // Cache meetingId -> organizationId to avoid repeated lookups on every flush
+  private orgIdCache = new Map<string, string>();
+
   // Buffer for batching writes by meeting
   private buffers = new Map<string, BatchBuffer>();
 
@@ -130,10 +133,15 @@ class StorageWorkerManager {
     buffer.segments = [];
 
     try {
+      const organizationId = await this.resolveOrganizationId(meetingId, segments);
+      if (!organizationId) {
+        throw new Error('Missing organization_id for meeting transcripts insert');
+      }
+
       // Build records for batch insert
       const records = segments.map((s) => ({
         meeting_id: s.meetingId,
-        organization_id: s.organizationId || null,
+        organization_id: organizationId,
         speaker_id: s.speakerId || null,
         speaker_name: s.speakerName || 'Unknown',
         original_text: s.text,
@@ -162,6 +170,56 @@ class StorageWorkerManager {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  private async resolveOrganizationId(
+    meetingId: string,
+    segments: TranscriptSegment[]
+  ): Promise<string | null> {
+    // 1) Segment-provided orgId (preferred)
+    for (const s of segments) {
+      if (s.organizationId && String(s.organizationId).trim().length > 0) {
+        const orgId = String(s.organizationId).trim();
+        this.orgIdCache.set(meetingId, orgId);
+        return orgId;
+      }
+    }
+
+    // 2) Cache
+    const cached = this.orgIdCache.get(meetingId);
+    if (cached) return cached;
+
+    // 3) Redis meeting state
+    try {
+      const state = await meetingStateManager.getMeeting(meetingId);
+      const orgId = state?.organizationId?.trim();
+      if (orgId) {
+        this.orgIdCache.set(meetingId, orgId);
+        return orgId;
+      }
+    } catch (err) {
+      logger.warn('[STORAGE_WORKER] Failed to resolve orgId from meeting state', {
+        meetingId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    // 4) DB fallback
+    try {
+      const meeting = await db('meetings').where({ id: meetingId }).select('organization_id').first();
+      const orgId = meeting?.organization_id ? String(meeting.organization_id).trim() : '';
+      if (orgId) {
+        this.orgIdCache.set(meetingId, orgId);
+        return orgId;
+      }
+    } catch (err) {
+      logger.warn('[STORAGE_WORKER] Failed to resolve orgId from DB', {
+        meetingId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    return null;
   }
 
   /**
