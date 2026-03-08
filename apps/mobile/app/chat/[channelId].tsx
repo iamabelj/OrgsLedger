@@ -26,6 +26,7 @@ import { api } from '../../src/api/client';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../../src/theme';
 import { Avatar, useContentStyle } from '../../src/components/ui';
 import { showAlert } from '../../src/utils/alert';
+import { resolveUploadUrl } from '../../src/utils/uploads';
 
 export default function ChannelMessagesScreen() {
   const { channelId } = useLocalSearchParams<{ channelId: string }>();
@@ -237,7 +238,7 @@ export default function ChannelMessagesScreen() {
                 return isImage ? (
                   <Image
                     key={att.id}
-                    source={{ uri: att.file_url }}
+                    source={{ uri: resolveUploadUrl(att.file_url) || att.file_url }}
                     style={styles.attachmentImage}
                     resizeMode="cover"
                   />
@@ -245,7 +246,7 @@ export default function ChannelMessagesScreen() {
                   <TouchableOpacity
                     key={att.id}
                     style={styles.attachmentFile}
-                    onPress={() => Linking.openURL(att.file_url).catch(() => {})}
+                    onPress={() => Linking.openURL(resolveUploadUrl(att.file_url) || att.file_url).catch(() => {})}
                   >
                     <Ionicons name="document-attach" size={16} color={Colors.highlight} />
                     <Text style={styles.attachmentFileName} numberOfLines={1}>

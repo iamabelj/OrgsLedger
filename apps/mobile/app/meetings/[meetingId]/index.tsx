@@ -262,7 +262,10 @@ export default function MeetingDetailScreen() {
 
   // ── Load Meeting ────────────────────────────────────────
   const loadMeeting = useCallback(async () => {
-    if (!currentOrgId || !meetingId) return;
+    if (!currentOrgId || !meetingId) {
+      setLoading(false);
+      return;
+    }
     try {
       const res = await api.meetings.get(currentOrgId, meetingId);
       const m = res.data.data;

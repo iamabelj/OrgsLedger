@@ -8,6 +8,7 @@ import { z } from 'zod';
 import multer from 'multer';
 import path from 'path';
 import crypto from 'crypto';
+import fs from 'fs';
 import db from '../db';
 import { authenticate, loadMembershipAndSub as loadMembership, requireRole, validate } from '../middleware';
 import { config } from '../config';
@@ -55,9 +56,13 @@ async function verifyChannelAccess(channelId: string, orgId: string, userId: str
 }
 
 // ── Multer config ───────────────────────────────────────────
+const chatUploadDir = path.join(config.upload.dir, 'chat');
+// Ensure directory exists on startup
+fs.mkdirSync(chatUploadDir, { recursive: true });
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
-    cb(null, config.upload.dir);
+    cb(null, chatUploadDir);
   },
   filename: (_req, file, cb) => {
     const unique = crypto.randomBytes(12).toString('hex');
@@ -604,7 +609,7 @@ router.post(
 
       const attachmentRows = files.map((file) => ({
         file_name: file.originalname,
-        file_url: `/uploads/${file.filename}`,
+        file_url: `/uploads/chat/${file.filename}`,
         mime_type: file.mimetype,
         size_bytes: file.size,
         uploaded_by: req.user!.userId,

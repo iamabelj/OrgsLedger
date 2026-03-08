@@ -208,9 +208,10 @@ app.use(etagMiddleware);
 app.use(requestLogger);
 
 // Serve uploaded files (require valid JWT)
-// Public paths: avatars and logos (displayed in <Image> tags that can't send headers)
+// Public paths: avatars, logos, and chat attachments (displayed in <Image> tags that can't send headers)
 app.use('/uploads/avatars', express.static(path.resolve(config.upload.dir, 'avatars')));
 app.use('/uploads/logos', express.static(path.resolve(config.upload.dir, 'logos')));
+app.use('/uploads/chat', express.static(path.resolve(config.upload.dir, 'chat')));
 
 // All other uploads require JWT
 app.use('/uploads', (req, res, next) => {
