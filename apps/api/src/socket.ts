@@ -13,7 +13,7 @@ import { translateToMultiple, isTtsSupported } from './services/translation.serv
 import { getOrgSubscription, getTranslationWallet, deductTranslationWallet } from './services/subscription.service';
 import { writeAuditLog } from './middleware/audit';
 import { SpeechSession, AudioEncoding } from './services/speech-to-text.service';
-import { submitProcessingJob } from './queues/processing.queue';
+import { submitProcessingJob } from './meeting-pipeline';
 import { registerMultilingualMeetingHandlers } from './services/multilingualMeeting.socket';
 
 // In-memory store for meeting translation sessions

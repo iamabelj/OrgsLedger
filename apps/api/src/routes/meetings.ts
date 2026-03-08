@@ -21,7 +21,7 @@ import { forceDisconnectMeeting } from '../socket';
 import { getBotManager } from '../services/bot';
 import { withTransaction } from '../utils/transaction';
 import { cacheAside, cacheDel } from '../services/cache.service';
-import { submitMinutesJob } from '../queues/minutes.queue';
+import { submitMinutesJob } from '../meeting-pipeline';
 import { onMeetingCreated, onMeetingUpdated, onMeetingStarted, onMeetingEnded } from '../services/meeting-queue-integration.service';
 
 const router = Router();

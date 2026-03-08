@@ -7,13 +7,11 @@ import { Router, Request, Response } from 'express';
 import { logger } from '../logger';
 import { authenticate, validate } from '../middleware';
 import { z } from 'zod';
-import { getMinutesQueueManager } from '../queues/minutes.queue';
-import { processingQueueManager } from '../queues/processing.queue';
-import { broadcastQueueManager } from '../queues/broadcast.queue';
 import { getEmailQueueManager } from '../queues/email.queue';
 import { getNotificationQueueManager } from '../queues/notification.queue';
 import { getBotQueueManager } from '../queues/bot.queue';
 import { getDeadLetterJobs, replayDeadLetterJob, getDeadLetterQueueManager } from '../queues/dlq.queue';
+import { meetingPipeline } from '../meeting-pipeline';
 
 const router = Router();
 
@@ -26,16 +24,13 @@ router.get('/jobs/:jobId', authenticate, async (req: Request, res: Response) => 
     const { jobId } = req.params;
 
     const queues = [
-      { name: 'minutes', manager: getMinutesQueueManager() },
-      { name: 'processing', manager: processingQueueManager },
-      { name: 'broadcast', manager: broadcastQueueManager },
       { name: 'email', manager: getEmailQueueManager() },
       { name: 'notification', manager: getNotificationQueueManager() },
       { name: 'bot', manager: getBotQueueManager() },
     ];
 
     for (const { name, manager } of queues) {
-      const queue = manager.getQueue();
+      const queue = manager?.getQueue?.();
       if (!queue) continue;
 
       try {
@@ -93,10 +88,18 @@ router.get('/jobs/queue/:queueName', authenticate, async (req: Request, res: Res
   try {
     const { queueName } = req.params;
 
+    // Meeting pipeline status
+    if (queueName === 'meeting-pipeline') {
+      const status = await meetingPipeline.getStatus();
+      return res.json({
+        queue: 'meeting-pipeline',
+        initialized: status.initialized,
+        counts: status.queue,
+        workers: status.workers,
+      });
+    }
+
     const queues: Record<string, any> = {
-      minutes: getMinutesQueueManager(),
-      processing: processingQueueManager,
-      broadcast: broadcastQueueManager,
       email: getEmailQueueManager(),
       notification: getNotificationQueueManager(),
       bot: getBotQueueManager(),
@@ -107,7 +110,7 @@ router.get('/jobs/queue/:queueName', authenticate, async (req: Request, res: Res
       return res.status(404).json({ error: 'Queue not found' });
     }
 
-    const queue = manager.getQueue();
+    const queue = manager?.getQueue?.();
     if (!queue) {
       return res.status(503).json({ error: 'Queue not initialized' });
     }

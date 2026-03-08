@@ -1,0 +1,258 @@
+// ============================================================
+// OrgsLedger — Translation Worker
+// Consumes transcript-events, translates using GPT-4o-mini
+// Caches translations in Redis
+// ============================================================
+
+import { Worker, Job } from 'bullmq';
+import { createBullMQConnection, getRedisClient } from '../../infrastructure/redisClient';
+import { logger } from '../../logger';
+import { TranscriptSegment, TranslationResult } from '../types';
+import { meetingStateManager } from '../meetingState';
+import { broadcastWorkerManager } from './broadcastWorker';
+import OpenAI from 'openai';
+
+const QUEUE_NAME = 'translation-queue';
+const WORKER_NAME = 'translation-worker';
+const CONCURRENCY = 10;
+const CACHE_TTL = 86400; // 24 hours
+const TRANSLATION_TIMEOUT = 10000; // 10 seconds
+
+// Redis cache key
+const CACHE_KEY = (text: string, src: string, tgt: string) =>
+  `trans:${src}:${tgt}:${Buffer.from(text).toString('base64').slice(0, 40)}`;
+
+class TranslationWorkerManager {
+  private worker: Worker<TranscriptSegment> | null = null;
+  private openai: OpenAI | null = null;
+  private isRunning = false;
+  private translatedCount = 0;
+  private cacheHits = 0;
+  private cacheMisses = 0;
+
+  /**
+   * Initialize the translation worker
+   */
+  async initialize(): Promise<void> {
+    if (this.worker) {
+      logger.warn('[TRANSLATION_WORKER] Already initialized');
+      return;
+    }
+
+    try {
+      // Initialize OpenAI client
+      if (process.env.OPENAI_API_KEY) {
+        this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      } else {
+        logger.warn('[TRANSLATION_WORKER] OPENAI_API_KEY not set - translations disabled');
+      }
+
+      const redis = createBullMQConnection();
+
+      this.worker = new Worker<TranscriptSegment>(
+        QUEUE_NAME,
+        async (job: Job<TranscriptSegment>) => {
+          await this.processSegment(job.data);
+        },
+        {
+          connection: redis as any,
+          concurrency: CONCURRENCY,
+          name: WORKER_NAME,
+          lockDuration: 30000,
+          lockRenewTime: 15000,
+        }
+      );
+
+      this.worker.on('ready', () => {
+        this.isRunning = true;
+        logger.info('[TRANSLATION_WORKER] Ready', { concurrency: CONCURRENCY });
+      });
+
+      this.worker.on('error', (err) => {
+        logger.error('[TRANSLATION_WORKER] Error', err);
+      });
+
+      logger.info('[TRANSLATION_WORKER] Initialized');
+    } catch (err) {
+      logger.error('[TRANSLATION_WORKER] Failed to initialize', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Process a transcript segment for translation
+   */
+  private async processSegment(segment: TranscriptSegment): Promise<void> {
+    // Only translate final segments
+    if (!segment.isFinal) return;
+
+    // Skip empty or very short text
+    if (!segment.text || segment.text.trim().length < 2) return;
+
+    const startTime = Date.now();
+
+    try {
+      // Get target languages for this meeting
+      const targetLanguages = await meetingStateManager.getTargetLanguages(
+        segment.meetingId,
+        segment.language // Exclude source language
+      );
+
+      if (targetLanguages.length === 0) {
+        logger.debug('[TRANSLATION_WORKER] No target languages', {
+          meetingId: segment.meetingId,
+        });
+        return;
+      }
+
+      // Translate to each target language
+      const translations: Record<string, string> = {};
+      let fromCache = true;
+      const sourceLanguage = segment.language || 'en';
+
+      await Promise.all(
+        targetLanguages.map(async (targetLang: string) => {
+          const translated = await this.translate(
+            segment.text,
+            sourceLanguage,
+            targetLang
+          );
+          if (translated) {
+            translations[targetLang] = translated.text;
+            if (!translated.fromCache) fromCache = false;
+          }
+        })
+      );
+
+      if (Object.keys(translations).length === 0) {
+        logger.warn('[TRANSLATION_WORKER] No translations produced', {
+          meetingId: segment.meetingId,
+        });
+        return;
+      }
+
+      const latency = Date.now() - startTime;
+      this.translatedCount++;
+
+      // Broadcast translations to clients
+      broadcastWorkerManager.broadcastTranslation(
+        segment.meetingId,
+        segment.speakerId || 'unknown',
+        segment.speakerName || 'Unknown',
+        translations,
+        segment.isFinal
+      );
+
+      logger.debug('[TRANSLATION_WORKER] Translated', {
+        meetingId: segment.meetingId,
+        languages: Object.keys(translations),
+        fromCache,
+        latencyMs: latency,
+      });
+    } catch (err) {
+      logger.error('[TRANSLATION_WORKER] Failed to translate', {
+        meetingId: segment.meetingId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /**
+   * Translate text using cache-first strategy
+   */
+  private async translate(
+    text: string,
+    sourceLanguage: string,
+    targetLanguage: string
+  ): Promise<{ text: string; fromCache: boolean } | null> {
+    const cacheKey = CACHE_KEY(text, sourceLanguage, targetLanguage);
+
+    try {
+      const redis = await getRedisClient();
+
+      // Check cache first
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        this.cacheHits++;
+        return { text: cached, fromCache: true };
+      }
+
+      this.cacheMisses++;
+
+      // Call GPT-4o-mini for translation
+      if (!this.openai) {
+        logger.warn('[TRANSLATION_WORKER] OpenAI not configured');
+        return null;
+      }
+
+      const response = await Promise.race([
+        this.openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: `You are a professional translator. Translate the following text from ${sourceLanguage} to ${targetLanguage}. Return ONLY the translated text, nothing else.`,
+            },
+            { role: 'user', content: text },
+          ],
+          max_tokens: 500,
+          temperature: 0.3,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Translation timeout')), TRANSLATION_TIMEOUT)
+        ),
+      ]);
+
+      const translated = response.choices[0]?.message?.content?.trim();
+      if (!translated) {
+        return null;
+      }
+
+      // Cache the translation
+      await redis.setex(cacheKey, CACHE_TTL, translated);
+
+      return { text: translated, fromCache: false };
+    } catch (err) {
+      logger.error('[TRANSLATION_WORKER] Translation API error', {
+        source: sourceLanguage,
+        target: targetLanguage,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Get worker status
+   */
+  getStatus(): {
+    running: boolean;
+    translatedCount: number;
+    cacheHits: number;
+    cacheMisses: number;
+    cacheHitRate: number;
+  } {
+    const total = this.cacheHits + this.cacheMisses;
+    return {
+      running: this.isRunning,
+      translatedCount: this.translatedCount,
+      cacheHits: this.cacheHits,
+      cacheMisses: this.cacheMisses,
+      cacheHitRate: total > 0 ? Math.round((this.cacheHits / total) * 100) : 0,
+    };
+  }
+
+  /**
+   * Shutdown
+   */
+  async shutdown(): Promise<void> {
+    if (this.worker) {
+      await this.worker.close();
+      this.worker = null;
+    }
+    this.isRunning = false;
+    logger.info('[TRANSLATION_WORKER] Shut down');
+  }
+}
+
+export const translationWorkerManager = new TranslationWorkerManager();

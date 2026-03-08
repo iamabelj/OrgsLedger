@@ -1,16 +1,15 @@
 // ============================================================
-// OrgsLedger API — Meeting Transcript Handler  (v2)
-// Integrates Deepgram, translation pipeline, and Socket.IO
-// Optimized: debounce interim, skip duplicate translations,
-//            cache org_id, parallel all translations
+// OrgsLedger API — Meeting Transcript Handler  (v3)
+// Integrates Deepgram, new meeting pipeline, and Socket.IO
+// Pipeline handles: broadcast, translation, storage, summary
 // ============================================================
 
 import { db } from '../db';
 import { logger } from '../logger';
 import { liveKitAudioBridgeService } from './livekitAudioBridge.service';
-import { multilingualTranslationPipeline } from './multilingualTranslation.service';
 import { deepgramRealtimeService, TranscriptSegment } from './deepgramRealtime.service';
 import { normalizeLang } from '../utils/langNormalize';
+import { meetingPipeline } from '../meeting-pipeline';
 
 interface MeetingTranscriptContext {
   meetingId: string;
@@ -122,7 +121,7 @@ class MeetingTranscriptHandler {
   }
 
   /**
-   * Flush the debounced interim transcript — translate and broadcast
+   * Flush the debounced interim transcript — submit to pipeline
    */
   private async flushInterim(contextId: string): Promise<void> {
     const entry = this.interimBuffers.get(contextId);
@@ -133,26 +132,24 @@ class MeetingTranscriptHandler {
     const { segment, context } = entry;
 
     try {
-      const translations = await multilingualTranslationPipeline.translateToParticipants(
-        segment.text,
-        segment.language,
-        context.meetingId
-      );
-
-      const payload: BroadcastPayload = {
+      // Submit interim transcript to pipeline (isFinal: false)
+      // Pipeline broadcast worker will emit 'caption:interim' event
+      await meetingPipeline.submitTranscript({
+        meetingId: context.meetingId,
+        segmentIndex: -1, // Negative index indicates interim
+        text: segment.text,
         speakerId: segment.speakerId,
         speakerName: segment.speakerName,
-        originalText: segment.text,
-        sourceLanguage: segment.language,
-        translations: translations.translations,
-        timestamp: segment.timestamp,
-      };
+        timestamp: segment.timestamp instanceof Date
+          ? segment.timestamp.toISOString()
+          : new Date().toISOString(),
+        isFinal: false,
+        language: segment.language,
+        confidence: segment.confidence,
+      });
 
-      context.io.to(`meeting:${context.meetingId}`).emit('translation:interim', payload);
-
-      logger.debug(`Broadcast interim transcript: ${segment.speakerId}`, {
+      logger.debug(`Submitted interim transcript to pipeline: ${segment.speakerId}`, {
         textLength: segment.text.length,
-        targetLanguages: Object.keys(payload.translations).length,
       });
     } catch (err) {
       logger.error(`Failed to flush interim for: ${contextId}`, err);
@@ -161,7 +158,8 @@ class MeetingTranscriptHandler {
 
   /**
    * Handle final transcript
-   * Store in DB and broadcast - cached org_id lookup
+   * Submit to meeting pipeline for processing
+   * Pipeline handles: broadcast, translation, storage, summary
    */
   private async handleFinalTranscript(
     contextId: string,
@@ -182,50 +180,28 @@ class MeetingTranscriptHandler {
         this.interimBuffers.delete(contextId);
       }
 
-      // Get translations
-      const translations = await multilingualTranslationPipeline.translateToParticipants(
-        segment.text,
-        segment.language,
-        context.meetingId
-      );
+      // Get segment index
+      const segmentIndex = this.getNextSegmentIndex(context.meetingId);
 
-      const payload: BroadcastPayload = {
+      // Submit to the new meeting pipeline
+      // Pipeline workers handle: broadcast, translation, storage, summary
+      await meetingPipeline.submitTranscript({
+        meetingId: context.meetingId,
+        segmentIndex,
+        text: segment.text,
         speakerId: segment.speakerId,
         speakerName: segment.speakerName,
-        originalText: segment.text,
-        sourceLanguage: segment.language,
-        translations: translations.translations,
-        timestamp: segment.timestamp,
-      };
-
-      // Step 1: Broadcast final transcript
-      context.io.to(`meeting:${context.meetingId}`).emit('translation:result', payload);
-
-      // Step 2: Store transcript in database (cached org_id)
-      const orgId = await this.getOrgId(context.meetingId);
-
-      if (orgId) {
-        await db('meeting_transcripts').insert({
-          meeting_id: context.meetingId,
-          organization_id: orgId,
-          speaker_id: segment.speakerId,
-          speaker_name: segment.speakerName,
-          original_text: segment.text,
-          source_lang: segment.language,
-          translations: translations.translations,
-          spoken_at: Math.floor((segment.timestamp as any).getTime?.() || Date.now()),
-        });
-      }
-
-      // Step 3: Emit stored event
-      context.io.to(`meeting:${context.meetingId}`).emit('transcript:stored', {
-        meetingId: context.meetingId,
-        speakerId: segment.speakerId,
-        timestamp: segment.timestamp,
+        timestamp: segment.timestamp instanceof Date
+          ? segment.timestamp.toISOString()
+          : new Date().toISOString(),
+        isFinal: true,
+        language: segment.language,
+        confidence: segment.confidence,
       });
 
-      logger.info(`Stored final transcript for: ${segment.speakerId}`, {
+      logger.debug(`Submitted final transcript to pipeline: ${segment.speakerId}`, {
         meetingId: context.meetingId,
+        segmentIndex,
         textLength: segment.text.length,
       });
 
@@ -234,6 +210,16 @@ class MeetingTranscriptHandler {
     } catch (err) {
       logger.error(`Failed to handle final transcript for: ${contextId}`, err);
     }
+  }
+
+  // Segment index counters per meeting
+  private segmentCounters: Map<string, number> = new Map();
+
+  private getNextSegmentIndex(meetingId: string): number {
+    const current = this.segmentCounters.get(meetingId) || 0;
+    const next = current + 1;
+    this.segmentCounters.set(meetingId, next);
+    return next;
   }
 
   /**

@@ -56,10 +56,7 @@ import jobsRoutes from './routes/jobs.routes';
 import transcriptsRoutes from './routes/transcripts';
 import { startScheduler } from './services/scheduler.service';
 import { ensureSuperAdmin } from './services/seed.service';
-import { initializeWorkerOrchestrator, shutdownWorkerOrchestrator } from './workers/orchestrator';
-import { ProcessingWorkerService } from './services/workers/processingWorker.service';
-import { MinutesWorkerService } from './services/workers/minutesWorker.service';
-import { initializeMinutesQueue } from './queues/minutes.queue';
+import { meetingPipeline } from './meeting-pipeline';
 import { prewarmTranslationCache } from './services/translationPrewarm';
 import { startMetricsReporter, stopMetricsReporter } from './services/translationMetrics';
 
@@ -550,15 +547,12 @@ function doPostStart(): void {
     // Start recurring dues scheduler
     startScheduler();
 
-    // Initialize worker orchestrator
+    // Initialize new meeting pipeline (replaces old worker orchestrator)
     try {
-      const processingWorkerService = new ProcessingWorkerService();
-      const minutesWorkerService = new MinutesWorkerService(io);
-      await initializeMinutesQueue();
-      await initializeWorkerOrchestrator(io, processingWorkerService, minutesWorkerService);
-      logger.info('[STARTUP] ✓ Worker orchestrator initialized');
+      await meetingPipeline.initialize(io);
+      logger.info('[STARTUP] ✓ Meeting pipeline initialized');
     } catch (err: any) {
-      logger.error('[STARTUP] Worker orchestrator initialization failed (non-fatal):', err.message);
+      logger.error('[STARTUP] Meeting pipeline initialization failed (non-fatal):', err.message);
     }
 
     // Start translation metrics reporter
@@ -608,13 +602,13 @@ async function gracefulShutdown(signal: string): Promise<void> {
   // 3. Wait for in-flight requests to complete (max 10s)
   await new Promise((resolve) => setTimeout(resolve, 10_000));
 
-  // 4. Stop worker orchestrator
+  // 4. Stop meeting pipeline and metrics
   try {
     stopMetricsReporter();
-    await shutdownWorkerOrchestrator();
-    logger.info('[SHUTDOWN] Worker orchestrator closed');
+    await meetingPipeline.shutdown();
+    logger.info('[SHUTDOWN] Meeting pipeline closed');
   } catch (err: any) {
-    logger.error('[SHUTDOWN] Worker orchestrator close error:', err.message);
+    logger.error('[SHUTDOWN] Meeting pipeline close error:', err.message);
   }
 
   // 5. Close database pool

@@ -9,7 +9,7 @@ import db from '../db';
 import { authenticate, loadMembership, requireRole, validate } from '../middleware';
 import { logger } from '../logger';
 import { translateText, LANGUAGES } from '../services/translation.service';
-import { submitMinutesJob } from '../queues/minutes.queue';
+import { submitMinutesJob } from '../meeting-pipeline';
 import { onTranscriptReceived } from '../services/meeting-queue-integration.service';
 
 const router = Router();

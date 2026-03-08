@@ -4,7 +4,7 @@
 // ============================================================
 
 import { logger } from '../logger';
-import { submitMinutesJob } from '../queues/minutes.queue';
+import { submitMinutesJob } from '../meeting-pipeline';
 import db from '../db';
 import { services } from './registry';
 

@@ -6,7 +6,7 @@
 
 import { Router, Request, Response } from 'express';
 import { logger } from '../logger';
-import { submitProcessingJob } from '../queues/processing.queue';
+import { submitProcessingJob } from '../meeting-pipeline';
 
 export const translationRouter = Router();
 
