@@ -78,6 +78,26 @@ export class AIService {
       const meeting = await db('meetings').where({ id: meetingId }).first();
       if (!meeting) throw new Error('Meeting not found');
 
+      // Ensure meeting_minutes row exists (AIService uses UPDATE later)
+      await db('meeting_minutes')
+        .insert({
+          meeting_id: meetingId,
+          organization_id: organizationId,
+          status: 'processing',
+          generated_at: null,
+        })
+        .onConflict('meeting_id')
+        .ignore();
+
+      // Mark processing + clear any previous failure message
+      await db('meeting_minutes')
+        .where({ meeting_id: meetingId })
+        .update({
+          organization_id: organizationId,
+          status: 'processing',
+          error_message: null,
+        });
+
       // Check AI wallet balance (use new wallet system)
       const wallet = await getAiWallet(organizationId);
       const balance = parseFloat(wallet.balance_minutes);

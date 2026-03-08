@@ -12,6 +12,8 @@ import { meetingStateManager } from '../meetingState';
 import { summaryWorkerManager } from './summaryWorker';
 import { db } from '../../db';
 import OpenAI from 'openai';
+import { AIService } from '../../services/ai.service';
+import { services } from '../../services/registry';
 
 const QUEUE_NAME = 'meeting-minutes';
 const WORKER_NAME = 'minutes-worker';
@@ -116,45 +118,22 @@ class MinutesWorkerManager {
     const startTime = Date.now();
 
     try {
-      logger.info('[MINUTES_WORKER] Starting minutes generation', { meetingId });
+      logger.info('[MINUTES_WORKER] Starting minutes generation (delegating to AIService)', { meetingId });
 
-      // Get all segments from the meeting
-      const segments = await this.getFullTranscript(meetingId);
-      if (segments.length === 0) {
-        logger.warn('[MINUTES_WORKER] No segments found', { meetingId });
+      const meeting = await db('meetings').where({ id: meetingId }).select('organization_id').first();
+      const organizationId = meeting?.organization_id;
+      if (!organizationId) {
+        logger.warn('[MINUTES_WORKER] Missing organization_id for meeting; cannot generate minutes', { meetingId });
         return;
       }
 
-      // Get existing summary as starting point
-      const existingSummary = await summaryWorkerManager.getSummary(meetingId);
-
-      // Get meeting metadata from database
-      const meetingMeta = await this.getMeetingMetadata(meetingId);
-
-      // Generate comprehensive minutes
-      const minutes = await this.generateComprehensiveMinutes(
-        meetingId,
-        segments,
-        existingSummary,
-        meetingMeta
-      );
-
-      if (!minutes) {
-        logger.error('[MINUTES_WORKER] Failed to generate minutes', { meetingId });
-        return;
-      }
-
-      // Store minutes
-      await this.storeMinutes(minutes);
+      const aiService = services.getOptional('aiService') || new AIService();
+      await aiService.processMinutes(meetingId, organizationId);
 
       this.minutesCount++;
-      const duration = Date.now() - startTime;
-
-      logger.info('[MINUTES_WORKER] Minutes generated', {
+      logger.info('[MINUTES_WORKER] Minutes generation completed', {
         meetingId,
-        duration,
-        actionItems: minutes.actionItems.length,
-        decisions: minutes.decisions?.length || 0,
+        duration: Date.now() - startTime,
       });
     } catch (err) {
       logger.error('[MINUTES_WORKER] Failed to generate minutes', {
@@ -418,16 +397,43 @@ Return as JSON:
 
       if (!row) return null;
 
+      // AIService stores meeting_minutes using the unified schema (jsonb columns)
+      const parsedDecisions = (() => {
+        try {
+          if (Array.isArray(row.decisions)) return row.decisions;
+          return row.decisions ? JSON.parse(row.decisions) : [];
+        } catch {
+          return [];
+        }
+      })();
+
+      const parsedActionItems = (() => {
+        try {
+          if (Array.isArray(row.action_items)) return row.action_items;
+          return row.action_items ? JSON.parse(row.action_items) : [];
+        } catch {
+          return [];
+        }
+      })();
+
       return {
         meetingId: row.meeting_id,
-        summary: row.summary,
-        keyTopics: JSON.parse(row.key_topics || '[]'),
-        decisions: JSON.parse(row.decisions || '[]'),
-        actionItems: JSON.parse(row.action_items || '[]'),
-        attendees: JSON.parse(row.attendees || '[]'),
-        startTime: row.start_time,
-        endTime: row.end_time,
-        generatedAt: row.generated_at,
+        organizationId: row.organization_id,
+        title: undefined,
+        summary: row.summary || '',
+        keyTopics: [],
+        decisions: parsedDecisions,
+        actionItems: (parsedActionItems || []).map((ai: any) => ({
+          description: ai?.description || ai?.text || String(ai || ''),
+          assignee: ai?.assigneeName || ai?.assignee || undefined,
+          dueDate: ai?.dueDate || undefined,
+          priority: ai?.priority || undefined,
+          status: ai?.status || 'pending',
+        })) as ActionItem[],
+        attendees: [],
+        startTime: undefined,
+        endTime: undefined,
+        generatedAt: row.generated_at instanceof Date ? row.generated_at.toISOString() : String(row.generated_at || new Date().toISOString()),
       };
     } catch (err) {
       logger.error('[MINUTES_WORKER] Failed to get minutes from DB', err);

@@ -15,6 +15,7 @@ import { writeAuditLog } from './middleware/audit';
 import { SpeechSession, AudioEncoding } from './services/speech-to-text.service';
 import { submitProcessingJob } from './meeting-pipeline';
 import { registerMultilingualMeetingHandlers } from './services/multilingualMeeting.socket';
+import { normalizeLang } from './utils/langNormalize';
 
 // In-memory store for meeting translation sessions
 // meetingId -> Map<userId, { language, name, receiveVoice }>
@@ -123,17 +124,19 @@ async function this_persistTranscript(
       return;
     }
 
+    const normalizedSourceLang = normalizeLang(sourceLang);
+
     await db('meeting_transcripts').insert({
       meeting_id: meetingId,
       organization_id: organizationId,
       speaker_id: speakerId,
       speaker_name: speakerName,
       original_text: originalText,
-      source_lang: sourceLang,
+      source_lang: normalizedSourceLang,
       translations: JSON.stringify(translations),
       spoken_at: Date.now(),
     });
-    logger.debug(`[TRANSLATION] Transcript persisted: meeting=${meetingId}, speaker=${speakerName}, lang=${sourceLang}`);
+    logger.debug(`[TRANSLATION] Transcript persisted: meeting=${meetingId}, speaker=${speakerName}, lang=${normalizedSourceLang}`);
   } catch (dbErr) {
     logger.warn('[TRANSLATION] Failed to persist transcript segment', dbErr);
   }
@@ -151,6 +154,8 @@ async function handleSpeechText(
   isFinal: boolean
 ): Promise<void> {
   if (!meetingId || !text?.trim()) return;
+
+  const normalizedSourceLang = normalizeLang(sourceLang);
 
   // Rate limit final speech events per user (prevent flooding)
   if (isFinal) {
@@ -186,7 +191,7 @@ async function handleSpeechText(
       speakerId: userId,
       speakerName,
       text,
-      sourceLang,
+      sourceLang: normalizedSourceLang,
     });
     return; // <-- KEY CHANGE: Skip DB write for interim
   }
@@ -199,8 +204,9 @@ async function handleSpeechText(
   const targetLangs = new Set<string>();
   if (langMap) {
     langMap.forEach((val) => {
-      if (val.language !== sourceLang) {
-        targetLangs.add(val.language);
+      const normalizedTarget = normalizeLang(val.language);
+      if (normalizedTarget !== normalizedSourceLang) {
+        targetLangs.add(normalizedTarget);
       }
     });
   }
@@ -228,12 +234,25 @@ async function handleSpeechText(
           meetingId,
           speakerId: userId,
           originalText: text,
-          sourceLanguage: sourceLang,
+          sourceLanguage: normalizedSourceLang,
           targetLanguages: [...targetLangs],
           isFinal: true,
           organizationId, // Pass org ID for wallet deduction in worker
         });
         logger.info(`[TRANSLATION] ✓ Job submitted to queue: jobId=${jobId}, meeting=${meetingId}, speaker=${speakerName}, targets=${targetLangs.size}`);
+
+        // Safety-net persistence: store original transcript immediately (original-only)
+        await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, normalizedSourceLang, {});
+        io.to(`meeting:${meetingId}`).emit('transcript:stored', {
+          meetingId,
+          speakerId: userId,
+          speakerName,
+          originalText: text,
+          sourceLang: normalizedSourceLang,
+          translations: {},
+          timestamp: Date.now(),
+        });
+
         await writeAuditLog({
           userId,
           action: 'submitted_translation_job',
@@ -247,7 +266,7 @@ async function handleSpeechText(
           meetingId,
           speakerId: userId,
           originalText: text,
-          sourceLanguage: sourceLang,
+          sourceLanguage: normalizedSourceLang,
           targetLanguages: [...targetLangs],
           isFinal: true,
         });
@@ -256,11 +275,11 @@ async function handleSpeechText(
     } else {
       // No target languages: store original only (no translation needed)
       if (organizationId) {
-        await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, { [sourceLang]: text });
+        await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, normalizedSourceLang, {});
         logger.info(`[TRANSCRIPT] ✓ Stored (original only): meeting=${meetingId}, speaker=${speakerName}`);
         io.to(`meeting:${meetingId}`).emit('transcript:stored', {
           meetingId, speakerId: userId, speakerName, originalText: text,
-          sourceLang, translations: { [sourceLang]: text }, timestamp: Date.now(),
+          sourceLang: normalizedSourceLang, translations: {}, timestamp: Date.now(),
         });
       }
     }
@@ -268,11 +287,11 @@ async function handleSpeechText(
     logger.error('[TRANSLATION] Failed to submit translation job', err);
     // Fallback: store original text without translation
     if (organizationId) {
-      await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, sourceLang, { [sourceLang]: text });
+      await this_persistTranscript(meetingId, organizationId, userId, speakerName, text, normalizedSourceLang, {});
       logger.info(`[TRANSCRIPT] ✓ Stored (error fallback): meeting=${meetingId}, speaker=${speakerName}`);
       io.to(`meeting:${meetingId}`).emit('transcript:stored', {
         meetingId, speakerId: userId, speakerName, originalText: text,
-        sourceLang, translations: { [sourceLang]: text }, timestamp: Date.now(),
+        sourceLang: normalizedSourceLang, translations: {}, timestamp: Date.now(),
       });
     }
     socket.emit('translation:error', {
@@ -480,12 +499,13 @@ export function setupSocketIO(httpServer: HttpServer): Server {
               .where({ user_id: userId, organization_id: meeting.organization_id })
               .first();
             if (pref?.preferred_language) {
+              const normalizedPrefLang = normalizeLang(pref.preferred_language);
               // Set in memory map so translation routing works immediately
               if (!meetingLanguages.has(meetingId)) {
                 meetingLanguages.set(meetingId, new Map());
               }
               meetingLanguages.get(meetingId)!.set(userId, {
-                language: pref.preferred_language,
+                language: normalizedPrefLang,
                 name,
                 receiveVoice: pref.receive_voice !== false,
               });
@@ -493,7 +513,7 @@ export function setupSocketIO(httpServer: HttpServer): Server {
               // Notify the user of their auto-loaded language
               socket.emit('translation:language-restored', {
                 meetingId,
-                language: pref.preferred_language,
+                language: normalizedPrefLang,
                 receiveVoice: pref.receive_voice !== false,
               });
 
@@ -568,7 +588,9 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       const { meetingId, language, receiveVoice = true } = data;
       if (!meetingId || !language) return;
 
-      logger.debug(`[TRANSLATION] User ${userId} setting language to ${language} for meeting ${meetingId} (receiveVoice: ${receiveVoice})`);
+      const normalizedLanguage = normalizeLang(language);
+
+      logger.debug(`[TRANSLATION] User ${userId} setting language to ${normalizedLanguage} for meeting ${meetingId} (receiveVoice: ${receiveVoice})`);
 
       // Get user's name
       const user = await db('users').where({ id: userId }).select('first_name', 'last_name').first();
@@ -578,7 +600,7 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       if (!meetingLanguages.has(meetingId)) {
         meetingLanguages.set(meetingId, new Map());
       }
-      meetingLanguages.get(meetingId)!.set(userId, { language, name, receiveVoice });
+      meetingLanguages.get(meetingId)!.set(userId, { language: normalizedLanguage, name, receiveVoice });
 
       // Persist to DB for future meetings
       try {
@@ -591,13 +613,13 @@ export function setupSocketIO(httpServer: HttpServer): Server {
               .insert({
                 user_id: userId,
                 organization_id: meeting.organization_id,
-                preferred_language: language,
+                preferred_language: normalizedLanguage,
                 receive_voice: receiveVoice,
                 receive_text: true,
               })
               .onConflict(['user_id', 'organization_id'])
-              .merge({ preferred_language: language, receive_voice: receiveVoice });
-            logger.debug(`[TRANSLATION] Persisted language preference for user ${userId}: ${language}`);
+              .merge({ preferred_language: normalizedLanguage, receive_voice: receiveVoice });
+            logger.debug(`[TRANSLATION] Persisted language preference for user ${userId}: ${normalizedLanguage}`);
           }
         }
       } catch (prefErr) {
@@ -615,7 +637,7 @@ export function setupSocketIO(httpServer: HttpServer): Server {
         participants,
       });
 
-      logger.debug(`User ${userId} set translation language to ${language} for meeting ${meetingId}`);
+      logger.debug(`User ${userId} set translation language to ${normalizedLanguage} for meeting ${meetingId}`);
 
       // Audit log for translation session start
       const meetingForAudit = await db('meetings').where({ id: meetingId }).select('organization_id').first();
@@ -626,7 +648,7 @@ export function setupSocketIO(httpServer: HttpServer): Server {
           action: 'translation_session_start',
           entityType: 'meeting',
           entityId: meetingId,
-          newValue: { language, participantCount: participants.length },
+          newValue: { language: normalizedLanguage, participantCount: participants.length },
         }).catch(err => logger.warn('Audit log failed (translation session)', err));
       }
     });
@@ -669,7 +691,7 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       // Determine language code (from language picker or default en-US)
       const langMap = meetingLanguages.get(meetingId);
       const userPrefs = langMap?.get(userId);
-      const langCode = language || userPrefs?.language || 'en-US';
+      const langCode = normalizeLang(language || userPrefs?.language || 'en');
 
       // Map our short language codes to BCP-47
       const bcp47Map: Record<string, string> = {
@@ -682,7 +704,7 @@ export function setupSocketIO(httpServer: HttpServer): Server {
         da: 'da-DK', fi: 'fi-FI', no: 'nb-NO', id: 'id-ID',
         ms: 'ms-MY', tl: 'fil-PH', sw: 'sw-KE', bn: 'bn-IN',
       };
-      const bcp47Lang = bcp47Map[langCode] || langCode;
+      const bcp47Lang = bcp47Map[langCode] || bcp47Map[normalizeLang(langCode)] || langCode;
 
       logger.info(`[STT] Starting audio stream: user=${userId}, meeting=${meetingId}, lang=${bcp47Lang}, encoding=${encoding || 'WEBM_OPUS'}`);
 

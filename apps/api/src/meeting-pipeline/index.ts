@@ -21,6 +21,7 @@ import { summaryWorkerManager } from './workers/summaryWorker';
 import { minutesWorkerManager } from './workers/minutesWorker';
 import { logger } from '../logger';
 import type { Server as SocketIOServer } from 'socket.io';
+import { normalizeLang } from '../utils/langNormalize';
 
 /**
  * Meeting Pipeline - Single entry point for all meeting transcript processing
@@ -62,6 +63,9 @@ class MeetingPipeline {
     logger.info('[PIPELINE] Initializing meeting pipeline...');
 
     try {
+      // Initialize transcript stream queues first (so submits are fast/consistent)
+      await transcriptStream.initialize();
+
       // Initialize broadcast worker with Socket.IO server if provided
       if (ioServer) {
         await broadcastWorkerManager.initialize(ioServer);
@@ -101,6 +105,7 @@ class MeetingPipeline {
    */
   async submitTranscript(segment: {
     meetingId: string;
+    organizationId?: string;
     segmentIndex: number;
     text: string;
     speakerId?: string;
@@ -112,13 +117,14 @@ class MeetingPipeline {
   }): Promise<void> {
     await transcriptStream.submit({
       meetingId: segment.meetingId,
+      organizationId: segment.organizationId,
       segmentIndex: segment.segmentIndex,
       text: segment.text,
       speakerId: segment.speakerId,
       speakerName: segment.speakerName,
       timestamp: segment.timestamp || new Date().toISOString(),
       isFinal: segment.isFinal,
-      language: segment.language,
+      language: normalizeLang(segment.language),
       confidence: segment.confidence,
     });
   }
@@ -244,11 +250,14 @@ export async function submitProcessingJob(data: {
   isFinal: boolean;
   organizationId?: string;
 }): Promise<string> {
+  const sourceLanguage = normalizeLang(data.sourceLanguage);
+  const targetLanguages = (data.targetLanguages || []).map((l) => normalizeLang(l));
+
   // Ensure target languages are registered
-  if (data.targetLanguages && data.targetLanguages.length > 0) {
+  if (targetLanguages.length > 0) {
     await meetingStateManager.setParticipantLanguages(
       data.meetingId,
-      data.targetLanguages
+      targetLanguages
     );
   }
 
@@ -258,7 +267,7 @@ export async function submitProcessingJob(data: {
     organizationId: data.organizationId,
     speakerId: data.speakerId,
     text: data.originalText,
-    language: data.sourceLanguage,
+    language: sourceLanguage,
     isFinal: data.isFinal,
     timestamp: new Date().toISOString(),
     segmentIndex,

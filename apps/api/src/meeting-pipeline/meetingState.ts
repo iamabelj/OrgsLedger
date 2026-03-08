@@ -6,6 +6,7 @@
 import { getRedisClient } from '../infrastructure/redisClient';
 import { logger } from '../logger';
 import { MeetingState, TranscriptSegment } from './types';
+import { normalizeLang } from '../utils/langNormalize';
 
 const MEETING_KEY = (id: string) => `meeting:state:${id}`;
 const SEGMENTS_KEY = (id: string) => `meeting:segments:${id}`;
@@ -45,7 +46,7 @@ class MeetingStateManager {
       status: 'active',
       startedAt: new Date().toISOString(),
       segmentCount: 0,
-      participantLanguages: config?.targetLanguages || [],
+      participantLanguages: (config?.targetLanguages || []).map((l) => normalizeLang(l)),
       lastSummarySegment: 0,
     };
 
@@ -150,9 +151,14 @@ class MeetingStateManager {
   ): Promise<void> {
     const redis = await getRedisClient();
     const key = LANGUAGES_KEY(meetingId);
+
+    const normalized = (languages || [])
+      .map((l) => normalizeLang(l))
+      .filter((l) => !!l);
+
     await redis.del(key);
-    if (languages.length > 0) {
-      await redis.sadd(key, ...languages);
+    if (normalized.length > 0) {
+      await redis.sadd(key, ...normalized);
       await redis.expire(key, TTL_SECONDS);
     }
 
@@ -161,7 +167,7 @@ class MeetingStateManager {
     const data = await redis.get(stateKey);
     if (data) {
       const state = JSON.parse(data) as MeetingState;
-      state.participantLanguages = languages;
+      state.participantLanguages = normalized;
       await redis.setex(stateKey, TTL_SECONDS, JSON.stringify(state));
     }
 
@@ -179,10 +185,14 @@ class MeetingStateManager {
     const key = LANGUAGES_KEY(meetingId);
     const languages = await redis.smembers(key);
 
-    if (excludeLanguage) {
-      return languages.filter((l: string) => l !== excludeLanguage);
+    const exclude = excludeLanguage ? normalizeLang(excludeLanguage) : undefined;
+
+    if (exclude) {
+      return languages
+        .map((l: string) => normalizeLang(l))
+        .filter((l: string) => l !== exclude);
     }
-    return languages;
+    return languages.map((l: string) => normalizeLang(l));
   }
 
   /**

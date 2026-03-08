@@ -144,7 +144,7 @@ class MeetingTranscriptHandler {
           ? segment.timestamp.toISOString()
           : new Date().toISOString(),
         isFinal: false,
-        language: segment.language,
+        language: normalizeLang(segment.language),
         confidence: segment.confidence,
       });
 
@@ -183,10 +183,14 @@ class MeetingTranscriptHandler {
       // Get segment index
       const segmentIndex = this.getNextSegmentIndex(context.meetingId);
 
+      // Fetch org_id once (cached) — required for meeting_transcripts persistence
+      const organizationId = await this.getOrgId(context.meetingId);
+
       // Submit to the new meeting pipeline
       // Pipeline workers handle: broadcast, translation, storage, summary
       await meetingPipeline.submitTranscript({
         meetingId: context.meetingId,
+        organizationId: organizationId || undefined,
         segmentIndex,
         text: segment.text,
         speakerId: segment.speakerId,
@@ -195,7 +199,7 @@ class MeetingTranscriptHandler {
           ? segment.timestamp.toISOString()
           : new Date().toISOString(),
         isFinal: true,
-        language: segment.language,
+        language: normalizeLang(segment.language),
         confidence: segment.confidence,
       });
 
