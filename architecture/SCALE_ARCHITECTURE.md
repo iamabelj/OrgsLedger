@@ -3,6 +3,7 @@
 ## Current State Analysis
 
 The existing monolith already has strong foundations:
+
 - **BullMQ queues** (Redis-backed): processing, broadcast, minutes, notification, email, audit, bot
 - **Workers**: broadcast (concurrency 20), processing (concurrency 10), minutes (concurrency 2)
 - **Two-tier translation cache**: L1 in-memory + L2 Redis
@@ -13,7 +14,7 @@ The existing monolith already has strong foundations:
 ### Current Bottlenecks (why it can't hit 100K meetings)
 
 | Bottleneck | Impact | Root Cause |
-|---|---|---|
+| --- | --- | --- |
 | Single Node.js process | ~500-1000 concurrent meetings max | All services share one event loop |
 | In-memory `meetingLanguages` Map | Lost on restart, can't shard | Process-local state |
 | Sequential Deepgram connections | O(n) per-participant streams | Single service manages all streams |
@@ -25,7 +26,7 @@ The existing monolith already has strong foundations:
 
 ## High-Level System Architecture
 
-```
+```text
                                     ┌──────────────────────────────┐
                                     │        LOAD BALANCER         │
                                     │   (nginx / AWS ALB / Traefik)│
@@ -95,7 +96,7 @@ The existing monolith already has strong foundations:
 
 ### Event Definitions
 
-```
+```text
 Subject                          Payload Schema                         Retention
 ─────────────────────────────── ──────────────────────────────────────── ─────────
 meeting.started                  { meetingId, orgId, participants[] }    24h
@@ -123,7 +124,7 @@ Each microservice is a standalone Node.js process (Docker container) that commun
 
 **What changes**: Nothing removed. Add NATS publisher calls alongside existing function calls.
 
-```
+```text
 Container:  orgsledger-api-gateway
 Replicas:   3-10 (behind load balancer)
 Memory:     512MB per instance
@@ -132,6 +133,7 @@ Ports:      3000
 ```
 
 Responsibilities:
+
 - HTTP REST API (all current routes unchanged)
 - Socket.IO connections (sticky sessions via Redis adapter)
 - Authentication / authorization
@@ -139,7 +141,7 @@ Responsibilities:
 
 ### 2.2 Audio Ingestion Service
 
-```
+```text
 Container:  orgsledger-audio-ingestion
 Replicas:   5-20 (scales with active meetings)
 Memory:     256MB per instance
@@ -147,6 +149,7 @@ CPU:        0.25 vCPU per instance
 ```
 
 Responsibilities:
+
 - Subscribes to LiveKit audio tracks via LiveKit Egress API
 - Receives raw audio chunks from participants
 - Publishes `audio.chunk.{meetingId}` to NATS
@@ -154,7 +157,7 @@ Responsibilities:
 
 ### 2.3 Transcription Service
 
-```
+```text
 Container:  orgsledger-transcription
 Replicas:   10-50 (heaviest scale requirement)
 Memory:     512MB per instance
@@ -162,6 +165,7 @@ CPU:        0.5 vCPU per instance
 ```
 
 Responsibilities:
+
 - Subscribes to `audio.chunk.{meetingId}`
 - Manages Deepgram WebSocket streams (connection pooling)
 - Publishes `transcript.interim.{meetingId}` and `transcript.final.{meetingId}`
@@ -169,7 +173,7 @@ Responsibilities:
 
 ### 2.4 Translation Service
 
-```
+```text
 Container:  orgsledger-translation
 Replicas:   10-30 (scales with language pairs × meetings)
 Memory:     256MB per instance
@@ -177,6 +181,7 @@ CPU:        0.25 vCPU per instance
 ```
 
 Responsibilities:
+
 - Subscribes to `transcript.final.{meetingId}` and `transcript.interim.{meetingId}`
 - Resolves target languages from Redis meeting state
 - Translates via GPT-4o-mini (existing code) with Redis cache
@@ -184,7 +189,7 @@ Responsibilities:
 
 ### 2.5 Broadcast Service
 
-```
+```text
 Container:  orgsledger-broadcast
 Replicas:   5-20 (scales with connected clients)
 Memory:     256MB per instance
@@ -192,13 +197,14 @@ CPU:        0.25 vCPU per instance
 ```
 
 Responsibilities:
+
 - Subscribes to `translation.completed.{meetingId}`
 - Emits Socket.IO events to meeting rooms via Redis Pub/Sub adapter
 - Handles interim + final broadcast distinction
 
 ### 2.6 Minutes Service
 
-```
+```text
 Container:  orgsledger-minutes
 Replicas:   2-5 (background, not latency-critical)
 Memory:     512MB per instance
@@ -206,6 +212,7 @@ CPU:        0.5 vCPU per instance
 ```
 
 Responsibilities:
+
 - Subscribes to `minutes.requested`
 - Aggregates transcripts from DB
 - Generates AI summary via GPT-4o
@@ -214,7 +221,7 @@ Responsibilities:
 
 ### 2.7 Notification Service
 
-```
+```text
 Container:  orgsledger-notification
 Replicas:   2-3
 Memory:     128MB per instance
@@ -222,6 +229,7 @@ CPU:        0.1 vCPU per instance
 ```
 
 Responsibilities:
+
 - Subscribes to `minutes.generated`, `meeting.ended`
 - Sends push notifications, emails
 - Non-latency-critical
@@ -232,7 +240,7 @@ Responsibilities:
 
 ### Real-Time Transcription + Translation (hot path, < 500ms end-to-end)
 
-```
+```text
 Participant speaks
        │
        ▼
@@ -272,7 +280,7 @@ Participant speaks
 
 ### Meeting Minutes (cold path, async)
 
-```
+```text
 Meeting ends
        │
        ▼
@@ -305,6 +313,7 @@ Meeting ends
 # Stream: MEETINGS — meeting lifecycle events
 stream: MEETINGS
   subjects:
+
     - meeting.started
     - meeting.ended
     - meeting.participant.joined
@@ -314,6 +323,7 @@ stream: MEETINGS
   max_bytes: 1GB
   replicas: 3
   consumers:
+
     - transcription-service (push, deliver: all)
     - minutes-service (push, deliver: all)
     - analytics-service (push, deliver: all)
@@ -321,17 +331,20 @@ stream: MEETINGS
 # Stream: AUDIO — raw audio chunks (high throughput)
 stream: AUDIO
   subjects:
+
     - audio.chunk.*  # wildcard per meetingId
   retention: limits
   max_age: 1h       # short retention — only for live processing
   max_bytes: 50GB
   replicas: 1        # no need for durability on audio chunks
   consumers:
+
     - transcription-workers (queue group, round-robin)
 
 # Stream: TRANSCRIPTS — STT results
 stream: TRANSCRIPTS
   subjects:
+
     - transcript.interim.*
     - transcript.final.*
   retention: limits
@@ -339,24 +352,28 @@ stream: TRANSCRIPTS
   max_bytes: 5GB
   replicas: 3
   consumers:
+
     - translation-workers (queue group, round-robin)
     - persistence-worker (push, writes to PostgreSQL)
 
 # Stream: TRANSLATIONS — completed translations
 stream: TRANSLATIONS
   subjects:
+
     - translation.completed.*
   retention: limits
   max_age: 24h
   max_bytes: 5GB
   replicas: 3
   consumers:
+
     - broadcast-workers (queue group, fanout to Socket.IO)
     - persistence-worker (push, writes to PostgreSQL)
 
 # Stream: MINUTES — minutes generation pipeline
 stream: MINUTES
   subjects:
+
     - minutes.requested
     - minutes.generated
   retention: limits
@@ -364,6 +381,7 @@ stream: MINUTES
   max_bytes: 1GB
   replicas: 3
   consumers:
+
     - minutes-workers (queue group)
     - notification-workers (push, on minutes.generated)
 ```
@@ -375,7 +393,7 @@ stream: MINUTES
 ### Scaling Dimensions
 
 | Service | Scale Trigger | Min | Max | Scale Unit |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | API Gateway | CPU > 60% or connections > 5000 | 3 | 10 | 1 pod |
 | Audio Ingestion | Active meetings > 2000/instance | 5 | 20 | 1 pod |
 | Transcription | Deepgram streams > 300/instance | 10 | 50 | 1 pod |
@@ -399,6 +417,7 @@ spec:
   minReplicas: 10
   maxReplicas: 30
   metrics:
+
     - type: Pods
       pods:
         metric:
@@ -406,6 +425,7 @@ spec:
         target:
           type: AverageValue
           averageValue: "100"
+
     - type: Resource
       resource:
         name: cpu
@@ -416,12 +436,14 @@ spec:
     scaleUp:
       stabilizationWindowSeconds: 30
       policies:
+
         - type: Pods
           value: 5
           periodSeconds: 60
     scaleDown:
       stabilizationWindowSeconds: 300
       policies:
+
         - type: Pods
           value: 2
           periodSeconds: 120
@@ -429,7 +451,7 @@ spec:
 
 ### Capacity Math (100K meetings)
 
-```
+```text
 100,000 meetings × ~3 participants avg = 300,000 active streams
 300,000 streams × 1 transcript/3 sec = 100,000 transcripts/sec
 100,000 transcripts × 3 target langs avg = 300,000 translations/sec
@@ -452,7 +474,7 @@ Redis: 500K ops/sec → Redis Cluster with 6 shards
 
 ### Key Spaces
 
-```
+```text
 # Translation Cache (existing, preserved)
 tl:{sourceLang}:{targetLang}:{md5Hash}
   Value: translated text
@@ -501,7 +523,7 @@ socket.io#{namespace}#rooms#{roomId}
 
 ### Redis Cluster Topology
 
-```
+```text
 ┌─────────────────────────────────────────────────┐
 │              Redis Cluster (6 nodes)            │
 │                                                 │
@@ -537,25 +559,26 @@ Add infrastructure alongside the monolith. Nothing in the existing codebase chan
 
 ### Phase 2: Extract Workers (Week 3-4) — Gradual Migration
 
-5. **Extract Translation Workers** into standalone containers
+1. **Extract Translation Workers** into standalone containers
    - Same code, different entry point
    - Subscribe to NATS instead of BullMQ (or keep BullMQ with Redis Cluster)
-6. **Extract Broadcast Workers** into standalone containers
-7. **Move `meetingLanguages`** from in-memory Map to Redis hash
+2. **Extract Broadcast Workers** into standalone containers
+3. **Move `meetingLanguages`** from in-memory Map to Redis hash
 
 ### Phase 3: Scale Services (Week 5-6)
 
-8. **Extract Transcription Service** — manages Deepgram connections independently
-9. **Extract Audio Ingestion** — LiveKit bridge as standalone service
-10. **Deploy Kubernetes** with HPA for all services
+1. **Extract Transcription Service** — manages Deepgram connections independently
+2. **Extract Audio Ingestion** — LiveKit bridge as standalone service
+3. **Deploy Kubernetes** with HPA for all services
 
 ### Phase 4: Edge + Observability (Week 7-8)
 
-11. **Edge ingestion nodes** in 3 regions
-12. **OpenTelemetry** distributed tracing across all services
-13. **Prometheus + Grafana** dashboards
+1. **Edge ingestion nodes** in 3 regions
+2. **OpenTelemetry** distributed tracing across all services
+3. **Prometheus + Grafana** dashboards
 
-### What NEVER changes:
+### What NEVER changes
+
 - Express routes (auth, meetings, financials, etc.)
 - Database schema
 - Socket.IO event names/payloads
@@ -566,7 +589,7 @@ Add infrastructure alongside the monolith. Nothing in the existing codebase chan
 
 ## 8. Edge Processing Architecture
 
-```
+```text
                      ┌─────────────────────────────┐
                      │      Global DNS (Route 53    │
                      │      / Cloudflare)           │
@@ -597,6 +620,7 @@ Add infrastructure alongside the monolith. Nothing in the existing codebase chan
 ```
 
 Edge nodes are thin proxies that:
+
 1. Terminate WebSocket/TLS close to the user (reduces latency by 50-200ms)
 2. Buffer audio chunks and batch-publish to NATS (reduces event count)
 3. Cache recent translations locally (L0 cache for immediate re-broadcast)
@@ -608,7 +632,7 @@ Edge nodes are thin proxies that:
 
 ### Prometheus Metrics (exposed by each service)
 
-```
+```text
 # Transcription
 orgsledger_transcription_latency_seconds{quantile="0.99"}
 orgsledger_transcription_active_streams
@@ -636,7 +660,7 @@ nats_stream_messages_total
 
 ### OpenTelemetry Trace Flow
 
-```
+```text
 Trace: meeting-transcript-pipeline
 ├── Span: audio.receive (edge node, 2ms)
 ├── Span: nats.publish audio.chunk (1ms)
@@ -657,7 +681,7 @@ Trace: meeting-transcript-pipeline
 ## 10. Performance Targets vs Architecture Capacity
 
 | Metric | Target | Architecture Capacity |
-|---|---|---|
+| --- | --- | --- |
 | Simultaneous meetings | 100,000 | ~150,000 (with 50 transcription pods) |
 | Transcription latency | < 1 second | 200-400ms (Deepgram Nova-3) |
 | Translation latency (cache hit) | < 50ms | 1-5ms (L1) / 5-20ms (Redis L2) |
@@ -672,7 +696,7 @@ Trace: meeting-transcript-pipeline
 ## Cost Estimate (100K meetings/month)
 
 | Component | Monthly Cost |
-|---|---|
+| --- | --- |
 | Deepgram Enterprise (300K streams) | ~$15,000 |
 | OpenAI GPT-4o-mini (translations) | ~$3,000 (with 80% cache hit) |
 | Kubernetes cluster (50-100 pods) | ~$5,000 |

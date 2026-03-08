@@ -48,6 +48,7 @@ interface TranslationEntry {
   originalText: string;
   translatedText: string;
   sourceLang: string;
+  targetLang: string;
   timestamp: number;
 }
 
@@ -204,6 +205,7 @@ const LiveTranslation = React.forwardRef<LiveTranslationRef, LiveTranslationProp
         originalText: data.originalText,
         translatedText: translated,
         sourceLang: data.sourceLang,
+        targetLang: myLang,
         timestamp: data.timestamp,
       };
 

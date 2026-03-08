@@ -1,8 +1,8 @@
 # OrgsLedger — Integration Guide
 
 > How to wire the distributed architecture modules into the existing monolith.
-> 
-> **Rule: None of these changes alter existing behaviour.** 
+>
+> **Rule: None of these changes alter existing behaviour.**
 > When `NATS_URL` is not set, every hook is a no-op — the monolith runs exactly as before.
 
 ---
