@@ -70,7 +70,8 @@ class DeepgramRealtimeService {
       }
 
       // Create live transcription connection
-      const connection = await this.client.listen.v1.connect({
+      // Note: listen.v1.connect() returns synchronously in SDK v5, do NOT await
+      const connection = this.client.listen.v1.connect({
         model: 'nova-3',
         language: 'multi',
         punctuate: true,
@@ -135,11 +136,8 @@ class DeepgramRealtimeService {
         }
       });
 
-      // Connect and wait for the connection to open
-      connection.connect();
-      await connection.waitForOpen();
-
-      // Store the connection
+      // In SDK v5, connection auto-connects when created - no need to call connect() or waitForOpen()
+      // Store the connection immediately; audio will be queued until 'open' event fires
       this.activeStreams.set(streamId, connection);
       return true;
     } catch (err) {
@@ -159,8 +157,8 @@ class DeepgramRealtimeService {
         return false;
       }
 
-      // Send audio data to Deepgram via WebSocket
-      stream.socket.send(audioData);
+      // Send audio data to Deepgram using SDK's send method (not raw socket)
+      stream.send(audioData);
       return true;
     } catch (err) {
       logger.error(`Failed to send audio chunk to stream: ${streamId}`, err);
