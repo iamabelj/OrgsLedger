@@ -54,11 +54,14 @@ export interface SpeechSessionOptions {
 export class SpeechSession {
   private connection: any = null;
   private closed = false;
+  private isConnecting = false;  // Guard against multiple concurrent connection attempts
+  private isReady = false;       // Track if connection is ready to send data
   private bytesSent = 0;
   private keepAliveInterval: NodeJS.Timeout | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
+  private pendingChunks: Buffer[] = [];  // Queue for chunks received before connection is ready
 
   private readonly meetingId: string;
   private readonly userId: string;
@@ -97,8 +100,7 @@ export class SpeechSession {
 
   /** Push an audio chunk (Buffer, ArrayBuffer, or base64 string). */
   pushAudio(data: Buffer | ArrayBuffer | string): void {
-    if (this.closed || !this.connection) {
-      logger.debug(`[STT] pushAudio ignored: closed=${this.closed}, hasConnection=${!!this.connection}`);
+    if (this.closed) {
       return;
     }
 
@@ -113,20 +115,27 @@ export class SpeechSession {
 
     this.bytesSent += buf.length;
 
-    // Log every 10th chunk to avoid spam
-    if (this.bytesSent % 10000 < buf.length) {
+    // Log every 50KB to avoid spam
+    if (this.bytesSent % 50000 < buf.length) {
       logger.debug(`[STT] Audio chunk: speaker=${this.speakerName}, chunkSize=${buf.length}, totalBytes=${this.bytesSent}`);
     }
 
-    try {
-      // Send audio data to Deepgram via v5 SDK socket
-      if (this.connection.socket) {
-        this.connection.socket.send(buf);
-      } else {
-        logger.warn(`[STT] No socket available for ${this.speakerName}`);
+    // If connection isn't ready yet, queue the chunk
+    if (!this.isReady || !this.connection) {
+      this.pendingChunks.push(buf);
+      // Limit queue size to prevent memory issues (keep last ~2 seconds of audio)
+      while (this.pendingChunks.length > 20) {
+        this.pendingChunks.shift();
       }
+      return;
+    }
+
+    try {
+      // Use SDK's send method (not raw socket)
+      this.connection.send(buf);
     } catch (err: any) {
       logger.warn(`[STT] Send failed for ${this.speakerName}: ${err.message}`);
+      this.isReady = false;
       if (!this.reconnectTimer) {
         this.reconnectStream();
       }
@@ -137,6 +146,9 @@ export class SpeechSession {
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    this.isReady = false;
+    this.isConnecting = false;
+    this.pendingChunks = [];
 
     logger.info(`[STT] Closing Deepgram session: speaker=${this.speakerName}, meeting=${this.meetingId}, totalBytes=${this.bytesSent}`);
 
@@ -167,9 +179,24 @@ export class SpeechSession {
   private async createConnection(): Promise<void> {
     if (this.closed) return;
 
+    // Prevent multiple concurrent connection attempts
+    if (this.isConnecting) {
+      logger.debug(`[STT] Connection already in progress for ${this.speakerName}`);
+      return;
+    }
+
+    // Clean up any existing connection first
+    if (this.connection) {
+      try { this.connection.finish(); } catch (_) {}
+      this.connection = null;
+    }
+    this.isReady = false;
+    this.isConnecting = true;
+
     if (!DEEPGRAM_API_KEY) {
       const err = new Error('DEEPGRAM_API_KEY not configured');
       logger.error(`[STT] ${err.message}`);
+      this.isConnecting = false;
       this.onError?.(err);
       return;
     }
@@ -211,16 +238,32 @@ export class SpeechSession {
       }
 
       // Create live transcription connection using v5 SDK
-      this.connection = await deepgram.listen.v1.connect(options as any);
+      // Note: listen.v1.connect() returns synchronously, do NOT await it
+      this.connection = deepgram.listen.v1.connect(options as any);
 
       // Handle connection open
       this.connection.on('open', () => {
         logger.info(`[STT] Deepgram connection opened: speaker=${this.speakerName}`);
         this.reconnectAttempts = 0;
+        this.isConnecting = false;
+        this.isReady = true;
+
+        // Send any queued audio chunks now that connection is ready
+        if (this.pendingChunks.length > 0) {
+          logger.debug(`[STT] Flushing ${this.pendingChunks.length} queued chunks for ${this.speakerName}`);
+          for (const chunk of this.pendingChunks) {
+            try {
+              this.connection.send(chunk);
+            } catch (e) {
+              logger.warn(`[STT] Failed to send queued chunk: ${e}`);
+            }
+          }
+          this.pendingChunks = [];
+        }
 
         // Send keep-alive every 8 seconds to prevent timeout
         this.keepAliveInterval = setInterval(() => {
-          if (this.connection) {
+          if (this.connection && this.isReady) {
             try {
               this.connection.keepAlive();
             } catch (_) {}
@@ -268,6 +311,9 @@ export class SpeechSession {
       this.connection.on('close', () => {
         logger.info(`[STT] Deepgram connection closed: speaker=${this.speakerName}, bytesSent=${this.bytesSent}`);
 
+        this.isReady = false;
+        this.isConnecting = false;
+
         if (this.keepAliveInterval) {
           clearInterval(this.keepAliveInterval);
           this.keepAliveInterval = null;
@@ -279,12 +325,12 @@ export class SpeechSession {
         }
       });
 
-      // Connect and wait for connection to be ready
-      this.connection.connect();
-      await this.connection.waitForOpen();
+      // In Deepgram SDK v5, the connection auto-connects when created.
+      // No need to call .connect() or .waitForOpen() - just wait for 'open' event.
 
     } catch (err: any) {
       logger.error(`[STT] Failed to create Deepgram connection: ${err.message}`);
+      this.isConnecting = false;
       this.onError?.(err);
       this.reconnectStream();
     }
@@ -293,12 +339,17 @@ export class SpeechSession {
   private reconnectStream(): void {
     if (this.closed) return;
     if (this.reconnectTimer) return;
+    if (this.isConnecting) return;  // Don't reconnect if already connecting
 
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       logger.error(`[STT] Max reconnect attempts reached for ${this.speakerName}`);
       this.onError?.(new Error('Max reconnect attempts reached'));
       return;
     }
+
+    // Reset connection state
+    this.isReady = false;
+    this.isConnecting = false;
 
     // Clean up old connection
     if (this.keepAliveInterval) {
