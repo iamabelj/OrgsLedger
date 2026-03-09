@@ -650,30 +650,31 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
             ),
           ),
           const SizedBox(width: AppSpacing.md),
-          // AI toggle (visible to all, actionable by admin)
-          _togglingAi
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppColors.highlight,
+          // AI toggle (admin only)
+          if (ref.watch(authProvider).isAdmin)
+            _togglingAi
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.highlight,
+                    ),
+                  )
+                : IconButton(
+                    onPressed: _toggleAi,
+                    icon: Icon(
+                      _aiEnabled
+                          ? Icons.auto_awesome
+                          : Icons.auto_awesome_outlined,
+                      color: _aiEnabled
+                          ? AppColors.highlight
+                          : AppColors.textSecondary,
+                      size: 20,
+                    ),
+                    tooltip: _aiEnabled ? 'AI Active' : 'AI Inactive',
+                    visualDensity: VisualDensity.compact,
                   ),
-                )
-              : IconButton(
-                  onPressed: ref.watch(authProvider).isAdmin ? _toggleAi : null,
-                  icon: Icon(
-                    _aiEnabled
-                        ? Icons.auto_awesome
-                        : Icons.auto_awesome_outlined,
-                    color: _aiEnabled
-                        ? AppColors.highlight
-                        : AppColors.textSecondary,
-                    size: 20,
-                  ),
-                  tooltip: _aiEnabled ? 'AI Active' : 'AI Inactive',
-                  visualDensity: VisualDensity.compact,
-                ),
         ],
       ),
     );
@@ -993,6 +994,7 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
   }
 
   Widget _buildControlBar() {
+    final isAdmin = ref.watch(authProvider).isAdmin;
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.lg,
@@ -1058,20 +1060,22 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
             ),
             const SizedBox(width: AppSpacing.md),
             // Transcription
-            _ControlButton(
-              icon: Icons.subtitles,
-              label: 'Transcript',
-              active: _sidePanel == _SidePanel.transcription,
-              onTap: () {
-                _loadTranscriptsAndMinutes();
-                setState(() {
-                  _sidePanel = _sidePanel == _SidePanel.transcription
-                      ? _SidePanel.none
-                      : _SidePanel.transcription;
-                });
-              },
-            ),
-            const SizedBox(width: AppSpacing.md),
+            if (isAdmin) ...[
+              _ControlButton(
+                icon: Icons.subtitles,
+                label: 'Transcript',
+                active: _sidePanel == _SidePanel.transcription,
+                onTap: () {
+                  _loadTranscriptsAndMinutes();
+                  setState(() {
+                    _sidePanel = _sidePanel == _SidePanel.transcription
+                        ? _SidePanel.none
+                        : _SidePanel.transcription;
+                  });
+                },
+              ),
+              const SizedBox(width: AppSpacing.md),
+            ],
             // Translation
             _ControlButton(
               icon: Icons.translate,
@@ -1119,6 +1123,10 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
   }
 
   Widget _buildSidePanel() {
+    final isAdmin = ref.watch(authProvider).isAdmin;
+    final panel = isAdmin
+        ? _sidePanel
+        : (_sidePanel == _SidePanel.transcription ? _SidePanel.participants : _sidePanel);
     return Container(
       width: 320,
       decoration: const BoxDecoration(
@@ -1138,11 +1146,11 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
             child: Row(
               children: [
                 Icon(
-                  _sidePanel == _SidePanel.chat
+                  panel == _SidePanel.chat
                       ? Icons.chat
-                      : _sidePanel == _SidePanel.transcription
+                      : panel == _SidePanel.transcription
                       ? Icons.subtitles
-                      : _sidePanel == _SidePanel.translation
+                      : panel == _SidePanel.translation
                       ? Icons.translate
                       : Icons.people,
                   color: AppColors.highlight,
@@ -1151,11 +1159,11 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
-                    _sidePanel == _SidePanel.chat
+                    panel == _SidePanel.chat
                         ? 'Chat'
-                        : _sidePanel == _SidePanel.transcription
+                        : panel == _SidePanel.transcription
                         ? 'Transcription & Minutes'
-                        : _sidePanel == _SidePanel.translation
+                        : panel == _SidePanel.translation
                         ? 'Live Translation'
                         : 'Participants',
                     style: AppTypography.h4,
@@ -1175,11 +1183,11 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
           ),
           // Panel body
           Expanded(
-            child: _sidePanel == _SidePanel.chat
+            child: panel == _SidePanel.chat
                 ? _buildChatPanel()
-                : _sidePanel == _SidePanel.transcription
+                : panel == _SidePanel.transcription
                 ? _buildTranscriptionPanel()
-                : _sidePanel == _SidePanel.translation
+                : panel == _SidePanel.translation
                 ? _buildTranslationPanel()
                 : _buildParticipantsList(),
           ),
@@ -1233,6 +1241,7 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
   }
 
   Widget _buildTranscriptionPanel() {
+    final isAdmin = ref.watch(authProvider).isAdmin;
     return Column(
       children: [
         // Minutes section
@@ -1257,13 +1266,14 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
                       ),
                     ),
                     const Spacer(),
-                    IconButton(
-                      icon: const Icon(Icons.refresh, size: 16),
-                      onPressed: _generatingMinutes ? null : _generateMinutes,
-                      tooltip: 'Regenerate minutes',
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
+                    if (isAdmin)
+                      IconButton(
+                        icon: const Icon(Icons.refresh, size: 16),
+                        onPressed: _generatingMinutes ? null : _generateMinutes,
+                        tooltip: 'Regenerate minutes',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -1277,7 +1287,7 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
           const Divider(height: 1),
         ],
         // Generate minutes button (if no minutes yet)
-        if (_minutes == null)
+        if (_minutes == null && isAdmin)
           Padding(
             padding: const EdgeInsets.all(12),
             child: SizedBox(

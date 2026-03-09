@@ -39,6 +39,8 @@ services:
         condition: service_started
     env_file:
       - apps/api/.env.production
+    environment:
+      ENABLE_LIVEKIT_BOT: "true"
     volumes:
       - uploads:/app/apps/api/uploads
       - ./apps/api/google-credentials.json:/app/apps/api/google-credentials.json:ro

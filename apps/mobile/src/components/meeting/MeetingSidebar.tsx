@@ -104,13 +104,15 @@ function MeetingSidebarInner(props: MeetingSidebarProps) {
     onGenerateMinutes,
   } = props;
 
+  const effectivePanel = isAdmin ? activePanel : 'participants';
+
   return (
     <View style={styles.container}>
       {/* Header with close button */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>
-          {activePanel === 'participants' ? 'Participants' :
-           activePanel === 'transcript' ? 'Transcript' : 'Minutes'}
+          {effectivePanel === 'participants' ? 'Participants' :
+           effectivePanel === 'transcript' ? 'Transcript' : 'Minutes'}
         </Text>
         <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
           <Ionicons name="close" size={18} color={Colors.textPrimary} />
@@ -122,26 +124,30 @@ function MeetingSidebarInner(props: MeetingSidebarProps) {
         <TabBtn
           icon="people"
           label="People"
-          active={activePanel === 'participants'}
+          active={effectivePanel === 'participants'}
           onPress={() => onChangePanel('participants')}
         />
-        <TabBtn
-          icon="chatbubbles"
-          label="Transcript"
-          active={activePanel === 'transcript'}
-          onPress={() => onChangePanel('transcript')}
-        />
-        <TabBtn
-          icon="document-text"
-          label="Minutes"
-          active={activePanel === 'minutes'}
-          onPress={() => onChangePanel('minutes')}
-        />
+        {isAdmin && (
+          <TabBtn
+            icon="chatbubbles"
+            label="Transcript"
+            active={effectivePanel === 'transcript'}
+            onPress={() => onChangePanel('transcript')}
+          />
+        )}
+        {isAdmin && (
+          <TabBtn
+            icon="document-text"
+            label="Minutes"
+            active={effectivePanel === 'minutes'}
+            onPress={() => onChangePanel('minutes')}
+          />
+        )}
       </View>
 
       {/* Panel Content */}
       <View style={styles.panelContent}>
-        {activePanel === 'participants' && (
+        {effectivePanel === 'participants' && (
           <ParticipantsPanel
             participants={lkParticipants}
             activeSpeakerIds={activeSpeakerIds}
@@ -149,7 +155,7 @@ function MeetingSidebarInner(props: MeetingSidebarProps) {
             attendance={attendance}
           />
         )}
-        {activePanel === 'transcript' && (
+        {effectivePanel === 'transcript' && (
           <TranscriptPanel
             transcripts={transcripts}
             loading={transcriptsLoading}
@@ -157,7 +163,7 @@ function MeetingSidebarInner(props: MeetingSidebarProps) {
             onRefresh={onRefreshTranscripts}
           />
         )}
-        {activePanel === 'minutes' && (
+        {effectivePanel === 'minutes' && (
           <MinutesPanel
             minutes={minutes}
             loading={minutesLoading}

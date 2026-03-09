@@ -258,6 +258,12 @@ export default function MeetingDetailScreen() {
   const isAdmin = globalRole === 'super_admin' || globalRole === 'developer' || (membership &&
     ['org_admin', 'executive'].includes(membership.role));
 
+  useEffect(() => {
+    if (!isAdmin && activeTab !== 'meeting') {
+      setActiveTab('meeting');
+    }
+  }, [isAdmin, activeTab]);
+
   const orgName = meeting?.org_name || '';
 
   // ── Load Meeting ────────────────────────────────────────
@@ -1018,29 +1024,33 @@ export default function MeetingDetailScreen() {
           <Ionicons name="videocam" size={16} color={activeTab === 'meeting' ? Colors.highlight : Colors.textLight} />
           <Text style={[z.tabText, activeTab === 'meeting' && z.tabTextActive]} numberOfLines={1}>Meeting</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[z.tab, activeTab === 'transcript' && z.tabActive]}
-          onPress={() => setActiveTab('transcript')}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="chatbubbles" size={16} color={activeTab === 'transcript' ? Colors.highlight : Colors.textLight} />
-          <Text style={[z.tabText, activeTab === 'transcript' && z.tabTextActive]} numberOfLines={1}>Transcript</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[z.tab, activeTab === 'minutes' && z.tabActive]}
-          onPress={() => setActiveTab('minutes')}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="document-text" size={16} color={activeTab === 'minutes' ? Colors.highlight : Colors.textLight} />
-          <Text style={[z.tabText, activeTab === 'minutes' && z.tabTextActive]} numberOfLines={1}>Minutes</Text>
-          {meeting.minutes && meeting.minutes.status === 'completed' && (
-            <View style={z.tabDot} />
-          )}
-        </TouchableOpacity>
+        {isAdmin && (
+          <TouchableOpacity
+            style={[z.tab, activeTab === 'transcript' && z.tabActive]}
+            onPress={() => setActiveTab('transcript')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="chatbubbles" size={16} color={activeTab === 'transcript' ? Colors.highlight : Colors.textLight} />
+            <Text style={[z.tabText, activeTab === 'transcript' && z.tabTextActive]} numberOfLines={1}>Transcript</Text>
+          </TouchableOpacity>
+        )}
+        {isAdmin && (
+          <TouchableOpacity
+            style={[z.tab, activeTab === 'minutes' && z.tabActive]}
+            onPress={() => setActiveTab('minutes')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="document-text" size={16} color={activeTab === 'minutes' ? Colors.highlight : Colors.textLight} />
+            <Text style={[z.tabText, activeTab === 'minutes' && z.tabTextActive]} numberOfLines={1}>Minutes</Text>
+            {meeting.minutes && meeting.minutes.status === 'completed' && (
+              <View style={z.tabDot} />
+            )}
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* ═══ TAB: TRANSCRIPT ═════════════════════════════════ */}
-      {activeTab === 'transcript' && (
+      {isAdmin && activeTab === 'transcript' && (
         <>
           <Card style={z.section}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.sm }}>
@@ -1101,7 +1111,7 @@ export default function MeetingDetailScreen() {
       )}
 
       {/* ═══ TAB: MINUTES ════════════════════════════════════ */}
-      {activeTab === 'minutes' && (
+      {isAdmin && activeTab === 'minutes' && (
         <>
           <Card style={z.section}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.md }}>

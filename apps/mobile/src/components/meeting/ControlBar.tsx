@@ -229,14 +229,16 @@ function ControlBarInner(props: ControlBarProps) {
           compact={isNarrow}
         />
 
-        <ControlBtn
-          icon={isTranscribing ? 'ear' : 'ear-outline'}
-          label={isTranscribing ? 'Stop' : 'Transcribe'}
-          active={isTranscribing || false}
-          activeColor="#10B981"
-          onPress={onToggleTranscribe}
-          compact={isNarrow}
-        />
+        {isAdmin && (
+          <ControlBtn
+            icon={isTranscribing ? 'ear' : 'ear-outline'}
+            label={isTranscribing ? 'Stop' : 'Transcribe'}
+            active={isTranscribing || false}
+            activeColor="#10B981"
+            onPress={onToggleTranscribe}
+            compact={isNarrow}
+          />
+        )}
 
         <ControlBtn
           icon="language"
@@ -246,14 +248,16 @@ function ControlBarInner(props: ControlBarProps) {
           compact={isNarrow}
         />
 
-        <ControlBtn
-          icon="document-text"
-          label="Minutes"
-          active={isSidebarOpen && activeSidebarPanel === 'minutes'}
-          badge={(transcriptCount && transcriptCount > 0) ? transcriptCount : undefined}
-          onPress={() => onToggleSidebar('minutes')}
-          compact={isNarrow}
-        />
+        {isAdmin && (
+          <ControlBtn
+            icon="document-text"
+            label="Minutes"
+            active={isSidebarOpen && activeSidebarPanel === 'minutes'}
+            badge={(transcriptCount && transcriptCount > 0) ? transcriptCount : undefined}
+            onPress={() => onToggleSidebar('minutes')}
+            compact={isNarrow}
+          />
+        )}
 
         {/* Record (admin only) */}
         {isAdmin && (

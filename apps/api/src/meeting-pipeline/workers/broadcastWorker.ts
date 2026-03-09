@@ -153,6 +153,20 @@ class BroadcastWorkerManager {
       isFinal,
       timestamp,
     });
+
+    // Backward-compat: some clients rely on `transcript:stored` for real-time transcript updates.
+    // Emit on FINAL only to avoid flooding.
+    if (isFinal) {
+      this.ioServer.to(`meeting:${meetingId}`).emit('transcript:stored', {
+        meetingId,
+        speakerId,
+        speakerName,
+        originalText,
+        sourceLang,
+        translations,
+        timestamp,
+      });
+    }
     logger.debug('[BROADCAST_WORKER] Translation broadcast', { meetingId });
   }
 
