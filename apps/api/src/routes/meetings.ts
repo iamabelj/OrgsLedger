@@ -753,10 +753,17 @@ router.post(
       io.to(`meeting:${meetingId}`).emit('meeting:started', startPayload);
 
       // Trigger queue integration
-      onMeetingStarted(meetingId).catch((err) => logger.warn('onMeetingStarted hook failed', err));
+      onMeetingStarted(meetingId, orgId, meeting).catch((err) => logger.warn('onMeetingStarted hook failed', err));
 
       // Send notification emails (best-effort)
-      sendMeetingStartedEmail(meetingId).catch((err) => logger.warn('Meeting started email failed', err));
+      const members = await db('organization_members')
+        .join('users', 'users.id', 'organization_members.user_id')
+        .where({ organization_id: orgId })
+        .select('users.email');
+      const recipientEmails = members.map((m: any) => m.email).filter(Boolean);
+      if (recipientEmails.length > 0) {
+        sendMeetingStartedEmail(meeting.title, recipientEmails).catch((err) => logger.warn('Meeting started email failed', err));
+      }
 
       res.json({ success: true, message: 'Meeting started' });
     } catch (err) {
