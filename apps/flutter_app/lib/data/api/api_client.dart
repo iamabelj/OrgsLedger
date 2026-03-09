@@ -176,7 +176,8 @@ class ApiClient {
   // ═══════════════════════════════════════════════════════
   //  MEETINGS
   // ═══════════════════════════════════════════════════════
-  Future<Response> getMeetings(String orgId) => dio.get('/meetings/$orgId');
+  Future<Response> getMeetings(String orgId, {int limit = 200}) =>
+      dio.get('/meetings/$orgId', queryParameters: {'limit': limit});
 
   Future<Response> getMeeting(String orgId, String meetingId) =>
       dio.get('/meetings/$orgId/$meetingId');

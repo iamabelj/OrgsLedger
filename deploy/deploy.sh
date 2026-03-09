@@ -64,6 +64,7 @@ FLUTTERWAVE_PUBLIC_KEY=
 FLUTTERWAVE_WEBHOOK_HASH=
 
 OPENAI_API_KEY=$(grep OPENAI_API_KEY "$APP_DIR/apps/api/.env" 2>/dev/null | cut -d= -f2- || echo "")
+DEEPGRAM_API_KEY=$(grep DEEPGRAM_API_KEY "$APP_DIR/apps/api/.env" 2>/dev/null | cut -d= -f2- || echo "")
 GOOGLE_APPLICATION_CREDENTIALS=./google-credentials.json
 
 SMTP_HOST=

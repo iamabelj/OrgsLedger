@@ -45,6 +45,7 @@ export default function MeetingsScreen() {
     s.memberships.find((m) => m.organization_id === s.currentOrgId)
   );
   const [meetings, setMeetings] = useState<any[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [filter, setFilter] = useState<MeetingStatus | 'all'>('all');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -57,10 +58,11 @@ export default function MeetingsScreen() {
   const loadMeetings = useCallback(async () => {
     if (!currentOrgId) return;
     try {
-      const params: any = { limit: 50 };
+      const params: any = { limit: 200 };
       if (filter !== 'all') params.status = filter;
       const res = await api.meetings.list(currentOrgId, params);
       setMeetings(res.data.data || []);
+      setTotalCount(res.data.meta?.total || res.data.data?.length || 0);
     } catch (err) {
       console.warn('Failed to load meetings:', err);
     }
@@ -128,9 +130,8 @@ export default function MeetingsScreen() {
   const stats = useMemo(() => {
     const live = meetings.filter((m) => m.status === 'live').length;
     const upcoming = meetings.filter((m) => m.status === 'scheduled').length;
-    const total = meetings.length;
-    return { live, upcoming, total };
-  }, [meetings]);
+    return { live, upcoming, total: totalCount };
+  }, [meetings, totalCount]);
 
   // Filter + search
   const filtered = useMemo(() => {
