@@ -749,7 +749,7 @@ router.post(
       }
 
       // Emit participant left event
-      const io = getIO();
+      const io = req.app.get('io');
       const user = await db('users')
         .where({ id: userId })
         .select('id', 'full_name', 'avatar_url')

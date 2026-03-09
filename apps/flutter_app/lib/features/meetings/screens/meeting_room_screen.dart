@@ -470,7 +470,9 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
     if (_transcripts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No transcripts yet. Wait for the bot to transcribe some speech first.'),
+          content: Text(
+            'No transcripts yet. Wait for the bot to transcribe some speech first.',
+          ),
           duration: Duration(seconds: 4),
         ),
       );
@@ -482,7 +484,9 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('AI minutes are being generated — you\'ll be notified when ready.'),
+            content: Text(
+              'AI minutes are being generated — you\'ll be notified when ready.',
+            ),
             duration: Duration(seconds: 4),
           ),
         );
@@ -1376,7 +1380,9 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
                           )
                         : const Icon(Icons.auto_awesome, size: 18),
                     label: Text(
-                      _generatingMinutes ? 'Generating...' : 'Generate AI Minutes',
+                      _generatingMinutes
+                          ? 'Generating...'
+                          : 'Generate AI Minutes',
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
@@ -1390,7 +1396,10 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
                     padding: const EdgeInsets.only(top: 6),
                     child: Text(
                       'Waiting for transcripts — the AI bot is transcribing speech in real time.',
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade600,
+                      ),
                     ),
                   ),
               ],
