@@ -137,5 +137,4 @@ export const circuits = {
   email: new CircuitBreaker({ name: 'Email/SMTP', failureThreshold: 5, resetTimeout: 30_000 }),
   stripe: new CircuitBreaker({ name: 'Stripe', failureThreshold: 3, resetTimeout: 30_000 }),
   paystack: new CircuitBreaker({ name: 'Paystack', failureThreshold: 3, resetTimeout: 30_000 }),
-  livekit: new CircuitBreaker({ name: 'LiveKit', failureThreshold: 3, resetTimeout: 15_000 }),
 };
