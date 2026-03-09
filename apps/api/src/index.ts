@@ -25,7 +25,6 @@ import { mountLandingGateway, mountWebFrontend, mountSpaFallback } from './middl
 import { setupSocketIO } from './socket';
 import { AIService } from './services/ai.service';
 import { services } from './services/registry';
-import { initBotManager } from './services/bot';
 import { RATE_LIMITS, PAGINATION, APP_VERSION } from './constants';
 
 // Observability
@@ -36,7 +35,6 @@ import { errorMonitorMiddleware, setupProcessErrorHandlers } from './services/er
 import authRoutes from './routes/auth';
 import orgRoutes from './routes/organizations';
 import chatRoutes from './routes/chat';
-import meetingRoutes from './routes/meetings';
 import financialRoutes from './routes/financials';
 import paymentRoutes from './routes/payments';
 import committeeRoutes from './routes/committees';
@@ -51,14 +49,9 @@ import expenseRoutes from './routes/expenses';
 import subscriptionRoutes from './routes/subscriptions';
 import observabilityRoutes from './routes/observability';
 import docsRoutes from './routes/docs';
-import translationRoutes from './routes/translation.routes';
 import jobsRoutes from './routes/jobs.routes';
-import transcriptsRoutes from './routes/transcripts';
 import { startScheduler } from './services/scheduler.service';
 import { ensureSuperAdmin } from './services/seed.service';
-import { meetingPipeline } from './meeting-pipeline';
-import { prewarmTranslationCache } from './services/translationPrewarm';
-import { startMetricsReporter, stopMetricsReporter } from './services/translationMetrics';
 
 const app = express();
 
@@ -88,52 +81,6 @@ services.register('io', io);     // preferred — use services.get('io') in new 
 const aiService = new AIService(io);
 app.set('aiService', aiService);          // backwards compat
 services.register('aiService', aiService);
-
-// ── Transcription Bot Manager ─────────────────────────────
-// LiveKit transcription bot (optional)
-// Default: disabled (clients stream audio directly to server-side Deepgram STT).
-// Enable by setting ENABLE_LIVEKIT_BOT=true.
-const enableLivekitBot = process.env.ENABLE_LIVEKIT_BOT === 'true';
-if (enableLivekitBot) {
-  try {
-    const botManager = initBotManager({ io });
-    services.register('botManager', botManager);
-    logger.info('[STARTUP] ✓ LiveKit transcription bot enabled');
-
-    // Catchup: start bots for any meetings that were already live when the API
-    // booted (e.g. after a rolling restart). Runs after a short delay so that
-    // all workers and DB connections are fully ready.
-    setTimeout(async () => {
-      try {
-        const { default: db } = await import('./db');
-        const liveMeetings = await db('meetings')
-          .where({ status: 'live' })
-          .select('id');
-
-        if (liveMeetings.length === 0) {
-          logger.info('[STARTUP] No live meetings to catch up bot for');
-          return;
-        }
-
-        logger.info(`[STARTUP] Bot catchup: found ${liveMeetings.length} live meeting(s) — starting bots`);
-        for (const m of liveMeetings) {
-          try {
-            await botManager.startMeetingBot(m.id);
-            logger.info(`[STARTUP] Bot catchup: started bot for meeting=${m.id}`);
-          } catch (e: any) {
-            logger.warn(`[STARTUP] Bot catchup: failed to start bot for meeting=${m.id}`, e?.message);
-          }
-        }
-      } catch (catchupErr: any) {
-        logger.warn('[STARTUP] Bot catchup query failed (non-fatal):', catchupErr?.message);
-      }
-    }, 5000); // 5 s — let workers + DB settle first
-  } catch (err: any) {
-    logger.error('[STARTUP] Failed to initialize LiveKit bot manager (non-fatal):', err?.message || err);
-  }
-} else {
-  logger.info('[STARTUP] LiveKit transcription bot disabled (set ENABLE_LIVEKIT_BOT=true to enable)');
-}
 
 // ── Global Middleware ─────────────────────────────────────
 app.use(helmet({
@@ -167,7 +114,7 @@ app.use(helmet({
 
 // ── Additional Security Headers not covered by Helmet ──
 app.use((_req, res, next) => {
-  // Allow camera + microphone for LiveKit video/audio meetings (self = same origin).
+  // Allow camera + microphone for future video/audio features (self = same origin).
   // Block geolocation and interest-cohort (FLoC tracking).
   res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(), interest-cohort=()');
   res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
@@ -301,56 +248,6 @@ app.get('/api/version', (_req, res) => {
   });
 });
 
-// ── Pipeline Diagnostic Endpoint ──────────────────────────
-// GET /health/pipeline — check if all services for minutes/TTS are configured
-app.get('/health/pipeline', async (_req, res) => {
-  try {
-    const { isSttAvailable, getSttDiagnostics } = require('./services/speech-to-text.service');
-    const { config: appConfig } = require('./config');
-    const sttDiag = getSttDiagnostics();
-
-    // Check database connectivity
-    let dbOk = false;
-    let transcriptTableExists = false;
-    try {
-      const knex = require('./db').default;
-      await knex.raw('SELECT 1');
-      dbOk = true;
-      transcriptTableExists = await knex.schema.hasTable('meeting_transcripts');
-    } catch (_) {}
-
-    res.json({
-      status: 'ok',
-      pipeline: {
-        deepgramSTT: {
-          provider: sttDiag.provider,
-          available: isSttAvailable(),
-          apiKeyConfigured: sttDiag.apiKeyConfigured,
-          apiKeyPrefix: sttDiag.apiKeyPrefix,
-        },
-        openAI: {
-          keyConfigured: !!appConfig.ai.openaiApiKey,
-          keyPrefix: appConfig.ai.openaiApiKey ? appConfig.ai.openaiApiKey.slice(0, 10) + '...' : '(not set)',
-        },
-        aiProxy: {
-          urlConfigured: !!appConfig.aiProxy.url,
-          keyConfigured: !!appConfig.aiProxy.apiKey,
-        },
-        database: {
-          connected: dbOk,
-          transcriptTableExists,
-        },
-        livekit: {
-          urlConfigured: !!appConfig.livekit.url,
-          keyConfigured: !!appConfig.livekit.apiKey,
-        },
-      },
-    });
-  } catch (err: any) {
-    res.status(500).json({ status: 'error', error: err.message });
-  }
-});
-
 // ── Landing / Gateway (orgsledger.com) ────────────────────
 mountLandingGateway(app);
 
@@ -401,7 +298,6 @@ app.use('/api/payments/paystack/callback', webhookLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/organizations', orgRoutes);
 app.use('/api/chat', chatRoutes);
-app.use('/api/meetings', meetingRoutes);
 app.use('/api/financials', idempotencyMiddleware, financialRoutes);
 app.use('/api/payments', idempotencyMiddleware, paymentRoutes);
 app.use('/api/committees', committeeRoutes);
@@ -416,8 +312,6 @@ app.use('/api/expenses', expenseRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/admin/observability', observabilityRoutes);
 app.use('/api/docs', docsRoutes);
-app.use('/api/translations', translationRoutes);
-app.use('/api/meetings/:meetingId/transcripts', transcriptsRoutes);
 app.use('/api', jobsRoutes);
 
 // ── 404 Handler ───────────────────────────────────────────
@@ -432,88 +326,6 @@ mountSpaFallback(app);
 // ── Global Error Handler ──────────────────────────────────
 app.use(errorMonitorMiddleware); // Capture errors before responding
 app.use(globalErrorHandler);     // Structured JSON error responses
-
-// ── Ensure Critical Meeting Tables Exist ──────────────────
-// These tables were added in migrations 021-025 but production
-// may not have run them. Auto-create on startup to guarantee
-// transcripts, chat, and language preferences work.
-async function ensureMeetingTables(): Promise<void> {
-  const { db, tableExists: checkTable, markTableExists } = require('./db');
-  try {
-    // 1. meeting_transcripts (migration 021)
-    if (!(await db.schema.hasTable('meeting_transcripts'))) {
-      logger.info('[STARTUP] Creating missing table: meeting_transcripts');
-      await db.schema.createTable('meeting_transcripts', (t: any) => {
-        t.uuid('id').primary().defaultTo(db.raw("gen_random_uuid()"));
-        t.uuid('meeting_id').notNullable().references('id').inTable('meetings').onDelete('CASCADE');
-        t.uuid('organization_id').notNullable().references('id').inTable('organizations').onDelete('CASCADE');
-        t.uuid('speaker_id').nullable().references('id').inTable('users').onDelete('SET NULL');
-        t.string('speaker_name', 200).notNullable();
-        t.text('original_text').notNullable();
-        t.string('source_lang', 10).notNullable().defaultTo('en');
-        t.jsonb('translations').notNullable().defaultTo('{}');
-        t.bigInteger('spoken_at').notNullable();
-        t.timestamps(true, true);
-        t.index(['meeting_id', 'spoken_at'], 'idx_mt_meeting_spoken');
-        t.index(['organization_id'], 'idx_mt_org');
-      });
-      logger.info('[STARTUP] ✓ Created meeting_transcripts table');
-    }
-    markTableExists('meeting_transcripts');
-
-    // 2. user_language_preferences (migration 022)
-    if (!(await db.schema.hasTable('user_language_preferences'))) {
-      logger.info('[STARTUP] Creating missing table: user_language_preferences');
-      await db.schema.createTable('user_language_preferences', (t: any) => {
-        t.uuid('id').primary().defaultTo(db.raw("gen_random_uuid()"));
-        t.uuid('user_id').notNullable().references('id').inTable('users').onDelete('CASCADE');
-        t.uuid('organization_id').notNullable().references('id').inTable('organizations').onDelete('CASCADE');
-        t.string('preferred_language', 10).notNullable().defaultTo('en');
-        t.boolean('receive_voice').notNullable().defaultTo(true);
-        t.boolean('receive_text').notNullable().defaultTo(true);
-        t.timestamps(true, true);
-        t.unique(['user_id', 'organization_id']);
-        t.index(['organization_id']);
-      });
-      logger.info('[STARTUP] ✓ Created user_language_preferences table');
-    }
-    markTableExists('user_language_preferences');
-
-    // 3. meeting_messages (migration 025)
-    if (!(await db.schema.hasTable('meeting_messages'))) {
-      logger.info('[STARTUP] Creating missing table: meeting_messages');
-      await db.schema.createTable('meeting_messages', (t: any) => {
-        t.uuid('id').primary().defaultTo(db.raw("gen_random_uuid()"));
-        t.uuid('meeting_id').notNullable().references('id').inTable('meetings').onDelete('CASCADE');
-        t.uuid('sender_id').notNullable().references('id').inTable('users').onDelete('CASCADE');
-        t.string('sender_name', 255).notNullable();
-        t.text('message').notNullable();
-        t.timestamp('created_at').defaultTo(db.fn.now());
-      });
-      await db.schema.raw(
-        'CREATE INDEX IF NOT EXISTS idx_meeting_messages_meeting_created ON meeting_messages (meeting_id, created_at)'
-      );
-      logger.info('[STARTUP] ✓ Created meeting_messages table');
-    }
-    markTableExists('meeting_messages');
-
-    // 4. meeting_minutes — add download_formats column if missing (migration 021 part 2)
-    if (await db.schema.hasTable('meeting_minutes')) {
-      const hasFormats = await db.schema.hasColumn('meeting_minutes', 'download_formats');
-      if (!hasFormats) {
-        await db.schema.alterTable('meeting_minutes', (t: any) => {
-          t.jsonb('download_formats').notNullable().defaultTo('{}');
-        });
-        logger.info('[STARTUP] ✓ Added download_formats to meeting_minutes');
-      }
-    }
-
-    logger.info('[STARTUP] ✓ All critical meeting tables verified');
-  } catch (err: any) {
-    logger.error('[STARTUP] ❌ Failed to ensure meeting tables:', err.message);
-    // Don't crash — the app can still serve other features
-  }
-}
 
 // ── Start Server ──────────────────────────────────────────
 // When launched via server.js (production), port is already bound.
@@ -542,13 +354,6 @@ function doPostStart(): void {
       logger.info('[STARTUP] Super admin verified');
     } catch (err: any) {
       logger.error('[STARTUP] ensureSuperAdmin failed (non-fatal):', err.message);
-    }
-
-    try {
-      await ensureMeetingTables();
-      logger.info('[STARTUP] Meeting tables verified');
-    } catch (err: any) {
-      logger.error('[STARTUP] ensureMeetingTables failed (non-fatal):', err.message);
     }
 
     // Ensure account lockout columns exist (migration 026)
@@ -591,23 +396,6 @@ function doPostStart(): void {
 
     // Start recurring dues scheduler
     startScheduler();
-
-    // Initialize new meeting pipeline (replaces old worker orchestrator)
-    try {
-      await meetingPipeline.initialize(io);
-      logger.info('[STARTUP] ✓ Meeting pipeline initialized');
-    } catch (err: any) {
-      logger.error('[STARTUP] Meeting pipeline initialization failed (non-fatal):', err.message);
-    }
-
-    // Start translation metrics reporter
-    startMetricsReporter();
-    logger.info('[STARTUP] ✓ Translation metrics reporter started');
-
-    // Prewarm translation cache in background (non-blocking)
-    prewarmTranslationCache().catch((err) => {
-      logger.warn('[STARTUP] Translation prewarm failed (non-fatal):', err.message || err);
-    });
   })();
 }
 
@@ -647,27 +435,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   // 3. Wait for in-flight requests to complete (max 10s)
   await new Promise((resolve) => setTimeout(resolve, 10_000));
 
-  // 4. Stop meeting pipeline and metrics
-  try {
-    stopMetricsReporter();
-    await meetingPipeline.shutdown();
-    logger.info('[SHUTDOWN] Meeting pipeline closed');
-  } catch (err: any) {
-    logger.error('[SHUTDOWN] Meeting pipeline close error:', err.message);
-  }
-
-  // 4.5 Stop any running transcription bots (best-effort)
-  if (enableLivekitBot) {
-    try {
-      const { getBotManager } = await import('./services/bot');
-      await getBotManager().shutdownAll();
-      logger.info('[SHUTDOWN] Bot manager shut down');
-    } catch (err: any) {
-      logger.warn('[SHUTDOWN] Bot manager shutdown failed (non-fatal):', err?.message || err);
-    }
-  }
-
-  // 5. Close database pool
+  // 4. Close database pool
   try {
     const { db: knex } = require('./db');
     await knex.destroy();
@@ -676,7 +444,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
     logger.error('[SHUTDOWN] DB pool close error:', err.message);
   }
 
-  // 6. Flush logger
+  // 5. Flush logger
   try {
     logger.end();
   } catch {}

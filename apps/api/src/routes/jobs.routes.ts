@@ -9,9 +9,7 @@ import { authenticate, validate } from '../middleware';
 import { z } from 'zod';
 import { getEmailQueueManager } from '../queues/email.queue';
 import { getNotificationQueueManager } from '../queues/notification.queue';
-import { getBotQueueManager } from '../queues/bot.queue';
 import { getDeadLetterJobs, replayDeadLetterJob, getDeadLetterQueueManager } from '../queues/dlq.queue';
-import { meetingPipeline } from '../meeting-pipeline';
 
 const router = Router();
 
@@ -26,7 +24,6 @@ router.get('/jobs/:jobId', authenticate, async (req: Request, res: Response) => 
     const queues = [
       { name: 'email', manager: getEmailQueueManager() },
       { name: 'notification', manager: getNotificationQueueManager() },
-      { name: 'bot', manager: getBotQueueManager() },
     ];
 
     for (const { name, manager } of queues) {
@@ -88,21 +85,14 @@ router.get('/jobs/queue/:queueName', authenticate, async (req: Request, res: Res
   try {
     const { queueName } = req.params;
 
-    // Meeting pipeline status
+    // Meeting pipeline status — reserved for future rebuild
     if (queueName === 'meeting-pipeline') {
-      const status = await meetingPipeline.getStatus();
-      return res.json({
-        queue: 'meeting-pipeline',
-        initialized: status.initialized,
-        counts: status.queue,
-        workers: status.workers,
-      });
+      return res.status(404).json({ error: 'Meeting pipeline not yet implemented' });
     }
 
     const queues: Record<string, any> = {
       email: getEmailQueueManager(),
       notification: getNotificationQueueManager(),
-      bot: getBotQueueManager(),
     };
 
     const manager = queues[queueName];
@@ -186,12 +176,10 @@ router.post('/jobs/dlq/:jobId/replay', authenticate, requireRole('admin'), async
     const queues: Record<string, any> = {
       email: getEmailQueueManager(),
       notification: getNotificationQueueManager(),
-      bot: getBotQueueManager(),
     };
 
     const targetManager = queues[dlqJob.originalQueue];
     if (!targetManager) {
-      // Meeting pipeline queues are not replayable via this endpoint
       return res.status(400).json({ error: `Queue ${dlqJob.originalQueue} not supported for replay` });
     }
 

@@ -1,14 +1,12 @@
 // ============================================================
 // OrgsLedger API — Worker Initialization Module
-// Centralized startup/shutdown for non-meeting BullMQ workers
-// Meeting workers are handled by meeting-pipeline module
+// Centralized startup/shutdown for BullMQ workers
 // ============================================================
 
 import { logger } from '../logger';
 import { getNotificationWorker, startNotificationWorker, stopNotificationWorker } from './notification.worker';
 import { getEmailWorker, startEmailWorker, stopEmailWorker } from './email.worker';
 import { getAuditWorker, startAuditWorker, stopAuditWorker } from './audit.worker';
-import { getBotWorker, startBotWorker, stopBotWorker } from './bot.worker';
 import { initializeDeadLetterQueue } from '../queues/dlq.queue';
 
 // ── Worker Status Types ───────────────────────────────────────
@@ -34,8 +32,7 @@ class WorkerManager {
   private shutdownPromise: Promise<void> | null = null;
 
   /**
-   * Initialize all non-meeting workers and queues.
-   * Meeting workers are started via meeting-pipeline module.
+   * Initialize all workers and queues.
    */
   async initialize(): Promise<void> {
     if (this.isInitialized) {
@@ -44,27 +41,26 @@ class WorkerManager {
     }
 
     const startTime = Date.now();
-    logger.info('[WORKER_MANAGER] Initializing utility workers...');
+    logger.info('[WORKER_MANAGER] Initializing workers...');
 
     try {
       // Initialize DLQ
       await initializeDeadLetterQueue();
       logger.info('[WORKER_MANAGER] DLQ initialized');
 
-      // Initialize utility workers
+      // Initialize workers
       await Promise.all([
         startNotificationWorker(),
         startEmailWorker(),
         startAuditWorker(),
-        startBotWorker(),
       ]);
 
       this.isInitialized = true;
 
       const elapsed = Date.now() - startTime;
-      logger.info('[WORKER_MANAGER] Utility workers initialized', {
+      logger.info('[WORKER_MANAGER] Workers initialized', {
         elapsedMs: elapsed,
-        workers: ['notification', 'email', 'audit', 'bot'],
+        workers: ['notification', 'email', 'audit'],
       });
     } catch (err) {
       logger.error('[WORKER_MANAGER] Failed to initialize', err);
@@ -73,7 +69,7 @@ class WorkerManager {
   }
 
   /**
-   * Get status of all utility workers.
+   * Get status of all workers.
    */
   async getStatus(): Promise<WorkerManagerStatus> {
     if (!this.isInitialized) {
@@ -83,11 +79,10 @@ class WorkerManager {
       };
     }
 
-    const [notificationStatus, emailStatus, auditStatus, botStatus] = await Promise.all([
+    const [notificationStatus, emailStatus, auditStatus] = await Promise.all([
       getNotificationWorker().getStatus(),
       getEmailWorker().getStatus(),
       getAuditWorker().getStatus(),
-      getBotWorker().getStatus(),
     ]);
 
     const workers: WorkerStatus[] = [
@@ -114,14 +109,6 @@ class WorkerManager {
         failed: auditStatus.failed,
         paused: (auditStatus as any).paused ?? false,
         healthy: auditStatus.running,
-      },
-      {
-        name: 'bot',
-        running: botStatus.running,
-        processed: botStatus.processed,
-        failed: botStatus.failed,
-        paused: (botStatus as any).paused ?? false,
-        healthy: botStatus.running,
       },
     ];
 
@@ -167,7 +154,7 @@ class WorkerManager {
       return;
     }
 
-    logger.info('[WORKER_MANAGER] Shutting down utility workers...');
+    logger.info('[WORKER_MANAGER] Shutting down workers...');
     const startTime = Date.now();
 
     try {
@@ -175,7 +162,6 @@ class WorkerManager {
         stopNotificationWorker(),
         stopEmailWorker(),
         stopAuditWorker(),
-        stopBotWorker(),
       ]);
 
       this.isInitialized = false;
