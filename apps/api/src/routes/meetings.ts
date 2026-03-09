@@ -755,9 +755,14 @@ router.post(
       // Trigger queue integration
       onMeetingStarted(meetingId, orgId, meeting).catch((err) => logger.warn('onMeetingStarted hook failed', err));
 
-      // Start the transcription bot
-      const botManager = getBotManager();
-      botManager.startMeetingBot(meetingId).catch((err) => logger.warn('Failed to start meeting bot', err));
+      // Start the transcription bot (if enabled)
+      try {
+        const botManager = getBotManager();
+        botManager.startMeetingBot(meetingId).catch((err) => logger.warn('Failed to start meeting bot', err));
+      } catch (botErr) {
+        // Bot not initialized (ENABLE_LIVEKIT_BOT not set) - continue without bot
+        logger.debug('Transcription bot not available', botErr);
+      }
 
       // Send notification emails (best-effort)
       const members = await db('organization_members')

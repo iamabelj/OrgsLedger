@@ -1,9 +1,9 @@
-FROM node:22-alpine
+FROM node:22-slim
 
 WORKDIR /app
 
 # Install native dependencies for @livekit/rtc-node
-RUN apk add --no-cache python3 make g++ libc6-compat
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 COPY package.json ./
 COPY tsconfig.base.json ./
@@ -14,8 +14,6 @@ COPY packages/database/package.json ./packages/database/
 COPY landing/package.json ./landing/
 
 RUN npm install --workspace=apps/api --workspace=packages/database
-# Install the musl-specific livekit native binary
-RUN npm install @livekit/rtc-node-linux-x64-musl --workspace=apps/api || true
 RUN cd landing && npm install --omit=dev
 
 COPY packages/ ./packages/
