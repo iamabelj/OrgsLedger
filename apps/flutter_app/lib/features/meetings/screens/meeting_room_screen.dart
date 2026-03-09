@@ -294,7 +294,8 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
             _liveTranslations.add({
               'speaker': speaker,
               'text': text,
-              'timestamp': data['timestamp']?.toString() ??
+              'timestamp':
+                  data['timestamp']?.toString() ??
                   DateTime.now().toIso8601String(),
               'isTranslation': false,
             });
@@ -311,8 +312,7 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
     socketClient.on('transcript:stored', (data) {
       if (data is Map<String, dynamic> && mounted) {
         _transcriptRefreshTimer?.cancel();
-        _transcriptRefreshTimer =
-            Timer(const Duration(seconds: 3), () {
+        _transcriptRefreshTimer = Timer(const Duration(seconds: 3), () {
           if (mounted) _loadTranscriptsAndMinutes();
         });
       }
@@ -467,11 +467,37 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
   Future<void> _generateMinutes() async {
     final orgId = ref.read(authProvider).currentOrgId;
     if (orgId == null) return;
+    if (_transcripts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No transcripts yet. Wait for the bot to transcribe some speech first.'),
+          duration: Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
     setState(() => _generatingMinutes = true);
     try {
       await api.generateMinutes(orgId, widget.meetingId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('AI minutes are being generated — you\'ll be notified when ready.'),
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
       await _loadTranscriptsAndMinutes();
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) {
+        final msg = e.toString().contains('No transcripts')
+            ? 'No transcripts available yet. Speak in the meeting first.'
+            : 'Failed to generate minutes. Please try again.';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: Colors.red.shade700),
+        );
+      }
+    }
     if (mounted) setState(() => _generatingMinutes = false);
   }
 
@@ -1333,26 +1359,41 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
         if (_minutes == null && isAdmin)
           Padding(
             padding: const EdgeInsets.all(12),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _generatingMinutes ? null : _generateMinutes,
-                icon: _generatingMinutes
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.auto_awesome, size: 18),
-                label: Text(
-                  _generatingMinutes ? 'Generating...' : 'Generate AI Minutes',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: (_generatingMinutes || _transcripts.isEmpty)
+                        ? null
+                        : _generateMinutes,
+                    icon: _generatingMinutes
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.auto_awesome, size: 18),
+                    label: Text(
+                      _generatingMinutes ? 'Generating...' : 'Generate AI Minutes',
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                  ),
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                ),
-              ),
+                if (_transcripts.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      'Waiting for transcripts — the AI bot is transcribing speech in real time.',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                    ),
+                  ),
+              ],
             ),
           ),
         const Divider(height: 1),

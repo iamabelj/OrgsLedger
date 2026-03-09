@@ -161,11 +161,33 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen>
   Future<void> _generateMinutes() async {
     final orgId = ref.read(authProvider).currentOrgId;
     if (orgId == null) return;
+    if (_transcripts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No transcripts available for this meeting yet.')),
+      );
+      return;
+    }
     setState(() => _generatingMinutes = true);
     try {
       await api.generateMinutes(orgId, widget.meetingId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AI minutes are being generated — you\'ll be notified when ready.')),
+        );
+      }
       await _loadTranscriptsAndMinutes();
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().contains('No transcripts')
+                ? 'No transcripts available yet.'
+                : 'Failed to generate minutes. Please try again.'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    }
     if (mounted) setState(() => _generatingMinutes = false);
   }
 
