@@ -99,6 +99,35 @@ if (enableLivekitBot) {
     const botManager = initBotManager({ io });
     services.register('botManager', botManager);
     logger.info('[STARTUP] ✓ LiveKit transcription bot enabled');
+
+    // Catchup: start bots for any meetings that were already live when the API
+    // booted (e.g. after a rolling restart). Runs after a short delay so that
+    // all workers and DB connections are fully ready.
+    setTimeout(async () => {
+      try {
+        const { default: db } = await import('./db');
+        const liveMeetings = await db('meetings')
+          .where({ status: 'live' })
+          .select('id');
+
+        if (liveMeetings.length === 0) {
+          logger.info('[STARTUP] No live meetings to catch up bot for');
+          return;
+        }
+
+        logger.info(`[STARTUP] Bot catchup: found ${liveMeetings.length} live meeting(s) — starting bots`);
+        for (const m of liveMeetings) {
+          try {
+            await botManager.startMeetingBot(m.id);
+            logger.info(`[STARTUP] Bot catchup: started bot for meeting=${m.id}`);
+          } catch (e: any) {
+            logger.warn(`[STARTUP] Bot catchup: failed to start bot for meeting=${m.id}`, e?.message);
+          }
+        }
+      } catch (catchupErr: any) {
+        logger.warn('[STARTUP] Bot catchup query failed (non-fatal):', catchupErr?.message);
+      }
+    }, 5000); // 5 s — let workers + DB settle first
   } catch (err: any) {
     logger.error('[STARTUP] Failed to initialize LiveKit bot manager (non-fatal):', err?.message || err);
   }
