@@ -76,6 +76,9 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
   // Dominant speaker tracking
   String? _dominantSpeakerId;
 
+  // Debounce timer for transcript panel refresh
+  Timer? _transcriptRefreshTimer;
+
   // Available languages for translation
   static const _languages = [
     {'code': 'en', 'name': 'English'},
@@ -279,6 +282,41 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
         });
       }
     });
+
+    // Listen for final captions — show as live subtitle when translation is NOT active.
+    // caption:final is always emitted by the broadcast worker (no translation required).
+    socketClient.on('caption:final', (data) {
+      if (data is Map<String, dynamic> && mounted && !_translationEnabled) {
+        final text = data['text']?.toString() ?? '';
+        final speaker = data['speakerName']?.toString() ?? 'Unknown';
+        if (text.isNotEmpty) {
+          setState(() {
+            _liveTranslations.add({
+              'speaker': speaker,
+              'text': text,
+              'timestamp': data['timestamp']?.toString() ??
+                  DateTime.now().toIso8601String(),
+              'isTranslation': false,
+            });
+            _interimText = '';
+            if (_liveTranslations.length > 50) _liveTranslations.removeAt(0);
+          });
+        }
+      }
+    });
+
+    // Refresh transcript panel whenever a transcript is confirmed stored.
+    // Debounced to 3 s to avoid hammering the REST endpoint when many
+    // speakers are transcribed in quick succession.
+    socketClient.on('transcript:stored', (data) {
+      if (data is Map<String, dynamic> && mounted) {
+        _transcriptRefreshTimer?.cancel();
+        _transcriptRefreshTimer =
+            Timer(const Duration(seconds: 3), () {
+          if (mounted) _loadTranscriptsAndMinutes();
+        });
+      }
+    });
   }
 
   void _listenForHandRaises() {
@@ -449,6 +487,9 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
     socketClient.off('meeting:ended');
     socketClient.off('translation:language-restored');
     socketClient.off('meeting:hand-raised');
+    socketClient.off('caption:final');
+    socketClient.off('transcript:stored');
+    _transcriptRefreshTimer?.cancel();
     audioStreamService.stopStreaming();
     socketClient.leaveMeeting(widget.meetingId);
     super.dispose();
@@ -1126,7 +1167,9 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
     final isAdmin = ref.watch(authProvider).isAdmin;
     final panel = isAdmin
         ? _sidePanel
-        : (_sidePanel == _SidePanel.transcription ? _SidePanel.participants : _sidePanel);
+        : (_sidePanel == _SidePanel.transcription
+              ? _SidePanel.participants
+              : _sidePanel);
     return Container(
       width: 320,
       decoration: const BoxDecoration(

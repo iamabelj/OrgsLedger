@@ -99,6 +99,21 @@ class BroadcastWorkerManager {
       const eventName = segment.isFinal ? 'caption:final' : 'caption:interim';
       this.ioServer.to(`meeting:${segment.meetingId}`).emit(eventName, payload);
 
+      // Emit transcript:stored for clients that listen on it (e.g. React Native MeetingContext).
+      // Translation worker emits this too — but only when translation is enabled.
+      // Emit here so clients see transcripts even when no translation is running.
+      if (segment.isFinal) {
+        this.ioServer.to(`meeting:${segment.meetingId}`).emit('transcript:stored', {
+          meetingId: segment.meetingId,
+          speakerId: segment.speakerId,
+          speakerName: segment.speakerName,
+          originalText: segment.text,
+          sourceLang: segment.language,
+          translations: {},
+          timestamp: segment.timestamp,
+        });
+      }
+
       // Track metrics
       const latency = Date.now() - startTime;
       this.broadcastCount++;
