@@ -90,10 +90,21 @@ app.set('aiService', aiService);          // backwards compat
 services.register('aiService', aiService);
 
 // ── Transcription Bot Manager ─────────────────────────────
-// Bot disabled — clients stream audio to Deepgram STT.
-// BotManager is NOT initialized to prevent any bot from joining meetings.
-// const botManager = initBotManager({ io });
-// services.register('botManager', botManager);
+// LiveKit transcription bot (optional)
+// Default: disabled (clients stream audio directly to server-side Deepgram STT).
+// Enable by setting ENABLE_LIVEKIT_BOT=true.
+const enableLivekitBot = process.env.ENABLE_LIVEKIT_BOT === 'true';
+if (enableLivekitBot) {
+  try {
+    const botManager = initBotManager({ io });
+    services.register('botManager', botManager);
+    logger.info('[STARTUP] ✓ LiveKit transcription bot enabled');
+  } catch (err: any) {
+    logger.error('[STARTUP] Failed to initialize LiveKit bot manager (non-fatal):', err?.message || err);
+  }
+} else {
+  logger.info('[STARTUP] LiveKit transcription bot disabled (set ENABLE_LIVEKIT_BOT=true to enable)');
+}
 
 // ── Global Middleware ─────────────────────────────────────
 app.use(helmet({
@@ -614,6 +625,17 @@ async function gracefulShutdown(signal: string): Promise<void> {
     logger.info('[SHUTDOWN] Meeting pipeline closed');
   } catch (err: any) {
     logger.error('[SHUTDOWN] Meeting pipeline close error:', err.message);
+  }
+
+  // 4.5 Stop any running transcription bots (best-effort)
+  if (enableLivekitBot) {
+    try {
+      const { getBotManager } = await import('./services/bot');
+      await getBotManager().shutdownAll();
+      logger.info('[SHUTDOWN] Bot manager shut down');
+    } catch (err: any) {
+      logger.warn('[SHUTDOWN] Bot manager shutdown failed (non-fatal):', err?.message || err);
+    }
   }
 
   // 5. Close database pool
