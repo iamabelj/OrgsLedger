@@ -228,7 +228,7 @@ class _FinancialsScreenState extends ConsumerState<FinancialsScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 DropdownButtonFormField<String>(
-                  value: selectedUserId,
+                  initialValue: selectedUserId,
                   dropdownColor: AppColors.surface,
                   style: const TextStyle(color: AppColors.textPrimary),
                   decoration: const InputDecoration(
@@ -264,7 +264,7 @@ class _FinancialsScreenState extends ConsumerState<FinancialsScreen>
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 DropdownButtonFormField<String>(
-                  value: fineType,
+                  initialValue: fineType,
                   dropdownColor: AppColors.surface,
                   style: const TextStyle(color: AppColors.textPrimary),
                   decoration: const InputDecoration(labelText: 'Type'),

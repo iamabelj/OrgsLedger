@@ -66,11 +66,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       setState(() => _loading = false);
       return;
     }
-    if (!_loading)
+    if (!_loading) {
       setState(() {
         _loading = true;
         _error = null;
       });
+    }
     try {
       final results = await Future.wait([
         api.getMeetings(orgId),

@@ -82,7 +82,7 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
               const Text('Generate an invite link to share with new members.'),
               const SizedBox(height: AppSpacing.md),
               DropdownButtonFormField<String>(
-                value: role,
+                initialValue: role,
                 dropdownColor: AppColors.surface,
                 style: const TextStyle(color: AppColors.textPrimary),
                 decoration: const InputDecoration(labelText: 'Role'),

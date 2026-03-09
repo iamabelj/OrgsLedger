@@ -130,7 +130,7 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
                   },
                 ),
                 DropdownButtonFormField<String>(
-                  value: category,
+                  initialValue: category,
                   dropdownColor: AppColors.surface,
                   style: const TextStyle(color: AppColors.textPrimary),
                   decoration: const InputDecoration(labelText: 'Category'),

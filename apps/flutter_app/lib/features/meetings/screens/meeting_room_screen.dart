@@ -753,7 +753,7 @@ class _MeetingRoomScreenState extends ConsumerState<MeetingRoomScreen> {
 
   Widget _buildVideoArea() {
     final allParticipants = <Participant>[
-      if (_localParticipant != null) _localParticipant!,
+      ?_localParticipant,
       ..._remoteParticipants,
     ];
 
