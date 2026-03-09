@@ -719,125 +719,52 @@ router.post(
   authenticate,
   loadMembership,
   async (req: Request, res: Response) => {
+    const { meetingId } = req.params;
+    const userId = req.user!.userId;
     try {
-      const { meetingId } = req.params;
-      const userId = req.user!.userId;
-
       // Update the most recent join log entry without a left_at
-      await db('meeting_join_logs')
+      const logUpdateResult = await db('meeting_join_logs')
         .where({ meeting_id: meetingId, user_id: userId })
         .whereNull('left_at')
         .orderBy('joined_at', 'desc')
         .limit(1)
         .update({ left_at: db.fn.now() });
 
+      if (logUpdateResult === 0) {
+        logger.warn(
+          `No active join log found for user ${userId} in meeting ${meetingId} to mark as left.`
+        );
+      }
+
       // Update attendance left_at
-      await db('meeting_attendance')
+      const attendanceUpdateResult = await db('meeting_attendance')
         .where({ meeting_id: meetingId, user_id: userId })
         .whereNull('left_at')
         .update({ left_at: db.fn.now() });
 
+      if (attendanceUpdateResult === 0) {
+        logger.warn(
+          `No active attendance record found for user ${userId} in meeting ${meetingId} to mark as left.`
+        );
+      }
+
       // Emit participant left event
-      const io = req.app.get('io');
-      if (io) {
-        io.to(`meeting:${meetingId}`).emit('meeting:participant-left', {
-          userId,
+      const io = getIO();
+      const user = await db('users')
+        .where({ id: userId })
+        .select('id', 'full_name', 'avatar_url')
+        .first();
+      if (user) {
+        io.to(`meeting:${meetingId}`).emit('participant:left', {
           meetingId,
+          user,
         });
       }
 
-      res.json({ success: true, message: 'Left meeting' });
+      res.json({ success: true });
     } catch (err) {
+      logger.error(`Failed to process leave for user ${userId} in meeting ${meetingId}`, err);
       res.status(500).json({ success: false, error: 'Failed to leave meeting' });
-    }
-  }
-);
-
-// ── Start Meeting (go LIVE) ─────────────────────────────────
-router.post(
-  '/:orgId/:meetingId/start',
-  authenticate,
-  loadMembership,
-  requireRole('org_admin', 'executive'),
-  async (req: Request, res: Response) => {
-    try {
-      const meeting = await db('meetings')
-        .where({ id: req.params.meetingId, organization_id: req.params.orgId })
-        .first();
-      if (!meeting) {
-        res.status(404).json({ success: false, error: 'Meeting not found' });
-        return;
-      }
-      if (meeting.status !== 'scheduled') {
-        res.status(400).json({ success: false, error: 'Meeting can only be started from scheduled state' });
-        return;
-      }
-
-      await db('meetings')
-        .where({ id: req.params.meetingId })
-        .update({ status: 'live', actual_start: db.fn.now() });
-
-      // Notify org room AND meeting room so all viewers get instant update
-      const io = req.app.get('io');
-      if (io) {
-        const payload = {
-          meetingId: req.params.meetingId,
-          title: meeting.title,
-          status: 'live',
-        };
-        io.to(`org:${req.params.orgId}`).emit('meeting:started', payload);
-        io.to(`meeting:${req.params.meetingId}`).emit('meeting:started', payload);
-      }
-
-      // Send meeting started email to attendees (best-effort, non-blocking)
-      try {
-        const attendees = await db('meeting_attendance')
-          .where({ meeting_id: req.params.meetingId })
-          .select('user_id');
-        const attendeeIds = attendees.map((a: any) => a.user_id);
-        if (attendeeIds.length > 0) {
-          const users = await db('users').whereIn('id', attendeeIds).select('email');
-          const emails = users.map((u: any) => u.email).filter(Boolean);
-          if (emails.length > 0) {
-            // Check org notification settings
-            const org = await db('organizations')
-              .where({ id: req.params.orgId })
-              .select('settings')
-              .first();
-            const settings = typeof org?.settings === 'string' ? JSON.parse(org.settings) : org?.settings;
-            if (settings?.notifications?.meetingReminders !== false) {
-              await sendMeetingStartedEmail(meeting.title, emails)
-                .catch((err) => logger.warn('Failed to send meeting started email', err));
-            }
-          }
-        }
-      } catch (emailErr) {
-        logger.warn('Meeting started email error (non-blocking)', emailErr);
-      }
-
-      // Start transcription bot (best-effort, don't block response)
-      try {
-        const botManager = getBotManager();
-        botManager.startMeetingBot(req.params.meetingId).catch((err) =>
-          logger.warn('[MEETING_START] Transcription bot failed to start', { meetingId: req.params.meetingId, error: err.message })
-        );
-      } catch (_) { /* BotManager not initialized */ }
-
-      await (req as any).audit?.({
-        organizationId: req.params.orgId,
-        action: 'update',
-        entityType: 'meeting',
-        entityId: req.params.meetingId,
-        newValue: { status: 'live' },
-      });
-
-      // Trigger async queue jobs for meeting start (best-effort)
-      onMeetingStarted(req.params.meetingId, req.params.orgId, meeting)
-        .catch(err => logger.warn('Meeting queue integration failed', err));
-
-      res.json({ success: true, message: 'Meeting started' });
-    } catch (err) {
-      res.status(500).json({ success: false, error: 'Failed to start meeting' });
     }
   }
 );
