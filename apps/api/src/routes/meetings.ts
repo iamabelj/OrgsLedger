@@ -713,6 +713,59 @@ router.post(
   }
 );
 
+// ── Start Meeting (change status from scheduled to live) ────
+router.post(
+  '/:orgId/:meetingId/start',
+  authenticate,
+  loadMembership,
+  requireRole('org_admin', 'executive'),
+  async (req: Request, res: Response) => {
+    try {
+      const { orgId, meetingId } = req.params;
+
+      const meeting = await db('meetings')
+        .where({ id: meetingId, organization_id: orgId })
+        .first();
+
+      if (!meeting) {
+        res.status(404).json({ success: false, error: 'Meeting not found' });
+        return;
+      }
+
+      if (meeting.status === 'live') {
+        res.status(400).json({ success: false, error: 'Meeting is already live' });
+        return;
+      }
+
+      if (meeting.status === 'ended') {
+        res.status(400).json({ success: false, error: 'Meeting has already ended' });
+        return;
+      }
+
+      await db('meetings')
+        .where({ id: meetingId })
+        .update({ status: 'live', actual_start: db.fn.now() });
+
+      // Emit socket event
+      const io = req.app.get('io');
+      const startPayload = { meetingId, status: 'live', startedAt: new Date().toISOString() };
+      io.to(`org:${orgId}`).emit('meeting:started', startPayload);
+      io.to(`meeting:${meetingId}`).emit('meeting:started', startPayload);
+
+      // Trigger queue integration
+      onMeetingStarted(meetingId).catch((err) => logger.warn('onMeetingStarted hook failed', err));
+
+      // Send notification emails (best-effort)
+      sendMeetingStartedEmail(meetingId).catch((err) => logger.warn('Meeting started email failed', err));
+
+      res.json({ success: true, message: 'Meeting started' });
+    } catch (err) {
+      logger.error('Start meeting error', err);
+      res.status(500).json({ success: false, error: 'Failed to start meeting' });
+    }
+  }
+);
+
 // ── Leave Meeting (update join log) ─────────────────────────
 router.post(
   '/:orgId/:meetingId/leave',
