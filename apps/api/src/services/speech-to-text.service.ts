@@ -246,34 +246,38 @@ export class SpeechSession {
       // Note: await returns the V1Socket, auto-connected and ready
       this.connection = await deepgram.listen.v1.connect(options as any);
 
-      // Handle connection open
-      this.connection.on('open', () => {
-        logger.info(`[STT] Deepgram connection opened: speaker=${this.speakerName}`);
-        this.reconnectAttempts = 0;
-        this.isConnecting = false;
-        this.isReady = true;
+      // Connection is ready immediately after await resolves in v5 SDK
+      // The 'open' event may have already fired before handlers are attached
+      logger.info(`[STT] Deepgram connection established: speaker=${this.speakerName}`);
+      this.reconnectAttempts = 0;
+      this.isConnecting = false;
+      this.isReady = true;
 
-        // Send any queued audio chunks now that connection is ready
-        if (this.pendingChunks.length > 0) {
-          logger.debug(`[STT] Flushing ${this.pendingChunks.length} queued chunks for ${this.speakerName}`);
-          for (const chunk of this.pendingChunks) {
-            try {
-              this.connection.send(chunk);
-            } catch (e) {
-              logger.warn(`[STT] Failed to send queued chunk: ${e}`);
-            }
+      // Send any queued audio chunks now that connection is ready
+      if (this.pendingChunks.length > 0) {
+        logger.debug(`[STT] Flushing ${this.pendingChunks.length} queued chunks for ${this.speakerName}`);
+        for (const chunk of this.pendingChunks) {
+          try {
+            this.connection.send(chunk);
+          } catch (e) {
+            logger.warn(`[STT] Failed to send queued chunk: ${e}`);
           }
-          this.pendingChunks = [];
         }
+        this.pendingChunks = [];
+      }
 
-        // Send keep-alive every 8 seconds to prevent timeout
-        this.keepAliveInterval = setInterval(() => {
-          if (this.connection && this.isReady) {
-            try {
-              this.connection.keepAlive();
-            } catch (_) {}
-          }
-        }, 8000);
+      // Send keep-alive every 8 seconds to prevent timeout
+      this.keepAliveInterval = setInterval(() => {
+        if (this.connection && this.isReady) {
+          try {
+            this.connection.keepAlive();
+          } catch (_) {}
+        }
+      }, 8000);
+
+      // Handle connection open (may not fire if already open, but keep for reconnects)
+      this.connection.on('open', () => {
+        logger.debug(`[STT] Deepgram 'open' event: speaker=${this.speakerName}`);
       });
 
       // Handle messages (transcripts)
