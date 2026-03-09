@@ -755,6 +755,10 @@ router.post(
       // Trigger queue integration
       onMeetingStarted(meetingId, orgId, meeting).catch((err) => logger.warn('onMeetingStarted hook failed', err));
 
+      // Start the transcription bot
+      const botManager = getBotManager();
+      botManager.startMeetingBot(meetingId).catch((err) => logger.warn('Failed to start meeting bot', err));
+
       // Send notification emails (best-effort)
       const members = await db('organization_members')
         .join('users', 'users.id', 'organization_members.user_id')
