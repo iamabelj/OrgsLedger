@@ -70,8 +70,8 @@ class DeepgramRealtimeService {
       }
 
       // Create live transcription connection
-      // Note: listen.v1.connect() returns synchronously in SDK v5, do NOT await
-      const connection = this.client.listen.v1.connect({
+      // Note: await is needed to get the V1Socket instance
+      const connection = await this.client.listen.v1.connect({
         model: 'nova-3',
         language: 'multi',
         punctuate: true,

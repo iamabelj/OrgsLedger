@@ -238,8 +238,8 @@ export class SpeechSession {
       }
 
       // Create live transcription connection using v5 SDK
-      // Note: listen.v1.connect() returns synchronously, do NOT await it
-      this.connection = deepgram.listen.v1.connect(options as any);
+      // Note: await returns the V1Socket, auto-connected and ready
+      this.connection = await deepgram.listen.v1.connect(options as any);
 
       // Handle connection open
       this.connection.on('open', () => {
