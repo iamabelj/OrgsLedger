@@ -100,7 +100,10 @@ class DeepgramRealtimeService {
         }
         const timer = setInterval(() => {
           try {
-            connection.keepAlive();
+            const connAny = connection as any;
+            if (typeof connAny.keepAlive === 'function') {
+              connAny.keepAlive();
+            }
           } catch (_) {}
         }, 8000);
         this.keepAliveTimers.set(streamId, timer);
