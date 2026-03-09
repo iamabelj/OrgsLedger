@@ -1,6 +1,6 @@
 // ============================================================
 // AI Proxy Routes — Transcription & Summarization
-// Clients call these endpoints; gateway proxies to Google/OpenAI
+// Clients call these endpoints; gateway proxies to Deepgram/OpenAI
 // ============================================================
 
 const express = require('express');
@@ -32,81 +32,87 @@ module.exports = function (pool) {
     let errorMessage = null;
 
     try {
-      const { audio_uri, encoding, sample_rate, language } = req.body;
+      const { audioUri, audio_uri, language } = req.body;
+      const resolvedAudioUri = audioUri || audio_uri;
 
-      // Google Speech-to-Text
-      const speech = require('@google-cloud/speech');
-      const client = new speech.SpeechClient();
+      if (!process.env.DEEPGRAM_API_KEY) {
+        return res.status(500).json({ error: 'DEEPGRAM_API_KEY not configured' });
+      }
 
-      let request;
+      // Deepgram prerecorded transcription
+      const params = new URLSearchParams({
+        model: 'nova-3',
+        language: 'multi',
+        punctuate: 'true',
+        smart_format: 'true',
+        diarize: 'true',
+        utterances: 'true',
+      });
+
+      const apiUrl = `https://api.deepgram.com/v1/listen?${params.toString()}`;
+
+      let deepgramRes;
 
       if (req.file) {
-        // File upload — read and send as content
-        const audioContent = fs.readFileSync(req.file.path).toString('base64');
-        request = {
-          config: {
-            encoding: encoding || 'LINEAR16',
-            sampleRateHertz: parseInt(sample_rate) || 16000,
-            languageCode: language || 'en-US',
-            enableAutomaticPunctuation: true,
-            enableSpeakerDiarization: true,
-            diarizationSpeakerCount: 10,
-            model: 'latest_long',
+        const audioBuffer = fs.readFileSync(req.file.path);
+        deepgramRes = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            Authorization: `Token ${process.env.DEEPGRAM_API_KEY}`,
+            'Content-Type': req.file.mimetype || 'application/octet-stream',
           },
-          audio: { content: audioContent },
-        };
-      } else if (audio_uri) {
-        // GCS URI
-        request = {
-          config: {
-            encoding: encoding || 'LINEAR16',
-            sampleRateHertz: parseInt(sample_rate) || 16000,
-            languageCode: language || 'en-US',
-            enableAutomaticPunctuation: true,
-            enableSpeakerDiarization: true,
-            diarizationSpeakerCount: 10,
-            model: 'latest_long',
+          body: audioBuffer,
+        });
+      } else if (resolvedAudioUri) {
+        deepgramRes = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            Authorization: `Token ${process.env.DEEPGRAM_API_KEY}`,
+            'Content-Type': 'application/json',
           },
-          audio: { uri: audio_uri },
-        };
+          body: JSON.stringify({ url: resolvedAudioUri }),
+        });
       } else {
-        return res.status(400).json({ error: 'Audio file or audio_uri required' });
+        return res.status(400).json({ error: 'Audio file or audioUri/audio_uri required' });
       }
 
-      const [operation] = await client.longRunningRecognize(request);
-      const [response] = await operation.promise();
+      if (!deepgramRes.ok) {
+        const errText = await deepgramRes.text().catch(() => '');
+        throw new Error(`Deepgram transcription failed: ${deepgramRes.status} ${errText}`);
+      }
+
+      const dg = await deepgramRes.json();
 
       const segments = [];
-      let currentTime = 0;
-
-      if (response.results) {
-        for (const result of response.results) {
-          const alt = result.alternatives?.[0];
-          if (alt?.transcript) {
-            const words = alt.words || [];
-            const startSec = words[0]?.startTime
-              ? Number(words[0].startTime.seconds || 0)
-              : currentTime;
-            const endSec = words[words.length - 1]?.endTime
-              ? Number(words[words.length - 1].endTime.seconds || 0)
-              : startSec + 5;
-            const speakerTag = words[0]?.speakerTag || 0;
-
-            segments.push({
-              speakerName: `Speaker ${speakerTag}`,
-              text: alt.transcript,
-              startTime: startSec,
-              endTime: endSec,
-              language: result.languageCode || language || 'en-US',
-            });
-
-            currentTime = endSec;
-            audioSeconds = Math.max(audioSeconds, endSec);
-          }
+      const utterances = dg.results?.utterances || [];
+      if (utterances.length > 0) {
+        for (const u of utterances) {
+          const startSec = u.start || 0;
+          const endSec = u.end || startSec;
+          segments.push({
+            speakerName: `Speaker ${u.speaker ?? 0}`,
+            text: u.transcript || '',
+            startTime: startSec,
+            endTime: endSec,
+            language: dg.results?.channels?.[0]?.detected_language || language || 'en',
+          });
+          audioSeconds = Math.max(audioSeconds, endSec);
         }
+      } else {
+        // Fallback: return full transcript as a single segment
+        const alt = dg.results?.channels?.[0]?.alternatives?.[0];
+        const text = alt?.transcript || '';
+        segments.push({
+          speakerName: 'Speaker 0',
+          text,
+          startTime: 0,
+          endTime: dg.metadata?.duration || 0,
+          language: dg.results?.channels?.[0]?.detected_language || language || 'en',
+        });
+        audioSeconds = Math.max(audioSeconds, dg.metadata?.duration || 0);
       }
 
-      // Estimate cost: $0.006 per 15 seconds
+      // Estimate cost: $0.006 per 15 seconds (proxy estimate)
       const cost = (audioSeconds / 15) * PRICING['speech-to-text'];
 
       // Calculate hours to deduct (audio seconds -> hours)
@@ -128,7 +134,7 @@ module.exports = function (pool) {
         hoursDeducted.toFixed(4),
         cost.toFixed(6),
         req.ip,
-        JSON.stringify({ language: language || 'en-US', encoding: encoding || 'LINEAR16' }),
+        JSON.stringify({ language: language || 'multi' }),
       ]);
 
       res.json({

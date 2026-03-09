@@ -90,7 +90,7 @@ app.set('aiService', aiService);          // backwards compat
 services.register('aiService', aiService);
 
 // ── Transcription Bot Manager ─────────────────────────────
-// Bot disabled — client-side Whisper handles all transcription.
+// Bot disabled — clients stream audio to Deepgram STT.
 // BotManager is NOT initialized to prevent any bot from joining meetings.
 // const botManager = initBotManager({ io });
 // services.register('botManager', botManager);
@@ -265,9 +265,9 @@ app.get('/api/version', (_req, res) => {
 // GET /health/pipeline — check if all services for minutes/TTS are configured
 app.get('/health/pipeline', async (_req, res) => {
   try {
-    const { isWhisperAvailable, getWhisperDiagnostics } = require('./services/whisper.service');
+    const { isSttAvailable, getSttDiagnostics } = require('./services/speech-to-text.service');
     const { config: appConfig } = require('./config');
-    const whisperDiag = getWhisperDiagnostics();
+    const sttDiag = getSttDiagnostics();
 
     // Check database connectivity
     let dbOk = false;
@@ -282,14 +282,11 @@ app.get('/health/pipeline', async (_req, res) => {
     res.json({
       status: 'ok',
       pipeline: {
-        whisperSTT: {
-          engine: whisperDiag.engine,
-          available: isWhisperAvailable(),
-          openaiKeyConfigured: whisperDiag.openaiKeyConfigured,
-        },
-        openAITTS: {
-          model: whisperDiag.ttsModel,
-          available: isWhisperAvailable(),
+        deepgramSTT: {
+          provider: sttDiag.provider,
+          available: isSttAvailable(),
+          apiKeyConfigured: sttDiag.apiKeyConfigured,
+          apiKeyPrefix: sttDiag.apiKeyPrefix,
         },
         openAI: {
           keyConfigured: !!appConfig.ai.openaiApiKey,

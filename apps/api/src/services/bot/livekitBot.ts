@@ -3,17 +3,16 @@
 // Connects to a LiveKit room as a hidden participant using
 // @livekit/rtc-node (server-native SDK), subscribes to all
 // audio tracks, and creates a RealtimeSession per speaker
-// to stream audio to OpenAI for per-speaker transcription.
+// to stream audio to Deepgram for per-speaker transcription.
 // ============================================================
 
 import { AccessToken } from 'livekit-server-sdk';
 import { config } from '../../config';
 import { logger } from '../../logger';
-import db from '../../db';
 import { meetingStateManager } from '../../meeting-pipeline';
-import { RealtimeSession, TranscriptRow } from './realtimeSession';
-import { translateToMultiple, isTtsSupported } from '../translation.service';
-import { getTranslationWallet, deductTranslationWallet } from '../subscription.service';
+import { meetingPipeline } from '../../meeting-pipeline';
+import { deepgramRealtimeService } from '../deepgramRealtime.service';
+import { normalizeLang } from '../../utils/langNormalize';
 
 // @livekit/rtc-node is ESM-only — dynamic import cached at runtime
 let lkRtc: typeof import('@livekit/rtc-node') | null = null;
@@ -45,7 +44,7 @@ export class LivekitBot {
   // Room typed as `any` because @livekit/rtc-node is ESM-only
   // and loaded dynamically. Actual type: import('@livekit/rtc-node').Room
   private room: any = null;
-  private sessions = new Map<string, RealtimeSession>();
+  private sessions = new Map<string, { streamId: string; closed: boolean }>();
   // Keep AudioStream references alive to prevent GC while piping
   private audioStreams = new Map<string, any>();
   private closed = false;
@@ -136,12 +135,13 @@ export class LivekitBot {
     // ── LAYER 7.2 — Meeting end closes everything ─────
     logger.info(`[Bot] Stopping bot for meeting ${this.meetingId} (activeSessions=${this.sessions.size}, audioStreams=${this.audioStreams.size})`);
 
-    // Close all RealtimeSession instances
+    // Close all Deepgram streams
     for (const [speakerId, session] of this.sessions) {
-      logger.info(`[Realtime] Closing session for ${speakerId}`);
-      session.close();
+      logger.info(`[Deepgram] Closing stream for ${speakerId}`);
+      session.closed = true;
+      await deepgramRealtimeService.closeStream(session.streamId);
     }
-    logger.info(`[Realtime] All sessions closed (meeting=${this.meetingId})`);
+    logger.info(`[Deepgram] All streams closed (meeting=${this.meetingId})`);
     this.sessions.clear();
     this.audioStreams.clear();
 
@@ -207,8 +207,8 @@ export class LivekitBot {
   }
 
   /**
-   * Create a RealtimeSession for the speaker and pipe audio
-   * from the LiveKit AudioStream into it.
+    * Create a Deepgram stream for the speaker and pipe audio
+    * from the LiveKit AudioStream into it.
    */
   private async onTrackSubscribed(
     rtc: typeof import('@livekit/rtc-node'),
@@ -249,47 +249,69 @@ export class LivekitBot {
       logger.warn('[LivekitBot] Failed to read participant prefs for source language (non-critical)', err);
     }
 
-    // Create the RealtimeSession (one per speaker)
-    const session = new RealtimeSession({
-      meetingId: this.meetingId,
-      organizationId: this.organizationId,
-      speakerId,
-      speakerName,
-      sourceLang,
-      onTranscript: (transcript) => this.translateAndBroadcast(transcript),
-    });
-    this.sessions.set(speakerId, session);
+    // Create Deepgram realtime stream (one per speaker)
+    const streamId = `${this.meetingId}:${speakerId}`;
+    const created = await deepgramRealtimeService.createStream(
+      streamId,
+      {
+        meetingId: this.meetingId,
+        speakerId,
+        speakerName,
+      },
+      {
+        onInterim: (segment) => {
+          this.submitTranscriptToPipeline({
+            speakerId,
+            speakerName,
+            text: segment.text,
+            isFinal: false,
+            language: normalizeLang(segment.language || sourceLang),
+          }).catch(() => {});
+        },
+        onFinal: (segment) => {
+          this.submitTranscriptToPipeline({
+            speakerId,
+            speakerName,
+            text: segment.text,
+            isFinal: true,
+            language: normalizeLang(segment.language || sourceLang),
+          }).catch(() => {});
+        },
+        onError: (err) => {
+          logger.error(`[LivekitBot] Deepgram stream error: speaker=${speakerName}`, err);
+        },
+      }
+    );
 
-    try {
-      await session.connect();
-      logger.info(`[LivekitBot] RealtimeSession connected: speaker=${speakerName}`);
-    } catch (err) {
-      logger.error(`[LivekitBot] RealtimeSession connect failed: speaker=${speakerName}`, err);
-      this.sessions.delete(speakerId);
+    if (!created) {
+      logger.error(`[LivekitBot] Deepgram stream creation failed: speaker=${speakerName}`);
       return;
     }
 
+    this.sessions.set(speakerId, { streamId, closed: false });
+    logger.info(`[LivekitBot] Deepgram stream connected: speaker=${speakerName}`);
+
     // Create an AudioStream from the subscribed track
     // @livekit/rtc-node AudioStream is an async iterable of AudioFrame
-    // We request 24kHz mono to match OpenAI Realtime requirements
+    // Deepgram expects linear16; use 16kHz mono
     try {
-      const audioStream = new rtc.AudioStream(track, 24000, 1);
+      const audioStream = new rtc.AudioStream(track, 16000, 1);
       this.audioStreams.set(speakerId, audioStream);
 
       // Pipe audio frames in background (non-blocking)
-      this.pipeAudioFrames(audioStream, session, speakerId, speakerName);
+      this.pipeAudioFrames(audioStream, streamId, speakerId, speakerName);
     } catch (err) {
       logger.error(`[LivekitBot] AudioStream creation failed: speaker=${speakerName}`, err);
     }
   }
 
   /**
-   * Async iterator over AudioStream frames → push into RealtimeSession.
+    * Async iterator over AudioStream frames → push into Deepgram stream.
    * Runs until the stream or session ends.
    */
   private async pipeAudioFrames(
     audioStream: any,
-    session: RealtimeSession,
+    streamId: string,
     speakerId: string,
     speakerName: string,
   ): Promise<void> {
@@ -302,7 +324,8 @@ export class LivekitBot {
 
     try {
       for await (const frame of audioStream) {
-        if (session.isClosed || this.closed) break;
+        const session = this.sessions.get(speakerId);
+        if (!session || session.closed || this.closed) break;
         frameCount++;
 
         // @livekit/rtc-node AudioFrame.data is Int16Array (PCM16 mono)
@@ -310,15 +333,15 @@ export class LivekitBot {
           totalSamples += frame.data.length;
           if (frame.data.length === 0) zeroFrames++;
           const buf = Buffer.from(frame.data.buffer, frame.data.byteOffset, frame.data.byteLength);
-          session.pushAudio(buf);
+          deepgramRealtimeService.handleAudioChunk(streamId, buf).catch(() => {});
         } else if (frame.data instanceof Float32Array) {
           totalSamples += frame.data.length;
           if (frame.data.length === 0) zeroFrames++;
-          session.pushAudio(frame.data);
+          // Float32 PCM not expected at 16k linear16; skip
         } else if (Buffer.isBuffer(frame.data)) {
           totalSamples += frame.data.length / 2; // PCM16 = 2 bytes/sample
           if (frame.data.length === 0) zeroFrames++;
-          session.pushAudio(frame.data);
+          deepgramRealtimeService.handleAudioChunk(streamId, frame.data).catch(() => {});
         }
 
         // ── LAYER 2.1 — Periodic audio flow summary ───
@@ -331,7 +354,8 @@ export class LivekitBot {
         }
       }
     } catch (err: any) {
-      if (!this.closed && !session.isClosed) {
+      const session = this.sessions.get(speakerId);
+      if (!this.closed && session && !session.closed) {
         logger.warn(`[Audio] AudioStream ended: speaker=${speakerName}: ${err.message}`);
       }
     } finally {
@@ -344,125 +368,60 @@ export class LivekitBot {
   /** Close and remove a session for a specific speaker. */
   private closeSession(speakerId: string): void {
     const session = this.sessions.get(speakerId);
-    if (session) {
-      // ── LAYER 7.1 — Track unsubscribe closes session ─
-      logger.info(`[Realtime] Closing session for ${speakerId}`);
-      session.close();
-      this.sessions.delete(speakerId);
-      this.audioStreams.delete(speakerId);
-      logger.info(`[Realtime] Session closed: speaker=${speakerId}, remainingSessions=${this.sessions.size}`);
-    }
+    if (!session) return;
+
+    // ── Track unsubscribe closes Deepgram stream ─
+    logger.info(`[Deepgram] Closing stream for ${speakerId}`);
+    session.closed = true;
+    deepgramRealtimeService.closeStream(session.streamId).catch(() => {});
+    this.sessions.delete(speakerId);
+    this.audioStreams.delete(speakerId);
+    logger.info(`[Deepgram] Stream closed: speaker=${speakerId}, remainingSessions=${this.sessions.size}`);
   }
 
-  // ── Translation & Broadcast ─────────────────────────────
+  // ── Meeting Pipeline Integration ───────────────────────
 
-  /**
-   * After a transcript is persisted by the RealtimeSession,
-   * translate to all target languages and broadcast via Socket.IO.
-   * Mirrors the translation:speech handler in socket.ts.
-   */
-  private async translateAndBroadcast(transcript: TranscriptRow): Promise<void> {
-    const { meetingId, organizationId, speakerId, speakerName, text, sourceLang, timestamp } = transcript;
-    // ── LAYER 6.1 — Translation trigger fires ─────────
-    logger.info(`[Translation] Translating transcript for meeting ${meetingId}: speaker=${speakerName}, textLen=${text.length}, sourceLang=${sourceLang}`);
+  private segmentCounters: Map<string, number> = new Map();
+  private lastInterimAt: Map<string, number> = new Map();
+  private readonly INTERIM_THROTTLE_MS = 250;
 
-    try {
-      const targetLangs = await meetingStateManager.getTargetLanguages(meetingId, sourceLang);
+  private getNextSegmentIndex(meetingId: string): number {
+    const current = this.segmentCounters.get(meetingId) || 0;
+    const next = current + 1;
+    this.segmentCounters.set(meetingId, next);
+    return next;
+  }
 
-      let translations: Record<string, string> = {};
+  private async submitTranscriptToPipeline(input: {
+    speakerId: string;
+    speakerName: string;
+    text: string;
+    isFinal: boolean;
+    language: string;
+  }): Promise<void> {
+    const text = input.text?.trim();
+    if (!text) return;
 
-      if (targetLangs.length > 0 && organizationId) {
-        const wallet = await getTranslationWallet(organizationId);
-        const balance = parseFloat(wallet.balance_minutes);
-        logger.info(`[TRANSLATION_PIPELINE] Wallet check: org=${organizationId}, balance=${balance.toFixed(2)} min, targetLangs=${targetLangs.join(',')}`);
-
-        if (balance > 0) {
-          translations = await translateToMultiple(text, targetLangs, sourceLang);
-          logger.info(`[TRANSLATION_PIPELINE] Translation SUCCESS: ${Object.keys(translations).length} languages translated`);
-
-          // Deduct wallet — scaled by content length × target languages
-          const speakingSeconds = Math.max(5, Math.ceil(text.length / 15));
-          const langMultiplier = Math.max(1, targetLangs.length);
-          const deductMinutes = (speakingSeconds * langMultiplier) / 60;
-          await deductTranslationWallet(
-            organizationId,
-            Math.round(deductMinutes * 100) / 100,
-            `Bot transcription translation: ${targetLangs.length} lang(s), ${text.length} chars`
-          ).catch((err: any) => logger.warn('[LivekitBot] Wallet deduction failed', err));
-        } else {
-          logger.warn('[LivekitBot] Translation wallet empty — skipping translation');
-        }
-      }
-
-      // Always include source language
-      translations[sourceLang] = text;
-
-      // Update DB row with translations (best-effort)
-      try {
-        const updated = await db('meeting_transcripts')
-          .where({ meeting_id: meetingId, speaker_id: speakerId, spoken_at: timestamp })
-          .update({ translations: JSON.stringify(translations) });
-        logger.debug(`[DB] Translation update: meeting=${meetingId}, speaker=${speakerId}, rowsUpdated=${updated}`);
-      } catch (dbErr) {
-        logger.warn(`[DB] Translation update failed (non-critical): meeting=${meetingId}, error=${(dbErr as any)?.message}`);
-      }
-
-      // ── LAYER 6.2 — Socket broadcast occurs ──────────
-      this.io.to(`meeting:${meetingId}`).emit('transcript:stored', {
-        meetingId,
-        speakerId,
-        speakerName,
-        originalText: text,
-        sourceLang,
-        translations,
-        timestamp,
-      });
-      logger.info(`[Socket] Emitted transcript:stored to room meeting:${meetingId} (langs=${Object.keys(translations).join(',')})`);
-
-      // Per-user routing with TTS availability
-      const prefsList = await meetingStateManager.getParticipantPrefs(meetingId);
-      if (prefsList.length > 0) {
-        const allSockets = await this.io.in(`meeting:${meetingId}`).fetchSockets();
-        let routed = 0;
-        for (const prefs of prefsList) {
-          if (prefs.userId === speakerId) continue;
-          const targetSocket = allSockets.find(
-            (s: any) => s.userId === prefs.userId || s.data?.userId === prefs.userId
-          );
-          if (targetSocket) {
-            const ttsAvailable = isTtsSupported(prefs.language) && prefs.receiveVoice;
-            targetSocket.emit('translation:result', {
-              meetingId,
-              speakerId,
-              speakerName,
-              originalText: text,
-              sourceLang,
-              translations,
-              timestamp,
-              ttsEnabled: ttsAvailable,
-              ttsAvailable,
-              userLang: prefs.language,
-            });
-            routed++;
-          }
-        }
-        logger.info(`[Socket] Emitted translation:result to ${routed} user(s) in meeting ${meetingId}`);
-      }
-
-      logger.info(`[TRANSLATION_PIPELINE] Broadcast COMPLETE: meeting=${meetingId}, speaker=${speakerName}, langs=${Object.keys(translations).join(',')}`);
-    } catch (err) {
-      logger.error('[LivekitBot] translateAndBroadcast failed', err);
-
-      // Fallback: broadcast original text only
-      this.io.to(`meeting:${meetingId}`).emit('transcript:stored', {
-        meetingId,
-        speakerId,
-        speakerName,
-        originalText: text,
-        sourceLang,
-        translations: { [sourceLang]: text },
-        timestamp,
-      });
+    // Throttle interim updates to reduce queue pressure
+    if (!input.isFinal) {
+      const last = this.lastInterimAt.get(input.speakerId) || 0;
+      const now = Date.now();
+      if (now - last < this.INTERIM_THROTTLE_MS) return;
+      this.lastInterimAt.set(input.speakerId, now);
     }
+
+    const segmentIndex = input.isFinal ? this.getNextSegmentIndex(this.meetingId) : -1;
+
+    await meetingPipeline.submitTranscript({
+      meetingId: this.meetingId,
+      organizationId: this.organizationId,
+      segmentIndex,
+      text,
+      speakerId: input.speakerId,
+      speakerName: input.speakerName,
+      timestamp: new Date().toISOString(),
+      isFinal: input.isFinal,
+      language: normalizeLang(input.language),
+    });
   }
 }

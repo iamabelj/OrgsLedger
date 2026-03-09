@@ -3,7 +3,7 @@
 // Singleton manager that orchestrates LivekitBot instances
 // across multiple concurrent meetings. Each meeting gets
 // one bot that subscribes to all participant audio tracks
-// and creates per-speaker OpenAI Realtime transcription sessions.
+// and creates per-speaker Deepgram transcription streams.
 // ============================================================
 
 import { logger } from '../../logger';
@@ -90,7 +90,7 @@ export class BotManager {
 
   /**
    * Stop and disconnect the bot for a meeting.
-   * Cleans up all RealtimeSessions and the LiveKit connection.
+    * Cleans up all per-speaker Deepgram streams and the LiveKit connection.
    */
   async stopMeetingBot(meetingId: string): Promise<void> {
     const bot = this.bots.get(meetingId);

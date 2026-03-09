@@ -38,6 +38,7 @@ class DeepgramRealtimeService {
   private activeStreams: Map<string, any> = new Map();
   private streamConfigs: Map<string, DeepgramStreamConfig> = new Map();
   private streamCallbacks: Map<string, StreamCallbacks> = new Map();
+  private keepAliveTimers: Map<string, NodeJS.Timeout> = new Map();
 
   constructor() {
     const apiKey = process.env.DEEPGRAM_API_KEY;
@@ -74,8 +75,12 @@ class DeepgramRealtimeService {
         language: 'multi',
         punctuate: true,
         smart_format: true,
-        diarize: true,
         interim_results: true,
+        // Audio format (bot uses 16kHz mono PCM16)
+        encoding: 'linear16',
+        sample_rate: 16000,
+        channels: 1,
+        // Utterance segmentation
         endpointing: 300,
         utterance_end_ms: 3000,
       } as any); // Type assertion needed due to SDK type definitions
@@ -86,6 +91,19 @@ class DeepgramRealtimeService {
           meetingId: config.meetingId,
           speakerId: config.speakerId,
         });
+
+        // Keep-alive to reduce idle disconnects
+        const existing = this.keepAliveTimers.get(streamId);
+        if (existing) {
+          clearInterval(existing);
+          this.keepAliveTimers.delete(streamId);
+        }
+        const timer = setInterval(() => {
+          try {
+            connection.keepAlive();
+          } catch (_) {}
+        }, 8000);
+        this.keepAliveTimers.set(streamId, timer);
       });
 
       connection.on('message', (data: any) => {
@@ -107,6 +125,11 @@ class DeepgramRealtimeService {
         this.activeStreams.delete(streamId);
         this.streamConfigs.delete(streamId);
         this.streamCallbacks.delete(streamId);
+        const timer = this.keepAliveTimers.get(streamId);
+        if (timer) {
+          clearInterval(timer);
+          this.keepAliveTimers.delete(streamId);
+        }
       });
 
       // Connect and wait for the connection to open
@@ -150,6 +173,12 @@ class DeepgramRealtimeService {
       const stream = this.activeStreams.get(streamId);
       if (!stream) {
         return true; // Already closed
+      }
+
+      const timer = this.keepAliveTimers.get(streamId);
+      if (timer) {
+        clearInterval(timer);
+        this.keepAliveTimers.delete(streamId);
       }
 
       // Finalize the stream

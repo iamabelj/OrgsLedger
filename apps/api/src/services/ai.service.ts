@@ -561,10 +561,10 @@ Be thorough and accurate. Identify all decisions, motions, and action items.`;
     return [
       {
         speakerName: 'Speaker 1',
-        text: 'Meeting transcript will appear here when Google Speech-to-Text credentials are configured.',
+        text: 'Meeting transcript will appear here when Deepgram credentials are configured.',
         startTime: 0,
         endTime: 10,
-        language: 'en-US',
+        language: 'en',
       },
     ];
   }
