@@ -63,7 +63,7 @@ export class SpeechSession {
   private maxReconnectAttempts = 5;
   private pendingChunks: Buffer[] = [];  // Queue for chunks received before connection is ready
 
-  private readonly meetingId: string;
+  private readonly _meetingId: string;
   private readonly userId: string;
   private readonly speakerName: string;
   private readonly languageCode: string;
@@ -73,7 +73,7 @@ export class SpeechSession {
   private readonly onError?: (err: Error) => void;
 
   constructor(opts: SpeechSessionOptions) {
-    this.meetingId = opts.meetingId;
+    this._meetingId = opts.meetingId;
     this.userId = opts.userId;
     this.speakerName = opts.speakerName;
     // Convert BCP-47 to Deepgram language code (e.g., 'en-US' -> 'en')
@@ -83,7 +83,7 @@ export class SpeechSession {
     this.onTranscript = opts.onTranscript;
     this.onError = opts.onError;
 
-    logger.info(`[STT] Deepgram session created: speaker=${this.speakerName}, meeting=${this.meetingId}, lang=${this.languageCode}, encoding=${this.encoding}, rate=${this.sampleRateHertz}`);
+    logger.info(`[STT] Deepgram session created: speaker=${this.speakerName}, meeting=${this._meetingId}, lang=${this.languageCode}, encoding=${this.encoding}, rate=${this.sampleRateHertz}`);
   }
 
   // ── Public API ──────────────────────────────────────────
@@ -150,7 +150,7 @@ export class SpeechSession {
     this.isConnecting = false;
     this.pendingChunks = [];
 
-    logger.info(`[STT] Closing Deepgram session: speaker=${this.speakerName}, meeting=${this.meetingId}, totalBytes=${this.bytesSent}`);
+    logger.info(`[STT] Closing Deepgram session: speaker=${this.speakerName}, meeting=${this._meetingId}, totalBytes=${this.bytesSent}`);
 
     if (this.keepAliveInterval) {
       clearInterval(this.keepAliveInterval);
@@ -172,6 +172,11 @@ export class SpeechSession {
 
   get isClosed(): boolean {
     return this.closed;
+  }
+
+  /** Get the meeting ID this session is associated with */
+  get meetingId(): string {
+    return this._meetingId;
   }
 
   // ── Internals ──────────────────────────────────────────

@@ -681,10 +681,20 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       const { meetingId, language, encoding, sampleRate } = data;
       if (!meetingId) return;
 
-      // Clean up any existing session for this socket
       const sessionKey = socket.id;
       const existingSession = activeSttSessions.get(sessionKey);
+
+      // If session already exists for the same meeting and is still active, re-use it
+      // This prevents duplicate audio:start events from destroying active sessions
+      if (existingSession && !existingSession.isClosed && existingSession.meetingId === meetingId) {
+        logger.debug(`[STT] Ignoring duplicate audio:start — session already active for user=${userId}, meeting=${meetingId}`);
+        socket.emit('audio:started', { meetingId });
+        return;
+      }
+
+      // Clean up existing session only if it's for a different meeting or is closed
       if (existingSession) {
+        logger.info(`[STT] Closing previous session (meeting=${existingSession.meetingId}) to start new one for meeting=${meetingId}`);
         existingSession.close();
         activeSttSessions.delete(sessionKey);
       }
