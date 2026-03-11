@@ -21,6 +21,7 @@ import * as client from 'prom-client';
 import { logger } from '../logger';
 import {
   getShardStats,
+  isQueueManagerInitialized,
   SHARDED_QUEUE_TYPES,
   ShardedQueueType,
   QueueManagerStats,
@@ -140,6 +141,12 @@ export class QueueMetricsExporter {
    * Collect metrics from all sharded queues
    */
   async collectMetrics(): Promise<void> {
+    // Skip collection if queue manager isn't initialized yet
+    if (!isQueueManagerInitialized()) {
+      logger.debug('[QUEUE_METRICS] Skipping collection (queue manager not initialized)');
+      return;
+    }
+
     if (this.isCollecting) {
       logger.debug('[QUEUE_METRICS] Skipping collection (already in progress)');
       return;

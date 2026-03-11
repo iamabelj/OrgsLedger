@@ -980,6 +980,14 @@ export async function initializeQueueManager(): Promise<void> {
   return queueManager.initialize();
 }
 
+/**
+ * Check if the queue manager has been initialized.
+ * Useful for metrics collectors that run on a timer.
+ */
+export function isQueueManagerInitialized(): boolean {
+  return queueManager.isInitialized();
+}
+
 export function getQueue<T = any>(queueType: ShardedQueueType, shardId: number): Queue<T> {
   return queueManager.getQueue<T>(queueType, shardId);
 }
