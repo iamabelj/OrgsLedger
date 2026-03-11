@@ -260,73 +260,6 @@ class ApiClient {
     },
   };
 
-  // ── Meetings ──────────────────────────────────────────
-  meetings = {
-    list: (orgId: string, params?: any) =>
-      this.client.get(`/meetings/${orgId}`, { params }),
-    get: (orgId: string, meetingId: string) =>
-      this.client.get(`/meetings/${orgId}/${meetingId}`),
-    create: (orgId: string, data: any) =>
-      this.client.post(`/meetings/${orgId}`, data),
-    update: (orgId: string, meetingId: string, data: any) =>
-      this.client.put(`/meetings/${orgId}/${meetingId}`, data),
-    toggleAi: (orgId: string, meetingId: string) =>
-      this.client.post(`/meetings/${orgId}/${meetingId}/toggle-ai`),
-    start: (orgId: string, meetingId: string) =>
-      this.client.post(`/meetings/${orgId}/${meetingId}/start`),
-    end: (orgId: string, meetingId: string) =>
-      this.client.post(`/meetings/${orgId}/${meetingId}/end`),
-    join: (orgId: string, meetingId: string, joinType?: 'video' | 'audio') =>
-      this.client.post(`/meetings/${orgId}/${meetingId}/join`, { joinType }),
-    leave: (orgId: string, meetingId: string) =>
-      this.client.post(`/meetings/${orgId}/${meetingId}/leave`),
-    recordAttendance: (orgId: string, meetingId: string) =>
-      this.client.post(`/meetings/${orgId}/${meetingId}/attendance`),
-    createVote: (orgId: string, meetingId: string, data: any) =>
-      this.client.post(`/meetings/${orgId}/${meetingId}/votes`, data),
-    castVote: (orgId: string, meetingId: string, voteId: string, data: any) =>
-      this.client.post(`/meetings/${orgId}/${meetingId}/votes/${voteId}/cast`, data),
-    closeVote: (orgId: string, meetingId: string, voteId: string) =>
-      this.client.post(`/meetings/${orgId}/${meetingId}/votes/${voteId}/close`),
-    uploadAudio: (orgId: string, meetingId: string, fileUri: string, fileName: string) => {
-      const formData = new FormData();
-      formData.append('audio', {
-        uri: fileUri,
-        name: fileName,
-        type: 'audio/m4a',
-      } as any);
-      return this.client.post(`/meetings/${orgId}/${meetingId}/audio`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 120000,
-      });
-    },
-    // Meeting transcripts (live translation history)
-    getTranscripts: (orgId: string, meetingId: string, limit: number = 50, offset: number = 0) =>
-      this.client.get(`/meetings/${orgId}/${meetingId}/transcripts?limit=${limit}&offset=${offset}`),
-    // AI-generated minutes
-    getMinutes: (orgId: string, meetingId: string) =>
-      this.client.get(`/meetings/${orgId}/${meetingId}/minutes`),
-    // Download minutes as text/json
-    downloadMinutes: (orgId: string, meetingId: string, format: 'txt' | 'json' = 'txt') =>
-      this.client.get(`/meetings/${orgId}/${meetingId}/minutes/download`, {
-        params: { format },
-        responseType: 'text',
-      }),
-    // Trigger AI minutes generation from live transcripts
-    generateMinutes: (orgId: string, meetingId: string) =>
-      this.client.post(`/meetings/${orgId}/${meetingId}/generate-minutes`),
-    // Digital signatures (Professional+ only)
-    signMinutes: (orgId: string, meetingId: string, signatureData?: string, metadata?: any) =>
-      this.client.post(`/meetings/${orgId}/${meetingId}/minutes/sign`, { signatureData, metadata }),
-    getSignatures: (orgId: string, meetingId: string) =>
-      this.client.get(`/meetings/${orgId}/${meetingId}/minutes/signatures`),
-    removeSignature: (orgId: string, meetingId: string, signatureId: string) =>
-      this.client.delete(`/meetings/${orgId}/${meetingId}/minutes/signatures/${signatureId}`),
-    // In-meeting chat messages
-    getChatMessages: (orgId: string, meetingId: string) =>
-      this.client.get(`/meetings/${orgId}/${meetingId}/chat`),
-  };
-
   // ── Financials ────────────────────────────────────────
   financials = {
     getDues: (orgId: string) => this.client.get(`/financials/${orgId}/dues`),
@@ -609,8 +542,6 @@ class ApiClient {
       this.client.get(`/analytics/${orgId}/member-payments`),
     receipt: (orgId: string, recordId: string) =>
       this.client.get(`/analytics/${orgId}/receipt/${recordId}`),
-    meetingInsights: (orgId: string) =>
-      this.client.get(`/analytics/${orgId}/meeting-insights`),
   };
 
   // ── Translation ───────────────────────────────────────

@@ -39,8 +39,6 @@ services:
         condition: service_started
     env_file:
       - apps/api/.env.production
-    environment:
-      ENABLE_LIVEKIT_BOT: "true"
     volumes:
       - uploads:/app/apps/api/uploads
       - ./apps/api/google-credentials.json:/app/apps/api/google-credentials.json:ro
@@ -59,7 +57,6 @@ services:
       - "443:443"
     depends_on:
       - api
-      - livekit
     networks:
       - default
 
@@ -72,24 +69,6 @@ services:
       - ./apps/mobile/dist:/usr/share/nginx/html
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do sleep 12h & wait $${!}; certbot renew --webroot -w /usr/share/nginx/html --quiet; done'"
 
-  # ── LiveKit Server ─────────────────────────────────────
-  # Self-hosted LiveKit for video/audio conferencing.
-  # All participants receive backend-issued tokens — no external login.
-  # See: https://docs.livekit.io/realtime/self-hosting/
-
-  livekit:
-    image: livekit/livekit-server:latest
-    container_name: orgsledger_livekit
-    restart: always
-    ports:
-      - "7880:7880"     # HTTP / WebSocket
-      - "7881:7881"     # RTC/TCP
-      - "7882:7882/udp" # RTC/UDP
-    volumes:
-      - ./deploy/livekit.yaml:/etc/livekit.yaml:ro
-    command: ["--config", "/etc/livekit.yaml"]
-    networks:
-      - default
 
 volumes:
   pgdata:

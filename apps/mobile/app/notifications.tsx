@@ -36,8 +36,6 @@ type NotificationType =
   | 'fine_issued'
   | 'payment_received'
   | 'payment_confirmed'
-  | 'meeting_scheduled'
-  | 'meeting_reminder'
   | 'campaign_created'
   | 'campaign_goal_reached'
   | 'member_joined'
@@ -63,8 +61,6 @@ const NOTIFICATION_CONFIG: Record<NotificationType, { icon: string; color: strin
   fine_issued: { icon: 'warning', color: Colors.error },
   payment_received: { icon: 'checkmark-circle', color: Colors.success },
   payment_confirmed: { icon: 'shield-checkmark', color: Colors.success },
-  meeting_scheduled: { icon: 'calendar', color: Colors.info },
-  meeting_reminder: { icon: 'notifications', color: Colors.info },
   campaign_created: { icon: 'megaphone', color: Colors.highlight },
   campaign_goal_reached: { icon: 'trophy', color: Colors.highlight },
   member_joined: { icon: 'person-add', color: Colors.success },
@@ -75,13 +71,12 @@ const NOTIFICATION_CONFIG: Record<NotificationType, { icon: string; color: strin
   general: { icon: 'notifications', color: Colors.textSecondary },
 };
 
-type FilterTab = 'all' | 'unread' | 'financial' | 'meetings' | 'members';
+type FilterTab = 'all' | 'unread' | 'financial' | 'members';
 
 const FILTER_TABS: { key: FilterTab; label: string; icon: string }[] = [
   { key: 'all', label: 'All', icon: 'apps-outline' },
   { key: 'unread', label: 'Unread', icon: 'mail-unread-outline' },
   { key: 'financial', label: 'Financial', icon: 'cash-outline' },
-  { key: 'meetings', label: 'Meetings', icon: 'calendar-outline' },
   { key: 'members', label: 'Members', icon: 'people-outline' },
 ];
 
@@ -89,7 +84,6 @@ const FINANCIAL_TYPES: NotificationType[] = [
   'due_created', 'due_reminder', 'fine_issued', 'payment_received',
   'payment_confirmed', 'campaign_created', 'campaign_goal_reached',
 ];
-const MEETING_TYPES: NotificationType[] = ['meeting_scheduled', 'meeting_reminder'];
 const MEMBER_TYPES: NotificationType[] = ['member_joined', 'member_removed', 'role_changed'];
 
 export default function NotificationsScreen() {
@@ -160,8 +154,6 @@ export default function NotificationsScreen() {
         return !n.read;
       case 'financial':
         return FINANCIAL_TYPES.includes(n.type);
-      case 'meetings':
-        return MEETING_TYPES.includes(n.type);
       case 'members':
         return MEMBER_TYPES.includes(n.type);
       default:
@@ -179,10 +171,6 @@ export default function NotificationsScreen() {
     // Navigate based on type
     const data = notification.data;
     switch (notification.type) {
-      case 'meeting_scheduled':
-      case 'meeting_reminder':
-        if (data?.meetingId) router.push(`/meetings/${data.meetingId}`);
-        break;
       case 'chat_mention':
         if (data?.channelId) router.push(`/chat/${data.channelId}`);
         break;

@@ -22,7 +22,8 @@
     "db:seed": "npm run seed --workspace=packages/database",
     "shared:build": "npm run build --workspace=packages/shared",
     "docker:up": "docker-compose up -d",
-    "docker:down": "docker-compose down"
+    "docker:down": "docker-compose down",
+    "audit:meeting": "npx ts-node scripts/audit-meeting.ts"
   },
   "dependencies": {
     "express": "^4.18.2",
@@ -33,6 +34,7 @@
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
+    "@types/pg": "^8.18.0",
     "jest": "^30.2.0",
     "ts-jest": "^29.4.6"
   }

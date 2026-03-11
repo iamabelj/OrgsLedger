@@ -5,11 +5,9 @@
 // ============================================================
 
 import type { Server as SocketIOServer } from 'socket.io';
-import type { AIService } from '../services/ai.service';
 
 interface ServiceMap {
   io: SocketIOServer;
-  aiService: AIService;
 }
 
 class ServiceRegistry {

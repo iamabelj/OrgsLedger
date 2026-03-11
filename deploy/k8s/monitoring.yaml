@@ -1,6 +1,6 @@
 # ============================================================
 # OrgsLedger — Monitoring Stack (Prometheus + Grafana + OTel)
-# Kubernetes deployment for observability.
+# Production observability for 50k meetings.
 # ============================================================
 
 # ── OpenTelemetry Collector ──────────────────────────────
@@ -12,7 +12,7 @@ metadata:
   labels:
     app: otel-collector
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: otel-collector
@@ -33,11 +33,11 @@ spec:
               name: prometheus
           resources:
             requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 500m
+              cpu: 250m
               memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
           volumeMounts:
             - name: otel-config
               mountPath: /etc/otelcol-contrib/config.yaml
@@ -82,8 +82,12 @@ data:
             endpoint: 0.0.0.0:4318
     processors:
       batch:
-        send_batch_size: 1024
+        send_batch_size: 2048
         timeout: 5s
+      memory_limiter:
+        limit_mib: 400
+        spike_limit_mib: 100
+        check_interval: 5s
       resource:
         attributes:
           - key: deployment.environment
@@ -99,23 +103,24 @@ data:
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [batch, resource]
+          processors: [memory_limiter, batch, resource]
           exporters: [logging]
         metrics:
           receivers: [otlp]
-          processors: [batch, resource]
+          processors: [memory_limiter, batch, resource]
           exporters: [prometheus, logging]
 
 ---
 # ── Prometheus ───────────────────────────────────────────
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: prometheus
   namespace: orgsledger
   labels:
     app: prometheus
 spec:
+  serviceName: prometheus
   replicas: 1
   selector:
     matchLabels:
@@ -132,15 +137,16 @@ spec:
             - containerPort: 9090
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
-            - "--storage.tsdb.retention.time=15d"
-            - "--storage.tsdb.retention.size=10GB"
+            - "--storage.tsdb.retention.time=30d"
+            - "--storage.tsdb.retention.size=50GB"
+            - "--web.enable-lifecycle"
           resources:
             requests:
-              cpu: 250m
-              memory: 256Mi
+              cpu: 500m
+              memory: 2Gi
             limits:
-              cpu: "1"
-              memory: 1Gi
+              cpu: "2"
+              memory: 4Gi
           volumeMounts:
             - name: prom-config
               mountPath: /etc/prometheus/prometheus.yml
@@ -151,9 +157,14 @@ spec:
         - name: prom-config
           configMap:
             name: prometheus-config
-        - name: prom-data
-          emptyDir:
-            sizeLimit: 10Gi
+  volumeClaimTemplates:
+    - metadata:
+        name: prom-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 50Gi
 
 ---
 apiVersion: v1
@@ -178,8 +189,11 @@ metadata:
 data:
   prometheus.yml: |
     global:
-      scrape_interval: 15s
+      scrape_interval: 10s
+      evaluation_interval: 10s
+
     scrape_configs:
+      # ── API pods ─────────────────────────────────────────
       - job_name: 'orgsledger-api'
         kubernetes_sd_configs:
           - role: pod
@@ -189,27 +203,74 @@ data:
           - source_labels: [__meta_kubernetes_pod_label_app]
             regex: api
             action: keep
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            regex: "true"
+            action: keep
           - source_labels: [__meta_kubernetes_pod_ip]
             target_label: __address__
             replacement: ${1}:3000
-      - job_name: 'nats'
-        static_configs:
-          - targets: ['nats:8222']
-        metrics_path: '/varz'
+
+      # ── All worker pods (label tier=worker) ──────────────
+      - job_name: 'orgsledger-workers'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ['orgsledger']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_tier]
+            regex: worker
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            regex: "true"
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: ${1}:3000
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: worker_type
+
+      # ── Redis Cluster ────────────────────────────────────
+      - job_name: 'redis-cluster'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ['orgsledger']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            regex: redis-cluster
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: ${1}:9121
+        metrics_path: '/metrics'
+
+      # ── OTel Collector ───────────────────────────────────
       - job_name: 'otel-collector'
         static_configs:
           - targets: ['otel-collector:8889']
 
+      # ── KEDA metrics ─────────────────────────────────────
+      - job_name: 'keda'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ['keda']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            regex: keda-operator
+            action: keep
+
 ---
 # ── Grafana ──────────────────────────────────────────────
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: grafana
   namespace: orgsledger
   labels:
     app: grafana
 spec:
+  serviceName: grafana
   replicas: 1
   selector:
     matchLabels:
@@ -235,20 +296,32 @@ spec:
                   optional: true
             - name: GF_USERS_ALLOW_SIGN_UP
               value: "false"
+            - name: GF_SERVER_ROOT_URL
+              value: "https://grafana.orgsledger.com"
           resources:
             requests:
               cpu: 100m
               memory: 128Mi
             limits:
               cpu: 500m
-              memory: 256Mi
+              memory: 512Mi
           volumeMounts:
             - name: grafana-data
               mountPath: /var/lib/grafana
+            - name: grafana-datasources
+              mountPath: /etc/grafana/provisioning/datasources
       volumes:
-        - name: grafana-data
-          emptyDir:
-            sizeLimit: 2Gi
+        - name: grafana-datasources
+          configMap:
+            name: grafana-datasources
+  volumeClaimTemplates:
+    - metadata:
+        name: grafana-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
 
 ---
 apiVersion: v1
@@ -262,3 +335,21 @@ spec:
   ports:
     - port: 3000
       targetPort: 3000
+
+---
+# ── Grafana Datasource Provisioning ─────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: orgsledger
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus.orgsledger.svc.cluster.local:9090
+        isDefault: true
+        editable: false

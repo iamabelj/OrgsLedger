@@ -237,100 +237,6 @@ async function processLateFees() {
   }
 }
 
-// ── Meeting reminder processor ──────────────────────────────
-async function checkMeetingReminders() {
-  try {
-    const now = new Date();
-    const remind24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    const remind1h = new Date(now.getTime() + 60 * 60 * 1000);
-    const remind15m = new Date(now.getTime() + 15 * 60 * 1000);
-
-    // Find meetings in the next 24 hours that haven't been reminded
-    const upcomingMeetings = await db('meetings')
-      .where('scheduled_start', '>', now.toISOString())
-      .where('scheduled_start', '<=', remind24h.toISOString())
-      .where('status', 'scheduled')
-      .select('*');
-
-    if (!upcomingMeetings.length) return;
-
-    for (const meeting of upcomingMeetings) {
-      const scheduledStart = new Date(meeting.scheduled_start);
-
-      // Fetch org settings
-      const org = await db('organizations')
-        .where({ id: meeting.organization_id })
-        .select('settings')
-        .first();
-
-      if (!org?.settings) continue;
-      const settings = typeof org.settings === 'string' ? JSON.parse(org.settings) : org.settings;
-      if (settings.notifications?.meetingReminders === false) continue;
-
-      // Fetch attendees with email preference enabled
-      const attendees = await db('meeting_attendance')
-        .where({ meeting_id: meeting.id })
-        .select('user_id');
-
-      const attendeeIds = attendees.map((a: any) => a.user_id);
-      if (!attendeeIds.length) continue;
-
-      // Get user emails and their notification preferences
-      const users = await db('users')
-        .whereIn('id', attendeeIds)
-        .select('id', 'email');
-
-      const userEmails = users.map((u: any) => u.email);
-      if (!userEmails.length) continue;
-
-      // Check which users have email reminders enabled
-      const userPrefs = await db('notification_preferences')
-        .whereIn('user_id', users.map((u: any) => u.id))
-        .select('user_id', 'email_meetings');
-
-      const usersWithEmailEnabled = new Set();
-      for (const pref of userPrefs) {
-        if (pref.email_meetings !== false) {
-          usersWithEmailEnabled.add(pref.user_id);
-        }
-      }
-
-      // Determine which reminder to send
-      const minutesUntil = (scheduledStart.getTime() - now.getTime()) / (1000 * 60);
-      let reminderType: '24h' | '1h' | '15min' | null = null;
-
-      if (minutesUntil <= 15 && minutesUntil > 0) {
-        reminderType = '15min';
-      } else if (minutesUntil <= 65 && minutesUntil > 40) {
-        reminderType = '1h';
-      } else if (minutesUntil <= 1445 && minutesUntil > 1380) {
-        reminderType = '24h';
-      }
-
-      if (!reminderType) continue;
-
-      // Send emails
-      const emailsToSend = userEmails.filter((_, idx) => 
-        usersWithEmailEnabled.has(users[idx].id)
-      );
-
-      if (emailsToSend.length > 0) {
-        // Dynamic import to avoid circular dependency
-        const { sendMeetingReminderEmail } = await import('./email.service');
-        await sendMeetingReminderEmail(
-          meeting.title,
-          scheduledStart,
-          reminderType,
-          emailsToSend
-        );
-        logger.info(`Meeting reminder sent (${reminderType}) for ${meeting.title} to ${emailsToSend.length} users`);
-      }
-    }
-  } catch (err) {
-    logger.error('Meeting reminder checker error', err);
-  }
-}
-
 // ── Due reminder processor ──────────────────────────────────
 async function checkDueReminders() {
   try {
@@ -472,7 +378,6 @@ export function startScheduler() {
     try {
       await processRecurringDues();
       await processLateFees();
-      await checkMeetingReminders();
       await checkDueReminders();
       await checkNoSigninPurge();
     } finally {

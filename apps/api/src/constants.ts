@@ -68,7 +68,6 @@ export const GATEWAYS = {
 // ── Notification Types ──────────────────────────────────────
 export const NOTIFICATION_TYPES = {
   PAYMENT: 'payment',
-  MEETING: 'meeting',
   CHAT: 'chat',
   EVENT: 'event',
   ANNOUNCEMENT: 'announcement',

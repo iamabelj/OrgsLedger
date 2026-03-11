@@ -19,7 +19,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.orgsledger.app",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "OrgsLedger needs microphone access for meeting audio recording."
+        "NSMicrophoneUsageDescription": "OrgsLedger needs microphone access for audio features."
       }
     },
     "android": {

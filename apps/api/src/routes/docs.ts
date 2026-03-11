@@ -333,22 +333,6 @@ const openApiSpec = {
       },
     },
 
-    // ── Meetings ──
-    '/meetings/{orgId}': {
-      get: {
-        tags: ['Meetings'],
-        summary: 'List meetings for an organization',
-        parameters: [{ $ref: '#/components/parameters/OrgId' }],
-        responses: { '200': { description: 'List of meetings' } },
-      },
-      post: {
-        tags: ['Meetings'],
-        summary: 'Schedule a new meeting',
-        parameters: [{ $ref: '#/components/parameters/OrgId' }],
-        responses: { '201': { description: 'Meeting scheduled' } },
-      },
-    },
-
     // ── Financials ──
     '/financials/{orgId}': {
       get: {
@@ -419,7 +403,6 @@ const openApiSpec = {
     { name: 'Auth', description: 'Authentication & user management' },
     { name: 'Organizations', description: 'Organization CRUD' },
     { name: 'Documents', description: 'Document repository' },
-    { name: 'Meetings', description: 'Meeting scheduling & management' },
     { name: 'Financials', description: 'Financial overview & donations' },
     { name: 'Notifications', description: 'User notifications' },
     { name: 'Chat', description: 'Real-time messaging' },

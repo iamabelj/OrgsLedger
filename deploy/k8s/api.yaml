@@ -1,6 +1,7 @@
 # ============================================================
 # OrgsLedger API — Kubernetes Deployment
-# Horizontally scalable API pods with Redis-backed Socket.IO.
+# Production-grade API pods for 50k meetings.
+# Socket.IO sticky sessions via Redis adapter.
 # ============================================================
 
 apiVersion: apps/v1
@@ -10,11 +11,16 @@ metadata:
   namespace: orgsledger
   labels:
     app: api
+    tier: frontend
 spec:
-  replicas: 3
+  replicas: 5
   selector:
     matchLabels:
       app: api
+  strategy:
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 1
   template:
     metadata:
       labels:
@@ -24,6 +30,13 @@ spec:
         prometheus.io/port: "3000"
         prometheus.io/path: "/metrics"
     spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: api
       containers:
         - name: api
           image: orgsledger/api:latest
@@ -36,11 +49,11 @@ spec:
                 name: orgsledger-secrets
           resources:
             requests:
-              cpu: 500m
-              memory: 512Mi
-            limits:
-              cpu: "2"
+              cpu: "1"
               memory: 1Gi
+            limits:
+              cpu: "4"
+              memory: 2Gi
           livenessProbe:
             httpGet:
               path: /health
@@ -48,6 +61,7 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 10
             timeoutSeconds: 5
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /health
@@ -55,6 +69,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 3
+            failureThreshold: 2
           lifecycle:
             preStop:
               exec:
@@ -72,8 +87,19 @@ spec:
   ports:
     - port: 3000
       targetPort: 3000
-  # Use sticky sessions for Socket.IO WebSocket connections
   sessionAffinity: ClientIP
   sessionAffinityConfig:
     clientIP:
       timeoutSeconds: 3600
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-pdb
+  namespace: orgsledger
+spec:
+  minAvailable: 3
+  selector:
+    matchLabels:
+      app: api

@@ -11,12 +11,11 @@ import { logger } from '../logger';
 export interface EmailJobData {
   recipientEmail: string;
   recipientName?: string;
-  emailType: 'meeting_started' | 'meeting_ended' | 'minutes_ready' | 'reminder' | 'alert' | 'subscription' | 'transactional';
+  emailType: 'reminder' | 'alert' | 'subscription' | 'transactional';
   subject: string;
   htmlBody: string;
   textBody?: string;
   organizationId?: string;
-  meetingId?: string;
   retries?: number;
 }
 

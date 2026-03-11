@@ -155,7 +155,6 @@ router.get(
         .whereIn('type', ['ai_credit_purchase'])
         .select(db.raw('coalesce(sum(amount), 0) as total'))
         .first();
-      const totalMeetings = await db('meetings').count('id as count').first();
       const aiMinutesUsed = await db('wallet_transactions')
         .where({ service_type: 'ai' })
         .where('amount_minutes', '<', 0)
@@ -181,7 +180,6 @@ router.get(
           activeOrganizations: parseInt(activeOrgs?.count as string) || 0,
           totalUsers: parseInt(totalUsers?.count as string) || 0,
           totalRevenue: totalRevenue?.total || 0,
-          totalMeetings: parseInt(totalMeetings?.count as string) || 0,
           totalAIMinutesUsed: aiMinutesUsed?.total || 0,
           recentActivity: recentAudit,
         },

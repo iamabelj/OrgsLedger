@@ -1,0 +1,335 @@
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+[1m[36m  AI MEETING SYSTEM ΓÇö FULL VERIFICATION[0m
+[2m  Stages 1ΓÇô5: Infrastructure ΓåÆ Minutes Generation[0m
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+[36m[1m  SECTION 1: INFRASTRUCTURE CHECKS[0m
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+
+[2mΓöÇΓöÇ[0m [33m1.1 Redis Connectivity[0m [2mΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ[0m
+
+[32mΓ£à Redis connected and operational[0m
+[VERIFY] Redis connection {
+  "host": "localhost",
+  "port": 6379
+}
+
+[2mΓöÇΓöÇ[0m [33m1.2 PostgreSQL Connectivity[0m [2mΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ[0m
+
+[32mΓ£à PostgreSQL connected and operational[0m
+[VERIFY] Database connection {
+  "tables": [
+    "users",
+    "meetings",
+    "organizations"
+  ]
+}
+
+[2mΓöÇΓöÇ[0m [33m1.3 BullMQ Queue Health[0m [2mΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ[0m
+
+[32mΓ£à Queue "transcript-events" accessible[0m
+[32mΓ£à Queue "translation-jobs" accessible[0m
+[32mΓ£à Queue "broadcast-events" accessible[0m
+[32mΓ£à Queue "minutes-generation" accessible[0m
+[VERIFY] Queue metrics {
+  "transcript-events": {
+    "active": 0,
+    "completed": 3,
+    "delayed": 0,
+    "failed": 0,
+    "paused": 0,
+    "prioritized": 0,
+    "waiting": 0,
+    "waiting-children": 0
+  },
+  "translation-jobs": {
+    "active": 0,
+    "completed": 0,
+    "delayed": 0,
+    "failed": 0,
+    "paused": 0,
+    "prioritized": 0,
+    "waiting": 2,
+    "waiting-children": 0
+  },
+  "broadcast-events": {
+    "active": 0,
+    "completed": 0,
+    "delayed": 0,
+    "failed": 0,
+    "paused": 0,
+    "prioritized": 0,
+    "waiting": 5,
+    "waiting-children": 0
+  },
+  "minutes-generation": {
+    "active": 0,
+    "completed": 0,
+    "delayed": 0,
+    "failed": 0,
+    "paused": 0,
+    "prioritized": 0,
+    "waiting": 0,
+    "waiting-children": 0
+  }
+}
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+[36m[1m  SECTION 2: MEETING SERVICE TESTS[0m
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+
+[2mΓöÇΓöÇ[0m [33m2.1 Test Data Setup[0m [2mΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ[0m
+
+[32mΓ£à Test user created[0m
+[32mΓ£à Test organization created[0m
+
+[2mΓöÇΓöÇ[0m [33m2.2 Meeting Create[0m [2mΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ[0m
+
+[32mΓ£à Meeting created[0m
+[VERIFY] Meeting details {
+  "id": "f8f1d8cf-7706-4788-9cae-32d5a1a87c44",
+  "status": "scheduled"
+}
+
+[2mΓöÇΓöÇ[0m [33m2.3 Meeting State Transitions[0m [2mΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ[0m
+
+[32mΓ£à Meeting started (active)[0m
+[32mΓ£à Participant tracking in Redis[0m
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+[36m[1m  SECTION 3: LIVEKIT TOKEN VERIFICATION[0m
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+
+[2mΓöÇΓöÇ[0m [33m3.1 LiveKit Token Generation[0m [2mΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ[0m
+
+[32mΓ£à LiveKit token generated with correct structure[0m
+[VERIFY] Token payload {
+  "identity": "6faeb977-9a62-4c84-9444-9587ec58aba3",
+  "room": "f8f1d8cf-7706-4788-9cae-32d5a1a87c44",
+  "permissions": {
+    "roomJoin": true,
+    "canPublish": true,
+    "canSubscribe": true
+  }
+}
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+[36m[1m  SECTION 4: TRANSCRIPT PIPELINE[0m
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+
+[2mΓöÇΓöÇ[0m [33m4.1 Transcript Queue Submission[0m [2mΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ[0m
+
+[32mΓ£à Transcript job submitted[0m
+[VERIFY] Job details {
+  "id": "6",
+  "data": {
+    "meetingId": "f8f1d8cf-7706-4788-9cae-32d5a1a87c44",
+    "speaker": "Alice Johnson",
+    "speakerId": "6faeb977-9a62-4c84-9444-9587ec58aba3",
+    "text": "This is a test transcript for system verification.",
+    "timestamp": "2026-03-10T11:03:55.210Z",
+    "isFinal": true,
+    "confidence": 0.95,
+    "language": "en"
+  }
+}
+[VERIFY] Initial job state {
+  "state": "waiting"
+}
+[32mΓ£à Transcript stored in Redis[0m
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+[36m[1m  SECTION 5: TRANSLATION PIPELINE[0m
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+
+[2mΓöÇΓöÇ[0m [33m5.1 Translation Queue Verification[0m [2mΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ[0m
+
+[32mΓ£à Translation job submitted[0m
+[VERIFY] Job details {
+  "id": "5",
+  "targetLanguages": [
+    "es",
+    "fr",
+    "de"
+  ],
+  "provider": "mock"
+}
+[32mΓ£à Translations available for all 3 languages[0m
+[VERIFY] Mock translations {
+  "es": "Buenos d├¡as, comencemos la reuni├│n.",
+  "fr": "Bonjour, commen├ºons la r├⌐union.",
+  "de": "Guten Morgen, lassen Sie uns das Meeting beginnen."
+}
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+[36m[1m  SECTION 6: BROADCAST VERIFICATION[0m
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+
+[2mΓöÇΓöÇ[0m [33m6.1 Broadcast Queue & PubSub[0m [2mΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ[0m
+
+[32mΓ£à Broadcast job submitted[0m
+[33mΓÜá∩╕Å  PubSub event not received within timeout[0m
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+[36m[1m  SECTION 7: MEETING END & MINUTES GENERATION[0m
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+
+[2mΓöÇΓöÇ[0m [33m7.1 Meeting End Simulation[0m [2mΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ[0m
+
+[32mΓ£à Meeting ended (completed)[0m
+[32mΓ£à Minutes generation job submitted[0m
+[VERIFY] Job details {
+  "id": "1",
+  "meetingId": "f8f1d8cf-7706-4788-9cae-32d5a1a87c44"
+}
+[VERIFY] Initial job state {
+  "state": "waiting"
+}
+
+[2mΓöÇΓöÇ[0m [33m7.2 Minutes Worker Validation[0m [2mΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ[0m
+
+[CONFIG] WARNING: Using default JWT_SECRET ΓÇö set JWT_SECRET env var before deploying
+[CONFIG] WARNING: Redis not configured ΓÇö queues will use default localhost:6379
+2026-03-10T12:04:06.731+01:00 [33mwarn[39m: [MINUTES_AI] No API key configured ΓÇö AI minutes generation disabled {"version":"1.0.0","nodeVersion":"v24.11.1","pid":4912}
+2026-03-10T12:04:06.735+01:00 [32minfo[39m: [MINUTES_AI] Starting minutes generation {"version":"1.0.0","nodeVersion":"v24.11.1","pid":4912,"meetingId":"f8f1d8cf-7706-4788-9cae-32d5a1a87c44","transcriptCount":8,"model":"gpt-4o-mini"}
+2026-03-10T12:04:06.736+01:00 [32minfo[39m: [MINUTES_AI] Transcript formatted {"version":"1.0.0","nodeVersion":"v24.11.1","pid":4912,"meetingId":"f8f1d8cf-7706-4788-9cae-32d5a1a87c44","wordCount":95,"characterCount":588}
+2026-03-10T12:04:06.737+01:00 [32minfo[39m: [MINUTES_AI] Minutes generation completed {"version":"1.0.0","nodeVersion":"v24.11.1","pid":4912,"meetingId":"f8f1d8cf-7706-4788-9cae-32d5a1a87c44","duration":2,"chunksProcessed":1,"wordCount":95,"topicsCount":0,"decisionsCount":1,"actionItemsCount":3}
+[32mΓ£à Minutes generated[0m
+[VERIFY] Generation result {
+  "wordCount": 95,
+  "chunksProcessed": 1,
+  "summaryLength": 101,
+  "topicsCount": 0,
+  "decisionsCount": 1,
+  "actionItemsCount": 3,
+  "participantsCount": 3
+}
+[32mΓ£à Minutes structure valid[0m
+[32mΓ£à Minutes stored in database[0m
+[32mΓ£à Minutes data verified in database[0m
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+[36m[1m  SECTION 8: IDEMPOTENCY & RETRY TESTS[0m
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+
+[2mΓöÇΓöÇ[0m [33m8.1 Idempotency Constraint[0m [2mΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ[0m
+
+[32mΓ£à Unique constraint working - duplicate rejected[0m
+
+[2mΓöÇΓöÇ[0m [33m8.2 OnConflict Ignore Pattern[0m [2mΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ[0m
+
+[32mΓ£à First insert with onConflict[0m
+[32mΓ£à OnConflict pattern working correctly[0m
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+[36m[1m  SECTION 9: AI COST GUARD[0m
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+
+[2mΓöÇΓöÇ[0m [33m9.1 AI Cost Guard[0m [2mΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ[0m
+
+2026-03-10T12:04:09.731+01:00 [32minfo[39m: [MINUTES_AI] Starting minutes generation {"version":"1.0.0","nodeVersion":"v24.11.1","pid":4912,"meetingId":"cost-guard-test-001","transcriptCount":8,"model":"gpt-4o-mini"}
+2026-03-10T12:04:09.732+01:00 [32minfo[39m: [MINUTES_AI] Transcript formatted {"version":"1.0.0","nodeVersion":"v24.11.1","pid":4912,"meetingId":"cost-guard-test-001","wordCount":95,"characterCount":588}
+2026-03-10T12:04:09.733+01:00 [32minfo[39m: [MINUTES_AI] Minutes generation completed {"version":"1.0.0","nodeVersion":"v24.11.1","pid":4912,"meetingId":"cost-guard-test-001","duration":3,"chunksProcessed":1,"wordCount":95,"topicsCount":0,"decisionsCount":1,"actionItemsCount":3}
+[32mΓ£à Word count tracked[0m
+[VERIFY] Normal transcript {
+  "wordCount": 95
+}
+[VERIFY] Large transcript stats {
+  "entries": 300,
+  "wordCount": 9030,
+  "estimatedTokens": 13545
+}
+2026-03-10T12:04:09.740+01:00 [32minfo[39m: [MINUTES_AI] Starting minutes generation {"version":"1.0.0","nodeVersion":"v24.11.1","pid":4912,"meetingId":"cost-guard-test-002","transcriptCount":300,"model":"gpt-4o-mini"}
+2026-03-10T12:04:09.745+01:00 [32minfo[39m: [MINUTES_AI] Transcript formatted {"version":"1.0.0","nodeVersion":"v24.11.1","pid":4912,"meetingId":"cost-guard-test-002","wordCount":9051,"characterCount":62811}
+2026-03-10T12:04:09.746+01:00 [32minfo[39m: [MINUTES_AI] Transcript exceeds token limit, using chunking {"version":"1.0.0","nodeVersion":"v24.11.1","pid":4912,"meetingId":"cost-guard-test-002","transcriptLength":62811,"maxChars":32000}
+2026-03-10T12:04:09.748+01:00 [32minfo[39m: [MINUTES_AI] Chunking transcript {"version":"1.0.0","nodeVersion":"v24.11.1","pid":4912,"meetingId":"cost-guard-test-002","totalChunks":9,"chunkSize":8000}
+2026-03-10T12:04:09.757+01:00 [32minfo[39m: [MINUTES_AI] Minutes generation completed {"version":"1.0.0","nodeVersion":"v24.11.1","pid":4912,"meetingId":"cost-guard-test-002","duration":16,"chunksProcessed":9,"wordCount":9051,"topicsCount":0,"decisionsCount":10,"actionItemsCount":10}
+[32mΓ£à Large transcript chunked (9 chunks)[0m
+[32mΓ£à Word count within limit (9051/20000)[0m
+[VERIFY] Estimated API cost {
+  "chunks": 9,
+  "estimatedCost": "$0.09"
+}
+[32mΓ£à Estimated cost within bounds[0m
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+[36m[1m  SECTION 10: QUEUE METRICS & CLEANUP[0m
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+
+[2mΓöÇΓöÇ[0m [33m10.1 Final Queue Metrics[0m [2mΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ[0m
+
+[VERIFY] Queue: transcript-events {
+  "waiting": 0,
+  "active": 0,
+  "completed": 3,
+  "failed": 0,
+  "delayed": 0,
+  "paused": 0
+}
+[VERIFY] Queue: translation-jobs {
+  "waiting": 2,
+  "active": 0,
+  "completed": 0,
+  "failed": 0,
+  "delayed": 0,
+  "paused": 0
+}
+[VERIFY] Queue: broadcast-events {
+  "waiting": 5,
+  "active": 0,
+  "completed": 0,
+  "failed": 0,
+  "delayed": 0,
+  "paused": 0
+}
+[VERIFY] Queue: minutes-generation {
+  "waiting": 0,
+  "active": 0,
+  "completed": 0,
+  "failed": 0,
+  "delayed": 0,
+  "paused": 0
+}
+
+[2mΓöÇΓöÇ[0m [33mCleanup[0m [2mΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ[0m
+
+[32mΓ£à Cleanup completed[0m
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+[36m[1m  VERIFICATION SUMMARY[0m
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+
+  [1mResults:[0m
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  [32mPassed:[0m  31
+  [31mFailed:[0m  0
+  [2mSkipped:[0m 0
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  [1mTotal:[0m   31
+  [2mDuration: 24.47s[0m
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+[32m[1m
+  ≡ƒÄë AI MEETING SYSTEM VERIFIED ΓÇö STAGES 1ΓÇô5 OPERATIONAL
+[0m
+  [2mPipeline verified:[0m
+  Client ΓåÆ API ΓåÆ Meeting Service ΓåÆ LiveKit Token
+  ΓåÆ Deepgram ΓåÆ Queues ΓåÆ Translation Worker
+  ΓåÆ Broadcast Worker ΓåÆ Socket.IO ΓåÆ Meeting End
+  ΓåÆ Minutes Worker ΓåÆ Database
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+

@@ -90,7 +90,7 @@ export default function CreateOrgScreen() {
               <Ionicons name="business" size={56} color={Colors.highlight} />
             </View>
             <Text style={styles.heroTitle}>Create Your Organization</Text>
-            <Text style={styles.heroSub}>Set up your organization on OrgsLedger to manage members, finances, meetings, and more.</Text>
+            <Text style={styles.heroSub}>Set up your organization on OrgsLedger to manage members, finances, and more.</Text>
           </View>
 
           {/* Form */}

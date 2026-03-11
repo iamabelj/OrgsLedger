@@ -1,15 +1,21 @@
 // ============================================================
-// OrgsLedger — Meeting Module (Placeholder)
-// This module will house the rebuilt meeting subsystem.
-//
-// Subdirectories:
-//   controllers/  — Express route handlers
-//   services/     — Business logic (STT, translation, LiveKit)
-//   workers/      — BullMQ workers for async meeting jobs
-//   routes/       — Express router definitions
-//   sockets/      — Socket.IO event handlers
-//   models/       — TypeScript interfaces / DB schemas
-//   queues/       — BullMQ queue definitions
+// OrgsLedger API — Meeting Module Index
+// Production-grade AI meeting infrastructure (Stage 1)
 // ============================================================
 
-export {};
+// Models
+export * from './models';
+
+// Services
+export * from './services';
+export { 
+  initializeWebSocketGateway, 
+  shutdownWebSocketGateway,
+  setupMeetingRooms,
+} from './services/websocket-gateway.service';
+
+// Controllers
+export * from './controllers';
+
+// Routes
+export { meetingRoutes } from './routes';

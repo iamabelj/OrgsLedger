@@ -96,7 +96,6 @@ export default function TabLayout() {
     >
       <Stack.Screen name="home" options={{ title: 'Dashboard' }} />
       <Stack.Screen name="chat" options={{ title: 'Chat' }} />
-      <Stack.Screen name="meetings" options={{ title: 'Meetings' }} />
       <Stack.Screen name="financials" options={{ title: 'Financials' }} />
       <Stack.Screen name="profile" options={{ title: 'My Profile' }} />
     </Stack>

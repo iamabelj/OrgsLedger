@@ -94,7 +94,7 @@ class NotificationService {
   }
 
   /// Show a notification.
-  /// [payload] can be a route like `/meetings/abc123` for navigation on tap.
+  /// [payload] can be a route like `/chat/abc123` for navigation on tap.
   Future<void> show({
     required String title,
     String? body,
@@ -131,19 +131,6 @@ class NotificationService {
       body: body,
       notificationDetails: details,
       payload: payload,
-    );
-  }
-
-  /// Show a notification for a meeting event.
-  Future<void> showMeetingNotification({
-    required String title,
-    String? body,
-    String? meetingId,
-  }) async {
-    await show(
-      title: title,
-      body: body,
-      payload: meetingId != null ? '/meetings/$meetingId' : null,
     );
   }
 

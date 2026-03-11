@@ -1,71 +1,169 @@
 # ============================================================
-# OrgsLedger — Redis Deployment for Kubernetes
-# Standalone for dev/staging; use Redis Cluster for 100K scale.
+# OrgsLedger — Redis Cluster (6-node: 3 masters + 3 replicas)
+# Production-grade for 50k simultaneous meetings.
+#
+# After first deploy, initialise the cluster:
+#   kubectl exec -n orgsledger redis-cluster-0 -- redis-cli \
+#     --cluster create \
+#     redis-cluster-0.redis-cluster-headless.orgsledger.svc.cluster.local:6379 \
+#     redis-cluster-1.redis-cluster-headless.orgsledger.svc.cluster.local:6379 \
+#     redis-cluster-2.redis-cluster-headless.orgsledger.svc.cluster.local:6379 \
+#     redis-cluster-3.redis-cluster-headless.orgsledger.svc.cluster.local:6379 \
+#     redis-cluster-4.redis-cluster-headless.orgsledger.svc.cluster.local:6379 \
+#     redis-cluster-5.redis-cluster-headless.orgsledger.svc.cluster.local:6379 \
+#     --cluster-replicas 1 --cluster-yes
 # ============================================================
 
-apiVersion: apps/v1
-kind: Deployment
+---
+# ── ConfigMap — Redis Cluster Config ─────────────────────
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: redis
+  name: redis-cluster-config
+  namespace: orgsledger
+data:
+  redis.conf: |
+    cluster-enabled yes
+    cluster-config-file nodes.conf
+    cluster-node-timeout 5000
+    appendonly yes
+    maxmemory 2gb
+    maxmemory-policy allkeys-lru
+    tcp-backlog 511
+    timeout 0
+    tcp-keepalive 300
+    hz 10
+    save ""
+
+---
+# ── Headless Service (peer discovery) ────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cluster-headless
   namespace: orgsledger
   labels:
-    app: redis
+    app: redis-cluster
 spec:
-  replicas: 1
+  clusterIP: None
+  selector:
+    app: redis-cluster
+  ports:
+    - port: 6379
+      targetPort: 6379
+      name: client
+    - port: 16379
+      targetPort: 16379
+      name: gossip
+
+---
+# ── Client Service (load-balanced) ───────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cluster
+  namespace: orgsledger
+  labels:
+    app: redis-cluster
+spec:
+  selector:
+    app: redis-cluster
+  ports:
+    - port: 6379
+      targetPort: 6379
+      name: client
+
+---
+# ── StatefulSet (6 pods) ─────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-cluster
+  namespace: orgsledger
+  labels:
+    app: redis-cluster
+spec:
+  serviceName: redis-cluster-headless
+  replicas: 6
   selector:
     matchLabels:
-      app: redis
+      app: redis-cluster
   template:
     metadata:
       labels:
-        app: redis
+        app: redis-cluster
     spec:
       containers:
         - name: redis
           image: redis:7-alpine
           ports:
             - containerPort: 6379
-          args:
-            - "--maxmemory"
-            - "512mb"
-            - "--maxmemory-policy"
-            - "allkeys-lru"
-            - "--appendonly"
-            - "yes"
+              name: client
+            - containerPort: 16379
+              name: gossip
+          command:
+            - redis-server
+            - /etc/redis/redis.conf
+            - --cluster-announce-hostname
+            - "$(POD_NAME).redis-cluster-headless.orgsledger.svc.cluster.local"
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
           resources:
             requests:
-              cpu: 250m
-              memory: 256Mi
+              cpu: 500m
+              memory: 1Gi
             limits:
-              cpu: "1"
-              memory: 768Mi
+              cpu: "2"
+              memory: 3Gi
           livenessProbe:
             tcpSocket:
               port: 6379
-            initialDelaySeconds: 5
+            initialDelaySeconds: 15
             periodSeconds: 10
           readinessProbe:
             exec:
               command: ["redis-cli", "ping"]
-            initialDelaySeconds: 3
+            initialDelaySeconds: 5
             periodSeconds: 5
           volumeMounts:
             - name: redis-data
               mountPath: /data
+            - name: redis-config
+              mountPath: /etc/redis
       volumes:
-        - name: redis-data
-          emptyDir:
-            sizeLimit: 2Gi
+        - name: redis-config
+          configMap:
+            name: redis-cluster-config
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: redis-cluster
+                topologyKey: kubernetes.io/hostname
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
 
 ---
-apiVersion: v1
-kind: Service
+# ── PodDisruptionBudget ──────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
 metadata:
-  name: redis
+  name: redis-cluster-pdb
   namespace: orgsledger
 spec:
+  minAvailable: 4
   selector:
-    app: redis
-  ports:
-    - port: 6379
-      targetPort: 6379
+    matchLabels:
+      app: redis-cluster

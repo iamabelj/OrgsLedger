@@ -3,12 +3,9 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-  connectivity_plus
   file_selector_windows
   flutter_secure_storage_windows
   flutter_tts
-  flutter_webrtc
-  livekit_client
   permission_handler_windows
   record_windows
   url_launcher_windows

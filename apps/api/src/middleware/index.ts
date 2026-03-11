@@ -6,7 +6,14 @@ export { authenticate, loadMembership } from './auth';
 export { requireRole, requireSuperAdmin, requireDeveloper } from './rbac';
 export { auditContext, writeAuditLog } from './audit';
 export { validate } from './validate';
-export { requireActiveSubscription, checkAiWallet, checkTranslationWallet } from './subscription';
+export { requireActiveSubscription, checkAiWallet } from './subscription';
+export { 
+  aiCostGuard, 
+  aiCostGuardLenient, 
+  getCostGuardStatus, 
+  isBudgetConstrained,
+  getRemainingBudget,
+} from './cost-guard.middleware';
 
 /**
  * Combined middleware: loads membership then enforces active subscription.

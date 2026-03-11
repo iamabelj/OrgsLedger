@@ -1,9 +1,16 @@
 # ============================================================
-# OrgsLedger — Horizontal Pod Autoscalers
-# Automatically scale workers based on CPU and custom metrics.
+# OrgsLedger — Autoscaling (HPA + KEDA ScaledObjects)
+# Production config for 50k simultaneous meetings.
+#
+# Prerequisites:
+#   - KEDA v2.x installed (helm install keda kedacore/keda)
+#   - Prometheus accessible at prometheus.orgsledger:9090
+#   - Redis Cluster accessible at redis-cluster:6379
 # ============================================================
 
-# ── API HPA ──────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────
+#  API  —  Standard HPA (CPU + memory)
+# ──────────────────────────────────────────────────────────
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -14,8 +21,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: api
-  minReplicas: 3
-  maxReplicas: 20
+  minReplicas: 5
+  maxReplicas: 40
   metrics:
     - type: Resource
       resource:
@@ -31,46 +38,15 @@ spec:
           averageUtilization: 70
   behavior:
     scaleUp:
-      stabilizationWindowSeconds: 60
-      policies:
-        - type: Pods
-          value: 3
-          periodSeconds: 60
-    scaleDown:
-      stabilizationWindowSeconds: 300
-      policies:
-        - type: Pods
-          value: 1
-          periodSeconds: 120
-
----
-# ── Translation Worker HPA ──────────────────────────────
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: translation-worker-hpa
-  namespace: orgsledger
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: translation-worker
-  minReplicas: 3
-  maxReplicas: 50
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 70
-  behavior:
-    scaleUp:
       stabilizationWindowSeconds: 30
       policies:
         - type: Pods
           value: 5
           periodSeconds: 30
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+      selectPolicy: Max
     scaleDown:
       stabilizationWindowSeconds: 300
       policies:
@@ -79,19 +55,80 @@ spec:
           periodSeconds: 120
 
 ---
-# ── Transcription Worker HPA ────────────────────────────
+# ──────────────────────────────────────────────────────────
+#  TRANSCRIPT WORKER  —  KEDA ScaledObject
+#  Scales on Redis queue depth (sharded BullMQ queues).
+#  20→200 pods.  Target: ≤100 waiting jobs per pod.
+# ──────────────────────────────────────────────────────────
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: transcription-worker-scaledobject
+  namespace: orgsledger
+  labels:
+    app: transcription-worker
+spec:
+  scaleTargetRef:
+    name: transcription-worker
+  pollingInterval: 10
+  cooldownPeriod: 60
+  idleReplicaCount: 10
+  minReplicaCount: 20
+  maxReplicaCount: 200
+  fallback:
+    failureThreshold: 3
+    replicas: 30
+  triggers:
+    # Queue depth from Prometheus (aggregated across all shards)
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.orgsledger.svc.cluster.local:9090
+        metricName: orgsledger_queue_waiting_jobs_transcript
+        query: |
+          sum(orgsledger_queue_waiting_jobs{queue=~"transcript.*"})
+        threshold: "100"
+        activationThreshold: "10"
+    # CPU-based fallback trigger
+    - type: cpu
+      metricType: Utilization
+      metadata:
+        value: "60"
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 15
+          policies:
+            - type: Percent
+              value: 100
+              periodSeconds: 30
+            - type: Pods
+              value: 20
+              periodSeconds: 30
+          selectPolicy: Max
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Percent
+              value: 10
+              periodSeconds: 60
+
+---
+# ── Transcript Worker HPA (fallback if KEDA unavailable) ─
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: transcription-worker-hpa
   namespace: orgsledger
+  annotations:
+    keda.sh/managed: "true"
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
     name: transcription-worker
-  minReplicas: 5
-  maxReplicas: 100
+  minReplicas: 20
+  maxReplicas: 200
   metrics:
     - type: Resource
       resource:
@@ -107,67 +144,91 @@ spec:
           averageUtilization: 65
   behavior:
     scaleUp:
-      stabilizationWindowSeconds: 30
+      stabilizationWindowSeconds: 15
       policies:
         - type: Percent
-          value: 50
+          value: 100
           periodSeconds: 30
     scaleDown:
       stabilizationWindowSeconds: 300
       policies:
         - type: Pods
-          value: 2
+          value: 5
           periodSeconds: 120
 
 ---
-# ── Broadcast Worker HPA ────────────────────────────────
+# ──────────────────────────────────────────────────────────
+#  TRANSLATION WORKER  —  KEDA ScaledObject
+#  Scales on Redis queue depth.
+#  10→100 pods.  Target: ≤50 waiting jobs per pod.
+# ──────────────────────────────────────────────────────────
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: translation-worker-scaledobject
+  namespace: orgsledger
+  labels:
+    app: translation-worker
+spec:
+  scaleTargetRef:
+    name: translation-worker
+  pollingInterval: 10
+  cooldownPeriod: 60
+  idleReplicaCount: 5
+  minReplicaCount: 10
+  maxReplicaCount: 100
+  fallback:
+    failureThreshold: 3
+    replicas: 15
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.orgsledger.svc.cluster.local:9090
+        metricName: orgsledger_queue_waiting_jobs_translation
+        query: |
+          sum(orgsledger_queue_waiting_jobs{queue=~"translation.*"})
+        threshold: "50"
+        activationThreshold: "10"
+    - type: cpu
+      metricType: Utilization
+      metadata:
+        value: "70"
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 30
+          policies:
+            - type: Pods
+              value: 10
+              periodSeconds: 30
+            - type: Percent
+              value: 50
+              periodSeconds: 60
+          selectPolicy: Max
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Pods
+              value: 3
+              periodSeconds: 120
+
+---
+# ── Translation Worker HPA (fallback) ───────────────────
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: broadcast-worker-hpa
+  name: translation-worker-hpa
   namespace: orgsledger
+  annotations:
+    keda.sh/managed: "true"
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: broadcast-worker
-  minReplicas: 2
-  maxReplicas: 20
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 60
-  behavior:
-    scaleUp:
-      stabilizationWindowSeconds: 60
-      policies:
-        - type: Pods
-          value: 2
-          periodSeconds: 60
-    scaleDown:
-      stabilizationWindowSeconds: 300
-      policies:
-        - type: Pods
-          value: 1
-          periodSeconds: 120
-
----
-# ── Minutes Worker HPA ──────────────────────────────────
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: minutes-worker-hpa
-  namespace: orgsledger
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: minutes-worker
-  minReplicas: 2
-  maxReplicas: 15
+    name: translation-worker
+  minReplicas: 10
+  maxReplicas: 100
   metrics:
     - type: Resource
       resource:
@@ -177,14 +238,194 @@ spec:
           averageUtilization: 70
   behavior:
     scaleUp:
-      stabilizationWindowSeconds: 120
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 10
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 3
+          periodSeconds: 120
+
+---
+# ──────────────────────────────────────────────────────────
+#  BROADCAST WORKER  —  KEDA ScaledObject
+#  I/O-bound fan-out.  5→50 pods.
+# ──────────────────────────────────────────────────────────
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: broadcast-worker-scaledobject
+  namespace: orgsledger
+  labels:
+    app: broadcast-worker
+spec:
+  scaleTargetRef:
+    name: broadcast-worker
+  pollingInterval: 10
+  cooldownPeriod: 60
+  idleReplicaCount: 3
+  minReplicaCount: 5
+  maxReplicaCount: 50
+  fallback:
+    failureThreshold: 3
+    replicas: 8
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.orgsledger.svc.cluster.local:9090
+        metricName: orgsledger_queue_waiting_jobs_broadcast
+        query: |
+          sum(orgsledger_queue_waiting_jobs{queue=~"broadcast.*"})
+        threshold: "200"
+        activationThreshold: "20"
+    - type: cpu
+      metricType: Utilization
+      metadata:
+        value: "60"
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 30
+          policies:
+            - type: Pods
+              value: 5
+              periodSeconds: 30
+          selectPolicy: Max
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Pods
+              value: 2
+              periodSeconds: 120
+
+---
+# ── Broadcast Worker HPA (fallback) ─────────────────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: broadcast-worker-hpa
+  namespace: orgsledger
+  annotations:
+    keda.sh/managed: "true"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: broadcast-worker
+  minReplicas: 5
+  maxReplicas: 50
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 5
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 300
       policies:
         - type: Pods
           value: 2
           periodSeconds: 120
+
+---
+# ──────────────────────────────────────────────────────────
+#  MINUTES WORKER  —  KEDA ScaledObject
+#  Bursty AI workload. 5→50 pods.
+# ──────────────────────────────────────────────────────────
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: minutes-worker-scaledobject
+  namespace: orgsledger
+  labels:
+    app: minutes-worker
+spec:
+  scaleTargetRef:
+    name: minutes-worker
+  pollingInterval: 15
+  cooldownPeriod: 120
+  idleReplicaCount: 3
+  minReplicaCount: 5
+  maxReplicaCount: 50
+  fallback:
+    failureThreshold: 3
+    replicas: 8
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.orgsledger.svc.cluster.local:9090
+        metricName: orgsledger_queue_waiting_jobs_minutes
+        query: |
+          sum(orgsledger_queue_waiting_jobs{queue=~"minutes.*"})
+        threshold: "20"
+        activationThreshold: "5"
+    - type: cpu
+      metricType: Utilization
+      metadata:
+        value: "70"
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 60
+          policies:
+            - type: Pods
+              value: 5
+              periodSeconds: 60
+          selectPolicy: Max
+        scaleDown:
+          stabilizationWindowSeconds: 600
+          policies:
+            - type: Pods
+              value: 2
+              periodSeconds: 300
+
+---
+# ── Minutes Worker HPA (fallback) ───────────────────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: minutes-worker-hpa
+  namespace: orgsledger
+  annotations:
+    keda.sh/managed: "true"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: minutes-worker
+  minReplicas: 5
+  maxReplicas: 50
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 5
+          periodSeconds: 60
     scaleDown:
       stabilizationWindowSeconds: 600
       policies:
         - type: Pods
-          value: 1
+          value: 2
           periodSeconds: 300

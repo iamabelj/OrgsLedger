@@ -5,8 +5,6 @@ const kApiBaseUrlDev = 'http://localhost:3000/api';
 const kSocketUrlProd = 'https://app.orgsledger.com';
 const kSocketUrlDev = 'http://localhost:3000';
 
-const kLiveKitUrl = 'wss://orgsledger-b1j68gr8.livekit.cloud';
-
 /// Use production by default; flipped in debug builds.
 const bool kUseProd = bool.fromEnvironment(
   'dart.vm.product',

@@ -15,9 +15,9 @@ import { logger } from '../logger';
  *
  * @example
  * const result = await withTransaction(async (trx) => {
- *   const [meeting] = await trx('meetings').insert({...}).returning('*');
- *   await trx('agenda_items').insert([...]);
- *   return meeting;
+ *   const [org] = await trx('organizations').insert({...}).returning('*');
+ *   await trx('memberships').insert([...]);
+ *   return org;
  * });
  */
 export async function withTransaction<T>(
@@ -37,7 +37,7 @@ export async function withTransaction<T>(
 
 /**
  * Acquire an advisory lock within a transaction (PostgreSQL).
- * Useful for coordinating meeting state changes across concurrent requests.
+ * Useful for coordinating state changes across concurrent requests.
  * The lock is automatically released when the transaction ends.
  *
  * @param trx - Knex transaction

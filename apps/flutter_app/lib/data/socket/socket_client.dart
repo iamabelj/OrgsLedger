@@ -8,7 +8,6 @@ class SocketClient {
   factory SocketClient() => _instance;
 
   sio.Socket? _socket;
-  String? _activeMeetingId;
   final _storage = const FlutterSecureStorage();
 
   SocketClient._();
@@ -31,76 +30,17 @@ class SocketClient {
           .build(),
     );
 
-    _socket!.onConnect((_) {
-      if (_activeMeetingId != null) {
-        _socket!.emit('meeting:join', _activeMeetingId);
-      }
-    });
+    _socket!.onConnect((_) {});
   }
 
   void disconnect() {
     _socket?.disconnect();
     _socket = null;
-    _activeMeetingId = null;
   }
 
   // ── Room Management ───────────────────────────────────
   void joinOrg(String orgId) => _socket?.emit('org:join', orgId);
   void leaveOrg(String orgId) => _socket?.emit('org:leave', orgId);
-
-  void joinMeeting(String meetingId) {
-    _activeMeetingId = meetingId;
-    _socket?.emit('meeting:join', meetingId);
-  }
-
-  void leaveMeeting(String meetingId) {
-    _activeMeetingId = null;
-    _socket?.emit('meeting:leave', meetingId);
-  }
-
-  // ── Translation Language ───────────────────────────────
-
-  /// Set the user's preferred language for a meeting.
-  /// This MUST be called before starting audio so the server
-  /// knows which languages to translate between.
-  void setTranslationLanguage(
-    String meetingId,
-    String language, {
-    bool receiveVoice = true,
-  }) {
-    _socket?.emit('translation:set-language', {
-      'meetingId': meetingId,
-      'language': language,
-      'receiveVoice': receiveVoice,
-    });
-  }
-
-  // ── Audio Streaming (Server-Side STT) ───────────────────
-
-  /// Start an audio stream for server-side speech-to-text
-  void startAudioStream(
-    String meetingId, {
-    String? language,
-    String encoding = 'LINEAR16',
-    int sampleRate = 16000,
-  }) {
-    _socket?.emit('audio:start', {
-      'meetingId': meetingId,
-      'language': language ?? 'en',
-      'encoding': encoding,
-      'sampleRateHertz': sampleRate,
-    });
-  }
-
-  /// Send an audio chunk (raw PCM bytes)
-  void sendAudioChunk(String meetingId, List<int> audioData) {
-    _socket?.emit('audio:chunk', {'meetingId': meetingId, 'audio': audioData});
-  }
-
-  /// Stop the audio stream
-  void stopAudioStream(String meetingId) {
-    _socket?.emit('audio:stop', {'meetingId': meetingId});
-  }
 
   // ── Event Listeners ───────────────────────────────────
   void on(String event, Function(dynamic) handler) {

@@ -34,7 +34,6 @@ interface NavItem {
 const mainItems: NavItem[] = [
   { label: 'Dashboard', icon: 'grid-outline', path: '/(tabs)/home' },
   { label: 'Chat', icon: 'chatbubbles-outline', path: '/(tabs)/chat' },
-  { label: 'Meetings', icon: 'videocam-outline', path: '/(tabs)/meetings' },
   { label: 'Financials', icon: 'wallet-outline', path: '/(tabs)/financials' },
 ];
 

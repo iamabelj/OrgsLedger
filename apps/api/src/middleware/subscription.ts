@@ -107,7 +107,7 @@ export async function checkAiWallet(req: Request, res: Response, next: NextFunct
 }
 
 /**
- * Soft-check Translation wallet balance — sets req.translationWalletBalance and req.translationWalletEmpty.
+ * Soft-check translation wallet balance — sets req.translationWalletBalance and req.translationWalletEmpty.
  * Does NOT block the request.
  */
 export async function checkTranslationWallet(req: Request, res: Response, next: NextFunction) {

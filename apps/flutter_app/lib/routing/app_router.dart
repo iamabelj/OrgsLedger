@@ -9,9 +9,6 @@ import '../features/auth/screens/forgot_password_screen.dart';
 import '../features/home/screens/home_screen.dart';
 import '../features/chat/screens/chat_list_screen.dart';
 import '../features/chat/screens/chat_conversation_screen.dart';
-import '../features/meetings/screens/meetings_list_screen.dart';
-import '../features/meetings/screens/create_meeting_screen.dart';
-import '../features/meetings/screens/meeting_detail_screen.dart';
 import '../features/financials/screens/financials_screen.dart';
 import '../features/members/screens/members_screen.dart';
 import '../features/polls/screens/polls_screen.dart';
@@ -23,7 +20,6 @@ import '../features/admin/screens/admin_hub_screen.dart';
 import '../features/admin/screens/org_settings_screen.dart';
 import '../features/legal/screens/legal_screen.dart';
 import '../features/organizations/screens/create_org_screen.dart';
-import '../features/meetings/screens/meeting_room_screen.dart';
 import '../features/announcements/screens/announcements_screen.dart';
 import '../features/help/screens/help_screen.dart';
 import '../core/widgets/app_shell.dart';
@@ -93,16 +89,6 @@ GoRouter buildRouter(WidgetRef ref) {
         builder: (_, _) => const ForgotPasswordScreen(),
       ),
 
-      // ── Full-screen Meeting Room (outside shell) ────
-      GoRoute(
-        parentNavigatorKey: _rootNavigatorKey,
-        path: '/meetings/:meetingId/room',
-        builder: (_, state) => MeetingRoomScreen(
-          meetingId: state.pathParameters['meetingId']!,
-          token: state.uri.queryParameters['token'] ?? '',
-        ),
-      ),
-
       // ── App Shell (tabs + drawer) ───────────────────
       ShellRoute(
         navigatorKey: _shellNavigatorKey,
@@ -121,21 +107,6 @@ GoRouter buildRouter(WidgetRef ref) {
             path: '/chat/:channelId',
             builder: (_, state) => ChatConversationScreen(
               channelId: state.pathParameters['channelId']!,
-            ),
-          ),
-          GoRoute(
-            path: '/meetings',
-            pageBuilder: (_, _) =>
-                const NoTransitionPage(child: MeetingsListScreen()),
-          ),
-          GoRoute(
-            path: '/meetings/create',
-            builder: (_, _) => const CreateMeetingScreen(),
-          ),
-          GoRoute(
-            path: '/meetings/:meetingId',
-            builder: (_, state) => MeetingDetailScreen(
-              meetingId: state.pathParameters['meetingId']!,
             ),
           ),
           GoRoute(

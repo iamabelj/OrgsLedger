@@ -23,20 +23,6 @@ services:
     volumes:
       - redisdata:/data
 
-  livekit:
-    image: livekit/livekit-server:latest
-    container_name: orgsledger_livekit
-    restart: unless-stopped
-    ports:
-      - "7880:7880"
-      - "7881:7881"
-      - "50000-50060:50000-50060/udp"
-    environment:
-      LIVEKIT_API_SECRET: orgsledger_dev_secret_key_2025
-    volumes:
-      - ./deploy/livekit.yaml:/etc/livekit.yaml
-    command: --config /etc/livekit.yaml --node-ip=0.0.0.0
-
   api:
     build:
       context: .

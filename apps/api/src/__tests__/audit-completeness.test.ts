@@ -138,32 +138,6 @@ describe('Audit Log Completeness', () => {
     });
   });
 
-  // ── Translation Session Audit Logging ─────────────────────
-
-  describe('Translation sessions are audit-logged', () => {
-    let socketFile: string;
-
-    beforeAll(() => {
-      socketFile = readFile('socket.ts');
-    });
-
-    it('should import writeAuditLog in socket.ts', () => {
-      expect(socketFile).toContain("import { writeAuditLog }");
-    });
-
-    it('should audit-log translation session start when user sets language', () => {
-      const langSection = socketFile.split("translation:set-language")[1]?.split("translation:speech")[0] || '';
-      expect(langSection).toContain('writeAuditLog');
-      expect(langSection).toContain('translation_session_start');
-    });
-
-    it('should include meeting ID and language in translation audit log', () => {
-      const langSection = socketFile.split("translation:set-language")[1]?.split("translation:speech")[0] || '';
-      expect(langSection).toContain('entityId: meetingId');
-      expect(langSection).toContain('language');
-    });
-  });
-
   // ── Risk Monitoring Endpoints ─────────────────────────────
 
   describe('Risk monitoring endpoints exist', () => {

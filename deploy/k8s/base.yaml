@@ -1,15 +1,14 @@
 # ============================================================
-# OrgsLedger — Kubernetes Deployment Manifests
-# For scaling to 100K simultaneous meetings.
+# OrgsLedger — Base Resources (Namespace, ConfigMap)
+# Production config for 50k simultaneous meetings.
 #
 # Deploy order:
-#   1. kubectl apply -f namespace.yaml
-#   2. kubectl apply -f nats.yaml
-#   3. kubectl apply -f redis.yaml
-#   4. kubectl apply -f api.yaml
-#   5. kubectl apply -f workers.yaml
-#   6. kubectl apply -f hpa.yaml
-#   7. kubectl apply -f monitoring.yaml
+#   1. kubectl apply -f base.yaml
+#   2. kubectl apply -f redis.yaml
+#   3. kubectl apply -f api.yaml
+#   4. kubectl apply -f workers.yaml
+#   5. kubectl apply -f hpa.yaml
+#   6. kubectl apply -f monitoring.yaml
 # ============================================================
 
 ---
@@ -30,10 +29,21 @@ metadata:
   namespace: orgsledger
 data:
   NODE_ENV: "production"
-  NATS_URL: "nats://nats.orgsledger.svc.cluster.local:4222"
-  REDIS_HOST: "redis.orgsledger.svc.cluster.local"
+  # Redis Cluster seed nodes (headless service resolves all 6 pods)
+  REDIS_HOST: "redis-cluster.orgsledger.svc.cluster.local"
   REDIS_PORT: "6379"
+  REDIS_CLUSTER_NODES: "redis-cluster-0.redis-cluster-headless.orgsledger.svc.cluster.local:6379,redis-cluster-1.redis-cluster-headless.orgsledger.svc.cluster.local:6379,redis-cluster-2.redis-cluster-headless.orgsledger.svc.cluster.local:6379,redis-cluster-3.redis-cluster-headless.orgsledger.svc.cluster.local:6379,redis-cluster-4.redis-cluster-headless.orgsledger.svc.cluster.local:6379,redis-cluster-5.redis-cluster-headless.orgsledger.svc.cluster.local:6379"
+  QUEUE_NUM_SHARDS: "64"
   SOCKETIO_REDIS_ADAPTER: "true"
+  # Backpressure thresholds tuned for 50k meetings
+  BP_TRANSCRIPT_MAX_WAITING: "50000"
+  BP_TRANSCRIPT_THROTTLE_WAITING: "30000"
+  BP_TRANSLATION_MAX_WAITING: "40000"
+  BP_TRANSLATION_THROTTLE_WAITING: "25000"
+  # Deepgram connection pool
+  DEEPGRAM_POOL_SIZE: "50"
+  DEEPGRAM_MAX_STREAMS: "1000"
+  # Telemetry
   OTEL_ENABLED: "true"
   OTEL_SERVICE_NAME: "orgsledger-api"
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.orgsledger.svc.cluster.local:4318"

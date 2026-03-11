@@ -29,11 +29,6 @@ class _AppShellState extends ConsumerState<AppShell> {
     _TabItem(icon: Icons.home_rounded, label: 'Home', path: '/'),
     _TabItem(icon: Icons.chat_bubble_rounded, label: 'Chat', path: '/chat'),
     _TabItem(
-      icon: Icons.videocam_rounded,
-      label: 'Meetings',
-      path: '/meetings',
-    ),
-    _TabItem(
       icon: Icons.account_balance_wallet_rounded,
       label: 'Financials',
       path: '/financials',

@@ -48,17 +48,6 @@ class _OrgsLedgerAppState extends ConsumerState<OrgsLedgerApp> {
     if (_socketListenersAttached) return;
     _socketListenersAttached = true;
 
-    // Meeting started
-    socketClient.on('meeting:started', (data) {
-      if (data is Map<String, dynamic>) {
-        notificationService.showMeetingNotification(
-          title: 'Meeting Started',
-          body: data['title']?.toString() ?? 'A meeting has started',
-          meetingId: data['meetingId']?.toString(),
-        );
-      }
-    });
-
     // New chat message (background)
     socketClient.on('chat:message', (data) {
       if (data is Map<String, dynamic>) {

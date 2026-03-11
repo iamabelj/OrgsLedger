@@ -289,10 +289,6 @@ app.post('/api/license/verify', async (req, res) => {
     res.status(500).json({ valid: false, error: 'Verification failed' });
   }
 });
-// ── AI Proxy Routes ───────────────────────────────────────
-const aiProxyRouter = require('./routes/ai-proxy');
-app.use('/api/ai', apiKeyAuth, aiProxyRouter(pool));
-
 // ── Geo Detection (for currency auto-switch) ─────────────
 app.get('/api/geo', async (req, res) => {
   try {

@@ -35,10 +35,8 @@ router.get('/preferences', authenticate, async (req: Request, res: Response) => 
       .first();
 
     const defaults = {
-      email_meetings: true,
       email_finances: true,
       email_announcements: true,
-      push_meetings: true,
       push_finances: true,
       push_announcements: true,
       push_chat: true,
@@ -57,8 +55,8 @@ router.get('/preferences', authenticate, async (req: Request, res: Response) => 
 router.put('/preferences', authenticate, async (req: Request, res: Response) => {
   try {
     const ALLOWED_KEYS = [
-      'email_meetings', 'email_finances', 'email_announcements',
-      'push_meetings', 'push_finances', 'push_announcements', 'push_chat',
+      'email_finances', 'email_announcements',
+      'push_finances', 'push_announcements', 'push_chat',
     ];
     const raw = req.body;
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {

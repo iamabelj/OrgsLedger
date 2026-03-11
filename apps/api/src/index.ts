@@ -23,7 +23,6 @@ import { etagMiddleware } from './middleware/etag';
 import { sessionExpiry } from './middleware/session-expiry';
 import { mountLandingGateway, mountWebFrontend, mountSpaFallback } from './middleware/landing-gateway';
 import { setupSocketIO } from './socket';
-import { AIService } from './services/ai.service';
 import { services } from './services/registry';
 import { RATE_LIMITS, PAGINATION, APP_VERSION } from './constants';
 
@@ -50,8 +49,19 @@ import subscriptionRoutes from './routes/subscriptions';
 import observabilityRoutes from './routes/observability';
 import docsRoutes from './routes/docs';
 import jobsRoutes from './routes/jobs.routes';
+import systemRoutes from './routes/system.routes';
+import { meetingRoutes } from './modules/meeting';
 import { startScheduler } from './services/scheduler.service';
 import { ensureSuperAdmin } from './services/seed.service';
+import { startQueueMetricsExporter } from './monitoring/queue-metrics.exporter';
+
+// Scaling / Safety Layer
+import {
+  createLoadShedderMiddleware,
+  startLoadShedder,
+  createMeetingCreationRateLimitMiddleware,
+  startRateGovernor,
+} from './scaling';
 
 const app = express();
 
@@ -77,10 +87,12 @@ const io = setupSocketIO(server);
 app.set('io', io);               // kept for backwards compat in routes not yet migrated
 services.register('io', io);     // preferred — use services.get('io') in new code
 
-// ── AI Service ────────────────────────────────────────────
-const aiService = new AIService(io);
-app.set('aiService', aiService);          // backwards compat
-services.register('aiService', aiService);
+// ── Meeting WebSocket Gateway ─────────────────────────────
+import { initializeWebSocketGateway, setupMeetingRooms } from './modules/meeting';
+setupMeetingRooms(io);
+initializeWebSocketGateway().catch(err => 
+  logger.warn('[STARTUP] Meeting WebSocket gateway initialization failed (non-fatal)', { error: err.message })
+);
 
 // ── Global Middleware ─────────────────────────────────────
 app.use(helmet({
@@ -285,6 +297,10 @@ app.use('/api/auth/refresh', rateLimit({
 // Validates platform-specific session lifetimes (applies to all authenticated endpoints)
 app.use('/api', sessionExpiry);
 
+// ── Global Load Shedder ──
+// Protects meeting creation/join endpoints from system overload
+app.use(createLoadShedderMiddleware());
+
 // ── Webhook Rate Limiting ──
 const webhookLimiter = rateLimit({
   windowMs: RATE_LIMITS.WEBHOOK.windowMs,
@@ -313,6 +329,11 @@ app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/admin/observability', observabilityRoutes);
 app.use('/api/docs', docsRoutes);
 app.use('/api', jobsRoutes);
+app.use('/api/system', systemRoutes);
+
+// Meeting routes with rate governing
+// The rate governor limits meeting creation to 1000/minute system-wide
+app.use('/api/meetings', createMeetingCreationRateLimitMiddleware(), meetingRoutes);
 
 // ── 404 Handler ───────────────────────────────────────────
 // API 404 — only for /api/* routes
@@ -396,6 +417,10 @@ function doPostStart(): void {
 
     // Start recurring dues scheduler
     startScheduler();
+
+    // Start queue metrics exporter (5-second Prometheus collection)
+    startQueueMetricsExporter();
+    logger.info('[STARTUP] Queue metrics exporter started');
   })();
 }
 
@@ -435,7 +460,14 @@ async function gracefulShutdown(signal: string): Promise<void> {
   // 3. Wait for in-flight requests to complete (max 10s)
   await new Promise((resolve) => setTimeout(resolve, 10_000));
 
-  // 4. Close database pool
+  // 4. Stop queue metrics exporter
+  try {
+    const { stopQueueMetricsExporter } = require('./monitoring/queue-metrics.exporter');
+    stopQueueMetricsExporter();
+    logger.info('[SHUTDOWN] Queue metrics exporter stopped');
+  } catch {}
+
+  // 5. Close database pool
   try {
     const { db: knex } = require('./db');
     await knex.destroy();
@@ -444,7 +476,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
     logger.error('[SHUTDOWN] DB pool close error:', err.message);
   }
 
-  // 5. Flush logger
+  // 6. Flush logger
   try {
     logger.end();
   } catch {}

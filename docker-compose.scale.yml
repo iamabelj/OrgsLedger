@@ -29,33 +29,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Translation Worker ─────────────────────────────────
-  # Standalone NATS-based translation worker.
-  # Scale: docker compose -f ... up -d --scale translation-worker=5
-  translation-worker:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile.worker
-    container_name: orgsledger_translation_worker
-    restart: always
-    environment:
-      - WORKER_TYPE=translation
-      - NATS_URL=nats://nats:4222
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-    env_file:
-      - apps/api/.env.production
-    depends_on:
-      nats:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-
   # ── Broadcast Worker ───────────────────────────────────
   # Handles Socket.IO broadcasting across multiple API instances.
   broadcast-worker:
@@ -81,59 +54,6 @@ services:
         limits:
           memory: 256M
           cpus: '0.25'
-
-  # ── Transcription Worker ───────────────────────────────
-  # Manages Deepgram STT WebSocket connections.
-  # Each instance handles up to 500 concurrent streams.
-  transcription-worker:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile.worker
-    container_name: orgsledger_transcription_worker
-    restart: always
-    environment:
-      - WORKER_TYPE=transcription
-      - NATS_URL=nats://nats:4222
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-    env_file:
-      - apps/api/.env.production
-    depends_on:
-      nats:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: '1.0'
-
-  # ── Minutes Worker ─────────────────────────────────────
-  # Generates AI meeting minutes. Low concurrency, high memory.
-  minutes-worker:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile.worker
-    container_name: orgsledger_minutes_worker
-    restart: always
-    environment:
-      - WORKER_TYPE=minutes
-      - NATS_URL=nats://nats:4222
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-    env_file:
-      - apps/api/.env.production
-    depends_on:
-      nats:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: '0.5'
 
   # ── OpenTelemetry Collector ────────────────────────────
   # Receives traces/metrics from all services, exports to backends.

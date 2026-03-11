@@ -11,11 +11,6 @@ const analyticsLogger = createServiceLogger('analytics');
 
 // ── Analytics Events ──────────────────────────────────────
 export type AnalyticsEvent =
-  | 'meeting.created'
-  | 'meeting.started'
-  | 'meeting.ended'
-  | 'meeting.ai_minutes_used'
-  | 'meeting.translation_used'
   | 'member.joined'
   | 'member.removed'
   | 'org.created'
@@ -53,7 +48,6 @@ const orgUsage = new Map<
   {
     meetingsCreated: number;
     aiMinutesUsed: number;
-    translationMinutes: number;
     membersAdded: number;
     paymentsCompleted: number;
     walletFunded: number;
@@ -98,7 +92,6 @@ export function trackEvent(
       usage = {
         meetingsCreated: 0,
         aiMinutesUsed: 0,
-        translationMinutes: 0,
         membersAdded: 0,
         paymentsCompleted: 0,
         walletFunded: 0,
@@ -112,15 +105,6 @@ export function trackEvent(
     usage.lastActivity = entry.timestamp;
 
     switch (event) {
-      case 'meeting.created':
-        usage.meetingsCreated++;
-        break;
-      case 'meeting.ai_minutes_used':
-        usage.aiMinutesUsed += (opts.metadata?.minutes as number) || 0;
-        break;
-      case 'meeting.translation_used':
-        usage.translationMinutes += (opts.metadata?.minutes as number) || 0;
-        break;
       case 'member.joined':
         usage.membersAdded++;
         break;

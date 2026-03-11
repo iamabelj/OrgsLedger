@@ -50,7 +50,6 @@ export default function HomeScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
   const [orgDetails, setOrgDetails] = useState<any>(null);
-  const [upcomingMeetings, setUpcomingMeetings] = useState<any[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [showOrgSwitcher, setShowOrgSwitcher] = useState(false);
   const [aiHours, setAiHours] = useState<{ balance: number; used: number; remaining: number } | null>(null);
@@ -87,9 +86,8 @@ export default function HomeScreen() {
     if (!currentOrgId) return;
     try {
       setError(null);
-      const [orgRes, meetRes, annRes, eventRes, campaignRes, duesRes, finesRes, pollsRes] = await Promise.allSettled([
+      const [orgRes, annRes, eventRes, campaignRes, duesRes, finesRes, pollsRes] = await Promise.allSettled([
         api.orgs.get(currentOrgId),
-        api.meetings.list(currentOrgId, { status: 'scheduled', limit: 3 }),
         api.announcements.list(currentOrgId, { limit: 3 }),
         api.events.list(currentOrgId, { limit: 3 }),
         api.financials.getCampaigns(currentOrgId),
@@ -100,10 +98,6 @@ export default function HomeScreen() {
       
       if (orgRes.status === 'fulfilled') {
         setOrgDetails(orgRes.value.data.data);
-      }
-      
-      if (meetRes.status === 'fulfilled') {
-        setUpcomingMeetings((meetRes.value.data.data || []).slice(0, 3));
       }
       
       if (annRes.status === 'fulfilled') {
@@ -232,13 +226,6 @@ export default function HomeScreen() {
     if (hour < 12) return 'Good Morning';
     if (hour < 17) return 'Good Afternoon';
     return 'Good Evening';
-  };
-
-  const formatMeetingDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    if (isToday(date)) return `Today, ${format(date, 'h:mm a')}`;
-    if (isTomorrow(date)) return `Tomorrow, ${format(date, 'h:mm a')}`;
-    return format(date, 'MMM dd, h:mm a');
   };
 
   return (
@@ -461,7 +448,6 @@ export default function HomeScreen() {
         <SectionHeader title="Quick Actions" />
         <View style={styles.quickActionsGrid}>
           <QuickActionCard icon="chatbubbles" label="Chat" color={Colors.info} onPress={() => router.push('/(tabs)/chat')} />
-          <QuickActionCard icon="calendar" label="Meetings" color={Colors.success} onPress={() => router.push('/(tabs)/meetings')} />
           <QuickActionCard icon="receipt" label="My Dues" color={Colors.warning} onPress={() => router.push('/(tabs)/financials')} />
           <QuickActionCard icon="heart" label="Donate" color={Colors.error} onPress={() => router.push('/(tabs)/financials')} />
           <QuickActionCard icon="time" label="History" color={Colors.textSecondary} onPress={() => router.push('/financials/history')} />
@@ -565,12 +551,6 @@ export default function HomeScreen() {
               onPress={() => router.push('/admin/analytics')}
             />
             <AdminActionCard
-              icon="bulb"
-              label="AI Insights"
-              color="#F59E0B"
-              onPress={() => router.push('/admin/meeting-insights')}
-            />
-            <AdminActionCard
               icon="swap-horizontal"
               label="Transfers"
               color="#0EA5E9"
@@ -644,12 +624,6 @@ export default function HomeScreen() {
               label="Analytics"
               color="#EC4899"
               onPress={() => router.push('/admin/analytics')}
-            />
-            <AdminActionCard
-              icon="bulb"
-              label="AI Insights"
-              color="#F59E0B"
-              onPress={() => router.push('/admin/meeting-insights')}
             />
             <AdminActionCard
               icon="megaphone-outline"
@@ -840,23 +814,23 @@ export default function HomeScreen() {
           {upcomingEvents.map((evt: any) => (
             <TouchableOpacity
               key={evt.id}
-              style={styles.meetingItem}
+              style={styles.listItem}
               onPress={() => router.push(`/events/${evt.id}`)}
               activeOpacity={0.7}
             >
-              <View style={[styles.meetingDateCol, { backgroundColor: '#3B82F6' + '18' }]}>
-                <Text style={[styles.meetingDay, { color: '#3B82F6' }]}>
+              <View style={[styles.dateCol, { backgroundColor: '#3B82F6' + '18' }]}>
+                <Text style={[styles.dateDay, { color: '#3B82F6' }]}>
                   {evt.event_date ? format(new Date(evt.event_date), 'dd') : '--'}
                 </Text>
-                <Text style={[styles.meetingMonth, { color: '#3B82F6' }]}>
+                <Text style={[styles.dateMonth, { color: '#3B82F6' }]}>
                   {evt.event_date ? format(new Date(evt.event_date), 'MMM') : ''}
                 </Text>
               </View>
-              <View style={styles.meetingInfo}>
-                <Text style={styles.meetingTitle} numberOfLines={1}>{evt.title}</Text>
-                <View style={styles.meetingTimeRow}>
+              <View style={styles.listItemInfo}>
+                <Text style={styles.listItemTitle} numberOfLines={1}>{evt.title}</Text>
+                <View style={styles.listItemSubRow}>
                   <Ionicons name="location-outline" size={13} color={Colors.textLight} />
-                  <Text style={styles.meetingTime} numberOfLines={1}>
+                  <Text style={styles.listItemSubText} numberOfLines={1}>
                     {evt.location || 'No location set'}
                   </Text>
                 </View>
@@ -899,57 +873,6 @@ export default function HomeScreen() {
           })}
         </View>
       )}
-
-      {/* Upcoming Meetings */}
-      <View style={styles.section}>
-        <SectionHeader
-          title="Upcoming Meetings"
-          actionLabel="See All"
-          onAction={() => router.push('/(tabs)/meetings')}
-        />
-        {upcomingMeetings.length === 0 ? (
-          <Card variant="elevated" style={styles.emptyMeetingCard}>
-            <Ionicons name="calendar-outline" size={32} color={Colors.textLight} />
-            <Text style={styles.emptyMeetingText}>No upcoming meetings</Text>
-            {isAdmin && (
-              <TouchableOpacity
-                style={styles.scheduleMeetingBtn}
-                onPress={() => router.push('/meetings/create')}
-              >
-                <Text style={styles.scheduleMeetingText}>Schedule One</Text>
-              </TouchableOpacity>
-            )}
-          </Card>
-        ) : (
-          upcomingMeetings.map((m: any, idx: number) => (
-            <TouchableOpacity
-              key={m.id}
-              style={styles.meetingItem}
-              onPress={() => router.push(`/meetings/${m.id}`)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.meetingDateCol}>
-                <Text style={styles.meetingDay}>
-                  {format(new Date(m.scheduled_start), 'dd')}
-                </Text>
-                <Text style={styles.meetingMonth}>
-                  {format(new Date(m.scheduled_start), 'MMM')}
-                </Text>
-              </View>
-              <View style={styles.meetingInfo}>
-                <Text style={styles.meetingTitle}>{m.title}</Text>
-                <View style={styles.meetingTimeRow}>
-                  <Ionicons name="time-outline" size={13} color={Colors.textLight} />
-                  <Text style={styles.meetingTime}>
-                    {formatMeetingDate(m.scheduled_start)}
-                  </Text>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={Colors.textLight} />
-            </TouchableOpacity>
-          ))
-        )}
-      </View>
 
       <View style={{ height: Spacing.xxl }} />
     </ResponsiveScrollView>
@@ -1268,25 +1191,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Meetings
-  emptyMeetingCard: {
-    alignItems: 'center',
-    paddingVertical: Spacing.xl,
-    gap: Spacing.sm,
-  },
-  emptyMeetingText: {
-    fontSize: FontSize.md,
-    color: Colors.textLight,
-  },
-  scheduleMeetingBtn: {
-    marginTop: Spacing.xs,
-  },
-  scheduleMeetingText: {
-    fontSize: FontSize.sm,
-    fontWeight: FontWeight.semibold,
-    color: Colors.highlight,
-  },
-  meetingItem: {
+  // List items (used by events)
+  listItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.surface,
@@ -1297,7 +1203,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.borderLight,
     gap: Spacing.sm,
   },
-  meetingDateCol: {
+  dateCol: {
     width: 44,
     height: 50,
     borderRadius: BorderRadius.md,
@@ -1305,34 +1211,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  meetingDay: {
+  dateDay: {
     fontSize: FontSize.xl,
     fontWeight: FontWeight.bold,
     color: Colors.highlight,
     lineHeight: 24,
   },
-  meetingMonth: {
+  dateMonth: {
     fontSize: 10,
     fontWeight: FontWeight.semibold,
     color: Colors.highlight,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  meetingInfo: {
+  listItemInfo: {
     flex: 1,
   },
-  meetingTitle: {
+  listItemTitle: {
     fontSize: FontSize.md,
     fontWeight: FontWeight.semibold,
     color: Colors.textPrimary,
   },
-  meetingTimeRow: {
+  listItemSubRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     marginTop: 3,
   },
-  meetingTime: {
+  listItemSubText: {
     fontSize: FontSize.xs,
     color: Colors.textLight,
   },

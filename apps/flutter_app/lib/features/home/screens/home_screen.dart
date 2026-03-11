@@ -8,8 +8,6 @@ import '../../../core/utils/currency_utils.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../../../data/providers/auth_provider.dart';
 import '../../../data/api/api_client.dart';
-import '../../../data/models/models.dart';
-import '../../../data/socket/socket_client.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -18,7 +16,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  List<Meeting> _upcomingMeetings = [];
   Map<String, dynamic> _financialSummary = {};
   bool _loading = true;
   String? _lastOrgId;
@@ -29,20 +26,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void initState() {
     super.initState();
     // Defer to didChangeDependencies so ref.listen works
-    _listenSocket();
-  }
-
-  void _listenSocket() {
-    socketClient.on('meeting:started', (_) => _loadDashboard());
-    socketClient.on('meeting:ended', (_) => _loadDashboard());
-    socketClient.on('meeting:scheduled', (_) => _loadDashboard());
   }
 
   @override
   void dispose() {
-    socketClient.off('meeting:started');
-    socketClient.off('meeting:ended');
-    socketClient.off('meeting:scheduled');
     super.dispose();
   }
 
@@ -73,14 +60,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       });
     }
     try {
-      final results = await Future.wait([
-        api.getMeetings(orgId),
-        api.getLedger(orgId),
-      ]);
-
-      // Parse meetings — API returns { data: [...], meta: { ... } }
-      final meetingsRaw = results[0].data;
-      final meetingsList = (meetingsRaw['data'] ?? meetingsRaw) as List? ?? [];
+      final results = await Future.wait([api.getLedger(orgId)]);
 
       // Load org currency
       try {
@@ -99,16 +79,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       } catch (_) {}
 
       // Parse ledger — API returns { data: { transactions: [...], summary: { ... } } }
-      final ledgerRaw = results[1].data;
+      final ledgerRaw = results[0].data;
       final ledgerData = ledgerRaw['data'] ?? ledgerRaw ?? {};
 
       if (mounted) {
         setState(() {
-          _upcomingMeetings = meetingsList
-              .map((m) => Meeting.fromJson(m))
-              .where((m) => m.status != 'ended' && m.status != 'cancelled')
-              .take(5)
-              .toList();
           // Extract the summary sub-object from ledger response
           if (ledgerData is Map<String, dynamic>) {
             _financialSummary =
@@ -164,7 +139,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ? const Center(
               child: CircularProgressIndicator(color: AppColors.highlight),
             )
-          : _error != null && _upcomingMeetings.isEmpty
+          : _error != null
           ? RefreshIndicator(
               onRefresh: _loadDashboard,
               color: AppColors.highlight,
@@ -229,37 +204,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   _buildQuickStats(),
                   const SizedBox(height: AppSpacing.lg),
 
-                  // ── Upcoming Meetings ──
-                  _SectionHeader(
-                    title: 'Upcoming Meetings',
-                    onAction: () => context.push('/meetings'),
-                  ),
-                  if (_upcomingMeetings.isEmpty)
-                    _EmptyCard(
-                      icon: Icons.videocam_off,
-                      message: 'No upcoming meetings',
-                    )
-                  else
-                    ..._upcomingMeetings.map(
-                      (m) => _MeetingCard(
-                        meeting: m,
-                        onTap: () => context.push('/meetings/${m.id}'),
-                      ),
-                    ),
-
-                  const SizedBox(height: AppSpacing.lg),
-
                   // ── Quick Actions ──
                   _SectionHeader(title: 'Quick Actions'),
                   Wrap(
                     spacing: AppSpacing.sm,
                     runSpacing: AppSpacing.sm,
                     children: [
-                      _QuickAction(
-                        icon: Icons.add_circle,
-                        label: 'New Meeting',
-                        onTap: () => context.push('/meetings/create'),
-                      ),
                       _QuickAction(
                         icon: Icons.chat_bubble,
                         label: 'Chat',
@@ -314,15 +264,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             color: AppColors.success,
           ),
         ),
-        const SizedBox(width: AppSpacing.sm),
-        Expanded(
-          child: _StatCard(
-            icon: Icons.videocam,
-            label: 'Meetings',
-            value: '${_upcomingMeetings.length}',
-            color: AppColors.info,
-          ),
-        ),
       ],
     );
   }
@@ -332,21 +273,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
 class _SectionHeader extends StatelessWidget {
   final String title;
-  final VoidCallback? onAction;
-  const _SectionHeader({required this.title, this.onAction});
+  const _SectionHeader({required this.title});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(title, style: AppTypography.h4),
-          if (onAction != null)
-            TextButton(onPressed: onAction, child: const Text('See All')),
-        ],
-      ),
+      child: Text(title, style: AppTypography.h4),
     );
   }
 }
@@ -385,61 +318,6 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-class _MeetingCard extends StatelessWidget {
-  final Meeting meeting;
-  final VoidCallback onTap;
-  const _MeetingCard({required this.meeting, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: Icon(
-          meeting.isLive ? Icons.videocam : Icons.schedule,
-          color: meeting.isLive ? AppColors.success : AppColors.highlight,
-        ),
-        title: Text(
-          meeting.title,
-          style: const TextStyle(color: AppColors.textPrimary),
-        ),
-        subtitle: Text(
-          meeting.isLive
-              ? 'LIVE'
-              : meeting.scheduledStart != null
-              ? _formatDate(meeting.scheduledStart!)
-              : 'Scheduled',
-          style: TextStyle(
-            color: meeting.isLive ? AppColors.success : AppColors.textSecondary,
-            fontSize: 12,
-          ),
-        ),
-        trailing: meeting.isLive
-            ? ElevatedButton(
-                onPressed: onTap,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                ),
-                child: const Text('Join', style: TextStyle(fontSize: 12)),
-              )
-            : const Icon(Icons.chevron_right, color: AppColors.textLight),
-        onTap: onTap,
-      ),
-    );
-  }
-
-  String _formatDate(String iso) {
-    try {
-      final d = DateTime.parse(iso).toLocal();
-      return '${d.month}/${d.day} at ${d.hour}:${d.minute.toString().padLeft(2, '0')}';
-    } catch (_) {
-      return iso;
-    }
-  }
-}
-
 class _QuickAction extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -474,28 +352,6 @@ class _QuickAction extends StatelessWidget {
               ),
               textAlign: TextAlign.center,
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyCard extends StatelessWidget {
-  final IconData icon;
-  final String message;
-  const _EmptyCard({required this.icon, required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xl),
-        child: Column(
-          children: [
-            Icon(icon, size: 40, color: AppColors.textLight),
-            const SizedBox(height: AppSpacing.sm),
-            Text(message, style: AppTypography.bodySmall),
           ],
         ),
       ),

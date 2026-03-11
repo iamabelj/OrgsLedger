@@ -1,87 +1,12 @@
 # ============================================================
-# OrgsLedger — Standalone Worker Deployments
-# Each worker type is independently scalable.
+# OrgsLedger — Worker Deployments
+# Independently scalable BullMQ workers for 50k meetings.
+# KEDA ScaledObjects in hpa.yaml handle auto-scaling.
 # ============================================================
 
-# ── Translation Worker ───────────────────────────────────
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: translation-worker
-  namespace: orgsledger
-  labels:
-    app: translation-worker
-spec:
-  replicas: 5
-  selector:
-    matchLabels:
-      app: translation-worker
-  template:
-    metadata:
-      labels:
-        app: translation-worker
-    spec:
-      containers:
-        - name: worker
-          image: orgsledger/worker:latest
-          env:
-            - name: WORKER_TYPE
-              value: translation
-          envFrom:
-            - configMapRef:
-                name: orgsledger-config
-            - secretRef:
-                name: orgsledger-secrets
-          resources:
-            requests:
-              cpu: 250m
-              memory: 256Mi
-            limits:
-              cpu: "1"
-              memory: 512Mi
-      terminationGracePeriodSeconds: 30
-
----
-# ── Broadcast Worker ─────────────────────────────────────
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: broadcast-worker
-  namespace: orgsledger
-  labels:
-    app: broadcast-worker
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: broadcast-worker
-  template:
-    metadata:
-      labels:
-        app: broadcast-worker
-    spec:
-      containers:
-        - name: worker
-          image: orgsledger/worker:latest
-          env:
-            - name: WORKER_TYPE
-              value: broadcast
-          envFrom:
-            - configMapRef:
-                name: orgsledger-config
-            - secretRef:
-                name: orgsledger-secrets
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 500m
-              memory: 256Mi
-      terminationGracePeriodSeconds: 15
-
----
-# ── Transcription Worker ─────────────────────────────────
+# ── Transcript Worker ────────────────────────────────────
+# Highest throughput — processes raw audio transcript events.
+# At 50k meetings each emitting ~1 event/s = 50k events/s peak.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -89,8 +14,9 @@ metadata:
   namespace: orgsledger
   labels:
     app: transcription-worker
+    tier: worker
 spec:
-  replicas: 10
+  replicas: 20
   selector:
     matchLabels:
       app: transcription-worker
@@ -98,13 +24,74 @@ spec:
     metadata:
       labels:
         app: transcription-worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: "/metrics"
     spec:
+      topologySpreadConstraints:
+        - maxSkew: 2
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: transcription-worker
       containers:
         - name: worker
           image: orgsledger/worker:latest
           env:
             - name: WORKER_TYPE
               value: transcription
+            - name: TRANSCRIPT_WORKER_CONCURRENCY
+              value: "50"
+          envFrom:
+            - configMapRef:
+                name: orgsledger-config
+            - secretRef:
+                name: orgsledger-secrets
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              cpu: "4"
+              memory: 2Gi
+      terminationGracePeriodSeconds: 60
+
+---
+# ── Translation Worker ───────────────────────────────────
+# Calls external translation APIs. Concurrency limited by API
+# rate limits, not CPU. Each pod handles 10–20 concurrent calls.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: translation-worker
+  namespace: orgsledger
+  labels:
+    app: translation-worker
+    tier: worker
+spec:
+  replicas: 10
+  selector:
+    matchLabels:
+      app: translation-worker
+  template:
+    metadata:
+      labels:
+        app: translation-worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: worker
+          image: orgsledger/worker:latest
+          env:
+            - name: WORKER_TYPE
+              value: translation
+            - name: TRANSLATION_WORKER_CONCURRENCY
+              value: "20"
           envFrom:
             - configMapRef:
                 name: orgsledger-config
@@ -120,30 +107,39 @@ spec:
       terminationGracePeriodSeconds: 30
 
 ---
-# ── Minutes Worker ───────────────────────────────────────
+# ── Broadcast Worker ─────────────────────────────────────
+# Fans out translated text to meeting participants via Socket.IO.
+# I/O-bound (Redis pub/sub + WebSocket push), light on CPU.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: minutes-worker
+  name: broadcast-worker
   namespace: orgsledger
   labels:
-    app: minutes-worker
+    app: broadcast-worker
+    tier: worker
 spec:
-  replicas: 3
+  replicas: 5
   selector:
     matchLabels:
-      app: minutes-worker
+      app: broadcast-worker
   template:
     metadata:
       labels:
-        app: minutes-worker
+        app: broadcast-worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
         - name: worker
           image: orgsledger/worker:latest
           env:
             - name: WORKER_TYPE
-              value: minutes
+              value: broadcast
+            - name: BROADCAST_WORKER_CONCURRENCY
+              value: "50"
           envFrom:
             - configMapRef:
                 name: orgsledger-config
@@ -152,8 +148,56 @@ spec:
           resources:
             requests:
               cpu: 250m
-              memory: 512Mi
+              memory: 256Mi
             limits:
               cpu: "1"
+              memory: 512Mi
+      terminationGracePeriodSeconds: 15
+
+---
+# ── Minutes Worker ───────────────────────────────────────
+# Generates AI meeting minutes (OpenAI). Bursty, long-running
+# jobs (10–60 s each). Low steady-state, scales on queue depth.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minutes-worker
+  namespace: orgsledger
+  labels:
+    app: minutes-worker
+    tier: worker
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: minutes-worker
+  template:
+    metadata:
+      labels:
+        app: minutes-worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: worker
+          image: orgsledger/worker:latest
+          env:
+            - name: WORKER_TYPE
+              value: minutes
+            - name: MINUTES_WORKER_CONCURRENCY
+              value: "5"
+          envFrom:
+            - configMapRef:
+                name: orgsledger-config
+            - secretRef:
+                name: orgsledger-secrets
+          resources:
+            requests:
+              cpu: 500m
               memory: 1Gi
-      terminationGracePeriodSeconds: 60
+            limits:
+              cpu: "2"
+              memory: 2Gi
+      terminationGracePeriodSeconds: 120

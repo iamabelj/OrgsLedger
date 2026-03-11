@@ -2,10 +2,15 @@
 // OrgsLedger API — Cache Service
 // Redis-backed with in-memory fallback for development.
 // Provides get/set/del with TTL for route-level caching.
+// Uses shared ioredis client from infrastructure/redisClient.ts
 // ============================================================
 
-import { config } from '../config';
 import { logger } from '../logger';
+import {
+  getRedisClient as getSharedRedisClient,
+  redisClientManager,
+} from '../infrastructure/redisClient';
+import type { Redis, Cluster } from 'ioredis';
 
 // ── In-Memory Fallback Store ────────────────────────────────
 interface MemoryCacheEntry {
@@ -22,38 +27,35 @@ setInterval(() => {
   }
 }, 2 * 60 * 1000).unref();
 
-// ── Redis Client (lazy init) ────────────────────────────────
-let redisClient: any = null;
+// ── Redis Client (shared ioredis instance) ──────────────────
+let cachedClient: Redis | Cluster | null = null;
 let redisAvailable = false;
+let initializationPromise: Promise<Redis | Cluster | null> | null = null;
 
-async function getRedisClient(): Promise<any> {
-  if (redisClient) return redisClient;
+async function getIoredisClient(): Promise<Redis | Cluster | null> {
+  if (cachedClient) return cachedClient;
+  if (initializationPromise) return initializationPromise;
 
-  try {
-    // Dynamic import — only loads if redis is installed
-    // @ts-ignore — redis is an optional peer dependency
-    const { createClient } = await import('redis');
-    redisClient = createClient({ url: config.redis.url });
-    redisClient.on('error', (err: any) => {
-      logger.warn('[CACHE] Redis error, falling back to in-memory', { error: err.message });
-      redisAvailable = false;
-    });
-    redisClient.on('connect', () => {
+  initializationPromise = (async () => {
+    try {
+      cachedClient = await getSharedRedisClient();
       redisAvailable = true;
-      logger.info('[CACHE] Connected to Redis');
-    });
-    await redisClient.connect();
-    redisAvailable = true;
-    return redisClient;
-  } catch {
-    logger.info('[CACHE] Redis not available, using in-memory cache');
-    redisAvailable = false;
-    return null;
-  }
+      logger.info('[CACHE] Using shared ioredis client');
+      return cachedClient;
+    } catch (err: any) {
+      logger.info('[CACHE] Redis not available, using in-memory cache', {
+        error: err.message,
+      });
+      redisAvailable = false;
+      return null;
+    }
+  })();
+
+  return initializationPromise;
 }
 
 // Try to connect on module load (non-blocking)
-getRedisClient().catch(() => {});
+getIoredisClient().catch(() => {});
 
 // ── Cache Interface ─────────────────────────────────────────
 
@@ -62,9 +64,10 @@ getRedisClient().catch(() => {});
  * Returns null if not found or expired.
  */
 export async function cacheGet(key: string): Promise<string | null> {
-  if (redisAvailable && redisClient) {
+  const client = await getIoredisClient();
+  if (redisAvailable && client) {
     try {
-      return await redisClient.get(key);
+      return await client.get(key);
     } catch {
       // Fallback to memory
     }
@@ -81,9 +84,11 @@ export async function cacheGet(key: string): Promise<string | null> {
  * Set a cached value with TTL in seconds.
  */
 export async function cacheSet(key: string, value: string, ttlSeconds: number = 60): Promise<void> {
-  if (redisAvailable && redisClient) {
+  const client = await getIoredisClient();
+  if (redisAvailable && client) {
     try {
-      await redisClient.setEx(key, ttlSeconds, value);
+      // ioredis uses set with EX option instead of setEx
+      await client.set(key, value, 'EX', ttlSeconds);
       return;
     } catch {
       // Fallback to memory
@@ -99,13 +104,14 @@ export async function cacheSet(key: string, value: string, ttlSeconds: number = 
  * Delete a cached key (or pattern with wildcard *).
  */
 export async function cacheDel(key: string): Promise<void> {
-  if (redisAvailable && redisClient) {
+  const client = await getIoredisClient();
+  if (redisAvailable && client) {
     try {
       if (key.includes('*')) {
-        const keys = await redisClient.keys(key);
-        if (keys.length) await redisClient.del(keys);
+        const keys = await client.keys(key);
+        if (keys.length) await client.del(...keys);
       } else {
-        await redisClient.del(key);
+        await client.del(key);
       }
       return;
     } catch {
@@ -154,7 +160,8 @@ export function isRedisAvailable(): boolean {
 /** Clear entire cache (used in tests) */
 export async function cacheClear(): Promise<void> {
   memoryStore.clear();
-  if (redisAvailable && redisClient) {
-    try { await redisClient.flushDb(); } catch {}
+  const client = await getIoredisClient();
+  if (redisAvailable && client) {
+    try { await (client as any).flushdb(); } catch {}
   }
 }

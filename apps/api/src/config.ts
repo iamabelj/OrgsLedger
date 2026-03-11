@@ -83,19 +83,26 @@ export const config = {
     projectId: process.env.FIREBASE_PROJECT_ID || '',
   },
 
-  // ── LiveKit Configuration ───────────────────────────────
-  // Self-hosted or cloud LiveKit for video/audio conferencing.
-  // All participants receive backend-issued tokens — no external login.
+  // LiveKit Cloud for real-time video/audio
   livekit: {
-    // LiveKit Cloud WebSocket URL
-    url: process.env.LIVEKIT_URL || 'wss://orgsledger-b1j68gr8.livekit.cloud',
-    // API key for token signing (from LiveKit Cloud dashboard)
+    url: process.env.LIVEKIT_URL || 'wss://your-project.livekit.cloud',
     apiKey: process.env.LIVEKIT_API_KEY || '',
-    // API secret for token signing (from LiveKit Cloud dashboard)
     apiSecret: process.env.LIVEKIT_API_SECRET || '',
-    // Token expiry in seconds (default 2 hours)
-    tokenExpirySeconds: parseInt(process.env.LIVEKIT_TOKEN_EXPIRY || '7200', 10),
   },
+
+  // Deepgram for real-time transcription
+  deepgram: {
+    apiKey: process.env.DEEPGRAM_API_KEY || '',
+    model: process.env.DEEPGRAM_MODEL || 'nova-2',
+    language: process.env.DEEPGRAM_LANGUAGE || 'en-US',
+  },
+
+  // Translation service
+  translation: {
+    provider: process.env.TRANSLATION_PROVIDER || 'google', // google | deepl
+    targetLanguages: (process.env.TRANSLATION_LANGUAGES || 'es,fr,de,pt,zh').split(','),
+  },
+
 };
 
 // ── Config Validation ───────────────────────────────────────
@@ -129,6 +136,15 @@ if (!_isDev) {
     console.error('[CONFIG] FATAL: REDIS_URL or REDIS_HOST must be set in production for queue infrastructure');
     process.exit(1);
   }
+  // Meeting services validation
+  if (!config.deepgram?.apiKey) {
+    console.error('[CONFIG] FATAL: DEEPGRAM_API_KEY must be set in production for real-time transcription');
+    process.exit(1);
+  }
+  if (!config.livekit?.url || !config.livekit?.apiKey || !config.livekit?.apiSecret) {
+    console.error('[CONFIG] FATAL: LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must be set in production for real-time communication');
+    process.exit(1);
+  }
 } else {
   // Development — non-fatal warnings
   if (config.jwt.secret === 'CHANGE_ME_IN_PRODUCTION') {
@@ -139,5 +155,11 @@ if (!_isDev) {
   }
   if (!process.env.REDIS_URL && !process.env.REDIS_HOST) {
     console.warn('[CONFIG] WARNING: Redis not configured — queues will use default localhost:6379');
+  }
+  if (!config.deepgram?.apiKey) {
+    console.warn('[CONFIG] WARNING: DEEPGRAM_API_KEY not set — real-time transcription will not work');
+  }
+  if (!config.livekit?.url) {
+    console.warn('[CONFIG] WARNING: LIVEKIT_URL not set — real-time communication will not work');
   }
 }

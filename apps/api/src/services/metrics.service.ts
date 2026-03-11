@@ -82,13 +82,9 @@ export const metrics = {
   authTokenRefreshes: createCounter('auth_token_refreshes'),
 
   // Business Metrics
-  meetingsCreated: createCounter('meetings_created'),
-  meetingsActive: createCounter('meetings_active'),
-  meetingsCompleted: createCounter('meetings_completed'),
   walletOperations: createCounter('wallet_operations'),
   walletDeductions: createCounter('wallet_deductions'),
   aiMinutesUsed: createCounter('ai_minutes_used'),
-  translationMinutesUsed: createCounter('translation_minutes_used'),
 
   // Organization Metrics
   orgsCreated: createCounter('orgs_created'),
@@ -213,13 +209,9 @@ export function getMetricsSnapshot() {
     },
 
     business: {
-      meetingsCreated: metrics.meetingsCreated.value,
-      meetingsActive: metrics.meetingsActive.value,
-      meetingsCompleted: metrics.meetingsCompleted.value,
       walletOperations: metrics.walletOperations.value,
       walletDeductions: metrics.walletDeductions.value,
       aiMinutesUsed: metrics.aiMinutesUsed.value,
-      translationMinutesUsed: metrics.translationMinutesUsed.value,
     },
 
     organizations: {
@@ -263,12 +255,6 @@ export const MetricsHelper = {
     if (success) metrics.authLoginSuccess.inc();
     else metrics.authLoginFailures.inc();
   },
-  trackMeeting(action: 'created' | 'active' | 'completed') {
-    metrics[`meetings${action.charAt(0).toUpperCase() + action.slice(1)}` as keyof typeof metrics];
-    if (action === 'created') metrics.meetingsCreated.inc();
-    if (action === 'active') metrics.meetingsActive.inc();
-    if (action === 'completed') metrics.meetingsCompleted.inc();
-  },
   trackWallet(deduction = false) {
     metrics.walletOperations.inc();
     if (deduction) metrics.walletDeductions.inc();
@@ -280,9 +266,6 @@ export const MetricsHelper = {
   },
   trackAiUsage(minutes: number) {
     metrics.aiMinutesUsed.inc(minutes);
-  },
-  trackTranslation(minutes: number) {
-    metrics.translationMinutesUsed.inc(minutes);
   },
   trackWsConnect() { metrics.wsConnectionsActive.inc(); },
   trackWsDisconnect() { metrics.wsConnectionsActive.inc(-1); },
@@ -349,9 +332,6 @@ export function getPrometheusMetrics(): string {
   counter('auth_token_refreshes_total', 'Token refreshes', metrics.authTokenRefreshes.value);
 
   // Business
-  counter('meetings_created_total', 'Meetings created', metrics.meetingsCreated.value);
-  gauge('meetings_active', 'Currently active meetings', metrics.meetingsActive.value);
-  counter('meetings_completed_total', 'Meetings completed', metrics.meetingsCompleted.value);
   counter('wallet_operations_total', 'Wallet operations', metrics.walletOperations.value);
   counter('payments_initiated_total', 'Payments initiated', metrics.paymentsInitiated.value);
   counter('payments_completed_total', 'Payments completed', metrics.paymentsCompleted.value);

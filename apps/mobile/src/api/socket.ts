@@ -1,7 +1,7 @@
 // ============================================================
 // OrgsLedger Mobile — Socket.io Client
-// Event-driven real-time layer with reconnection,
-// meeting state sync, and room auto-rejoin.
+// Event-driven real-time layer with reconnection
+// and room auto-rejoin.
 // ============================================================
 
 import { io, Socket } from 'socket.io-client';
@@ -21,7 +21,6 @@ const SOCKET_URL = getSocketUrl();
 class SocketClient {
   private socket: Socket | null = null;
   private listeners: Map<string, Set<Function>> = new Map();
-  private activeMeetingId: string | null = null;
 
   async connect(): Promise<void> {
     const token = await storage.getItemAsync('accessToken');
@@ -40,18 +39,9 @@ class SocketClient {
     });
 
     this.socket.on('connect', () => {
-      // Re-join active meeting room on reconnect
-      if (this.activeMeetingId) {
-        this.socket?.emit('meeting:join', this.activeMeetingId);
-      }
     });
 
-    this.socket.on('disconnect', (reason) => {
-      // If server disconnected us (e.g. meeting:force-disconnect),
-      // don't auto-rejoin — the server did it deliberately
-      if (reason === 'io server disconnect') {
-        this.activeMeetingId = null;
-      }
+    this.socket.on('disconnect', (_reason) => {
     });
 
     this.socket.on('connect_error', (_err) => {
@@ -67,7 +57,6 @@ class SocketClient {
   }
 
   disconnect(): void {
-    this.activeMeetingId = null;
     this.socket?.disconnect();
     this.socket = null;
   }
@@ -115,56 +104,11 @@ class SocketClient {
     this.socket?.emit('channel:read', { channelId });
   }
 
-  // ── Meeting Methods ─────────────────────────────────────
-
-  joinMeeting(meetingId: string): void {
-    this.activeMeetingId = meetingId;
-    this.socket?.emit('meeting:join', meetingId);
-  }
-
-  leaveMeeting(meetingId: string): void {
-    this.activeMeetingId = null;
-    this.socket?.emit('meeting:leave', meetingId);
-  }
 
   // ── Ledger ──────────────────────────────────────────────
 
   subscribeLedger(orgId: string): void {
     this.socket?.emit('ledger:subscribe', orgId);
-  }
-
-  // ── Translation ─────────────────────────────────────────
-
-  setTranslationLanguage(meetingId: string, language: string, receiveVoice: boolean = true): void {
-    this.socket?.emit('translation:set-language', { meetingId, language, receiveVoice });
-  }
-
-  sendSpeechForTranslation(meetingId: string, text: string, sourceLang: string, isFinal: boolean): void {
-    this.socket?.emit('translation:speech', { meetingId, text, sourceLang, isFinal });
-  }
-
-  // ── Audio Streaming (Server-Side STT) ───────────────────
-
-  startAudioStream(meetingId: string, language?: string, encoding?: string): void {
-    this.socket?.emit('audio:start', { meetingId, language, encoding: encoding || 'WEBM_OPUS' });
-  }
-
-  sendAudioChunk(meetingId: string, audio: ArrayBuffer): void {
-    this.socket?.emit('audio:chunk', { meetingId, audio });
-  }
-
-  stopAudioStream(meetingId?: string): void {
-    this.socket?.emit('audio:stop', { meetingId });
-  }
-
-  // ── Meeting Chat ────────────────────────────────────────
-
-  sendChatMessage(meetingId: string, message: string): void {
-    this.socket?.emit('chat:send', { meetingId, message });
-  }
-
-  requestChatHistory(meetingId: string): void {
-    this.socket?.emit('chat:history', { meetingId });
   }
 
   // ── Status ──────────────────────────────────────────────

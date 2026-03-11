@@ -108,10 +108,8 @@ registerSchema('ProfileUpdateRequest', z.object({
 
 // ── Notification Schemas ────────────────────────────────────
 registerSchema('NotificationPreferences', z.object({
-  email_meetings: z.boolean().optional(),
   email_finances: z.boolean().optional(),
   email_announcements: z.boolean().optional(),
-  push_meetings: z.boolean().optional(),
   push_finances: z.boolean().optional(),
   push_announcements: z.boolean().optional(),
   push_chat: z.boolean().optional(),

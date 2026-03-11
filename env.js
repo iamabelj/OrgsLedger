@@ -23,12 +23,6 @@ const defaults = {
   AI_PROXY_URL: 'https://orgsledger.com',
   GATEWAY_URL: 'https://orgsledger.com',
 
-  // LiveKit Cloud (real-time video/audio transport)
-  LIVEKIT_URL: 'wss://orgsledger-b1j68gr8.livekit.cloud',
-  LIVEKIT_API_KEY: 'APICY5e7mofWboH',
-  LIVEKIT_API_SECRET: 'YzfIEjVvzv2LGzfva3TNlwqb0jps9exkxyPIb8UY1tDA',
-  LIVEKIT_TOKEN_EXPIRY: '7200',
-
   // CORS
   CORS_ORIGINS: 'https://orgsledger.com,https://app.orgsledger.com',
 

@@ -63,7 +63,7 @@ export default function AnalyticsScreen() {
 
   if (loading) return <LoadingScreen />;
 
-  const data = analytics || { members: {}, finances: {}, meetings: {} };
+  const data = analytics || { members: {}, finances: {} };
 
   return (
     <ScrollView
@@ -132,23 +132,6 @@ export default function AnalyticsScreen() {
             label="Collection Rate"
             value={`${data.finances?.collectionRate || 0}%`}
             icon="pie-chart"
-          />
-        </View>
-      </View>
-
-      {/* Meeting Stats */}
-      <View style={styles.section}>
-        <SectionHeader title="Meetings" />
-        <View style={styles.statRow}>
-          <StatCard
-            label="Total Meetings"
-            value={data.meetings?.total?.toString() || '0'}
-            icon="videocam"
-          />
-          <StatCard
-            label="This Month"
-            value={data.meetings?.thisMonth?.toString() || '0'}
-            icon="calendar"
           />
         </View>
       </View>

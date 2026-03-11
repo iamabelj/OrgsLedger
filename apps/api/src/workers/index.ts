@@ -8,6 +8,12 @@ import { getNotificationWorker, startNotificationWorker, stopNotificationWorker 
 import { getEmailWorker, startEmailWorker, stopEmailWorker } from './email.worker';
 import { getAuditWorker, startAuditWorker, stopAuditWorker } from './audit.worker';
 import { initializeDeadLetterQueue } from '../queues/dlq.queue';
+import { startTranscriptWorker, stopTranscriptWorker, getTranscriptWorker } from './transcript.worker';
+import { startTranslationWorker, stopTranslationWorker, getTranslationWorker } from './translation.worker';
+import { startBroadcastWorker, stopBroadcastWorker, getBroadcastWorker } from './broadcast.worker';
+import { startMinutesWorker, stopMinutesWorker, getMinutesWorker } from './minutes.worker';
+import { initializeTranscriptQueues } from '../queues/transcript.queue';
+import { eventReplayWorker } from './event-replay.worker';
 
 // ── Worker Status Types ───────────────────────────────────────
 
@@ -48,19 +54,31 @@ class WorkerManager {
       await initializeDeadLetterQueue();
       logger.info('[WORKER_MANAGER] DLQ initialized');
 
+      // Initialize transcript queues
+      await initializeTranscriptQueues();
+      logger.info('[WORKER_MANAGER] Transcript queues initialized');
+
       // Initialize workers
       await Promise.all([
         startNotificationWorker(),
         startEmailWorker(),
         startAuditWorker(),
+        startTranscriptWorker(),
+        startTranslationWorker(),
+        startBroadcastWorker(),
+        startMinutesWorker(),
       ]);
+
+      // Start the event replay worker (background job)
+      await eventReplayWorker.start();
+      logger.info('[WORKER_MANAGER] Event replay worker started');
 
       this.isInitialized = true;
 
       const elapsed = Date.now() - startTime;
       logger.info('[WORKER_MANAGER] Workers initialized', {
         elapsedMs: elapsed,
-        workers: ['notification', 'email', 'audit'],
+        workers: ['notification', 'email', 'audit', 'transcript', 'translation', 'broadcast', 'minutes'],
       });
     } catch (err) {
       logger.error('[WORKER_MANAGER] Failed to initialize', err);
@@ -84,6 +102,11 @@ class WorkerManager {
       getEmailWorker().getStatus(),
       getAuditWorker().getStatus(),
     ]);
+
+    const transcriptStatus = getTranscriptWorker()?.getStats() || { running: false, processed: 0, failed: 0 };
+    const translationStatus = getTranslationWorker()?.getStats() || { running: false, processed: 0, failed: 0 };
+    const broadcastStatus = getBroadcastWorker()?.getStats() || { running: false, processed: 0, failed: 0 };
+    const minutesStatus = getMinutesWorker()?.getStats() || { running: false, processed: 0, failed: 0 };
 
     const workers: WorkerStatus[] = [
       {
@@ -109,6 +132,38 @@ class WorkerManager {
         failed: auditStatus.failed,
         paused: (auditStatus as any).paused ?? false,
         healthy: auditStatus.running,
+      },
+      {
+        name: 'transcript',
+        running: transcriptStatus.running,
+        processed: transcriptStatus.processed,
+        failed: transcriptStatus.failed,
+        paused: false,
+        healthy: transcriptStatus.running,
+      },
+      {
+        name: 'translation',
+        running: translationStatus.running,
+        processed: translationStatus.processed,
+        failed: translationStatus.failed,
+        paused: false,
+        healthy: translationStatus.running,
+      },
+      {
+        name: 'broadcast',
+        running: broadcastStatus.running,
+        processed: broadcastStatus.processed,
+        failed: broadcastStatus.failed,
+        paused: false,
+        healthy: broadcastStatus.running,
+      },
+      {
+        name: 'minutes',
+        running: minutesStatus.running,
+        processed: minutesStatus.processed,
+        failed: minutesStatus.failed,
+        paused: false,
+        healthy: minutesStatus.running,
       },
     ];
 
@@ -162,6 +217,11 @@ class WorkerManager {
         stopNotificationWorker(),
         stopEmailWorker(),
         stopAuditWorker(),
+        stopTranscriptWorker(),
+        stopTranslationWorker(),
+        stopBroadcastWorker(),
+        stopMinutesWorker(),
+        eventReplayWorker.stop(),
       ]);
 
       this.isInitialized = false;
@@ -177,3 +237,17 @@ class WorkerManager {
 
 // Export singleton instance
 export const workerManager = new WorkerManager();
+
+// Worker Autoscaler exports
+export {
+  workerAutoscaler,
+  initializeAutoscaler,
+  startAutoscaler,
+  stopAutoscaler,
+  getAutoscalerStatus,
+  getWorkerCounts,
+  autoscalerWorkersGauge,
+  autoscalerScaleEventsCounter,
+  autoscalerQueueDepthGauge,
+  autoscalerQueueLagGauge,
+} from './worker-autoscaler';

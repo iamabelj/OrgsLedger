@@ -71,7 +71,7 @@ class _CreateOrgScreenState extends ConsumerState<CreateOrgScreen> {
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              'Create a new organization to manage your team, meetings, and more.',
+              'Create a new organization to manage your team, finances, and more.',
               textAlign: TextAlign.center,
               style: AppTypography.bodySmall,
             ),

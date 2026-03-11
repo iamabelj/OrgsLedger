@@ -64,7 +64,6 @@ FLUTTERWAVE_PUBLIC_KEY=
 FLUTTERWAVE_WEBHOOK_HASH=
 
 OPENAI_API_KEY=$(grep OPENAI_API_KEY "$APP_DIR/apps/api/.env" 2>/dev/null | cut -d= -f2- || echo "")
-DEEPGRAM_API_KEY=$(grep DEEPGRAM_API_KEY "$APP_DIR/apps/api/.env" 2>/dev/null | cut -d= -f2- || echo "")
 GOOGLE_APPLICATION_CREDENTIALS=./google-credentials.json
 
 SMTP_HOST=
@@ -81,11 +80,6 @@ CORS_ORIGINS=https://${DOMAIN},https://app.${DOMAIN}
 DEFAULT_ADMIN_EMAIL=admin@orgsledger.com
 DEFAULT_ADMIN_PASSWORD=SuperAdmin1234!
 
-# LiveKit Cloud (video/audio transport)
-LIVEKIT_URL=wss://orgsledger-b1j68gr8.livekit.cloud
-LIVEKIT_API_KEY=APICY5e7mofWboH
-LIVEKIT_API_SECRET=YzfIEjVvzv2LGzfva3TNlwqb0jps9exkxyPIb8UY1tDA
-LIVEKIT_TOKEN_EXPIRY=7200
 ENVEOF
 echo "  ✓ .env.production created"
 

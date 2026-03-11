@@ -51,8 +51,6 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
 
   IconData _iconForType(String? type) {
     switch (type) {
-      case 'meeting':
-        return Icons.videocam;
       case 'chat':
         return Icons.chat;
       case 'payment':
@@ -82,11 +80,6 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     // Navigate based on type
     final data = n.data;
     switch (n.type) {
-      case 'meeting':
-        final meetingId =
-            data?['meetingId']?.toString() ?? data?['meeting_id']?.toString();
-        if (meetingId != null) context.push('/meetings/$meetingId');
-        break;
       case 'chat':
         final channelId =
             data?['channelId']?.toString() ?? data?['channel_id']?.toString();

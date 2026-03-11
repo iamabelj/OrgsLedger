@@ -85,11 +85,6 @@ router.get('/jobs/queue/:queueName', authenticate, async (req: Request, res: Res
   try {
     const { queueName } = req.params;
 
-    // Meeting pipeline status — reserved for future rebuild
-    if (queueName === 'meeting-pipeline') {
-      return res.status(404).json({ error: 'Meeting pipeline not yet implemented' });
-    }
-
     const queues: Record<string, any> = {
       email: getEmailQueueManager(),
       notification: getNotificationQueueManager(),
