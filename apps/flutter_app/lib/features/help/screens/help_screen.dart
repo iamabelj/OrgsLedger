@@ -54,14 +54,14 @@ class HelpScreen extends StatelessWidget {
           _HelpTile(
             icon: Icons.language_rounded,
             title: 'Visit Website',
-            subtitle: 'app.orgsledger.com',
-            onTap: () => _launchUrl('https://app.orgsledger.com'),
+            subtitle: 'orgsledger.com',
+            onTap: () => _launchUrl('https://orgsledger.com'),
           ),
           _HelpTile(
             icon: Icons.article_outlined,
             title: 'Documentation',
             subtitle: 'Guides, FAQs, and tutorials',
-            onTap: () => _launchUrl('https://app.orgsledger.com/help'),
+            onTap: () => _launchUrl('https://orgsledger.com/help'),
           ),
           _HelpTile(
             icon: Icons.bug_report_outlined,

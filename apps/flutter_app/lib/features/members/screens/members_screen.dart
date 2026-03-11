@@ -167,7 +167,7 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
                           if (code.isNotEmpty) {
                             setDialogState(() {
                               inviteLink =
-                                  'https://app.orgsledger.com/invite/$code';
+                                  'https://orgsledger.com/invite/$code';
                               generating = false;
                             });
                           } else {

@@ -13,22 +13,22 @@ class LegalScreen extends StatelessWidget {
       _LegalItem(
         icon: Icons.description,
         title: 'Terms of Service',
-        url: 'https://app.orgsledger.com/legal/terms',
+        url: 'https://orgsledger.com/legal/terms',
       ),
       _LegalItem(
         icon: Icons.privacy_tip,
         title: 'Privacy Policy',
-        url: 'https://app.orgsledger.com/legal/privacy',
+        url: 'https://orgsledger.com/legal/privacy',
       ),
       _LegalItem(
         icon: Icons.security,
         title: 'Data Processing Agreement',
-        url: 'https://app.orgsledger.com/legal/dpa',
+        url: 'https://orgsledger.com/legal/dpa',
       ),
       _LegalItem(
         icon: Icons.cookie,
         title: 'Cookie Policy',
-        url: 'https://app.orgsledger.com/legal/cookies',
+        url: 'https://orgsledger.com/legal/cookies',
       ),
     ];
 

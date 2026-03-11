@@ -21,7 +21,7 @@ function getApiBaseUrl(): string {
   }
   // Native
   if (__DEV__) return 'http://localhost:3000/api';
-  return 'https://app.orgsledger.com/api';
+  return 'https://api.orgsledger.com/api';
 }
 
 const API_BASE_URL = getApiBaseUrl();
