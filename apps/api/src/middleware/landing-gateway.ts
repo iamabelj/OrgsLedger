@@ -123,6 +123,19 @@ export function mountWebFrontend(app: express.Application): void {
     return;
   }
 
+  const appStatic = express.static(webDir);
+
+  // Serve the organizations web app from /app on the landing host.
+  app.use('/app', (req, res, next) => {
+    if (!isLandingHost(req.headers.host || '')) return next();
+    if (req.path === '/' || req.path.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+    appStatic(req, res, next);
+  });
+
   // Static file serving (skip landing domain)
   app.use((req, res, next) => {
     if (isLandingHost(req.headers.host || '')) return next();
@@ -149,9 +162,38 @@ export function mountSpaFallback(app: express.Application): void {
   if (!fs.existsSync(webDir)) return;
 
   const indexPath = path.join(webDir, 'index.html');
+  const landingDir = path.resolve(__dirname, '../../../../landing');
+  const adminPage = path.join(landingDir, 'admin.html');
 
   app.get('*', (req, res) => {
     if (isLandingHost(req.headers.host || '')) {
+      if (req.path === '/app' || req.path.startsWith('/app/')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.sendFile(indexPath, (err) => {
+          if (err && !res.headersSent) {
+            res.status(404).json({ error: 'Not found' });
+          }
+        });
+        return;
+      }
+
+      if (
+        (req.path === '/developer' || req.path.startsWith('/developer/')) &&
+        fs.existsSync(adminPage)
+      ) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.sendFile(adminPage, (err) => {
+          if (err && !res.headersSent) {
+            res.status(404).json({ error: 'Not found' });
+          }
+        });
+        return;
+      }
+
       res.redirect(301, '/');
       return;
     }
