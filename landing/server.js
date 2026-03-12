@@ -244,7 +244,12 @@ app.post('/api/admin/login', adminLoginRateLimit, (req, res) => {
   }
 
   const token = jwt.sign(
-    { email, role: 'gateway_admin' },
+    {
+      userId: 'gateway-developer',
+      email,
+      globalRole: 'developer',
+      role: 'gateway_admin',
+    },
     JWT_SECRET,
     { expiresIn: '8h' }
   );

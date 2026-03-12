@@ -204,9 +204,11 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
     <h1><span style="color:var(--primary)">&#9670;</span> Developer Console</h1>
     <div class="sub">OrgsLedger Platform Administration</div>
     <div class="login-error" id="login-error"></div>
-    <div class="form-group"><label>Email</label><input type="email" id="login-email" autocomplete="email" placeholder="admin@orgsledger.com"></div>
-    <div class="form-group"><label>Password</label><input type="password" id="login-pass" autocomplete="current-password" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;"></div>
-    <button class="btn-login" onclick="doLogin()">Sign In</button>
+    <form id="login-form">
+      <div class="form-group"><label>Email</label><input type="email" id="login-email" autocomplete="email" placeholder="admin@orgsledger.com"></div>
+      <div class="form-group"><label>Password</label><input type="password" id="login-pass" autocomplete="current-password" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;"></div>
+      <button type="submit" class="btn-login">Sign In</button>
+    </form>
   </div>
 </div>
 
@@ -454,11 +456,9 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
 'use strict';
 
 // ── CONFIG ──────────────────────────────────────────────
-const API_BASE = location.origin; // gateway is same origin
-// In production, use same-origin (nginx proxies all domains to the API server).
-// In local dev with standalone gateway (port 4000), cross-origin to API (port 3000).
 const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-const APP_API = window.APP_API_BASE || (isLocal ? 'http://localhost:3000' : location.origin);
+const GATEWAY_API = window.GATEWAY_API_BASE || (isLocal ? location.origin : location.origin + '/developer-api');
+const APP_API = window.APP_API_BASE || (isLocal ? 'http://localhost:3000' : 'https://api.orgsledger.com');
 
 let TOKEN = localStorage.getItem('dev_token') || '';
 let ADMIN_EMAIL = localStorage.getItem('dev_email') || '';
@@ -489,8 +489,8 @@ function toast(msg,type){
 // ── API HELPERS ────────────────────────────────────────
 async function gw(path,opts){
   var r;
-  try{ r = await fetch(API_BASE+path,{...opts, headers:{'Content-Type':'application/json','Authorization':'Bearer '+TOKEN,...(opts?.headers||{})}}); }
-  catch(e){ console.error('Gateway fetch failed:',API_BASE+path,e); throw new Error('Gateway unreachable — check server status'); }
+  try{ r = await fetch(GATEWAY_API+path,{...opts, headers:{'Content-Type':'application/json','Authorization':'Bearer '+TOKEN,...(opts?.headers||{})}}); }
+  catch(e){ console.error('Gateway fetch failed:',GATEWAY_API+path,e); throw new Error('Gateway unreachable — check server status'); }
   if(r.status===401){doLogout();throw new Error('Session expired')}
   const data = await r.json().catch(()=>({}));
   if(!r.ok) throw new Error(data.error||'Request failed');
@@ -512,7 +512,16 @@ window.doLogin = async function(){
   const pass = $('login-pass').value;
   if(!email||!pass){$('login-error').textContent='Email and password required';$('login-error').style.display='block';return}
   try{
-    const data = await fetch(API_BASE+'/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pass})}).then(r=>r.json());
+    const response = await fetch(GATEWAY_API+'/api/admin/login',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email,password:pass})
+    });
+    const contentType = response.headers.get('content-type') || '';
+    const data = contentType.includes('application/json')
+      ? await response.json()
+      : { error: 'Developer gateway returned non-JSON response' };
+    if(!response.ok) throw new Error(data.error || ('Login failed ('+response.status+')'));
     if(data.error) throw new Error(data.error);
     TOKEN = data.token; ADMIN_EMAIL = data.email;
     localStorage.setItem('dev_token',TOKEN); localStorage.setItem('dev_email',ADMIN_EMAIL);
@@ -521,7 +530,7 @@ window.doLogin = async function(){
 };
 window.doLogout = function(){ TOKEN='';ADMIN_EMAIL='';localStorage.removeItem('dev_token');localStorage.removeItem('dev_email');location.reload() };
 
-$('login-pass').addEventListener('keydown',function(e){if(e.key==='Enter')doLogin()});
+$('login-form').addEventListener('submit',function(e){e.preventDefault();doLogin()});
 $('login-email').addEventListener('keydown',function(e){if(e.key==='Enter')$('login-pass').focus()});
 
 function showApp(){
