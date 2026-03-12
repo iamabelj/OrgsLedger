@@ -34,6 +34,7 @@ interface NavItem {
 const mainItems: NavItem[] = [
   { label: 'Dashboard', icon: 'grid-outline', path: '/(tabs)/home' },
   { label: 'Chat', icon: 'chatbubbles-outline', path: '/(tabs)/chat' },
+  { label: 'Meetings', icon: 'videocam-outline', path: '/meetings' },
   { label: 'Financials', icon: 'wallet-outline', path: '/(tabs)/financials' },
 ];
 
@@ -128,8 +129,8 @@ export function NavigationDrawer() {
     ? (currentMembership.logoUrl.startsWith('http') ? currentMembership.logoUrl : `${API_BASE}${currentMembership.logoUrl}`)
     : null;
   const globalRole = user?.globalRole;
-  const isDeveloper = globalRole === 'developer' || globalRole === 'super_admin';
-  const isSuperAdmin = globalRole === 'super_admin' || isDeveloper;
+  const isDeveloper = globalRole === 'developer';
+  const isSuperAdmin = globalRole === 'super_admin';
   const isOrgAdmin = userRole === 'org_admin' || isSuperAdmin;
   const isExecutive = userRole === 'executive';
   const isAdmin = isOrgAdmin || isExecutive;

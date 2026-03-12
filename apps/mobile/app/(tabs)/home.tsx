@@ -52,8 +52,7 @@ export default function HomeScreen() {
   const [orgDetails, setOrgDetails] = useState<any>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [showOrgSwitcher, setShowOrgSwitcher] = useState(false);
-  const [aiHours, setAiHours] = useState<{ balance: number; used: number; remaining: number } | null>(null);
-  const [translationHours, setTranslationHours] = useState<{ balance: number; used: number; remaining: number } | null>(null);
+  const [bundleHours, setBundleHours] = useState<{ balance: number; used: number; remaining: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Enhanced dashboard data
@@ -65,13 +64,11 @@ export default function HomeScreen() {
   const [pendingDues, setPendingDues] = useState(0);
   const [pendingFines, setPendingFines] = useState(0);
   const [activePolls, setActivePolls] = useState<any[]>([]);
-  const [platformStats, setPlatformStats] = useState<any>(null);
 
   const currentMembership = memberships.find((m) => m.organization_id === currentOrgId);
   const userRole = currentMembership?.role || 'member';
   const globalRole = user?.globalRole;
-  const isDeveloper = globalRole === 'developer' || globalRole === 'super_admin';
-  const isSuperAdmin = globalRole === 'super_admin' || isDeveloper;
+  const isSuperAdmin = globalRole === 'super_admin';
   const isOrgAdmin = isSuperAdmin || userRole === 'org_admin';
   const isExecutive = userRole === 'executive';
   const isAdmin = isOrgAdmin || isExecutive;
@@ -86,7 +83,7 @@ export default function HomeScreen() {
     if (!currentOrgId) return;
     try {
       setError(null);
-      const [orgRes, annRes, eventRes, campaignRes, duesRes, finesRes, pollsRes] = await Promise.allSettled([
+      const [orgRes, annRes, eventRes, campaignRes, duesRes, finesRes, pollsRes, walletsRes] = await Promise.allSettled([
         api.orgs.get(currentOrgId),
         api.announcements.list(currentOrgId, { limit: 3 }),
         api.events.list(currentOrgId, { limit: 3 }),
@@ -94,6 +91,7 @@ export default function HomeScreen() {
         api.financials.getDues(currentOrgId),
         api.financials.getFines(currentOrgId),
         api.polls.list(currentOrgId, { limit: 5 }),
+        api.subscriptions.getWallets(currentOrgId),
       ]);
       
       if (orgRes.status === 'fulfilled') {
@@ -154,51 +152,22 @@ export default function HomeScreen() {
         } catch (_) {}
       }
 
-      // Load AI hours from wallet
-      try {
-        const walletRes = await api.subscriptions.getAiWallet(currentOrgId);
-        const w = walletRes.data?.data;
-        if (w) {
-          const balance = parseFloat(w.total_topped_up || '0') / 60;
-          const used = parseFloat(w.total_spent || '0') / 60;
-          const remaining = parseFloat(w.balance_minutes || '0') / 60;
-          setAiHours({ balance, used, remaining });
+      if (walletsRes.status === 'fulfilled') {
+        const walletData = walletsRes.value.data?.data;
+        const bundleWallet = walletData?.ai || walletData?.translation;
+        if (bundleWallet) {
+          const balance = parseFloat(bundleWallet.total_topped_up || '0') / 60;
+          const used = parseFloat(bundleWallet.total_spent || '0') / 60;
+          const remaining = parseFloat(bundleWallet.balance_minutes || '0') / 60;
+          setBundleHours({ balance, used, remaining });
+        } else {
+          setBundleHours(null);
         }
-      } catch (_) {}
-
-      // Load Translation hours from wallet
-      try {
-        const walletRes = await api.subscriptions.getTranslationWallet(currentOrgId);
-        const w = walletRes.data?.data;
-        if (w) {
-          const balance = parseFloat(w.total_topped_up || '0') / 60;
-          const used = parseFloat(w.total_spent || '0') / 60;
-          const remaining = parseFloat(w.balance_minutes || '0') / 60;
-          setTranslationHours({ balance, used, remaining });
-        }
-      } catch (_) {}
-
-      // Load platform stats (developer only)
-      if (isDeveloper) {
-        try {
-          const [revRes, subsRes] = await Promise.allSettled([
-            api.subscriptions.adminRevenue(),
-            api.subscriptions.adminOrganizations(),
-          ]);
-          const stats: any = {};
-          if (revRes.status === 'fulfilled') {
-            stats.revenue = revRes.value.data?.data?.totalRevenue || 0;
-          }
-          if (subsRes.status === 'fulfilled') {
-            stats.totalOrgs = (subsRes.value.data?.data || []).length;
-          }
-          setPlatformStats(stats);
-        } catch (_) {}
       }
     } catch (err) {
       setError('Failed to load dashboard');
     }
-  }, [currentOrgId, isAdmin, isDeveloper]);
+  }, [currentOrgId, isAdmin]);
 
   useEffect(() => {
     loadDashboard();
@@ -323,14 +292,14 @@ export default function HomeScreen() {
         </Card>
       </View>
 
-      {/* AI Hours Card */}
-      {aiHours && (
+      {/* Add-On Bundle Card */}
+      {bundleHours && (
         <View style={styles.section}>
           <Card variant="elevated" style={styles.aiCard}>
             <View style={styles.finCardHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name={"sparkles" as any} size={18} color={Colors.highlight} />
-                <Text style={styles.finCardTitle}>AI Hours</Text>
+                <Ionicons name={"rocket" as any} size={18} color={Colors.highlight} />
+                <Text style={styles.finCardTitle}>Add-On Bundle</Text>
               </View>
               {isAdmin && (
                 <TouchableOpacity onPress={() => router.push('/admin/plans')}>
@@ -338,11 +307,12 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               )}
             </View>
+            <Text style={styles.bundleSubtitle}>AI + Translation</Text>
             <View style={styles.finCardGrid}>
               <View style={styles.finCardItem}>
                 <Ionicons name="time" size={20} color={Colors.success} />
                 <Text style={styles.finCardValue}>
-                  {aiHours.remaining.toFixed(1)}h
+                  {bundleHours.remaining.toFixed(1)}h
                 </Text>
                 <Text style={styles.finCardLabel}>Remaining</Text>
               </View>
@@ -350,7 +320,7 @@ export default function HomeScreen() {
               <View style={styles.finCardItem}>
                 <Ionicons name="play-circle" size={20} color={Colors.info} />
                 <Text style={styles.finCardValue}>
-                  {aiHours.used.toFixed(1)}h
+                  {bundleHours.used.toFixed(1)}h
                 </Text>
                 <Text style={styles.finCardLabel}>Used</Text>
               </View>
@@ -358,7 +328,7 @@ export default function HomeScreen() {
               <View style={styles.finCardItem}>
                 <Ionicons name="server" size={20} color={Colors.highlight} />
                 <Text style={styles.finCardValue}>
-                  {aiHours.balance.toFixed(1)}h
+                  {bundleHours.balance.toFixed(1)}h
                 </Text>
                 <Text style={styles.finCardLabel}>Total</Text>
               </View>
@@ -370,75 +340,18 @@ export default function HomeScreen() {
                   style={[
                     styles.aiBarFill,
                     {
-                      width: aiHours.balance > 0
-                        ? `${Math.min((aiHours.used / aiHours.balance) * 100, 100)}%`
+                      width: bundleHours.balance > 0
+                        ? `${Math.min((bundleHours.used / bundleHours.balance) * 100, 100)}%`
                         : '0%',
-                      backgroundColor: aiHours.remaining < 0.5 ? Colors.error : Colors.highlight,
+                      backgroundColor: bundleHours.remaining < 0.5 ? Colors.error : Colors.highlight,
                     },
                   ]}
                 />
               </View>
             </View>
-          </Card>
-        </View>
-      )}
-
-      {/* Translation Hours Card */}
-      {translationHours && (
-        <View style={styles.section}>
-          <Card variant="elevated" style={styles.aiCard}>
-            <View style={styles.finCardHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name="language" size={18} color="#10B981" />
-                <Text style={styles.finCardTitle}>Translation Hours</Text>
-              </View>
-              {isAdmin && (
-                <TouchableOpacity onPress={() => router.push('/admin/plans')}>
-                  <Text style={styles.viewAllText}>Manage</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            <View style={styles.finCardGrid}>
-              <View style={styles.finCardItem}>
-                <Ionicons name="time" size={20} color={Colors.success} />
-                <Text style={styles.finCardValue}>
-                  {translationHours.remaining.toFixed(1)}h
-                </Text>
-                <Text style={styles.finCardLabel}>Remaining</Text>
-              </View>
-              <View style={styles.finCardDivider} />
-              <View style={styles.finCardItem}>
-                <Ionicons name="play-circle" size={20} color={Colors.info} />
-                <Text style={styles.finCardValue}>
-                  {translationHours.used.toFixed(1)}h
-                </Text>
-                <Text style={styles.finCardLabel}>Used</Text>
-              </View>
-              <View style={styles.finCardDivider} />
-              <View style={styles.finCardItem}>
-                <Ionicons name="server" size={20} color="#10B981" />
-                <Text style={styles.finCardValue}>
-                  {translationHours.balance.toFixed(1)}h
-                </Text>
-                <Text style={styles.finCardLabel}>Total</Text>
-              </View>
-            </View>
-            {/* Usage bar */}
-            <View style={styles.aiBarContainer}>
-              <View style={styles.aiBarTrack}>
-                <View
-                  style={[
-                    styles.aiBarFill,
-                    {
-                      width: translationHours.balance > 0
-                        ? `${Math.min((translationHours.used / translationHours.balance) * 100, 100)}%`
-                        : '0%',
-                      backgroundColor: translationHours.remaining < 0.5 ? Colors.error : '#10B981',
-                    },
-                  ]}
-                />
-              </View>
-            </View>
+            <Text style={styles.bundleNote}>
+              One shared balance powers AI meeting minutes and real-time translation.
+            </Text>
           </Card>
         </View>
       )}
@@ -448,6 +361,7 @@ export default function HomeScreen() {
         <SectionHeader title="Quick Actions" />
         <View style={styles.quickActionsGrid}>
           <QuickActionCard icon="chatbubbles" label="Chat" color={Colors.info} onPress={() => router.push('/(tabs)/chat')} />
+          <QuickActionCard icon="videocam" label="Meetings" color={Colors.highlight} onPress={() => router.push('/meetings')} />
           <QuickActionCard icon="receipt" label="My Dues" color={Colors.warning} onPress={() => router.push('/(tabs)/financials')} />
           <QuickActionCard icon="heart" label="Donate" color={Colors.error} onPress={() => router.push('/(tabs)/financials')} />
           <QuickActionCard icon="time" label="History" color={Colors.textSecondary} onPress={() => router.push('/financials/history')} />
@@ -460,6 +374,12 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <SectionHeader title="Administration" />
           <View style={styles.adminGrid}>
+            <AdminActionCard
+              icon="videocam"
+              label="Meetings"
+              color="#2563EB"
+              onPress={() => router.push('/meetings')}
+            />
             <AdminActionCard
               icon="people"
               label="Members"
@@ -571,6 +491,12 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <SectionHeader title="Executive Dashboard" />
           <View style={styles.adminGrid}>
+            <AdminActionCard
+              icon="videocam"
+              label="Meetings"
+              color="#2563EB"
+              onPress={() => router.push('/meetings')}
+            />
             <AdminActionCard
               icon="people"
               label="Members"
@@ -696,44 +622,11 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Developer Platform Overview */}
-      {isDeveloper && platformStats && (
-        <View style={styles.section}>
-          <Card variant="elevated" style={styles.platformCard}>
-            <View style={styles.finCardHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name="globe" size={18} color="#7C3AED" />
-                <Text style={styles.finCardTitle}>Platform Overview</Text>
-              </View>
-              <TouchableOpacity onPress={() => router.push('/admin/developer-console')}>
-                <Text style={styles.viewAllText}>Developer Console</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.finCardGrid}>
-              <View style={styles.finCardItem}>
-                <Ionicons name="business" size={20} color="#7C3AED" />
-                <Text style={styles.finCardValue}>
-                  {platformStats.totalOrgs || 0}
-                </Text>
-                <Text style={styles.finCardLabel}>Organizations</Text>
-              </View>
-              <View style={styles.finCardDivider} />
-              <View style={styles.finCardItem}>
-                <Ionicons name="cash" size={20} color={Colors.success} />
-                <Text style={styles.finCardValue}>
-                  ${(platformStats.revenue || 0).toFixed(0)}
-                </Text>
-                <Text style={styles.finCardLabel}>Revenue</Text>
-              </View>
-            </View>
-          </Card>
-        </View>
-      )}
-
       {/* Quick Access for all members */}
       <View style={styles.section}>
         <SectionHeader title="Quick Access" />
         <View style={styles.quickActionsGrid}>
+          <QuickActionCard icon="videocam-outline" label="Meetings" color={Colors.highlight} onPress={() => router.push('/meetings')} />
           <QuickActionCard icon="megaphone-outline" label="Announce" color="#F59E0B" onPress={() => router.push('/announcements')} />
           <QuickActionCard icon="calendar-outline" label="Events" color="#3B82F6" onPress={() => router.push('/events')} />
           <QuickActionCard icon="bar-chart-outline" label="Polls" color="#8B5CF6" onPress={() => router.push('/polls')} />
@@ -1122,6 +1015,18 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.lg,
     borderWidth: 1,
     borderColor: Colors.highlight + '25',
+  },
+  bundleSubtitle: {
+    marginTop: -4,
+    marginBottom: Spacing.md,
+    fontSize: FontSize.sm,
+    color: Colors.textLight,
+  },
+  bundleNote: {
+    marginTop: Spacing.md,
+    fontSize: FontSize.sm,
+    color: Colors.textLight,
+    lineHeight: 20,
   },
   aiBarContainer: {
     marginTop: Spacing.md,

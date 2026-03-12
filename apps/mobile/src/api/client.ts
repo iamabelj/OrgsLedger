@@ -299,6 +299,39 @@ class ApiClient {
       this.client.delete(`/expenses/${orgId}/${expenseId}`),
   };
 
+  // ── Meetings ──────────────────────────────────────────
+  meetings = {
+    list: (organizationId: string, params?: any) =>
+      this.client.get('/meetings', { params: { organizationId, ...params } }),
+    get: (meetingId: string) =>
+      this.client.get(`/meetings/${meetingId}`),
+    create: (data: {
+      organizationId: string;
+      title?: string;
+      description?: string;
+      scheduledAt?: string;
+      settings?: {
+        maxParticipants?: number;
+        allowRecording?: boolean;
+        waitingRoom?: boolean;
+        muteOnEntry?: boolean;
+        allowScreenShare?: boolean;
+      };
+    }) => this.client.post('/meetings/create', data),
+    join: (meetingId: string, displayName?: string) =>
+      this.client.post('/meetings/join', { meetingId, displayName }),
+    leave: (meetingId: string) =>
+      this.client.post('/meetings/leave', { meetingId }),
+    start: (meetingId: string) =>
+      this.client.post(`/meetings/${meetingId}/start`),
+    end: (meetingId: string) =>
+      this.client.post(`/meetings/${meetingId}/end`),
+    cancel: (meetingId: string) =>
+      this.client.post(`/meetings/${meetingId}/cancel`),
+    getMinutes: (meetingId: string) =>
+      this.client.get(`/meetings/${meetingId}/minutes`),
+  };
+
   // ── Payments ──────────────────────────────────────────
   payments = {
     pay: (orgId: string, data: { transactionId: string; gateway: string; paymentMethodId?: string; proofOfPayment?: string }) =>
