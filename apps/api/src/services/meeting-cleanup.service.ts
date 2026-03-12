@@ -269,7 +269,7 @@ async function cleanupQueueJobs(meetingId: string): Promise<StepResult> {
       
       try {
         // Get queue instance for job removal
-        const queue = new Queue(queueName, { connection: bullmqConnection });
+        const queue = new Queue(queueName, { connection: bullmqConnection as any });
         
         // Get waiting jobs and remove those matching this meeting
         const waitingJobs = await queue.getJobs(['waiting', 'delayed'], 0, 1000);
