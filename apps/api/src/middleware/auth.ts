@@ -94,13 +94,17 @@ export async function authenticate(
       try {
         const gwPayload = jwt.verify(token, gatewaySecret) as any;
         if (gwPayload.role === 'gateway_admin') {
-          // Synthetic developer user — above super_admin, no database record
+          const elevatedRole = gwPayload.globalRole === 'super_admin' ? 'super_admin' : 'developer';
           req.user = {
-            userId: 'gateway-developer',
+            userId: gwPayload.userId || 'gateway-developer',
             email: gwPayload.email || process.env.ADMIN_EMAIL || 'developer@orgsledger.com',
-            globalRole: 'developer',
+            globalRole: elevatedRole,
           };
-          logger.debug('[AUTH] Gateway developer authenticated', { email: req.user.email, path: req.originalUrl });
+          logger.debug('[AUTH] Gateway elevated user authenticated', {
+            email: req.user.email,
+            role: req.user.globalRole,
+            path: req.originalUrl,
+          });
           return next();
         }
       } catch {

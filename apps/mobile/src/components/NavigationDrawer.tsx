@@ -73,7 +73,7 @@ const executiveItems: NavItem[] = [
   { label: 'Reports', icon: 'stats-chart-outline', path: '/admin/reports' },
 ];
 
-// Developer-only items — NOT visible to super_admin
+// Platform admin items — visible only to elevated platform roles
 const developerItems: NavItem[] = [
   { label: 'Developer Console', icon: 'code-slash-outline', path: '/admin/developer-console' },
 ];
@@ -128,7 +128,7 @@ export function NavigationDrawer() {
     ? (currentMembership.logoUrl.startsWith('http') ? currentMembership.logoUrl : `${API_BASE}${currentMembership.logoUrl}`)
     : null;
   const globalRole = user?.globalRole;
-  const isDeveloper = globalRole === 'developer';
+  const isDeveloper = globalRole === 'developer' || globalRole === 'super_admin';
   const isSuperAdmin = globalRole === 'super_admin' || isDeveloper;
   const isOrgAdmin = userRole === 'org_admin' || isSuperAdmin;
   const isExecutive = userRole === 'executive';

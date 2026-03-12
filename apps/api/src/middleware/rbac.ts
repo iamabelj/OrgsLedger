@@ -54,10 +54,10 @@ export function requireRole(...allowedRoles: string[]) {
  */
 export function requireDeveloper() {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (!req.user || req.user.globalRole !== 'developer') {
+    if (!req.user || (req.user.globalRole !== 'developer' && req.user.globalRole !== 'super_admin')) {
       res.status(403).json({
         success: false,
-        error: 'Developer admin access required',
+        error: 'Developer or super admin access required',
       });
       return;
     }

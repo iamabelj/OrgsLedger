@@ -26,7 +26,7 @@ type Tab = 'overview' | 'orgs' | 'adjust';
 
 export default function SaasDashboard() {
   const globalRole = useAuthStore((s) => s.user?.globalRole);
-  const canAccess = globalRole === 'developer';
+  const canAccess = globalRole === 'developer' || globalRole === 'super_admin';
 
   const responsive = useResponsive();
   const [loading, setLoading] = useState(true);

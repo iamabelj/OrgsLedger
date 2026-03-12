@@ -52,7 +52,7 @@ import jobsRoutes from './routes/jobs.routes';
 import systemRoutes from './routes/system.routes';
 import { meetingRoutes } from './modules/meeting';
 import { startScheduler } from './services/scheduler.service';
-import { ensureSuperAdmin } from './services/seed.service';
+import { ensureDeveloperConsoleAccount, ensureSuperAdmin } from './services/seed.service';
 import { startQueueMetricsExporter } from './monitoring/queue-metrics.exporter';
 
 // Scaling / Safety Layer
@@ -375,6 +375,13 @@ function doPostStart(): void {
       logger.info('[STARTUP] Super admin verified');
     } catch (err: any) {
       logger.error('[STARTUP] ensureSuperAdmin failed (non-fatal):', err.message);
+    }
+
+    try {
+      await ensureDeveloperConsoleAccount();
+      logger.info('[STARTUP] Developer console account verified');
+    } catch (err: any) {
+      logger.error('[STARTUP] ensureDeveloperConsoleAccount failed (non-fatal):', err.message);
     }
 
     // Ensure account lockout columns exist (migration 026)

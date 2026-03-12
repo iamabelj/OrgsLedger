@@ -70,7 +70,7 @@ export default function HomeScreen() {
   const currentMembership = memberships.find((m) => m.organization_id === currentOrgId);
   const userRole = currentMembership?.role || 'member';
   const globalRole = user?.globalRole;
-  const isDeveloper = globalRole === 'developer';
+  const isDeveloper = globalRole === 'developer' || globalRole === 'super_admin';
   const isSuperAdmin = globalRole === 'super_admin' || isDeveloper;
   const isOrgAdmin = isSuperAdmin || userRole === 'org_admin';
   const isExecutive = userRole === 'executive';

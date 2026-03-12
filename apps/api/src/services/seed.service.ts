@@ -13,6 +13,8 @@ import { logger } from '../logger';
 
 const BCRYPT_ROUNDS = 12;
 
+const ELEVATED_ROLES = new Set(['developer', 'super_admin']);
+
 export async function ensureSuperAdmin(): Promise<void> {
   const email = process.env.DEFAULT_ADMIN_EMAIL;
   const password = process.env.DEFAULT_ADMIN_PASSWORD;
@@ -86,5 +88,63 @@ export async function ensureSuperAdmin(): Promise<void> {
   } catch (err: any) {
     // Don't crash the server if seeding fails (e.g., users table doesn't exist yet)
     logger.warn(`[SEED] Auto-seed skipped: ${err.message}`);
+  }
+}
+
+export async function ensureDeveloperConsoleAccount(): Promise<void> {
+  const email = process.env.ADMIN_EMAIL;
+  const password = process.env.ADMIN_PASSWORD;
+
+  if (!email || !password) {
+    logger.debug('[SEED] ADMIN_EMAIL / ADMIN_PASSWORD not set — skipping developer console bootstrap');
+    return;
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+
+  try {
+    const existing = await db('users').whereRaw('LOWER(email) = LOWER(?)', [normalizedEmail]).first();
+
+    if (existing) {
+      if (!ELEVATED_ROLES.has(existing.global_role)) {
+        logger.warn(
+          `[SEED] Developer console bootstrap skipped: ${normalizedEmail} already exists with non-elevated role ${existing.global_role}`,
+        );
+        return;
+      }
+
+      const updates: Record<string, unknown> = {};
+
+      if (!existing.is_active) {
+        updates.is_active = true;
+      }
+
+      if (!existing.email_verified) {
+        updates.email_verified = true;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await db('users').where({ id: existing.id }).update(updates);
+        logger.info(`[SEED] Developer console account refreshed: ${normalizedEmail}`);
+      } else {
+        logger.info(`[SEED] Developer console account verified: ${normalizedEmail}`);
+      }
+
+      return;
+    }
+
+    await db('users').insert({
+      email: normalizedEmail,
+      password_hash: await bcrypt.hash(password, BCRYPT_ROUNDS),
+      first_name: 'Platform',
+      last_name: 'Developer',
+      global_role: 'developer',
+      email_verified: true,
+      is_active: true,
+    });
+
+    logger.info(`[SEED] Developer console account created: ${normalizedEmail}`);
+  } catch (err: any) {
+    logger.warn(`[SEED] Developer console bootstrap skipped: ${err.message}`);
   }
 }

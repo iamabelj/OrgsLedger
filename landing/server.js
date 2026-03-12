@@ -8,6 +8,7 @@ const cors = require('cors');
 const path = require('path');
 const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const axios = require('axios');
 require('dotenv').config();
 
@@ -20,8 +21,8 @@ const JWT_SECRET = process.env.GATEWAY_JWT_SECRET || process.env.JWT_SECRET;
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
-if (!JWT_SECRET || !ADMIN_PASSWORD || !ADMIN_EMAIL) {
-  console.error('FATAL: GATEWAY_JWT_SECRET, ADMIN_EMAIL, and ADMIN_PASSWORD environment variables are required');
+if (!JWT_SECRET || !DATABASE_URL) {
+  console.error('FATAL: GATEWAY_JWT_SECRET/JWT_SECRET and DATABASE_URL environment variables are required');
   if (process.env.NODE_ENV === 'production') process.exit(1);
 }
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
@@ -30,8 +31,8 @@ const FLUTTERWAVE_SECRET_KEY = process.env.FLUTTERWAVE_SECRET_KEY || '';
 const FLUTTERWAVE_PUBLIC_KEY = process.env.FLUTTERWAVE_PUBLIC_KEY || '';
 const RATE_NGN_PER_USD = 1500;
 
-if (!DATABASE_URL) {
-  console.warn('WARNING: DATABASE_URL environment variable is required for gateway');
+if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+  console.warn('WARNING: ADMIN_EMAIL / ADMIN_PASSWORD not set — developer console bootstrap account will not be created');
 }
 
 // ── Database ──────────────────────────────────────────────
@@ -41,6 +42,73 @@ const pool = new Pool({
   max: 10,
   idleTimeoutMillis: 30000,
 });
+
+const ELEVATED_ROLES = new Set(['developer', 'super_admin']);
+
+async function ensureDeveloperConsoleAccount(client) {
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) return;
+
+  const normalizedEmail = ADMIN_EMAIL.toLowerCase().trim();
+  const existingResult = await client.query(
+    `SELECT id, email, global_role, is_active, email_verified, password_hash
+     FROM users
+     WHERE LOWER(email) = LOWER($1)
+     LIMIT 1`,
+    [normalizedEmail],
+  );
+
+  const existing = existingResult.rows[0];
+  if (existing) {
+    if (!ELEVATED_ROLES.has(existing.global_role)) {
+      console.warn(
+        `[Gateway] Developer console bootstrap skipped: ${normalizedEmail} exists with non-elevated role ${existing.global_role}`,
+      );
+      return;
+    }
+
+    const updates = [];
+    const values = [];
+
+    if (!existing.is_active) {
+      values.push(true);
+      updates.push(`is_active = $${values.length}`);
+    }
+
+    if (!existing.email_verified) {
+      values.push(true);
+      updates.push(`email_verified = $${values.length}`);
+    }
+
+    if (updates.length > 0) {
+      values.push(existing.id);
+      await client.query(
+        `UPDATE users SET ${updates.join(', ')} WHERE id = $${values.length}`,
+        values,
+      );
+      console.log(`[Gateway] Developer console account refreshed: ${normalizedEmail}`);
+    } else {
+      console.log(`[Gateway] Developer console account verified: ${normalizedEmail}`);
+    }
+
+    return;
+  }
+
+  await client.query(
+    `INSERT INTO users (email, password_hash, first_name, last_name, global_role, email_verified, is_active)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      normalizedEmail,
+      await bcrypt.hash(ADMIN_PASSWORD, 12),
+      'Platform',
+      'Developer',
+      'developer',
+      true,
+      true,
+    ],
+  );
+
+  console.log(`[Gateway] Developer console account created: ${normalizedEmail}`);
+}
 
 // ── Middleware ─────────────────────────────────────────────
 const CORS_ORIGINS = (process.env.CORS_ORIGINS || 'https://orgsledger.com,https://app.orgsledger.com').split(',');
@@ -134,6 +202,7 @@ async function initDB() {
     for (const sql of migrations) {
       await client.query(sql).catch(() => {}); // ignore if column exists
     }
+    await ensureDeveloperConsoleAccount(client);
     console.log('✓ AI Gateway tables initialized');
   } catch (err) {
     console.error('Failed to initialize database tables:', err.message);
@@ -238,23 +307,48 @@ function adminLoginRateLimit(req, res, next) {
 
 // ── Admin Auth Endpoint ───────────────────────────────────
 app.post('/api/admin/login', adminLoginRateLimit, (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password || email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
-    return res.status(401).json({ error: 'Invalid credentials' });
-  }
+  (async () => {
+    const { email, password } = req.body;
+    const normalizedEmail = String(email || '').trim().toLowerCase();
 
-  const token = jwt.sign(
-    {
-      userId: 'gateway-developer',
-      email,
-      globalRole: 'developer',
-      role: 'gateway_admin',
-    },
-    JWT_SECRET,
-    { expiresIn: '8h' }
-  );
+    if (!normalizedEmail || !password) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
 
-  res.json({ token, email });
+    const result = await pool.query(
+      `SELECT id, email, password_hash, global_role, is_active
+       FROM users
+       WHERE LOWER(email) = LOWER($1)
+       LIMIT 1`,
+      [normalizedEmail],
+    );
+
+    const user = result.rows[0];
+    if (!user || !user.is_active || !ELEVATED_ROLES.has(user.global_role)) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const token = jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        globalRole: user.global_role,
+        role: 'gateway_admin',
+      },
+      JWT_SECRET,
+      { expiresIn: '8h' }
+    );
+
+    return res.json({ token, email: user.email, globalRole: user.global_role });
+  })().catch((err) => {
+    console.error('Developer console login error:', err);
+    res.status(500).json({ error: 'Login failed' });
+  });
 });
 
 // ── Admin API Routes ──────────────────────────────────────
