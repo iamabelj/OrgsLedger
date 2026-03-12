@@ -11,6 +11,57 @@ const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'apps', 'mobile', 'dist');
 const WEB  = path.join(ROOT, 'apps', 'api', 'web');
 
+const STALE_SERVICE_WORKER_CLEANUP = `
+    <script>
+      (function () {
+        if (!('serviceWorker' in navigator)) {
+          return;
+        }
+
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.getRegistrations().then(function (registrations) {
+            registrations.forEach(function (registration) {
+              var activeUrl = registration.active && registration.active.scriptURL ? registration.active.scriptURL : '';
+              if (registration.scope.indexOf('/app') !== -1 || activeUrl.indexOf('flutter_service_worker') !== -1) {
+                registration.unregister().catch(function () {});
+              }
+            });
+          }).catch(function () {});
+
+          if ('caches' in window) {
+            caches.keys().then(function (keys) {
+              return Promise.all(
+                keys
+                  .filter(function (key) {
+                    return key.indexOf('flutter') !== -1 || key.indexOf('workbox') !== -1;
+                  })
+                  .map(function (key) {
+                    return caches.delete(key);
+                  })
+              );
+            }).catch(function () {});
+          }
+        });
+      })();
+    </script>`;
+
+const FLUTTER_SERVICE_WORKER_TOMBSTONE = `self.addEventListener('install', (event) => {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((key) => caches.delete(key)));
+    await self.registration.unregister();
+
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clients) {
+      client.navigate(client.url);
+    }
+  })());
+});`;
+
 // 1. Clear old web build
 fs.rmSync(WEB, { recursive: true, force: true });
 fs.mkdirSync(WEB, { recursive: true });
@@ -57,10 +108,13 @@ html = html.replace(
     <meta property="og:type" content="website" />`
 );
 
+  html = html.replace('</head>', `${STALE_SERVICE_WORKER_CLEANUP}\n  </head>`);
+
 // Remove Expo's default favicon link if it was injected separately
 html = html.replace(/<link rel="shortcut icon" href="\/favicon\.ico" \/>/g, '');
 // Remove duplicate if our injection already added it
 html = html.replace(/(<link rel="shortcut icon" href="\/favicon\.ico" \/>)\s*\1/g, '$1');
 
 fs.writeFileSync(htmlPath, html);
+fs.writeFileSync(path.join(WEB, 'flutter_service_worker.js'), FLUTTER_SERVICE_WORKER_TOMBSTONE);
 console.log('✓ Web build patched: favicon, meta tags, logo assets');
