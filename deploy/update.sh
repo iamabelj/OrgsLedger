@@ -11,6 +11,7 @@ set -e
 
 APP_DIR="${APP_DIR:-/opt/orgsledger}"
 cd "$APP_DIR"
+ENV_FILE="$APP_DIR/apps/api/.env.production"
 
 echo ""
 echo "╔══════════════════════════════════════════════════╗"
@@ -26,8 +27,21 @@ echo "  ✓ Code updated to $(git rev-parse --short HEAD)"
 echo "  ✓ Commit: $(git log --oneline -1)"
 echo ""
 
+# ── Ensure production env defaults exist ───────────────
+echo "▸ [2/6] Validating production environment file..."
+if [ ! -f "$ENV_FILE" ]; then
+    echo "  ✗ Missing $ENV_FILE"
+    echo "  Create apps/api/.env.production before running updates."
+    exit 1
+fi
+
+grep -q '^NODE_ENV=' "$ENV_FILE" || echo 'NODE_ENV=production' >> "$ENV_FILE"
+grep -q '^PORT=' "$ENV_FILE" || echo 'PORT=3000' >> "$ENV_FILE"
+echo "  ✓ Production env defaults ensured"
+echo ""
+
 # ── Step 2: Rebuild web frontend ───────────────────────
-echo "▸ [2/5] Rebuilding web frontend..."
+echo "▸ [3/6] Rebuilding web frontend..."
 if command -v npx &> /dev/null; then
     # Build locally if Node is available on the host
     cd apps/mobile
@@ -47,18 +61,18 @@ echo "  ✓ Web frontend rebuilt"
 echo ""
 
 # ── Step 3: Rebuild and restart Docker services ────────
-echo "▸ [3/5] Rebuilding API container (no cache)..."
+echo "▸ [4/6] Rebuilding API container (no cache)..."
 docker compose -f docker-compose.prod.yml build --no-cache api
 echo "  ✓ API container rebuilt"
 echo ""
 
-echo "▸ [4/5] Restarting all services..."
+echo "▸ [5/6] Restarting all services..."
 docker compose -f docker-compose.prod.yml up -d
 echo "  ✓ All services restarted"
 echo ""
 
 # ── Step 4: Run database migrations ────────────────────
-echo "▸ [5/5] Running database migrations..."
+echo "▸ [6/6] Running database migrations..."
 sleep 5  # Wait for postgres to be ready
 docker exec orgsledger_api sh -c "
     cd /app/packages/database && \
