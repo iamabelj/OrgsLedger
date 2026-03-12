@@ -14,6 +14,7 @@ import {
   MeetingSettings,
   ActiveMeetingState,
   CreateMeetingRequest,
+  UpdateMeetingRequest,
   meetingFromRow,
 } from '../models';
 import {
@@ -132,6 +133,69 @@ export class MeetingService {
     });
 
     return meeting;
+  }
+
+  /**
+   * Update a scheduled meeting (host only)
+   */
+  async update(
+    meetingId: string,
+    userId: string,
+    request: UpdateMeetingRequest
+  ): Promise<Meeting> {
+    const meeting = await this.getById(meetingId);
+
+    if (!meeting) {
+      throw new Error('Meeting not found');
+    }
+
+    if (meeting.hostId !== userId) {
+      throw new Error('Only the host can update the meeting');
+    }
+
+    if (meeting.status !== 'scheduled') {
+      throw new Error('Can only update scheduled meetings');
+    }
+
+    const updates: Record<string, any> = {};
+
+    if (request.title !== undefined) {
+      updates.title = request.title || null;
+    }
+    if (request.description !== undefined) {
+      updates.description = request.description || null;
+    }
+    if (request.scheduledAt !== undefined) {
+      updates.scheduled_at = request.scheduledAt || null;
+    }
+    if (request.settings || request.agenda !== undefined) {
+      const mergedSettings = { ...meeting.settings };
+      if (request.settings) {
+        Object.assign(mergedSettings, request.settings);
+      }
+      if (request.agenda !== undefined) {
+        mergedSettings.agenda = request.agenda;
+      }
+      updates.settings = JSON.stringify(mergedSettings);
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return meeting;
+    }
+
+    const [row] = await db('meetings')
+      .where({ id: meetingId })
+      .update(updates)
+      .returning('*');
+
+    const updatedMeeting = meetingFromRow(row as MeetingRow);
+
+    logger.info('[MEETING] Updated', {
+      meetingId,
+      fields: Object.keys(updates),
+    });
+
+    return updatedMeeting;
   }
 
   /**

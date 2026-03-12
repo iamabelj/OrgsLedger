@@ -328,6 +328,19 @@ class ApiClient {
       this.client.post(`/meetings/${meetingId}/end`),
     cancel: (meetingId: string) =>
       this.client.post(`/meetings/${meetingId}/cancel`),
+    update: (meetingId: string, data: {
+      title?: string;
+      description?: string;
+      scheduledAt?: string | null;
+      settings?: {
+        maxParticipants?: number;
+        allowRecording?: boolean;
+        waitingRoom?: boolean;
+        muteOnEntry?: boolean;
+        allowScreenShare?: boolean;
+      };
+      agenda?: string[];
+    }) => this.client.patch(`/meetings/${meetingId}`, data),
     getMinutes: (meetingId: string) =>
       this.client.get(`/meetings/${meetingId}/minutes`),
   };

@@ -101,6 +101,17 @@ export interface LeaveMeetingRequest {
 }
 
 /**
+ * Update meeting request payload
+ */
+export interface UpdateMeetingRequest {
+  title?: string;
+  description?: string;
+  scheduledAt?: string | null;
+  settings?: Partial<MeetingSettings>;
+  agenda?: string[];
+}
+
+/**
  * Active meeting state stored in Redis
  * Contains real-time information about active meetings
  */

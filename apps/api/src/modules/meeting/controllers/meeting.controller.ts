@@ -86,6 +86,48 @@ export class MeetingController {
   }
 
   /**
+   * PATCH /meetings/:id
+   * Update a scheduled meeting
+   */
+  async update(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user!.userId;
+      const { id } = req.params;
+      const { title, description, scheduledAt, settings, agenda } = req.body;
+
+      const meeting = await meetingService.update(id, userId, {
+        title,
+        description,
+        scheduledAt,
+        settings,
+        agenda,
+      });
+
+      res.json({
+        success: true,
+        data: formatMeetingResponse(meeting),
+      });
+    } catch (error: any) {
+      logger.error('[MEETING_CONTROLLER] Update failed', {
+        error: error.message,
+        meetingId: req.params.id,
+        userId: req.user?.userId,
+      });
+
+      if (error.message === 'Meeting not found') {
+        res.status(404).json({ success: false, error: error.message });
+        return;
+      }
+      if (error.message.includes('Only the host') || error.message.includes('Can only update')) {
+        res.status(403).json({ success: false, error: error.message });
+        return;
+      }
+
+      next(error);
+    }
+  }
+
+  /**
    * POST /meetings/join
    * Join an existing meeting
    */

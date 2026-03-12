@@ -35,6 +35,20 @@ const leaveMeetingSchema = z.object({
   meetingId: z.string().uuid('Invalid meeting ID'),
 });
 
+const updateMeetingSchema = z.object({
+  title: z.string().max(255).optional(),
+  description: z.string().max(2000).optional(),
+  scheduledAt: z.string().datetime().optional().nullable(),
+  settings: z.object({
+    maxParticipants: z.number().min(2).max(1000).optional(),
+    allowRecording: z.boolean().optional(),
+    waitingRoom: z.boolean().optional(),
+    muteOnEntry: z.boolean().optional(),
+    allowScreenShare: z.boolean().optional(),
+  }).optional(),
+  agenda: z.array(z.string().max(500)).max(50).optional(),
+});
+
 // ── Routes ──────────────────────────────────────────────────
 
 /**
@@ -73,6 +87,18 @@ router.post(
   authenticate,
   validate(leaveMeetingSchema),
   (req, res, next) => meetingController.leave(req, res, next)
+);
+
+/**
+ * PATCH /meetings/:id
+ * Update a scheduled meeting
+ * Requires authentication (host only)
+ */
+router.patch(
+  '/:id',
+  authenticate,
+  validate(updateMeetingSchema),
+  (req, res, next) => meetingController.update(req, res, next)
 );
 
 /**
