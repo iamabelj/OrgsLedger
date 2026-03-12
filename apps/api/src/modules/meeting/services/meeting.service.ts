@@ -94,6 +94,7 @@ export class MeetingService {
       muteOnEntry: true,
       allowScreenShare: true,
       ...request.settings,
+      ...(request.agenda && request.agenda.length > 0 ? { agenda: request.agenda } : {}),
     };
 
     const hostParticipant: MeetingParticipant = {

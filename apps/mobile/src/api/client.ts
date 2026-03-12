@@ -317,6 +317,7 @@ class ApiClient {
         muteOnEntry?: boolean;
         allowScreenShare?: boolean;
       };
+      agenda?: string[];
     }) => this.client.post('/meetings/create', data),
     join: (meetingId: string, displayName?: string) =>
       this.client.post('/meetings/join', { meetingId, displayName }),

@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Dimensions,
   Modal,
   Platform,
   ScrollView,
@@ -10,11 +11,12 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { format, isToday, isTomorrow, isPast, parseISO } from 'date-fns';
+import { format, isToday, isTomorrow, parseISO } from 'date-fns';
 import { api } from '../../src/api/client';
 import { Button, Card, Input, LoadingScreen, ResponsiveScrollView, Badge } from '../../src/components/ui';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { showAlert } from '../../src/utils/alert';
+import { useResponsive } from '../../src/hooks/useResponsive';
 import { BorderRadius, Colors, FontSize, FontWeight, Shadow, Spacing } from '../../src/theme';
 
 type MeetingStatus = 'scheduled' | 'active' | 'ended' | 'cancelled';
@@ -88,7 +90,7 @@ export default function MeetingsScreen() {
   const memberships = useAuthStore((s) => s.memberships);
   const user = useAuthStore((s) => s.user);
   const membership = memberships.find((m) => m.organization_id === currentOrgId);
-  const memberRole = membership?.role || 'member';
+  const responsive = useResponsive();
 
   const [meetings, setMeetings] = useState<MeetingRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,7 +103,6 @@ export default function MeetingsScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [maxParticipants, setMaxParticipants] = useState('25');
   const [scheduledDate, setScheduledDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('');
   const [agendaItems, setAgendaItems] = useState<string[]>([]);
@@ -163,7 +164,6 @@ export default function MeetingsScreen() {
   const resetForm = () => {
     setTitle('');
     setDescription('');
-    setMaxParticipants('25');
     setScheduledDate('');
     setScheduledTime('');
     setAgendaItems([]);
@@ -180,7 +180,6 @@ export default function MeetingsScreen() {
     setEditMeetingId(m.id);
     setTitle(m.title || '');
     setDescription(m.description || '');
-    setMaxParticipants(String(m.settings?.maxParticipants || 25));
     if (m.scheduledAt) {
       try {
         const d = parseISO(m.scheduledAt);
@@ -246,10 +245,8 @@ export default function MeetingsScreen() {
         title: title.trim(),
         description: description.trim() || undefined,
         scheduledAt: buildScheduledAt(),
-        settings: {
-          maxParticipants: Math.max(parseInt(maxParticipants || '25', 10) || 25, 2),
-          ...(agendaItems.length > 0 ? { agenda: agendaItems } : {}),
-        },
+        settings: {},
+        agenda: agendaItems.length > 0 ? agendaItems : undefined,
       });
       closeModal();
       showAlert('Meeting Created', 'Your meeting has been scheduled.');
@@ -274,9 +271,7 @@ export default function MeetingsScreen() {
         title: title.trim(),
         description: description.trim() || undefined,
         scheduledAt: buildScheduledAt() || null,
-        settings: {
-          maxParticipants: Math.max(parseInt(maxParticipants || '25', 10) || 25, 2),
-        },
+        settings: {},
         agenda: agendaItems,
       });
       closeModal();
@@ -478,27 +473,65 @@ export default function MeetingsScreen() {
                   <View style={styles.fieldIcon}>
                     <Ionicons name="calendar-outline" size={16} color={Colors.textLight} />
                   </View>
-                  <TextInput
-                    style={styles.dateInput}
-                    value={scheduledDate}
-                    onChangeText={setScheduledDate}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={Colors.textLight}
-                    maxLength={10}
-                  />
+                  {Platform.OS === 'web' ? (
+                    <input
+                      type="date"
+                      value={scheduledDate}
+                      onChange={(e: any) => setScheduledDate(e.target.value)}
+                      style={{
+                        flex: 1,
+                        padding: '12px 8px',
+                        fontSize: 14,
+                        color: Colors.textPrimary,
+                        backgroundColor: 'transparent',
+                        border: 'none',
+                        outline: 'none',
+                        fontFamily: 'inherit',
+                        colorScheme: 'dark',
+                      }}
+                    />
+                  ) : (
+                    <TextInput
+                      style={styles.dateInput}
+                      value={scheduledDate}
+                      onChangeText={setScheduledDate}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor={Colors.textLight}
+                      maxLength={10}
+                    />
+                  )}
                 </View>
                 <View style={styles.timeField}>
                   <View style={styles.fieldIcon}>
                     <Ionicons name="time-outline" size={16} color={Colors.textLight} />
                   </View>
-                  <TextInput
-                    style={styles.dateInput}
-                    value={scheduledTime}
-                    onChangeText={setScheduledTime}
-                    placeholder="HH:MM"
-                    placeholderTextColor={Colors.textLight}
-                    maxLength={5}
-                  />
+                  {Platform.OS === 'web' ? (
+                    <input
+                      type="time"
+                      value={scheduledTime}
+                      onChange={(e: any) => setScheduledTime(e.target.value)}
+                      style={{
+                        flex: 1,
+                        padding: '12px 8px',
+                        fontSize: 14,
+                        color: Colors.textPrimary,
+                        backgroundColor: 'transparent',
+                        border: 'none',
+                        outline: 'none',
+                        fontFamily: 'inherit',
+                        colorScheme: 'dark',
+                      }}
+                    />
+                  ) : (
+                    <TextInput
+                      style={styles.dateInput}
+                      value={scheduledTime}
+                      onChangeText={setScheduledTime}
+                      placeholder="HH:MM"
+                      placeholderTextColor={Colors.textLight}
+                      maxLength={5}
+                    />
+                  )}
                 </View>
               </View>
 
@@ -547,16 +580,6 @@ export default function MeetingsScreen() {
                   <Text style={styles.quickDateText}>+1 Week</Text>
                 </TouchableOpacity>
               </View>
-
-              {/* Max Participants */}
-              <Input
-                label="MAX PARTICIPANTS"
-                value={maxParticipants}
-                onChangeText={setMaxParticipants}
-                keyboardType="numeric"
-                placeholder="25"
-                icon="people-outline"
-              />
 
               {/* Agenda Section */}
               <Text style={styles.fieldLabel}>AGENDA</Text>
@@ -921,13 +944,14 @@ const styles = StyleSheet.create({
   actionBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold },
 
   // Modal
-  modalOverlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'flex-end' },
+  modalOverlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'center', alignItems: 'center' },
   modalCard: {
     backgroundColor: Colors.surface,
-    borderTopLeftRadius: BorderRadius.xxl,
-    borderTopRightRadius: BorderRadius.xxl,
+    borderRadius: BorderRadius.xxl,
     padding: Spacing.lg,
     maxHeight: '90%',
+    width: '100%',
+    maxWidth: 560,
     ...Shadow.lg,
   },
   modalHeader: {

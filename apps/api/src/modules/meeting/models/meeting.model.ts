@@ -83,6 +83,7 @@ export interface CreateMeetingRequest {
   description?: string;
   scheduledAt?: string;
   settings?: MeetingSettings;
+  agenda?: string[];
 }
 
 /**

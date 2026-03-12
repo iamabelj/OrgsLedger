@@ -24,6 +24,7 @@ const createMeetingSchema = z.object({
     muteOnEntry: z.boolean().optional(),
     allowScreenShare: z.boolean().optional(),
   }).optional(),
+  agenda: z.array(z.string().max(500)).max(50).optional(),
 });
 
 const joinMeetingSchema = z.object({

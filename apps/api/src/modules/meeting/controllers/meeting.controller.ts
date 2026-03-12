@@ -52,7 +52,7 @@ export class MeetingController {
   async create(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const userId = req.user!.userId;
-      const { organizationId, title, description, scheduledAt, settings } = req.body;
+      const { organizationId, title, description, scheduledAt, settings, agenda } = req.body;
 
       if (!organizationId) {
         res.status(400).json({
@@ -68,6 +68,7 @@ export class MeetingController {
         description,
         scheduledAt,
         settings,
+        agenda,
       };
 
       const meeting = await meetingService.create(userId, request);
