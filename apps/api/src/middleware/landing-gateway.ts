@@ -154,6 +154,8 @@ export function mountSpaFallback(app: express.Application): void {
   const webDir = path.resolve(__dirname, '../../web');
   if (!fs.existsSync(webDir)) return;
 
+  const indexPath = path.join(webDir, 'index.html');
+
   app.get('*', (req, res) => {
     if (isLandingHost(req.headers.host || '')) {
       res.redirect(301, '/');
@@ -163,6 +165,10 @@ export function mountSpaFallback(app: express.Application): void {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    res.sendFile(path.join(webDir, 'index.html'));
+    res.sendFile(indexPath, (err) => {
+      if (err && !res.headersSent) {
+        res.status(404).json({ error: 'Not found' });
+      }
+    });
   });
 }
