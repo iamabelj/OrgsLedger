@@ -123,12 +123,6 @@ export function mountWebFrontend(app: express.Application): void {
     return;
   }
 
-  // Redirect root "/" to "/login" on app subdomain
-  app.get('/', (req, res, next) => {
-    if (isLandingHost(req.headers.host || '')) return next();
-    return res.redirect(302, '/login');
-  });
-
   // Static file serving (skip landing domain)
   app.use((req, res, next) => {
     if (isLandingHost(req.headers.host || '')) return next();
