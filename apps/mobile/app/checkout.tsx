@@ -157,7 +157,7 @@ export default function CheckoutScreen() {
       price: String(price),
       currency: currentRegion.currency,
     });
-    router.push(`/(auth)/admin-register?${params.toString()}`);
+    router.push(`/admin-register?${params.toString()}`);
     // Reset in case user navigates back
     setTimeout(() => setProcessing(false), 1000);
   };

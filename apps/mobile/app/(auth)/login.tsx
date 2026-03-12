@@ -64,7 +64,7 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       await login(email.trim().toLowerCase(), password);
-      router.replace('/(tabs)/home');
+      router.replace('/home');
     } catch (err: any) {
       const msg = err.response?.data?.error
         || (err.message?.includes('not valid JSON') || err.message?.includes('unavailable')
@@ -163,7 +163,7 @@ export default function LoginScreen() {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={s.forgotBtn} onPress={() => router.push('/(auth)/forgot-password')}>
+          <TouchableOpacity style={s.forgotBtn} onPress={() => router.push('/forgot-password')}>
             <Text style={s.forgotText}>Forgot Password?</Text>
           </TouchableOpacity>
 

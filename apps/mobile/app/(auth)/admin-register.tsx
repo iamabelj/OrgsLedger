@@ -161,7 +161,7 @@ export default function AdminRegisterScreen() {
       }
 
       // Navigate to dashboard
-      router.replace('/(tabs)/home');
+      router.replace('/home');
     } catch (err: any) {
       const data = err.response?.data;
       let message = data?.error || 'Something went wrong';
@@ -403,7 +403,7 @@ export default function AdminRegisterScreen() {
 
         {/* Footer */}
         <TouchableOpacity
-          onPress={() => router.push('/(auth)/login')}
+          onPress={() => router.push('/login')}
           style={styles.footerLink}
         >
           <Text style={styles.footerText}>

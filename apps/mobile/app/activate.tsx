@@ -10,7 +10,7 @@ import { Colors, FontSize, FontWeight, Spacing } from '../src/theme';
 
 export default function ActivateScreen() {
   useEffect(() => {
-    router.replace('/(auth)/login');
+    router.replace('/login');
   }, []);
 
   return (

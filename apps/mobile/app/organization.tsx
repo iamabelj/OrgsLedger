@@ -59,7 +59,7 @@ export default function OrganizationScreen() {
         await loadUser(); // Refresh memberships
         setCurrentOrg(org.id);
         showAlert('Joined', `You are now part of "${org.name}"`, [
-          { text: 'OK', onPress: () => router.replace('/(tabs)/home') },
+          { text: 'OK', onPress: () => router.replace('/home') },
         ]);
       } else {
         showAlert('Not Found', 'No organization found with that code or slug.');

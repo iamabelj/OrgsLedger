@@ -141,7 +141,7 @@ export default function RegisterScreen() {
       });
       // Use setTimeout to ensure state update completes before navigation
       setTimeout(() => {
-        router.replace('/(tabs)/home');
+        router.replace('/home');
       }, 100);
     } catch (err: any) {
       const data = err.response?.data;
@@ -223,7 +223,7 @@ export default function RegisterScreen() {
               />
             </View>
 
-            <TouchableOpacity onPress={() => router.push('/(auth)/login')} style={styles.footerLink}>
+            <TouchableOpacity onPress={() => router.push('/login')} style={styles.footerLink}>
               <Text style={styles.footerText}>
                 Already have an account?{' '}
                 <Text style={styles.footerBold}>Sign In</Text>
@@ -372,7 +372,7 @@ export default function RegisterScreen() {
         </View>
 
         {/* Footer */}
-        <TouchableOpacity onPress={() => router.push('/(auth)/login')} style={styles.footerLink}>
+        <TouchableOpacity onPress={() => router.push('/login')} style={styles.footerLink}>
           <Text style={styles.footerText}>
             Already have an account?{' '}
             <Text style={styles.footerBold}>Sign In</Text>

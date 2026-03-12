@@ -94,7 +94,7 @@ export default function VerifyEmailScreen() {
       showAlert('Verified!', 'Your email has been verified successfully.');
       // Reload user to reflect verified status
       await useAuthStore.getState().loadUser();
-      router.replace('/(tabs)/home');
+      router.replace('/home');
     } catch (err: any) {
       showAlert('Error', err.response?.data?.error || 'Invalid or expired verification code');
       setCode(['', '', '', '', '', '']);

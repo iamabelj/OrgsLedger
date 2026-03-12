@@ -71,7 +71,7 @@ export default function CreateOrgScreen() {
       showAlert('Success', `"${name}" has been created. You are now the admin.`);
       // Reload user to pick up new membership
       await loadUser();
-      router.replace('/(tabs)/home');
+      router.replace('/home');
     } catch (err: any) {
       showAlert('Error', err.response?.data?.error || 'Failed to create organization');
     } finally {

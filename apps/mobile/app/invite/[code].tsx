@@ -154,7 +154,7 @@ export default function InviteJoinScreen() {
     }
   };
 
-  const goHome = () => router.replace('/(tabs)/home');
+  const goHome = () => router.replace('/home');
 
   return (
     <>
@@ -362,7 +362,7 @@ export default function InviteJoinScreen() {
                   {/* Already have an account? Link to login */}
                   <View style={styles.loginLinkRow}>
                     <Text style={styles.loginLinkText}>Already have an account? </Text>
-                    <TouchableOpacity onPress={() => router.push('/(auth)/login')}>
+                    <TouchableOpacity onPress={() => router.push('/login')}>
                       <Text style={styles.loginLinkBold}>Sign in</Text>
                     </TouchableOpacity>
                   </View>

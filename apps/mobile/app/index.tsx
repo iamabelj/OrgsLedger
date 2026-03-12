@@ -19,9 +19,9 @@ export default function Index() {
 
     hasNavigated.current = true;
     if (isAuthenticated) {
-      router.replace('/(tabs)/home');
+      router.replace('/home');
     } else {
-      router.replace('/(auth)/login');
+      router.replace('/login');
     }
   }, [isLoading, isAuthenticated]);
 
