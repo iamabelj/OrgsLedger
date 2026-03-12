@@ -111,7 +111,7 @@ echo "  ✓ Web frontend built"
 
 # ── Step 6: Start everything ────────────────────────────
 echo "▸ [6/7] Starting all services..."
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
 echo "  ✓ All services running"
 
 # Wait for postgres to be ready

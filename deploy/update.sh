@@ -67,7 +67,7 @@ echo "  ✓ API container rebuilt"
 echo ""
 
 echo "▸ [5/6] Restarting all services..."
-docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d --remove-orphans
 echo "  ✓ All services restarted"
 echo ""
 
