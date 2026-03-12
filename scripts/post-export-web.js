@@ -45,6 +45,48 @@ const STALE_SERVICE_WORKER_CLEANUP = `
       })();
     </script>`;
 
+const APP_PATH_CANONICALIZER = `
+    <script>
+      (function () {
+        var bareAppRoutes = new Set([
+          '/login',
+          '/register',
+          '/forgot-password',
+          '/admin-register',
+          '/home',
+          '/activate'
+        ]);
+
+        function normalizePath(urlLike) {
+          try {
+            var parsed = new URL(urlLike, window.location.origin);
+            if (bareAppRoutes.has(parsed.pathname)) {
+              parsed.pathname = '/app' + parsed.pathname;
+              return parsed.pathname + parsed.search + parsed.hash;
+            }
+          } catch (_) {}
+
+          return urlLike;
+        }
+
+        if (bareAppRoutes.has(window.location.pathname)) {
+          window.location.replace('/app' + window.location.pathname + window.location.search + window.location.hash);
+          return;
+        }
+
+        var originalReplaceState = window.history.replaceState;
+        var originalPushState = window.history.pushState;
+
+        window.history.replaceState = function (state, title, url) {
+          return originalReplaceState.call(this, state, title, typeof url === 'string' ? normalizePath(url) : url);
+        };
+
+        window.history.pushState = function (state, title, url) {
+          return originalPushState.call(this, state, title, typeof url === 'string' ? normalizePath(url) : url);
+        };
+      })();
+    </script>`;
+
 const FLUTTER_SERVICE_WORKER_TOMBSTONE = `self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
@@ -108,7 +150,7 @@ html = html.replace(
     <meta property="og:type" content="website" />`
 );
 
-  html = html.replace('</head>', `${STALE_SERVICE_WORKER_CLEANUP}\n  </head>`);
+  html = html.replace('</head>', `${APP_PATH_CANONICALIZER}\n${STALE_SERVICE_WORKER_CLEANUP}\n  </head>`);
 
 // Remove Expo's default favicon link if it was injected separately
 html = html.replace(/<link rel="shortcut icon" href="\/favicon\.ico" \/>/g, '');
