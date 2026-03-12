@@ -87,7 +87,7 @@ export default function LoginScreen() {
         <Text style={s.brandName}>OrgsLedger</Text>
         <View style={s.ornament}>
           <View style={s.ornamentLine} />
-          <Ionicons name="diamond" size={8} color={Colors.highlight} />
+          <Ionicons name="ellipse" size={8} color={Colors.highlight} />
           <View style={s.ornamentLine} />
         </View>
         <Text style={s.tagline}>Your organization's operational hub</Text>

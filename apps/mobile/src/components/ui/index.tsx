@@ -20,6 +20,8 @@ import {
   TextStyle,
   ActivityIndicator,
   Platform,
+  ScrollViewProps,
+  StyleProp,
   TextInputProps,
   RefreshControl,
 } from 'react-native';
@@ -32,7 +34,7 @@ import { useResponsive } from '../../hooks/useResponsive';
 // ────────────────────────────────────────────────────────────
 interface CardProps {
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   variant?: 'default' | 'elevated' | 'gold' | 'flush';
   onPress?: () => void;
 }
@@ -462,12 +464,13 @@ export function ScreenWrapper({ children, style, centered }: ScreenWrapperProps)
 // ────────────────────────────────────────────────────────────
 interface ResponsiveScrollViewProps {
   children: React.ReactNode;
-  style?: ViewStyle;
-  contentContainerStyle?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
+  contentContainerStyle?: StyleProp<ViewStyle>;
   refreshing?: boolean;
   onRefresh?: () => void;
   showsVerticalScrollIndicator?: boolean;
   maxWidth?: number;
+  keyboardShouldPersistTaps?: ScrollViewProps['keyboardShouldPersistTaps'];
 }
 
 export function ResponsiveScrollView({
@@ -478,6 +481,7 @@ export function ResponsiveScrollView({
   onRefresh,
   showsVerticalScrollIndicator = false,
   maxWidth,
+  keyboardShouldPersistTaps,
 }: ResponsiveScrollViewProps) {
   const responsive = useResponsive();
   const effectiveMaxWidth = maxWidth ?? responsive.contentMaxWidth;
@@ -504,6 +508,7 @@ export function ResponsiveScrollView({
         ) : undefined
       }
       showsVerticalScrollIndicator={showsVerticalScrollIndicator}
+      keyboardShouldPersistTaps={keyboardShouldPersistTaps}
     >
       {children}
     </ScrollView>

@@ -213,7 +213,7 @@ export default function AdminRegisterScreen() {
 
           {/* Plan Badge */}
           <View style={styles.planBadge}>
-            <Ionicons name="diamond-outline" size={14} color={Colors.highlight} />
+            <Ionicons name="ellipse-outline" size={14} color={Colors.highlight} />
             <Text style={styles.planBadgeText}>
               {planDetails.plan.charAt(0).toUpperCase() + planDetails.plan.slice(1)} Plan
               {planDetails.price > 0 ? ` · ${formatPrice()}/${planDetails.billing === 'annual' ? 'yr' : 'mo'}` : ''}

@@ -3,21 +3,13 @@
 // Redirects to login — no more license keys in SaaS model
 // ============================================================
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { router } from 'expo-router';
+import { Redirect } from 'expo-router';
 import { Colors, FontSize, FontWeight, Spacing } from '../src/theme';
 
 export default function ActivateScreen() {
-  useEffect(() => {
-    router.replace('/login');
-  }, []);
-
-  return (
-    <View style={styles.container}>
-      <Text style={styles.text}>Redirecting...</Text>
-    </View>
-  );
+  return <Redirect href="/login" />;
 }
 
 const styles = StyleSheet.create({

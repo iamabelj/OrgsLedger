@@ -3,8 +3,8 @@
 // SaaS — no license gate, direct auth routing
 // ============================================================
 
-import React, { useEffect, useRef } from 'react';
-import { router } from 'expo-router';
+import React from 'react';
+import { Redirect } from 'expo-router';
 import { ActivityIndicator, View, Text, StyleSheet, Image } from 'react-native';
 import { useAuthStore } from '../src/stores/auth.store';
 import { Colors, FontSize, FontWeight, Spacing } from '../src/theme';
@@ -12,18 +12,10 @@ import { LOGO } from '../src/logo';
 
 export default function Index() {
   const { isAuthenticated, isLoading } = useAuthStore();
-  const hasNavigated = useRef(false);
 
-  useEffect(() => {
-    if (isLoading || hasNavigated.current) return;
-
-    hasNavigated.current = true;
-    if (isAuthenticated) {
-      router.replace('/home');
-    } else {
-      router.replace('/login');
-    }
-  }, [isLoading, isAuthenticated]);
+  if (!isLoading) {
+    return <Redirect href={isAuthenticated ? '/home' : '/login'} />;
+  }
 
   return (
     <View style={styles.splash}>
