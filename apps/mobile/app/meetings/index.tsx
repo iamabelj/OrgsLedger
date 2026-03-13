@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { format, isToday, isTomorrow, parseISO } from 'date-fns';
+import { useRouter } from 'expo-router';
 import { api } from '../../src/api/client';
 import { Button, Card, Input, LoadingScreen, ResponsiveScrollView, Badge } from '../../src/components/ui';
 import { useAuthStore } from '../../src/stores/auth.store';
@@ -91,6 +92,7 @@ export default function MeetingsScreen() {
   const user = useAuthStore((s) => s.user);
   const membership = memberships.find((m) => m.organization_id === currentOrgId);
   const responsive = useResponsive();
+  const router = useRouter();
 
   const [meetings, setMeetings] = useState<MeetingRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -412,13 +414,14 @@ export default function MeetingsScreen() {
               userId={user?.id}
               displayName={displayName}
               actionLoading={actionLoading[meeting.id]}
-              onStart={() => performAction(meeting.id, 'start', () => api.meetings.start(meeting.id), 'Meeting started.')}
-              onJoin={() => performAction(meeting.id, 'join', () => api.meetings.join(meeting.id, displayName), 'You joined the meeting.')}
+              onStart={() => router.push(`/meetings/${meeting.id}`)}
+              onJoin={() => router.push(`/meetings/${meeting.id}`)}
               onLeave={() => performAction(meeting.id, 'leave', () => api.meetings.leave(meeting.id), 'You left the meeting.')}
               onEnd={() => performAction(meeting.id, 'end', () => api.meetings.end(meeting.id), 'Meeting ended.')}
               onCancel={() => performAction(meeting.id, 'cancel', () => api.meetings.cancel(meeting.id), 'Meeting cancelled.')}
               onEdit={() => openEdit(meeting)}
               onMinutes={() => handleShowMinutes(meeting.id)}
+              onOpen={() => router.push(`/meetings/${meeting.id}`)}
             />
           ))
         )}
@@ -648,9 +651,10 @@ interface MeetingCardProps {
   onCancel: () => void;
   onEdit: () => void;
   onMinutes: () => void;
+  onOpen: () => void;
 }
 
-function MeetingCard({ meeting, userId, actionLoading, onStart, onJoin, onLeave, onEnd, onCancel, onEdit, onMinutes }: MeetingCardProps) {
+function MeetingCard({ meeting, userId, actionLoading, onStart, onJoin, onLeave, onEnd, onCancel, onEdit, onMinutes, onOpen }: MeetingCardProps) {
   const isHost = meeting.hostId === userId;
   const hasJoined = meeting.participants?.some((p) => p.userId === userId && !p.leftAt);
   const participantCount = meeting.participantCount ?? meeting.participants?.filter((p) => !p.leftAt).length ?? 0;
@@ -659,7 +663,7 @@ function MeetingCard({ meeting, userId, actionLoading, onStart, onJoin, onLeave,
   const duration = formatDuration(meeting.startedAt, meeting.endedAt);
 
   return (
-    <View style={styles.card}>
+    <TouchableOpacity style={styles.card} onPress={onOpen} activeOpacity={0.85}>
       {/* Status strip */}
       <View style={[styles.cardStrip, { backgroundColor: statusCfg.variant === 'success' ? Colors.success : statusCfg.variant === 'info' ? Colors.info : statusCfg.variant === 'danger' ? Colors.error : Colors.textLight }]} />
 
@@ -788,7 +792,7 @@ function MeetingCard({ meeting, userId, actionLoading, onStart, onJoin, onLeave,
           ) : null}
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 

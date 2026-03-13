@@ -344,6 +344,8 @@ class ApiClient {
     }) => this.client.patch(`/meetings/${meetingId}`, data),
     getMinutes: (meetingId: string) =>
       this.client.get(`/meetings/${meetingId}/minutes`),
+    getToken: (meetingId: string, displayName?: string) =>
+      this.client.post(`/meetings/${meetingId}/token`, { displayName }),
   };
 
   // ── Payments ──────────────────────────────────────────
