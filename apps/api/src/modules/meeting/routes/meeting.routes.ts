@@ -27,6 +27,25 @@ const createMeetingSchema = z.object({
   agenda: z.array(z.string().max(500)).max(50).optional(),
 });
 
+const createMeetingWithVisibilitySchema = z.object({
+  organizationId: z.string().uuid('Invalid organization ID'),
+  title: z.string().max(255).optional(),
+  description: z.string().max(2000).optional(),
+  scheduledAt: z.string().datetime().optional(),
+  settings: z.object({
+    maxParticipants: z.number().min(2).max(1000).optional(),
+    allowRecording: z.boolean().optional(),
+    waitingRoom: z.boolean().optional(),
+    muteOnEntry: z.boolean().optional(),
+    allowScreenShare: z.boolean().optional(),
+    enableTranscription: z.boolean().optional(),
+  }).optional(),
+  agenda: z.array(z.string().max(500)).max(50).optional(),
+  visibilityType: z.enum(['ALL_MEMBERS', 'EXECUTIVES', 'COMMITTEE', 'CUSTOM']).optional(),
+  committeeId: z.string().uuid('Invalid committee ID').optional(),
+  participants: z.array(z.string().uuid('Invalid user ID')).optional(),
+});
+
 const joinMeetingSchema = z.object({
   meetingId: z.string().uuid('Invalid meeting ID'),
   displayName: z.string().max(100).optional(),
@@ -64,6 +83,22 @@ router.post(
   aiCostGuard,
   validate(createMeetingSchema),
   (req, res, next) => meetingController.create(req, res, next)
+);
+
+/**
+ * POST /meetings/create-with-visibility
+ * Create a new meeting with role-segmented visibility.
+ * Supports visibility types: ALL_MEMBERS, EXECUTIVES, COMMITTEE, CUSTOM.
+ * Auto-populates meeting_invites based on visibility type.
+ * Requires authentication
+ * Blocked if AI budget is exceeded
+ */
+router.post(
+  '/create-with-visibility',
+  authenticate,
+  aiCostGuard,
+  validate(createMeetingWithVisibilitySchema),
+  (req, res, next) => meetingController.createWithVisibility(req, res, next)
 );
 
 /**

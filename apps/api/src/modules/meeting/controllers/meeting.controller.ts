@@ -6,7 +6,12 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { meetingService } from '../services';
-import { CreateMeetingRequest, MeetingStatus } from '../models';
+import { 
+  CreateMeetingRequest, 
+  MeetingStatus,
+  MeetingVisibilityType,
+  CreateMeetingWithVisibilityRequest,
+} from '../models';
 import { parsePagination } from '../../../utils/formatters';
 import { logger } from '../../../logger';
 import {
@@ -79,6 +84,94 @@ export class MeetingController {
       });
     } catch (error: any) {
       logger.error('[MEETING_CONTROLLER] Create failed', { 
+        error: error.message,
+        userId: req.user?.userId,
+      });
+      next(error);
+    }
+  }
+
+  /**
+   * POST /meetings/create-with-visibility
+   * Create a new meeting with role-segmented visibility.
+   * Supports ALL_MEMBERS, EXECUTIVES, COMMITTEE, or CUSTOM visibility types.
+   */
+  async createWithVisibility(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user!.userId;
+      const { 
+        organizationId, 
+        title, 
+        description, 
+        scheduledAt, 
+        settings, 
+        agenda,
+        visibilityType,
+        committeeId,
+        participants,
+      } = req.body;
+
+      if (!organizationId) {
+        res.status(400).json({
+          success: false,
+          error: 'organizationId is required',
+        });
+        return;
+      }
+
+      // Validate visibility type
+      const validVisibilityTypes: MeetingVisibilityType[] = ['ALL_MEMBERS', 'EXECUTIVES', 'COMMITTEE', 'CUSTOM'];
+      if (visibilityType && !validVisibilityTypes.includes(visibilityType)) {
+        res.status(400).json({
+          success: false,
+          error: `Invalid visibilityType. Must be one of: ${validVisibilityTypes.join(', ')}`,
+        });
+        return;
+      }
+
+      // Committee visibility requires committeeId
+      if (visibilityType === 'COMMITTEE' && !committeeId) {
+        res.status(400).json({
+          success: false,
+          error: 'committeeId is required for COMMITTEE visibility type',
+        });
+        return;
+      }
+
+      // Custom visibility requires participants list
+      if (visibilityType === 'CUSTOM' && (!participants || participants.length === 0)) {
+        res.status(400).json({
+          success: false,
+          error: 'participants array is required for CUSTOM visibility type',
+        });
+        return;
+      }
+
+      const request: CreateMeetingWithVisibilityRequest = {
+        organizationId,
+        title,
+        description,
+        scheduledAt,
+        settings,
+        agenda,
+        visibilityType: visibilityType || 'ALL_MEMBERS',
+        committeeId,
+        participants,
+      };
+
+      const meeting = await meetingService.createWithVisibility(userId, request);
+
+      res.status(201).json({
+        success: true,
+        data: {
+          ...formatMeetingResponse(meeting),
+          visibilityType: meeting.visibilityType,
+          targetRoleId: meeting.targetRoleId,
+          inviteCount: meeting.inviteCount,
+        },
+      });
+    } catch (error: any) {
+      logger.error('[MEETING_CONTROLLER] CreateWithVisibility failed', { 
         error: error.message,
         userId: req.user?.userId,
       });

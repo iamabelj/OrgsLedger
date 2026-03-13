@@ -2,6 +2,7 @@
 // OrgsLedger API — Meeting Service
 // Core business logic for meeting operations
 // Event-driven architecture with Redis state management
+// Supports role-segmented meetings with visibility types
 // ============================================================
 
 import db from '../../../db';
@@ -16,6 +17,9 @@ import {
   CreateMeetingRequest,
   UpdateMeetingRequest,
   meetingFromRow,
+  MeetingVisibilityType,
+  CreateMeetingWithVisibilityRequest,
+  MeetingWithVisibility,
 } from '../models';
 import {
   setActiveMeetingState,
@@ -27,6 +31,8 @@ import {
 import { publishEvent, EVENT_CHANNELS } from './event-bus.service';
 import { startAudioBot, stopAudioBot } from './livekit-audio-bot.service';
 import { createRoomIfNotExists, deleteRoom } from './livekit-token.service';
+import { meetingInviteService } from './meeting-invite.service';
+import { transcriptPersistenceService } from './transcript-persistence.service';
 import { submitMinutesJob } from '../../../queues/transcript.queue';
 import { 
   checkMinutesBackpressure, 
@@ -159,6 +165,123 @@ export class MeetingService {
     });
 
     return meeting;
+  }
+
+  /**
+   * Create a new meeting with role-segmented visibility.
+   * Auto-populates meeting_invites based on visibility type.
+   */
+  async createWithVisibility(
+    hostId: string,
+    request: CreateMeetingWithVisibilityRequest
+  ): Promise<MeetingWithVisibility> {
+    const settings: MeetingSettings = {
+      maxParticipants: MAX_PARTICIPANTS_DEFAULT,
+      allowRecording: false,
+      waitingRoom: false,
+      muteOnEntry: true,
+      allowScreenShare: true,
+      enableTranscription: true,
+      ...request.settings,
+      ...(request.agenda && request.agenda.length > 0 ? { agenda: request.agenda } : {}),
+    };
+
+    const hostParticipant: MeetingParticipant = {
+      userId: hostId,
+      role: 'host',
+      joinedAt: new Date().toISOString(),
+    };
+
+    const visibilityType = request.visibilityType || 'ALL_MEMBERS';
+
+    let row: any;
+    try {
+      const scheduledTime = request.scheduledAt ? new Date(request.scheduledAt) : new Date();
+      const [result] = await db('meetings')
+        .insert({
+          organization_id: request.organizationId,
+          host_id: hostId,
+          created_by: hostId,
+          title: request.title || 'Untitled Meeting',
+          description: request.description || null,
+          status: 'scheduled' as MeetingStatus,
+          participants: JSON.stringify([hostParticipant]),
+          settings: JSON.stringify(settings),
+          scheduled_at: scheduledTime,
+          scheduled_start: scheduledTime,
+          visibility_type: visibilityType,
+          target_role_id: request.committeeId || null,
+        })
+        .returning('*');
+      row = result;
+    } catch (err: any) {
+      logger.error('[MEETING] DB insert failed', {
+        error: err.message,
+        code: err.code,
+        orgId: request.organizationId,
+        hostId,
+      });
+      if (err.code === '42P01') {
+        throw new AppError('Meeting system is initializing. Please try again in a moment.', 503);
+      }
+      if (err.code === '23503') {
+        throw new AppError('Invalid organization or user reference.', 400);
+      }
+      throw new AppError('Failed to create meeting. Please try again.', 500);
+    }
+
+    const meeting = meetingFromRow(row as MeetingRow);
+
+    // Auto-populate invites based on visibility type
+    let inviteCount = 0;
+    try {
+      inviteCount = await meetingInviteService.populateInvitesForVisibility(
+        meeting.id,
+        meeting.organizationId,
+        hostId,
+        visibilityType,
+        {
+          committeeId: request.committeeId,
+          customParticipants: request.participants,
+        }
+      );
+    } catch (err: any) {
+      logger.warn('[MEETING] Failed to populate invites', {
+        meetingId: meeting.id,
+        error: err.message,
+      });
+      // Don't fail meeting creation - invites can be added later
+    }
+
+    logger.info('[MEETING] Created with visibility', {
+      meetingId: meeting.id,
+      orgId: meeting.organizationId,
+      hostId: meeting.hostId,
+      visibilityType,
+      inviteCount,
+    });
+
+    // Emit event
+    await emitMeetingEvent({
+      type: 'meeting:created',
+      meetingId: meeting.id,
+      organizationId: meeting.organizationId,
+      timestamp: meeting.createdAt,
+      data: {
+        hostId,
+        title: meeting.title,
+        visibilityType,
+        inviteCount,
+      },
+    });
+
+    // Return extended meeting with visibility info
+    return {
+      ...meeting,
+      visibilityType,
+      targetRoleId: request.committeeId,
+      inviteCount,
+    } as MeetingWithVisibility;
   }
 
   /**
@@ -625,6 +748,25 @@ export class MeetingService {
 
       // Delete LiveKit room
       await deleteRoom(meetingId);
+
+      // Persist transcripts from Redis to PostgreSQL
+      try {
+        const transcriptResult = await transcriptPersistenceService.persistMeetingTranscript(
+          meetingId,
+          organizationId
+        );
+        logger.info('[MEETING] Transcripts persisted', {
+          meetingId,
+          wordCount: transcriptResult.wordCount,
+          speakerCount: transcriptResult.speakerCount,
+        });
+      } catch (transcriptErr: any) {
+        // Log warning but don't fail - minutes can still generate from Redis
+        logger.warn('[MEETING] Failed to persist transcripts', {
+          meetingId,
+          error: transcriptErr.message,
+        });
+      }
 
       // Check backpressure before queueing minutes
       const backpressureStatus = await checkMinutesBackpressure();

@@ -1,0 +1,238 @@
+// ============================================================
+// OrgsLedger API — Transcript Persistence Service
+// Handles persisting transcripts from Redis to PostgreSQL.
+// Called when a meeting ends to archive the full transcript.
+// ============================================================
+
+import db from '../../../db';
+import { logger } from '../../../logger';
+import { getMeetingTranscripts } from '../../../workers/transcript.worker';
+import { TranscriptEntry } from '../models';
+
+/**
+ * Persisted transcript raw entry structure from DB
+ */
+interface TranscriptRow {
+  id: string;
+  meeting_id: string;
+  organization_id: string;
+  full_transcript: TranscriptEntry[];
+  word_count: number;
+  duration_seconds: number;
+  speaker_count: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+/**
+ * Transcript persistence service - handles archival to PostgreSQL
+ */
+class TranscriptPersistenceService {
+  /**
+   * Persist transcript entries from Redis to PostgreSQL.
+   * Called when a meeting ends to archive transcripts for permanent storage.
+   */
+  async persistMeetingTranscript(
+    meetingId: string,
+    organizationId: string
+  ): Promise<{ success: boolean; wordCount: number; speakerCount: number }> {
+    try {
+      // 1. Get transcripts from Redis
+      const transcripts = await getMeetingTranscripts(meetingId);
+
+      if (transcripts.length === 0) {
+        logger.info('[TRANSCRIPT_PERSISTENCE] No transcripts to persist', {
+          meetingId,
+        });
+        return { success: true, wordCount: 0, speakerCount: 0 };
+      }
+
+      // 2. Calculate stats
+      const wordCount = transcripts.reduce((count, t) => {
+        return count + (t.text?.split(/\s+/).length || 0);
+      }, 0);
+
+      const uniqueSpeakers = new Set(transcripts.map(t => t.speaker || 'unknown'));
+      const speakerCount = uniqueSpeakers.size;
+
+      // 3. Calculate duration (first to last timestamp)
+      const timestamps = transcripts
+        .map(t => new Date(t.timestamp).getTime())
+        .sort((a, b) => a - b);
+      const durationSeconds = timestamps.length > 1
+        ? Math.floor((timestamps[timestamps.length - 1] - timestamps[0]) / 1000)
+        : 0;
+
+      // 4. Transform to TranscriptEntry[] format
+      const fullTranscript: TranscriptEntry[] = transcripts.map((t, index) => ({
+        id: `${meetingId}-${t.timestamp}`,
+        meetingId,
+        speakerId: t.speakerId || '',
+        speakerName: t.speaker || 'Unknown',
+        text: t.text,
+        timestamp: t.timestamp,
+        confidence: t.confidence,
+        language: t.language,
+        isFinal: true,
+        sequence: index + 1,
+      }));
+
+      // 5. Insert or update in PostgreSQL
+      await db('meeting_transcripts')
+        .insert({
+          meeting_id: meetingId,
+          organization_id: organizationId,
+          full_transcript: JSON.stringify(fullTranscript),
+          word_count: wordCount,
+          duration_seconds: durationSeconds,
+          speaker_count: speakerCount,
+        })
+        .onConflict('meeting_id')
+        .merge({
+          full_transcript: JSON.stringify(fullTranscript),
+          word_count: wordCount,
+          duration_seconds: durationSeconds,
+          speaker_count: speakerCount,
+          updated_at: db.fn.now(),
+        });
+
+      logger.info('[TRANSCRIPT_PERSISTENCE] Transcript persisted', {
+        meetingId,
+        organizationId,
+        entryCount: transcripts.length,
+        wordCount,
+        speakerCount,
+        durationSeconds,
+      });
+
+      return { success: true, wordCount, speakerCount };
+    } catch (err: any) {
+      logger.error('[TRANSCRIPT_PERSISTENCE] Failed to persist', {
+        meetingId,
+        error: err.message,
+      });
+      throw err;
+    }
+  }
+
+  /**
+   * Get persisted transcript from PostgreSQL.
+   * Use this for historical access after meeting has ended.
+   */
+  async getPersistedTranscript(
+    meetingId: string
+  ): Promise<{
+    entries: TranscriptEntry[];
+    wordCount: number;
+    speakerCount: number;
+    durationSeconds: number;
+    createdAt: string;
+  } | null> {
+    try {
+      const row = await db('meeting_transcripts')
+        .where('meeting_id', meetingId)
+        .first();
+
+      if (!row) {
+        return null;
+      }
+
+      let entries: TranscriptEntry[] = [];
+      try {
+        entries = typeof row.full_transcript === 'string'
+          ? JSON.parse(row.full_transcript)
+          : row.full_transcript || [];
+      } catch {
+        entries = [];
+      }
+
+      return {
+        entries,
+        wordCount: row.word_count || 0,
+        speakerCount: row.speaker_count || 0,
+        durationSeconds: row.duration_seconds || 0,
+        createdAt: row.created_at?.toISOString() || '',
+      };
+    } catch (err: any) {
+      logger.error('[TRANSCRIPT_PERSISTENCE] Failed to get transcript', {
+        meetingId,
+        error: err.message,
+      });
+      throw err;
+    }
+  }
+
+  /**
+   * Get transcript for a meeting - from Redis if active, PostgreSQL if ended.
+   */
+  async getTranscript(
+    meetingId: string
+  ): Promise<TranscriptEntry[]> {
+    // Try Redis first (active meetings)
+    const redisTranscripts = await getMeetingTranscripts(meetingId);
+    
+    if (redisTranscripts.length > 0) {
+      // Transform Redis format to TranscriptEntry
+      return redisTranscripts.map((t, index) => ({
+        id: `${meetingId}-${t.timestamp}`,
+        meetingId,
+        speakerId: t.speakerId || '',
+        speakerName: t.speaker || 'Unknown',
+        text: t.text,
+        timestamp: t.timestamp,
+        confidence: t.confidence,
+        language: t.language,
+        isFinal: true,
+        sequence: index + 1,
+      }));
+    }
+
+    // Fall back to PostgreSQL (ended meetings)
+    const persisted = await this.getPersistedTranscript(meetingId);
+    return persisted?.entries || [];
+  }
+
+  /**
+   * Get transcript stats for an organization's meetings.
+   */
+  async getOrganizationTranscriptStats(
+    organizationId: string
+  ): Promise<{
+    totalTranscripts: number;
+    totalWordCount: number;
+    totalDurationSeconds: number;
+    averageWordCount: number;
+    averageDurationSeconds: number;
+  }> {
+    try {
+      const result = await db('meeting_transcripts')
+        .where('organization_id', organizationId)
+        .select(
+          db.raw('COUNT(*) as total_transcripts'),
+          db.raw('COALESCE(SUM(word_count), 0) as total_word_count'),
+          db.raw('COALESCE(SUM(duration_seconds), 0) as total_duration_seconds'),
+          db.raw('COALESCE(AVG(word_count), 0) as avg_word_count'),
+          db.raw('COALESCE(AVG(duration_seconds), 0) as avg_duration_seconds')
+        )
+        .first();
+
+      return {
+        totalTranscripts: parseInt(result?.total_transcripts || '0', 10),
+        totalWordCount: parseInt(result?.total_word_count || '0', 10),
+        totalDurationSeconds: parseInt(result?.total_duration_seconds || '0', 10),
+        averageWordCount: Math.round(parseFloat(result?.avg_word_count || '0')),
+        averageDurationSeconds: Math.round(parseFloat(result?.avg_duration_seconds || '0')),
+      };
+    } catch (err: any) {
+      logger.error('[TRANSCRIPT_PERSISTENCE] Failed to get org stats', {
+        organizationId,
+        error: err.message,
+      });
+      throw err;
+    }
+  }
+}
+
+// ── Singleton Export ────────────────────────────────────────
+
+export const transcriptPersistenceService = new TranscriptPersistenceService();

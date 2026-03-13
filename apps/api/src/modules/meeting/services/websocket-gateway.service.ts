@@ -120,6 +120,28 @@ export function setupMeetingRooms(io: SocketIOServer): void {
       }
     });
 
+    // Subscribe to user-specific events (invites, notifications)
+    socket.on('user:subscribe', (userId: string) => {
+      if (userId && typeof userId === 'string') {
+        socket.join(`user:${userId}`);
+        logger.debug('[WS_GATEWAY] Socket subscribed to user events', {
+          socketId: socket.id,
+          userId,
+        });
+      }
+    });
+
+    // Unsubscribe from user-specific events
+    socket.on('user:unsubscribe', (userId: string) => {
+      if (userId && typeof userId === 'string') {
+        socket.leave(`user:${userId}`);
+        logger.debug('[WS_GATEWAY] Socket unsubscribed from user events', {
+          socketId: socket.id,
+          userId,
+        });
+      }
+    });
+
     // Handle live captions from participants (browser speech recognition)
     socket.on('meeting:caption:send', (data: { meetingId: string; text: string; speaker: string }) => {
       if (!data?.meetingId || !data?.text) return;
@@ -138,7 +160,78 @@ export function setupMeetingRooms(io: SocketIOServer): void {
         textLength: data.text.length,
       });
     });
+
+    // Handle participant state updates (hand raise, reactions, etc.)
+    socket.on('meeting:participant-state', (data: { 
+      meetingId: string; 
+      userId: string;
+      state: { handRaised?: boolean; reaction?: string; speaking?: boolean } 
+    }) => {
+      if (!data?.meetingId || !data?.userId) return;
+      
+      // Broadcast state to all participants (including sender)
+      io.to(`meeting:${data.meetingId}`).emit('meeting:participant-state-changed', {
+        meetingId: data.meetingId,
+        userId: data.userId,
+        state: data.state,
+        timestamp: Date.now(),
+      });
+      
+      logger.debug('[WS_GATEWAY] Participant state broadcasted', {
+        meetingId: data.meetingId,
+        userId: data.userId,
+        state: data.state,
+      });
+    });
+
+    // Handle transcript visibility toggle (enable/disable live captions)
+    socket.on('meeting:transcript-visibility', (data: { 
+      meetingId: string; 
+      visible: boolean 
+    }) => {
+      if (!data?.meetingId) return;
+      
+      // Broadcast visibility preference to all participants
+      socket.to(`meeting:${data.meetingId}`).emit('meeting:transcript-visibility-changed', {
+        meetingId: data.meetingId,
+        visible: data.visible,
+        timestamp: Date.now(),
+      });
+    });
   });
   
   logger.info('[WS_GATEWAY] Meeting room handlers registered');
+}
+
+/**
+ * Send a targeted event to a specific user.
+ * Used for meeting invites, notifications, etc.
+ */
+export function emitToUser(
+  io: SocketIOServer,
+  userId: string,
+  event: string,
+  data: any
+): void {
+  io.to(`user:${userId}`).emit(event, data);
+  logger.debug('[WS_GATEWAY] Emitted to user', {
+    userId,
+    event,
+  });
+}
+
+/**
+ * Send a meeting event to all participants in a meeting room.
+ */
+export function emitToMeeting(
+  io: SocketIOServer,
+  meetingId: string,
+  event: string,
+  data: any
+): void {
+  io.to(`meeting:${meetingId}`).emit(event, data);
+  logger.debug('[WS_GATEWAY] Emitted to meeting', {
+    meetingId,
+    event,
+  });
 }

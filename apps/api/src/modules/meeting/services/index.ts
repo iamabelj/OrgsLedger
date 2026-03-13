@@ -9,3 +9,6 @@ export * from './websocket-gateway.service';
 export * from './livekit-token.service';
 export * from './transcription.service';
 export * from './livekit-audio-bot.service';
+export * from './organization-role.service';
+export * from './meeting-invite.service';
+export * from './transcript-persistence.service';
