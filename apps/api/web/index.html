@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>OrgsLedger — Organization Management Platform</title>
+    <meta name="description" content="Manage your organization's members, finances, meetings, and communications in one place." />
+    <meta name="theme-color" content="#0B1426" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/logo-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/logo-512.png" />
+    <link rel="apple-touch-icon" href="/logo-192.png" />
+    
+    <meta property="og:title" content="OrgsLedger" />
+    <meta property="og:description" content="Cross-Border Organizational Infrastructure — manage members, finances & meetings." />
+    <meta property="og:image" content="/logo-512.png" />
+    <meta property="og:type" content="website" />
+    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+    <style id="expo-reset">
+      /* These styles make the body full-height */
+      html,
+      body {
+        height: 100%;
+      }
+      /* These styles disable body scrolling if you are using <ScrollView> */
+      body {
+        overflow: hidden;
+      }
+      /* These styles make the root element full-height */
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+  <link rel="shortcut icon" href="/app/favicon.ico" />
+    <script>
+      (function () {
+        var bareAppRoutes = new Set([
+          '/login',
+          '/register',
+          '/forgot-password',
+          '/admin-register',
+          '/home',
+          '/activate'
+        ]);
+
+        function normalizePath(urlLike) {
+          try {
+            var parsed = new URL(urlLike, window.location.origin);
+            if (bareAppRoutes.has(parsed.pathname)) {
+              parsed.pathname = '/app' + parsed.pathname;
+              return parsed.pathname + parsed.search + parsed.hash;
+            }
+          } catch (_) {}
+
+          return urlLike;
+        }
+
+        if (bareAppRoutes.has(window.location.pathname)) {
+          window.location.replace('/app' + window.location.pathname + window.location.search + window.location.hash);
+          return;
+        }
+
+        var originalReplaceState = window.history.replaceState;
+        var originalPushState = window.history.pushState;
+
+        window.history.replaceState = function (state, title, url) {
+          return originalReplaceState.call(this, state, title, typeof url === 'string' ? normalizePath(url) : url);
+        };
+
+        window.history.pushState = function (state, title, url) {
+          return originalPushState.call(this, state, title, typeof url === 'string' ? normalizePath(url) : url);
+        };
+      })();
+    </script>
+
+    <script>
+      (function () {
+        if (!('serviceWorker' in navigator)) {
+          return;
+        }
+
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.getRegistrations().then(function (registrations) {
+            registrations.forEach(function (registration) {
+              var activeUrl = registration.active && registration.active.scriptURL ? registration.active.scriptURL : '';
+              if (registration.scope.indexOf('/app') !== -1 || activeUrl.indexOf('flutter_service_worker') !== -1) {
+                registration.unregister().catch(function () {});
+              }
+            });
+          }).catch(function () {});
+
+          if ('caches' in window) {
+            caches.keys().then(function (keys) {
+              return Promise.all(
+                keys
+                  .filter(function (key) {
+                    return key.indexOf('flutter') !== -1 || key.indexOf('workbox') !== -1;
+                  })
+                  .map(function (key) {
+                    return caches.delete(key);
+                  })
+              );
+            }).catch(function () {});
+          }
+        });
+      })();
+    </script>
+  </head>
+
+  <body>
+    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
+    <noscript>
+      You need to enable JavaScript to run this app.
+    </noscript>
+    <!-- The root element for your Expo app. -->
+    <div id="root"></div>
+  <script src="/app/_expo/static/js/web/index-cf77c723812a292fbb98a9d7110a64fd.js" defer></script>
+</body>
+</html>
