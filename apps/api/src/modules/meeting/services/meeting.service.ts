@@ -106,16 +106,21 @@ export class MeetingService {
 
     let row: any;
     try {
+      // scheduled_start and created_by are legacy NOT NULL columns from original schema
+      // We populate both legacy and new columns for compatibility
+      const scheduledTime = request.scheduledAt ? new Date(request.scheduledAt) : new Date();
       const [result] = await db('meetings')
         .insert({
           organization_id: request.organizationId,
           host_id: hostId,
-          title: request.title || null,
+          created_by: hostId, // legacy required column
+          title: request.title || 'Untitled Meeting',
           description: request.description || null,
           status: 'scheduled' as MeetingStatus,
           participants: JSON.stringify([hostParticipant]),
           settings: JSON.stringify(settings),
-          scheduled_at: request.scheduledAt || null,
+          scheduled_at: scheduledTime,
+          scheduled_start: scheduledTime, // legacy required column
         })
         .returning('*');
       row = result;

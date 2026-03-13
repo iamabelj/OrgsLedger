@@ -1,0 +1,1 @@
+{"version":3,"file":"029_create_meetings_table.d.ts","sourceRoot":"","sources":["../../../src/db/migrations/029_create_meetings_table.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,IAAI,EAAE,MAAM,MAAM,CAAC;AAE5B;;;;;;;;GAQG;AACH,wBAAsB,EAAE,CAAC,IAAI,EAAE,IAAI,GAAG,OAAO,CAAC,IAAI,CAAC,CA2ElD;AAED,wBAAsB,IAAI,CAAC,IAAI,EAAE,IAAI,GAAG,OAAO,CAAC,IAAI,CAAC,CAKpD"}
