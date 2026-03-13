@@ -7,7 +7,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Animated,
   Dimensions,
   FlatList,
   Modal,
@@ -168,9 +167,13 @@ export default function MeetingRoomScreen() {
   const [showEndConfirm, setShowEndConfirm] = useState(false);
 
   // Animations
-  const controlsOpacity = useRef(new Animated.Value(1)).current;
   const [controlsVisible, setControlsVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // WebRTC media
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const selfVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const isHost = meeting?.hostId === user?.id;
   const activeParticipants = useMemo(
@@ -250,6 +253,65 @@ export default function MeetingRoomScreen() {
     return () => clearInterval(interval);
   }, [phase, meeting?.startedAt]);
 
+  // ── WebRTC: Acquire local camera/mic stream ─────────
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    if (phase === 'ended') return;
+
+    let cancelled = false;
+    const stream = localStreamRef.current;
+
+    // Acquire stream if we don't have one yet
+    if (!stream) {
+      (async () => {
+        try {
+          const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          if (cancelled) { s.getTracks().forEach((t) => t.stop()); return; }
+          localStreamRef.current = s;
+          // Apply initial toggle state
+          s.getAudioTracks().forEach((t) => { t.enabled = isMicOn; });
+          s.getVideoTracks().forEach((t) => { t.enabled = isCameraOn; });
+          // Attach to preview video element if it exists
+          if (previewVideoRef.current) {
+            previewVideoRef.current.srcObject = s;
+          }
+        } catch {
+          // User denied or no device — fall back to avatar
+        }
+      })();
+    }
+
+    return () => {
+      cancelled = true;
+      // Stop all tracks when leaving the screen
+      if (phase === 'ended' || phase === 'lobby') return; // keep stream alive in lobby/active
+    };
+  }, [phase]);
+
+  // Cleanup stream on unmount
+  useEffect(() => {
+    return () => {
+      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    };
+  }, []);
+
+  // Toggle mic track when user taps mic button
+  useEffect(() => {
+    const stream = localStreamRef.current;
+    if (!stream) return;
+    const enabled = phase === 'active' ? !isMuted : isMicOn;
+    stream.getAudioTracks().forEach((t) => { t.enabled = enabled; });
+  }, [isMicOn, isMuted, phase]);
+
+  // Toggle video track when user taps camera button
+  useEffect(() => {
+    const stream = localStreamRef.current;
+    if (!stream) return;
+    const enabled = phase === 'active' ? isVideoOn : isCameraOn;
+    stream.getVideoTracks().forEach((t) => { t.enabled = enabled; });
+  }, [isCameraOn, isVideoOn, phase]);
+
   // ── Socket events for real-time updates ───────────────
   useEffect(() => {
     if (phase !== 'active' || !id) return;
@@ -308,32 +370,23 @@ export default function MeetingRoomScreen() {
       setCaptions((prev) => [...prev.slice(-49), entry]);
     };
 
-    socketClient.on('meeting:participant:joined', handleParticipantJoined);
-    socketClient.on('meeting:participant:left', handleParticipantLeft);
-    socketClient.on('meeting:ended', handleMeetingEnded);
-    socketClient.on('meeting:caption', handleCaption);
+    const unsubJoined = socketClient.on('meeting:participant:joined', handleParticipantJoined);
+    const unsubLeft = socketClient.on('meeting:participant:left', handleParticipantLeft);
+    const unsubEnded = socketClient.on('meeting:ended', handleMeetingEnded);
+    const unsubCaption = socketClient.on('meeting:caption', handleCaption);
 
     return () => {
-      socketClient.off('meeting:participant:joined', handleParticipantJoined);
-      socketClient.off('meeting:participant:left', handleParticipantLeft);
-      socketClient.off('meeting:ended', handleMeetingEnded);
-      socketClient.off('meeting:caption', handleCaption);
+      unsubJoined();
+      unsubLeft();
+      unsubEnded();
+      unsubCaption();
     };
   }, [phase, id, captionsEnabled, selectedLanguage]);
 
-  // ── Auto-hide controls in active meeting ──────────────
+  // ── Keep controls always visible for seamless UX ────
   const resetControlsTimer = useCallback(() => {
-    if (hideTimer.current) clearTimeout(hideTimer.current);
-    if (!controlsVisible) {
-      setControlsVisible(true);
-      Animated.timing(controlsOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
-    }
-    hideTimer.current = setTimeout(() => {
-      Animated.timing(controlsOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start(() => {
-        setControlsVisible(false);
-      });
-    }, 5000);
-  }, [controlsVisible, controlsOpacity]);
+    // Controls are always visible — no auto-hide
+  }, []);
 
   useEffect(() => {
     if (phase === 'active') resetControlsTimer();
@@ -370,6 +423,9 @@ export default function MeetingRoomScreen() {
 
   const handleLeaveMeeting = async () => {
     if (!id) return;
+    // Stop camera/mic
+    localStreamRef.current?.getTracks().forEach((t) => t.stop());
+    localStreamRef.current = null;
     try {
       await api.meetings.leave(id);
     } catch {
@@ -381,6 +437,9 @@ export default function MeetingRoomScreen() {
   const handleEndMeeting = async () => {
     if (!id) return;
     setShowEndConfirm(false);
+    // Stop camera/mic
+    localStreamRef.current?.getTracks().forEach((t) => t.stop());
+    localStreamRef.current = null;
     try {
       await api.meetings.end(id);
       setPhase('ended');
@@ -434,22 +493,56 @@ export default function MeetingRoomScreen() {
         </View>
 
         <ScrollView contentContainerStyle={s.lobbyContent} showsVerticalScrollIndicator={false}>
-          {/* Camera preview placeholder */}
+          {/* Camera preview */}
           <View style={s.previewContainer}>
             <View style={[s.previewBox, !isCameraOn && s.previewBoxOff]}>
-              {isCameraOn ? (
-                <>
-                  <View style={s.previewAvatar}>
-                    <Text style={s.previewAvatarText}>{getInitials(displayName || '?')}</Text>
+              {Platform.OS === 'web' && isCameraOn ? (
+                <View style={{ width: '100%', height: '100%', position: 'relative' }}>
+                  <video
+                    ref={(el: HTMLVideoElement | null) => {
+                      previewVideoRef.current = el;
+                      if (el && localStreamRef.current) {
+                        el.srcObject = localStreamRef.current;
+                      }
+                    }}
+                    autoPlay
+                    playsInline
+                    muted
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      borderRadius: 16,
+                      transform: 'scaleX(-1)',
+                    } as any}
+                  />
+                  <View style={{
+                    position: 'absolute',
+                    bottom: 12,
+                    left: 12,
+                    backgroundColor: 'rgba(0,0,0,0.55)',
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: 8,
+                  }}>
+                    <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' as any }}>
+                      {displayName || 'You'}
+                    </Text>
                   </View>
-                  <Text style={s.previewHelp}>Camera preview will appear when connected</Text>
-                </>
-              ) : (
+                </View>
+              ) : !isCameraOn ? (
                 <>
                   <View style={[s.previewAvatar, { backgroundColor: Colors.primaryMid }]}>
                     <Ionicons name="videocam-off" size={36} color={Colors.textLight} />
                   </View>
                   <Text style={s.previewHelp}>Camera is off</Text>
+                </>
+              ) : (
+                <>
+                  <View style={s.previewAvatar}>
+                    <Text style={s.previewAvatarText}>{getInitials(displayName || '?')}</Text>
+                  </View>
+                  <Text style={s.previewHelp}>Camera preview not available on this device</Text>
                 </>
               )}
             </View>
@@ -682,7 +775,7 @@ export default function MeetingRoomScreen() {
   return (
     <Pressable style={s.roomContainer} onPress={resetControlsTimer}>
       {/* ── Top Bar ────────────────────────────────────── */}
-      <Animated.View style={[s.topBar, { opacity: controlsOpacity }]}>
+      <View style={s.topBar}>
         <View style={s.topBarLeft}>
           <View style={s.topBarLive}>
             <View style={s.liveDot} />
@@ -702,7 +795,7 @@ export default function MeetingRoomScreen() {
             {' '}{activeParticipants.length}
           </Text>
         </View>
-      </Animated.View>
+      </View>
 
       {/* ── Main Content (Grid + Side Panel) ──────────── */}
       <View style={s.mainArea}>
@@ -719,6 +812,7 @@ export default function MeetingRoomScreen() {
                 isCurrentUser={p.userId === user?.id}
                 isMuted={p.userId === user?.id ? isMuted : p.isMuted}
                 isVideoOff={p.userId === user?.id ? !isVideoOn : p.isVideoOff}
+                localStream={p.userId === user?.id ? localStreamRef.current : null}
               />
             ))}
           </View>
@@ -769,7 +863,7 @@ export default function MeetingRoomScreen() {
       ) : null}
 
       {/* ── Bottom Controls Bar ──────────────────────── */}
-      <Animated.View style={[s.controlsBar, { opacity: controlsOpacity }]}>
+      <View style={s.controlsBar}>
         {/* Mic */}
         <ControlButton
           icon={isMuted ? 'mic-off' : 'mic'}
@@ -838,9 +932,9 @@ export default function MeetingRoomScreen() {
           <Ionicons name="call" size={22} color={Colors.textWhite} style={{ transform: [{ rotate: '135deg' }] }} />
           <Text style={s.leaveBtnText}>{isHost ? 'End' : 'Leave'}</Text>
         </TouchableOpacity>
-      </Animated.View>
+      </View>
 
-      {/* ── More menu popup ──────────────────────────── */}
+      {/* ── More menu popup ──────────────────────────── */>
       {showMoreMenu ? (
         <View style={s.moreMenu}>
           <TouchableOpacity style={s.moreMenuItem} onPress={() => { togglePanel('captions'); setCaptionsEnabled(true); }}>
@@ -937,6 +1031,7 @@ function ParticipantTile({
   isCurrentUser,
   isMuted,
   isVideoOff,
+  localStream,
 }: {
   participant: Participant;
   width: number;
@@ -945,10 +1040,12 @@ function ParticipantTile({
   isCurrentUser: boolean;
   isMuted?: boolean;
   isVideoOff?: boolean;
+  localStream?: MediaStream | null;
 }) {
   const name = participant.displayName || `User ${participant.userId.slice(0, 6)}`;
   const color = AVATAR_COLORS[colorIndex % AVATAR_COLORS.length];
   const isSpeaking = participant.isSpeaking;
+  const showVideo = isCurrentUser && !isVideoOff && localStream && Platform.OS === 'web';
 
   return (
     <View
@@ -958,15 +1055,25 @@ function ParticipantTile({
         isSpeaking && { borderColor: Colors.success, borderWidth: 3 },
       ]}
     >
-      {/* Avatar / Video placeholder */}
-      {isVideoOff !== false ? (
-        <View style={[s.tileAvatarContainer, { backgroundColor: color + '22' }]}>
-          <View style={[s.tileAvatar, { backgroundColor: color }]}>
-            <Text style={s.tileAvatarText}>{getInitials(name)}</Text>
-          </View>
+      {showVideo ? (
+        <View style={{ flex: 1, overflow: 'hidden' }}>
+          <video
+            ref={(el: HTMLVideoElement | null) => {
+              if (el && localStream) el.srcObject = localStream;
+            }}
+            autoPlay
+            playsInline
+            muted
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              transform: 'scaleX(-1)',
+            } as any}
+          />
         </View>
       ) : (
-        <View style={[s.tileAvatarContainer, { backgroundColor: '#111' }]}>
+        <View style={[s.tileAvatarContainer, { backgroundColor: isVideoOff !== false ? color + '22' : '#111' }]}>
           <View style={[s.tileAvatar, { backgroundColor: color }]}>
             <Text style={s.tileAvatarText}>{getInitials(name)}</Text>
           </View>
