@@ -175,6 +175,10 @@ export default function MeetingRoomScreen() {
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const selfVideoRef = useRef<HTMLVideoElement | null>(null);
 
+  // Web Speech API for browser-native transcription
+  const speechRecognitionRef = useRef<any>(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+
   const isHost = meeting?.hostId === user?.id;
   const activeParticipants = useMemo(
     () => participants.filter((p) => !p.leftAt),
@@ -316,6 +320,9 @@ export default function MeetingRoomScreen() {
   useEffect(() => {
     if (phase !== 'active' || !id) return;
 
+    // Join the socket room for this meeting
+    socketClient.emit('meeting:join-room', id);
+
     const handleParticipantJoined = (data: any) => {
       if (data.meetingId !== id) return;
       setParticipants((prev) => {
@@ -376,12 +383,119 @@ export default function MeetingRoomScreen() {
     const unsubCaption = socketClient.on('meeting:caption', handleCaption);
 
     return () => {
+      // Leave the socket room
+      socketClient.emit('meeting:leave-room', id);
       unsubJoined();
       unsubLeft();
       unsubEnded();
       unsubCaption();
     };
   }, [phase, id, captionsEnabled, selectedLanguage]);
+
+  // ── Web Speech API for browser-native transcription ───
+  useEffect(() => {
+    // Only run on web + active meeting + captions enabled
+    if (Platform.OS !== 'web' || phase !== 'active' || !captionsEnabled || !id) {
+      // Stop recognition if running
+      if (speechRecognitionRef.current) {
+        try { speechRecognitionRef.current.stop(); } catch {}
+        speechRecognitionRef.current = null;
+        setIsTranscribing(false);
+      }
+      return;
+    }
+
+    // Check browser support
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      console.warn('[Captions] Web Speech API not supported in this browser');
+      return;
+    }
+
+    // Create recognition instance
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US'; // Source language (speaker's language)
+    recognition.maxAlternatives = 1;
+
+    let finalTranscript = '';
+    let restartTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    recognition.onstart = () => {
+      setIsTranscribing(true);
+      console.log('[Captions] Speech recognition started');
+    };
+
+    recognition.onresult = (event: any) => {
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          finalTranscript = result[0].transcript.trim();
+          if (finalTranscript) {
+            // Add to local captions immediately
+            const entry: CaptionEntry = {
+              id: `${Date.now()}-${Math.random()}`,
+              speaker: displayName || user?.displayName || 'You',
+              text: finalTranscript,
+              timestamp: Date.now(),
+            };
+            setCaptions((prev) => [...prev.slice(-49), entry]);
+
+            // Send to server for broadcast to others
+            socketClient.emit('meeting:caption:send', {
+              meetingId: id,
+              text: finalTranscript,
+              speaker: displayName || user?.displayName || 'Unknown',
+            });
+            finalTranscript = '';
+          }
+        } else {
+          interim += result[0].transcript;
+        }
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.warn('[Captions] Speech recognition error:', event.error);
+      if (event.error === 'not-allowed') {
+        setIsTranscribing(false);
+      }
+      // For other errors, try to restart
+      if (['network', 'aborted', 'no-speech'].includes(event.error)) {
+        restartTimeout = setTimeout(() => {
+          try { recognition.start(); } catch {}
+        }, 1000);
+      }
+    };
+
+    recognition.onend = () => {
+      setIsTranscribing(false);
+      // Auto-restart if still in active meeting with captions
+      if (captionsEnabled && phase === 'active') {
+        restartTimeout = setTimeout(() => {
+          try { recognition.start(); } catch {}
+        }, 500);
+      }
+    };
+
+    speechRecognitionRef.current = recognition;
+
+    // Start recognition
+    try {
+      recognition.start();
+    } catch (err) {
+      console.warn('[Captions] Failed to start speech recognition:', err);
+    }
+
+    return () => {
+      if (restartTimeout) clearTimeout(restartTimeout);
+      try { recognition.stop(); } catch {}
+      speechRecognitionRef.current = null;
+      setIsTranscribing(false);
+    };
+  }, [phase, captionsEnabled, id, displayName, user?.displayName]);
 
   // ── Keep controls always visible for seamless UX ────
   const resetControlsTimer = useCallback(() => {
@@ -842,6 +956,7 @@ export default function MeetingRoomScreen() {
                 selectedLanguage={selectedLanguage}
                 onChangeLanguage={() => setActivePanel('language')}
                 languageName={allLanguages.find((l) => l.code === selectedLanguage)?.name || 'English'}
+                isTranscribing={isTranscribing}
               />
             ) : null}
           </View>
@@ -1201,11 +1316,13 @@ function CaptionsPanel({
   selectedLanguage,
   onChangeLanguage,
   languageName,
+  isTranscribing,
 }: {
   captions: CaptionEntry[];
   selectedLanguage: string;
   onChangeLanguage: () => void;
   languageName: string;
+  isTranscribing?: boolean;
 }) {
   const scrollRef = useRef<ScrollView>(null);
 
@@ -1215,6 +1332,13 @@ function CaptionsPanel({
 
   return (
     <View style={s.captionsPanel}>
+      {/* Transcribing indicator */}
+      {isTranscribing ? (
+        <View style={s.transcribingBar}>
+          <View style={s.transcribingDot} />
+          <Text style={s.transcribingText}>Transcribing your speech...</Text>
+        </View>
+      ) : null}
       <TouchableOpacity style={s.captionsLangBtn} onPress={onChangeLanguage}>
         <Ionicons name="language-outline" size={16} color={Colors.highlight} />
         <Text style={s.captionsLangText}>Translating to: {languageName}</Text>
@@ -1710,6 +1834,27 @@ const s = StyleSheet.create({
 
   // Captions panel
   captionsPanel: { flex: 1 },
+  transcribingBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    backgroundColor: Colors.success + '15',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.success + '33',
+  },
+  transcribingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.success,
+  },
+  transcribingText: {
+    fontSize: FontSize.xs,
+    color: Colors.success,
+    fontWeight: FontWeight.medium,
+  },
   captionsLangBtn: {
     flexDirection: 'row',
     alignItems: 'center',

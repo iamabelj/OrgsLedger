@@ -119,6 +119,25 @@ export function setupMeetingRooms(io: SocketIOServer): void {
         });
       }
     });
+
+    // Handle live captions from participants (browser speech recognition)
+    socket.on('meeting:caption:send', (data: { meetingId: string; text: string; speaker: string }) => {
+      if (!data?.meetingId || !data?.text) return;
+      
+      // Broadcast caption to all participants in the meeting room (except sender)
+      socket.to(`meeting:${data.meetingId}`).emit('meeting:caption', {
+        meetingId: data.meetingId,
+        speaker: data.speaker || 'Unknown',
+        text: data.text,
+        timestamp: Date.now(),
+      });
+      
+      logger.debug('[WS_GATEWAY] Caption broadcasted', {
+        meetingId: data.meetingId,
+        speaker: data.speaker,
+        textLength: data.text.length,
+      });
+    });
   });
   
   logger.info('[WS_GATEWAY] Meeting room handlers registered');
