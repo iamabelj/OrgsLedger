@@ -1,12 +1,12 @@
 // ============================================================
-// OrgsLedger — Meeting Room (Zoom-like UX)
-// Full-screen meeting experience with lobby, participant grid,
-// controls toolbar, participants panel, live captions & language
-// translation selector.
+// OrgsLedger — Meeting Room (Clean, Modern UX)
+// Streamlined meeting experience with minimal UI, smooth
+// animations, and mobile-first design.
 // ============================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   Dimensions,
   FlatList,
   Modal,
@@ -101,6 +101,9 @@ const POPULAR_LANGUAGES = [
 
 // ── Helpers ─────────────────────────────────────────────
 const win = Dimensions.get('window');
+const isSmallScreen = win.width < 768;
+const isMobile = Platform.OS !== 'web' || win.width < 480;
+
 function getInitials(name: string): string {
   return name
     .split(' ')
@@ -119,6 +122,33 @@ function formatElapsed(startedAt?: string): string {
   const h = Math.floor(m / 60);
   if (h > 0) return `${h}:${String(m % 60).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+// Smart grid layout calculator
+function calculateGridLayout(count: number, containerWidth: number, containerHeight: number) {
+  if (count === 0) return { cols: 1, rows: 1, tileW: containerWidth, tileH: containerHeight };
+  if (count === 1) return { cols: 1, rows: 1, tileW: Math.min(containerWidth, 640), tileH: Math.min(containerHeight, 480) };
+  if (count === 2) {
+    // Side by side on desktop, stacked on mobile
+    if (isSmallScreen) return { cols: 1, rows: 2, tileW: containerWidth - 16, tileH: (containerHeight - 24) / 2 };
+    return { cols: 2, rows: 1, tileW: (containerWidth - 16) / 2, tileH: containerHeight - 8 };
+  }
+  // For 3-4 participants: 2x2 grid
+  if (count <= 4) {
+    const cols = 2;
+    const rows = Math.ceil(count / cols);
+    return { cols, rows, tileW: (containerWidth - 16) / cols, tileH: (containerHeight - 16) / rows };
+  }
+  // For 5-9: 3 column grid
+  if (count <= 9) {
+    const cols = 3;
+    const rows = Math.ceil(count / cols);
+    return { cols, rows, tileW: (containerWidth - 24) / cols, tileH: (containerHeight - (rows * 8)) / rows };
+  }
+  // 10+: 4 column grid
+  const cols = 4;
+  const rows = Math.ceil(count / cols);
+  return { cols, rows, tileW: (containerWidth - 32) / cols, tileH: (containerHeight - (rows * 8)) / rows };
 }
 
 // Avatar colors by index
@@ -166,7 +196,11 @@ export default function MeetingRoomScreen() {
   // End meeting confirmation
   const [showEndConfirm, setShowEndConfirm] = useState(false);
 
-  // Animations
+  // ── Animations ────────────────────────────────────────
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const controlsAnim = useRef(new Animated.Value(1)).current;
+  const panelAnim = useRef(new Animated.Value(0)).current;
   const [controlsVisible, setControlsVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -214,7 +248,14 @@ export default function MeetingRoomScreen() {
       } catch (err: any) {
         if (!cancelled) setError(err?.response?.data?.error || 'Unable to load meeting.');
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          // Fade in content
+          Animated.parallel([
+            Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
+            Animated.timing(slideAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
+          ]).start();
+        }
       }
     })();
 
@@ -563,7 +604,14 @@ export default function MeetingRoomScreen() {
   };
 
   const togglePanel = (panel: PanelKind) => {
-    setActivePanel((prev) => (prev === panel ? null : panel));
+    const newPanel = activePanel === panel ? null : panel;
+    // Animate panel
+    Animated.timing(panelAnim, {
+      toValue: newPanel ? 1 : 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+    setActivePanel(newPanel);
     setShowMoreMenu(false);
   };
 
@@ -571,10 +619,15 @@ export default function MeetingRoomScreen() {
   if (loading) {
     return (
       <View style={s.fullCenter}>
-        <View style={s.loadingDot}>
-          <Ionicons name="videocam" size={32} color={Colors.highlight} />
+        <View style={s.loadingContainer}>
+          <View style={s.loadingPulse}>
+            <Ionicons name="videocam" size={36} color={Colors.highlight} />
+          </View>
+          <Text style={s.loadingText}>Preparing meeting room...</Text>
+          <View style={s.loadingBar}>
+            <Animated.View style={s.loadingBarFill} />
+          </View>
         </View>
-        <Text style={s.loadingText}>Loading meeting...</Text>
       </View>
     );
   }
@@ -582,11 +635,17 @@ export default function MeetingRoomScreen() {
   if (error && !meeting) {
     return (
       <View style={s.fullCenter}>
-        <Ionicons name="alert-circle-outline" size={48} color={Colors.error} />
-        <Text style={s.errorText}>{error}</Text>
-        <TouchableOpacity style={s.errorBtn} onPress={() => router.back()}>
-          <Text style={s.errorBtnText}>Go Back</Text>
-        </TouchableOpacity>
+        <View style={s.errorContainer}>
+          <View style={s.errorIcon}>
+            <Ionicons name="alert-circle" size={48} color={Colors.error} />
+          </View>
+          <Text style={s.errorTitle}>Unable to Load Meeting</Text>
+          <Text style={s.errorText}>{error}</Text>
+          <TouchableOpacity style={s.errorBtn} onPress={() => router.back()} activeOpacity={0.8}>
+            <Ionicons name="arrow-back" size={18} color={Colors.textWhite} />
+            <Text style={s.errorBtnText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -594,30 +653,29 @@ export default function MeetingRoomScreen() {
   // ── Render: LOBBY ─────────────────────────────────────
   if (phase === 'lobby' || phase === 'connecting') {
     return (
-      <View style={s.lobbyContainer}>
-        {/* Top bar */}
-        <View style={s.lobbyTopBar}>
-          <TouchableOpacity onPress={() => router.back()} style={s.lobbyBackBtn}>
-            <Ionicons name="arrow-back" size={22} color={Colors.textPrimary} />
+      <Animated.View style={[s.lobbyContainer, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+        {/* Minimal header */}
+        <View style={s.lobbyHeader}>
+          <TouchableOpacity onPress={() => router.back()} style={s.lobbyBackBtn} activeOpacity={0.7}>
+            <Ionicons name="chevron-back" size={26} color={Colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={s.lobbyTopTitle} numberOfLines={1}>
-            {meeting?.title || 'Meeting'}
-          </Text>
-          <View style={{ width: 40 }} />
+          <View style={{ flex: 1 }} />
         </View>
 
-        <ScrollView contentContainerStyle={s.lobbyContent} showsVerticalScrollIndicator={false}>
-          {/* Camera preview */}
-          <View style={s.previewContainer}>
+        <ScrollView 
+          contentContainerStyle={s.lobbyContent} 
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          {/* Camera preview - centered and prominent */}
+          <View style={s.previewWrapper}>
             <View style={[s.previewBox, !isCameraOn && s.previewBoxOff]}>
               {Platform.OS === 'web' && isCameraOn ? (
                 <View style={{ width: '100%', height: '100%', position: 'relative' }}>
                   <video
                     ref={(el: HTMLVideoElement | null) => {
                       previewVideoRef.current = el;
-                      if (el && localStreamRef.current) {
-                        el.srcObject = localStreamRef.current;
-                      }
+                      if (el && localStreamRef.current) el.srcObject = localStreamRef.current;
                     }}
                     autoPlay
                     playsInline
@@ -626,247 +684,154 @@ export default function MeetingRoomScreen() {
                       width: '100%',
                       height: '100%',
                       objectFit: 'cover',
-                      borderRadius: 16,
+                      borderRadius: 20,
                       transform: 'scaleX(-1)',
                     } as any}
                   />
-                  <View style={{
-                    position: 'absolute',
-                    bottom: 12,
-                    left: 12,
-                    backgroundColor: 'rgba(0,0,0,0.55)',
-                    paddingHorizontal: 10,
-                    paddingVertical: 4,
-                    borderRadius: 8,
-                  }}>
-                    <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' as any }}>
-                      {displayName || 'You'}
-                    </Text>
-                  </View>
                 </View>
               ) : !isCameraOn ? (
-                <>
-                  <View style={[s.previewAvatar, { backgroundColor: Colors.primaryMid }]}>
-                    <Ionicons name="videocam-off" size={36} color={Colors.textLight} />
+                <View style={s.previewOffState}>
+                  <View style={s.previewOffIcon}>
+                    <Ionicons name="videocam-off" size={32} color={Colors.textLight} />
                   </View>
-                  <Text style={s.previewHelp}>Camera is off</Text>
-                </>
+                  <Text style={s.previewOffText}>Camera off</Text>
+                </View>
               ) : (
-                <>
-                  <View style={s.previewAvatar}>
+                <View style={s.previewOffState}>
+                  <View style={[s.previewAvatar, { backgroundColor: AVATAR_COLORS[0] }]}>
                     <Text style={s.previewAvatarText}>{getInitials(displayName || '?')}</Text>
                   </View>
-                  <Text style={s.previewHelp}>Camera preview not available on this device</Text>
-                </>
+                </View>
               )}
-            </View>
 
-            {/* Device toggles */}
-            <View style={s.previewControls}>
-              <TouchableOpacity
-                style={[s.previewToggle, !isMicOn && s.previewToggleOff]}
-                onPress={() => setIsMicOn(!isMicOn)}
-              >
-                <Ionicons
-                  name={isMicOn ? 'mic' : 'mic-off'}
-                  size={22}
-                  color={isMicOn ? Colors.textWhite : Colors.error}
-                />
-                <Text style={[s.previewToggleLabel, !isMicOn && { color: Colors.error }]}>
-                  {isMicOn ? 'Mic On' : 'Mic Off'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.previewToggle, !isCameraOn && s.previewToggleOff]}
-                onPress={() => setIsCameraOn(!isCameraOn)}
-              >
-                <Ionicons
-                  name={isCameraOn ? 'videocam' : 'videocam-off'}
-                  size={22}
-                  color={isCameraOn ? Colors.textWhite : Colors.error}
-                />
-                <Text style={[s.previewToggleLabel, !isCameraOn && { color: Colors.error }]}>
-                  {isCameraOn ? 'Camera On' : 'Camera Off'}
-                </Text>
-              </TouchableOpacity>
+              {/* Floating device controls over preview */}
+              <View style={s.previewControlsFloat}>
+                <TouchableOpacity
+                  style={[s.deviceBtn, !isMicOn && s.deviceBtnOff]}
+                  onPress={() => setIsMicOn(!isMicOn)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name={isMicOn ? 'mic' : 'mic-off'} size={24} color={isMicOn ? '#fff' : Colors.error} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.deviceBtn, !isCameraOn && s.deviceBtnOff]}
+                  onPress={() => setIsCameraOn(!isCameraOn)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name={isCameraOn ? 'videocam' : 'videocam-off'} size={24} color={isCameraOn ? '#fff' : Colors.error} />
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
 
-          {/* Meeting info */}
+          {/* Meeting title and info */}
           <View style={s.lobbyInfo}>
-            <Text style={s.lobbyTitle}>{meeting?.title || 'Untitled Meeting'}</Text>
-            {meeting?.description ? (
-              <Text style={s.lobbyDescription}>{meeting.description}</Text>
+            <Text style={s.lobbyTitle}>{meeting?.title || 'Meeting'}</Text>
+            {meeting?.scheduledAt ? (
+              <Text style={s.lobbyTime}>
+                {format(new Date(meeting.scheduledAt), 'EEEE, MMM d · h:mm a')}
+              </Text>
             ) : null}
-            <View style={s.lobbyMeta}>
-              {meeting?.scheduledAt ? (
-                <View style={s.lobbyMetaRow}>
-                  <Ionicons name="calendar-outline" size={15} color={Colors.textLight} />
-                  <Text style={s.lobbyMetaText}>
-                    {format(new Date(meeting.scheduledAt), 'MMM d, yyyy · h:mm a')}
-                  </Text>
-                </View>
-              ) : null}
-              <View style={s.lobbyMetaRow}>
-                <Ionicons name="people-outline" size={15} color={Colors.textLight} />
-                <Text style={s.lobbyMetaText}>
-                  {activeParticipants.length} participant{activeParticipants.length !== 1 ? 's' : ''}
-                  {meeting?.status === 'active' ? ' in meeting' : ''}
-                </Text>
-              </View>
-              {isHost ? (
-                <View style={s.lobbyMetaRow}>
-                  <Ionicons name="shield-checkmark" size={15} color={Colors.highlight} />
-                  <Text style={[s.lobbyMetaText, { color: Colors.highlight }]}>You are the host</Text>
-                </View>
-              ) : null}
-            </View>
-
-            {/* Agenda preview */}
-            {meeting?.settings?.agenda && meeting.settings.agenda.length > 0 ? (
-              <View style={s.lobbyAgenda}>
-                <Text style={s.lobbyAgendaTitle}>Agenda</Text>
-                {meeting.settings.agenda.map((item, i) => (
-                  <View key={i} style={s.lobbyAgendaItem}>
-                    <View style={s.lobbyAgendaDot}>
-                      <Text style={s.lobbyAgendaNum}>{i + 1}</Text>
-                    </View>
-                    <Text style={s.lobbyAgendaText}>{item}</Text>
-                  </View>
-                ))}
+            {isHost ? (
+              <View style={s.hostBadge}>
+                <Ionicons name="shield-checkmark" size={14} color={Colors.highlight} />
+                <Text style={s.hostBadgeText}>Host</Text>
               </View>
             ) : null}
           </View>
 
-          {/* Display name */}
-          <View style={s.lobbyNameSection}>
-            <Text style={s.lobbyFieldLabel}>YOUR DISPLAY NAME</Text>
-            <View style={s.lobbyNameInput}>
-              <Ionicons name="person-outline" size={18} color={Colors.textLight} />
-              <TextInput
+          {/* Display name input */}
+          <View style={s.nameInputWrapper}>
+            <Text style={s.nameLabel}>Your name</Text>
+            <TextInput
                 style={s.lobbyNameField}
                 value={displayName}
                 onChangeText={setDisplayName}
-                placeholder="Enter your name"
+                placeholder="How you'll appear to others"
                 placeholderTextColor={Colors.textLight}
                 maxLength={50}
-              />
-            </View>
+              style={s.nameInput}
+            />
           </View>
 
-          {/* Language selection */}
-          <View style={s.lobbyLangSection}>
-            <Text style={s.lobbyFieldLabel}>CAPTION LANGUAGE</Text>
-            <Text style={s.lobbyFieldHint}>
-              Live captions will be translated to your selected language
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.langScroll}>
-              <View style={s.langRow}>
-                {POPULAR_LANGUAGES.slice(0, 10).map((lang) => (
-                  <TouchableOpacity
-                    key={lang.code}
-                    style={[s.langChip, selectedLanguage === lang.code && s.langChipActive]}
-                    onPress={() => setSelectedLanguage(lang.code)}
-                  >
-                    <Text style={s.langFlag}>{lang.flag}</Text>
-                    <Text style={[s.langName, selectedLanguage === lang.code && s.langNameActive]}>
-                      {lang.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-                <TouchableOpacity
-                  style={s.langChipMore}
-                  onPress={() => setActivePanel('language')}
-                >
-                  <Ionicons name="ellipsis-horizontal" size={16} color={Colors.highlight} />
-                  <Text style={s.langMoreText}>More</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-
-          {/* Join button */}
+          {/* Join button - prominent */}
           <TouchableOpacity
-            style={[s.joinBtn, phase === 'connecting' && { opacity: 0.6 }]}
+            style={[s.joinBtn, phase === 'connecting' && s.joinBtnDisabled]}
             onPress={handleJoinMeeting}
             disabled={phase === 'connecting'}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
             {phase === 'connecting' ? (
-              <>
-                <Ionicons name="sync" size={20} color={Colors.textWhite} />
-                <Text style={s.joinBtnText}>Connecting...</Text>
-              </>
+              <Text style={s.joinBtnText}>Joining...</Text>
             ) : (
-              <>
-                <Ionicons name="videocam" size={20} color={Colors.textWhite} />
-                <Text style={s.joinBtnText}>
-                  {meeting?.status === 'scheduled' && isHost ? 'Start & Join' : 'Join Meeting'}
-                </Text>
-              </>
+              <Text style={s.joinBtnText}>
+                {meeting?.status === 'scheduled' && isHost ? 'Start Meeting' : 'Join Meeting'}
+              </Text>
             )}
           </TouchableOpacity>
-        </ScrollView>
 
-        {/* Language picker modal (from lobby) */}
-        <LanguagePickerModal
-          visible={activePanel === 'language'}
-          languages={allLanguages}
-          selected={selectedLanguage}
-          search={languageSearch}
-          onSearch={setLanguageSearch}
-          onSelect={(code) => {
-            setSelectedLanguage(code);
-            setActivePanel(null);
-            setLanguageSearch('');
-          }}
-          onClose={() => { setActivePanel(null); setLanguageSearch(''); }}
-        />
-      </View>
+          {/* Participants waiting */}
+          {activeParticipants.length > 0 && meeting?.status === 'active' ? (
+            <View style={s.waitingInfo}>
+              <View style={s.waitingAvatars}>
+                {activeParticipants.slice(0, 3).map((p, i) => (
+                  <View key={p.userId} style={[s.waitingAvatar, { marginLeft: i > 0 ? -8 : 0, backgroundColor: AVATAR_COLORS[i] }]}>
+                    <Text style={s.waitingAvatarText}>{getInitials(p.displayName || 'U')}</Text>
+                  </View>
+                ))}
+              </View>
+              <Text style={s.waitingText}>
+                {activeParticipants.length} {activeParticipants.length === 1 ? 'person' : 'people'} in meeting
+              </Text>
+            </View>
+          ) : null}
+        </ScrollView>
+      </Animated.View>
     );
   }
 
   // ── Render: ENDED ─────────────────────────────────────
   if (phase === 'ended') {
     return (
-      <View style={s.fullCenter}>
-        <View style={s.endedIcon}>
-          <Ionicons name="checkmark-circle" size={56} color={Colors.success} />
-        </View>
-        <Text style={s.endedTitle}>Meeting Ended</Text>
-        <Text style={s.endedSub}>{meeting?.title || 'Meeting'}</Text>
-        {meeting?.startedAt && meeting?.endedAt ? (
-          <Text style={s.endedDuration}>
-            Duration: {formatElapsed(meeting.startedAt).replace(/^0+:/, '')}
-          </Text>
-        ) : null}
-        <View style={s.endedActions}>
-          <TouchableOpacity style={s.endedBtn} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={18} color={Colors.textWhite} />
-            <Text style={s.endedBtnText}>Back to Meetings</Text>
-          </TouchableOpacity>
-          {meeting?.status === 'ended' ? (
-            <TouchableOpacity
-              style={[s.endedBtn, { backgroundColor: Colors.info }]}
-              onPress={async () => {
-                try {
-                  const res = await api.meetings.getMinutes(id!);
-                  const data = res.data?.data;
-                  if (data?.summary) {
-                    // Could navigate to a minutes detail screen
-                    alert(data.summary);
-                  } else {
-                    alert(data?.message || 'Minutes are still being generated.');
-                  }
-                } catch {
-                  alert('Minutes not available yet.');
-                }
-              }}
-            >
-              <Ionicons name="document-text-outline" size={18} color={Colors.textWhite} />
-              <Text style={s.endedBtnText}>View Minutes</Text>
-            </TouchableOpacity>
+      <View style={s.endedContainer}>
+        <View style={s.endedCard}>
+          <View style={s.endedIconWrap}>
+            <Ionicons name="checkmark-circle" size={64} color={Colors.success} />
+          </View>
+          <Text style={s.endedTitle}>Meeting Ended</Text>
+          <Text style={s.endedSub}>{meeting?.title || 'Meeting'}</Text>
+          {meeting?.startedAt ? (
+            <Text style={s.endedDuration}>
+              Duration: {formatElapsed(meeting.startedAt)}
+            </Text>
           ) : null}
+          <View style={s.endedActions}>
+            <TouchableOpacity style={s.endedBtnPrimary} onPress={() => router.back()} activeOpacity={0.85}>
+              <Text style={s.endedBtnPrimaryText}>Back to Meetings</Text>
+            </TouchableOpacity>
+            {meeting?.status === 'ended' ? (
+              <TouchableOpacity
+                style={s.endedBtnSecondary}
+                activeOpacity={0.85}
+                onPress={async () => {
+                  try {
+                    const res = await api.meetings.getMinutes(id!);
+                    const data = res.data?.data;
+                    if (data?.summary) {
+                      alert(data.summary);
+                    } else {
+                      alert(data?.message || 'Minutes are still being generated.');
+                    }
+                  } catch {
+                    alert('Minutes not available yet.');
+                  }
+                }}
+              >
+                <Ionicons name="document-text-outline" size={18} color={Colors.highlight} />
+                <Text style={s.endedBtnSecondaryText}>View Minutes</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
       </View>
     );
@@ -877,51 +842,39 @@ export default function MeetingRoomScreen() {
     { userId: user?.id || '', role: 'host', joinedAt: new Date().toISOString(), displayName: displayName || 'You' },
   ];
 
-  // Calculate grid layout
-  const panelWidth = activePanel ? Math.min(360, win.width * 0.3) : 0;
+  // Smart grid layout
+  const panelWidth = activePanel && !isMobile ? Math.min(320, win.width * 0.28) : 0;
   const gridWidth = win.width - panelWidth;
-  const count = gridParticipants.length;
-  const cols = count <= 1 ? 1 : count <= 4 ? 2 : count <= 9 ? 3 : 4;
-  const rows = Math.ceil(count / cols);
-  const tileW = Math.floor(gridWidth / cols) - 8;
-  const tileH = Math.floor((win.height - 140) / rows) - 8;
+  const gridHeight = win.height - (isMobile ? 160 : 120);
+  const { cols, rows, tileW, tileH } = calculateGridLayout(gridParticipants.length, gridWidth, gridHeight);
 
   return (
     <Pressable style={s.roomContainer} onPress={resetControlsTimer}>
-      {/* ── Top Bar ────────────────────────────────────── */}
+      {/* ── Minimal Top Bar ────────────────────────────── */}
       <View style={s.topBar}>
-        <View style={s.topBarLeft}>
-          <View style={s.topBarLive}>
-            <View style={s.liveDot} />
-            <Text style={s.liveText}>{elapsed}</Text>
-          </View>
-          {isRecording ? (
-            <View style={s.recBadge}>
-              <View style={s.recDot} />
-              <Text style={s.recText}>REC</Text>
-            </View>
-          ) : null}
+        <View style={s.topBarLive}>
+          <View style={s.liveDot} />
+          <Text style={s.liveText}>{elapsed}</Text>
         </View>
         <Text style={s.topBarTitle} numberOfLines={1}>{meeting?.title || 'Meeting'}</Text>
         <View style={s.topBarRight}>
-          <Text style={s.participantCountText}>
-            <Ionicons name="people" size={14} color={Colors.textSecondary} />
-            {' '}{activeParticipants.length}
-          </Text>
+          {isRecording && <View style={s.recDot} />}
+          <Text style={s.participantCount}>{activeParticipants.length}</Text>
+          <Ionicons name="people" size={16} color={Colors.textSecondary} />
         </View>
       </View>
 
-      {/* ── Main Content (Grid + Side Panel) ──────────── */}
+      {/* ── Main Content ────────────────────────────────── */}
       <View style={s.mainArea}>
         {/* Participant Grid */}
         <View style={[s.gridContainer, { width: gridWidth }]}>
-          <View style={s.grid}>
+          <View style={[s.grid, { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' }]}>
             {gridParticipants.map((p, index) => (
               <ParticipantTile
                 key={p.userId}
                 participant={p}
-                width={tileW}
-                height={tileH}
+                width={Math.min(tileW, 480)}
+                height={Math.min(tileH, 360)}
                 colorIndex={index}
                 isCurrentUser={p.userId === user?.id}
                 isMuted={p.userId === user?.id ? isMuted : p.isMuted}
@@ -932,15 +885,15 @@ export default function MeetingRoomScreen() {
           </View>
         </View>
 
-        {/* Side Panel */}
-        {activePanel && activePanel !== 'language' ? (
-          <View style={[s.sidePanel, { width: panelWidth }]}>
+        {/* Side Panel - slides in on desktop */}
+        {activePanel && activePanel !== 'language' && !isMobile ? (
+          <Animated.View style={[s.sidePanel, { width: panelWidth, opacity: panelAnim }]}>
             <View style={s.sidePanelHeader}>
               <Text style={s.sidePanelTitle}>
                 {activePanel === 'participants' ? 'Participants' : 'Captions'}
               </Text>
-              <TouchableOpacity onPress={() => setActivePanel(null)}>
-                <Ionicons name="close" size={22} color={Colors.textLight} />
+              <TouchableOpacity onPress={() => togglePanel(null)} style={s.sidePanelClose}>
+                <Ionicons name="close" size={20} color={Colors.textLight} />
               </TouchableOpacity>
             </View>
             {activePanel === 'participants' ? (
@@ -959,162 +912,153 @@ export default function MeetingRoomScreen() {
                 isTranscribing={isTranscribing}
               />
             ) : null}
-          </View>
+          </Animated.View>
         ) : null}
       </View>
 
-      {/* ── Captions Overlay (bottom of grid) ────────── */}
+      {/* ── Captions Overlay (floating) ──────────────── */}
       {captionsEnabled && captions.length > 0 && activePanel !== 'captions' ? (
         <View style={s.captionOverlay}>
           {captions.slice(-2).map((c) => (
             <View key={c.id} style={s.captionBubble}>
               <Text style={s.captionSpeaker}>{c.speaker}</Text>
-              <Text style={s.captionText}>
-                {c.translatedText || c.text}
-              </Text>
+              <Text style={s.captionText}>{c.translatedText || c.text}</Text>
             </View>
           ))}
         </View>
       ) : null}
 
-      {/* ── Bottom Controls Bar ──────────────────────── */}
-      <View style={s.controlsBar}>
-        {/* Mic */}
-        <ControlButton
-          icon={isMuted ? 'mic-off' : 'mic'}
-          label={isMuted ? 'Unmute' : 'Mute'}
-          isActive={!isMuted}
-          isDanger={isMuted}
-          onPress={() => setIsMuted(!isMuted)}
-        />
-        {/* Camera */}
-        <ControlButton
-          icon={isVideoOn ? 'videocam' : 'videocam-off'}
-          label={isVideoOn ? 'Stop Video' : 'Start Video'}
-          isActive={isVideoOn}
-          isDanger={!isVideoOn}
-          onPress={() => setIsVideoOn(!isVideoOn)}
-        />
-        {/* Screen Share */}
-        {meeting?.settings?.allowScreenShare !== false ? (
-          <ControlButton
-            icon={isScreenSharing ? 'stop-circle' : 'share-outline'}
-            label={isScreenSharing ? 'Stop Share' : 'Share Screen'}
-            isActive={isScreenSharing}
-            onPress={() => setIsScreenSharing(!isScreenSharing)}
-          />
-        ) : null}
-        {/* Participants */}
-        <ControlButton
-          icon="people"
-          label="Participants"
-          isActive={activePanel === 'participants'}
-          badge={activeParticipants.length}
-          onPress={() => togglePanel('participants')}
-        />
-        {/* Captions */}
-        <ControlButton
-          icon="chatbubble-ellipses"
-          label="Captions"
-          isActive={captionsEnabled}
-          onPress={() => {
-            if (!captionsEnabled) {
-              setCaptionsEnabled(true);
-              togglePanel('captions');
-            } else {
-              setCaptionsEnabled(false);
-              if (activePanel === 'captions') setActivePanel(null);
-            }
-          }}
-        />
-        {/* More */}
-        <ControlButton
-          icon="ellipsis-horizontal"
-          label="More"
-          onPress={() => setShowMoreMenu(!showMoreMenu)}
-        />
-        {/* Leave / End */}
+      {/* ── Simplified Bottom Controls ───────────────── */}
+      <View style={[s.controlsBar, isMobile && s.controlsBarMobile]}>
+        {/* Core controls */}
+        <View style={s.controlsMain}>
+          <TouchableOpacity
+            style={[s.controlBtn, isMuted && s.controlBtnDanger]}
+            onPress={() => setIsMuted(!isMuted)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name={isMuted ? 'mic-off' : 'mic'} size={isMobile ? 28 : 24} color={isMuted ? Colors.error : '#fff'} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.controlBtn, !isVideoOn && s.controlBtnDanger]}
+            onPress={() => setIsVideoOn(!isVideoOn)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name={isVideoOn ? 'videocam' : 'videocam-off'} size={isMobile ? 28 : 24} color={!isVideoOn ? Colors.error : '#fff'} />
+          </TouchableOpacity>
+          {!isMobile && meeting?.settings?.allowScreenShare !== false ? (
+            <TouchableOpacity
+              style={[s.controlBtn, isScreenSharing && s.controlBtnActive]}
+              onPress={() => setIsScreenSharing(!isScreenSharing)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="share-outline" size={24} color={isScreenSharing ? Colors.highlight : '#fff'} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        {/* Secondary controls */}
+        <View style={s.controlsSecondary}>
+          <TouchableOpacity
+            style={[s.controlBtnSmall, activePanel === 'participants' && s.controlBtnSmallActive]}
+            onPress={() => togglePanel('participants')}
+            activeOpacity={0.8}
+          >
+            <View style={s.badgeWrap}>
+              <Ionicons name="people-outline" size={20} color={activePanel === 'participants' ? Colors.highlight : Colors.textSecondary} />
+              {activeParticipants.length > 1 && (
+                <View style={s.badge}><Text style={s.badgeText}>{activeParticipants.length}</Text></View>
+              )}
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.controlBtnSmall, captionsEnabled && s.controlBtnSmallActive]}
+            onPress={() => {
+              if (!captionsEnabled) {
+                setCaptionsEnabled(true);
+                if (!isMobile) togglePanel('captions');
+              } else {
+                setCaptionsEnabled(false);
+                if (activePanel === 'captions') setActivePanel(null);
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={20} color={captionsEnabled ? Colors.highlight : Colors.textSecondary} />
+          </TouchableOpacity>
+          {!isMobile && (
+            <TouchableOpacity
+              style={s.controlBtnSmall}
+              onPress={() => setShowMoreMenu(!showMoreMenu)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="ellipsis-horizontal" size={20} color={Colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Leave/End button */}
         <TouchableOpacity
           style={s.leaveBtn}
-          onPress={() => {
-            if (isHost) {
-              setShowEndConfirm(true);
-            } else {
-              handleLeaveMeeting();
-            }
-          }}
+          onPress={() => isHost ? setShowEndConfirm(true) : handleLeaveMeeting()}
+          activeOpacity={0.85}
         >
-          <Ionicons name="call" size={22} color={Colors.textWhite} style={{ transform: [{ rotate: '135deg' }] }} />
-          <Text style={s.leaveBtnText}>{isHost ? 'End' : 'Leave'}</Text>
+          <Ionicons name="call" size={20} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
+          {!isMobile && <Text style={s.leaveBtnText}>{isHost ? 'End' : 'Leave'}</Text>}
         </TouchableOpacity>
       </View>
 
-      {/* ── More menu popup ──────────────────────────── */}
-      {showMoreMenu ? (
-        <View style={s.moreMenu}>
-          <TouchableOpacity style={s.moreMenuItem} onPress={() => { togglePanel('captions'); setCaptionsEnabled(true); }}>
-            <Ionicons name="chatbubble-ellipses-outline" size={20} color={Colors.textPrimary} />
-            <Text style={s.moreMenuText}>Live Captions</Text>
-            <View style={[s.moreMenuToggle, captionsEnabled && s.moreMenuToggleOn]} />
-          </TouchableOpacity>
-          <TouchableOpacity style={s.moreMenuItem} onPress={() => { setActivePanel('language'); setShowMoreMenu(false); }}>
-            <Ionicons name="language-outline" size={20} color={Colors.textPrimary} />
-            <Text style={s.moreMenuText}>Translation Language</Text>
-            <Text style={s.moreMenuValue}>
-              {allLanguages.find((l) => l.code === selectedLanguage)?.flag}{' '}
-              {allLanguages.find((l) => l.code === selectedLanguage)?.name || 'English'}
-            </Text>
-          </TouchableOpacity>
-          {meeting?.settings?.allowRecording ? (
-            <TouchableOpacity style={s.moreMenuItem} onPress={() => { setIsRecording(!isRecording); setShowMoreMenu(false); }}>
-              <Ionicons name={isRecording ? 'stop-circle' : 'radio-button-on'} size={20} color={isRecording ? Colors.error : Colors.textPrimary} />
-              <Text style={s.moreMenuText}>{isRecording ? 'Stop Recording' : 'Record Meeting'}</Text>
+      {/* ── More menu ────────────────────────────────── */}
+      {showMoreMenu && (
+        <Pressable style={s.moreMenuOverlay} onPress={() => setShowMoreMenu(false)}>
+          <View style={s.moreMenu}>
+            <TouchableOpacity style={s.moreMenuItem} onPress={() => { togglePanel('participants'); setShowMoreMenu(false); }}>
+              <Ionicons name="people-outline" size={20} color={Colors.textPrimary} />
+              <Text style={s.moreMenuText}>Participants</Text>
             </TouchableOpacity>
-          ) : null}
-          {meeting?.settings?.agenda && meeting.settings.agenda.length > 0 ? (
-            <View style={s.moreMenuAgenda}>
-              <View style={s.moreMenuAgendaHeader}>
-                <Ionicons name="list-outline" size={18} color={Colors.highlight} />
-                <Text style={s.moreMenuAgendaTitle}>Agenda</Text>
-              </View>
-              {meeting.settings.agenda.map((item, i) => (
-                <Text key={i} style={s.moreMenuAgendaItem}>
-                  {i + 1}. {item}
-                </Text>
-              ))}
-            </View>
-          ) : null}
-        </View>
-      ) : null}
+            <TouchableOpacity style={s.moreMenuItem} onPress={() => { setCaptionsEnabled(!captionsEnabled); if (!captionsEnabled) togglePanel('captions'); setShowMoreMenu(false); }}>
+              <Ionicons name="chatbubble-ellipses-outline" size={20} color={Colors.textPrimary} />
+              <Text style={s.moreMenuText}>Live Captions</Text>
+              {captionsEnabled && <Ionicons name="checkmark" size={18} color={Colors.success} />}
+            </TouchableOpacity>
+            <TouchableOpacity style={s.moreMenuItem} onPress={() => { setActivePanel('language'); setShowMoreMenu(false); }}>
+              <Ionicons name="language-outline" size={20} color={Colors.textPrimary} />
+              <Text style={s.moreMenuText}>Translation</Text>
+              <Text style={s.moreMenuValue}>{allLanguages.find((l) => l.code === selectedLanguage)?.flag}</Text>
+            </TouchableOpacity>
+            {meeting?.settings?.allowRecording && (
+              <TouchableOpacity style={s.moreMenuItem} onPress={() => { setIsRecording(!isRecording); setShowMoreMenu(false); }}>
+                <Ionicons name={isRecording ? 'stop-circle' : 'radio-button-on'} size={20} color={isRecording ? Colors.error : Colors.textPrimary} />
+                <Text style={s.moreMenuText}>{isRecording ? 'Stop Recording' : 'Record'}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </Pressable>
+      )}
 
       {/* ── End Meeting Confirmation ─────────────────── */}
       <Modal visible={showEndConfirm} transparent animationType="fade" onRequestClose={() => setShowEndConfirm(false)}>
-        <View style={s.confirmOverlay}>
+        <Pressable style={s.confirmOverlay} onPress={() => setShowEndConfirm(false)}>
           <View style={s.confirmCard}>
-            <Ionicons name="warning-outline" size={36} color={Colors.error} />
-            <Text style={s.confirmTitle}>End Meeting?</Text>
+            <Text style={s.confirmTitle}>End meeting for everyone?</Text>
             <Text style={s.confirmText}>
-              This will end the meeting for all {activeParticipants.length} participant{activeParticipants.length !== 1 ? 's' : ''}.
-              Meeting minutes will be generated automatically.
+              {activeParticipants.length > 1 
+                ? `This will end the meeting for all ${activeParticipants.length} participants.`
+                : 'The meeting will be ended.'}
             </Text>
             <View style={s.confirmActions}>
-              <TouchableOpacity
-                style={s.confirmCancelBtn}
-                onPress={() => setShowEndConfirm(false)}
-              >
+              <TouchableOpacity style={s.confirmCancelBtn} onPress={() => setShowEndConfirm(false)} activeOpacity={0.8}>
                 <Text style={s.confirmCancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={s.confirmEndBtn} onPress={handleEndMeeting}>
-                <Ionicons name="call" size={18} color={Colors.textWhite} style={{ transform: [{ rotate: '135deg' }] }} />
-                <Text style={s.confirmEndText}>End for All</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s.confirmLeaveBtn} onPress={handleLeaveMeeting}>
-                <Ionicons name="exit-outline" size={18} color={Colors.textWhite} />
+              <TouchableOpacity style={s.confirmLeaveBtn} onPress={handleLeaveMeeting} activeOpacity={0.8}>
                 <Text style={s.confirmLeaveText}>Leave</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.confirmEndBtn} onPress={handleEndMeeting} activeOpacity={0.8}>
+                <Text style={s.confirmEndText}>End for all</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </Pressable>
       </Modal>
 
       {/* ── Language Picker Modal ────────────────────── */}
@@ -1131,6 +1075,37 @@ export default function MeetingRoomScreen() {
         }}
         onClose={() => { setActivePanel(null); setLanguageSearch(''); }}
       />
+
+      {/* Mobile panels as bottom sheet */}
+      {isMobile && activePanel && activePanel !== 'language' && (
+        <Modal visible transparent animationType="slide" onRequestClose={() => setActivePanel(null)}>
+          <Pressable style={s.mobileSheetOverlay} onPress={() => setActivePanel(null)}>
+            <View style={s.mobileSheet}>
+              <View style={s.mobileSheetHandle} />
+              <View style={s.sidePanelHeader}>
+                <Text style={s.sidePanelTitle}>
+                  {activePanel === 'participants' ? 'Participants' : 'Captions'}
+                </Text>
+                <TouchableOpacity onPress={() => setActivePanel(null)} style={s.sidePanelClose}>
+                  <Ionicons name="close" size={22} color={Colors.textLight} />
+                </TouchableOpacity>
+              </View>
+              {activePanel === 'participants' && (
+                <ParticipantsPanel participants={activeParticipants} currentUserId={user?.id} hostId={meeting?.hostId} />
+              )}
+              {activePanel === 'captions' && (
+                <CaptionsPanel
+                  captions={captions}
+                  selectedLanguage={selectedLanguage}
+                  onChangeLanguage={() => setActivePanel('language')}
+                  languageName={allLanguages.find((l) => l.code === selectedLanguage)?.name || 'English'}
+                  isTranscribing={isTranscribing}
+                />
+              )}
+            </View>
+          </Pressable>
+        </Modal>
+      )}
     </Pressable>
   );
 }
@@ -1453,7 +1428,7 @@ function LanguagePickerModal({
 
 // ── Styles ──────────────────────────────────────────────
 const s = StyleSheet.create({
-  // Full-screen center
+  // ── Full-screen states ────────────────────────────
   fullCenter: {
     flex: 1,
     backgroundColor: Colors.background,
@@ -1461,185 +1436,270 @@ const s = StyleSheet.create({
     alignItems: 'center',
     padding: Spacing.xl,
   },
-  loadingDot: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: Colors.highlightSubtle,
-    justifyContent: 'center',
+  loadingContainer: {
     alignItems: 'center',
-    marginBottom: Spacing.lg,
+    gap: Spacing.lg,
   },
-  loadingText: { fontSize: FontSize.lg, color: Colors.textSecondary },
-  errorText: { fontSize: FontSize.md, color: Colors.error, textAlign: 'center', marginTop: Spacing.md, marginBottom: Spacing.lg },
-  errorBtn: { paddingHorizontal: Spacing.xl, paddingVertical: Spacing.sm + 2, backgroundColor: Colors.primaryMid, borderRadius: BorderRadius.md },
-  errorBtnText: { color: Colors.textPrimary, fontWeight: FontWeight.semibold },
-
-  // ── Lobby ─────────────────────────────────────────
-  lobbyContainer: { flex: 1, backgroundColor: Colors.background },
-  lobbyTopBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md,
-    paddingTop: Platform.OS === 'web' ? Spacing.md : Spacing.xl,
-    paddingBottom: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
-  },
-  lobbyBackBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primaryMid, justifyContent: 'center', alignItems: 'center' },
-  lobbyTopTitle: { flex: 1, textAlign: 'center', fontSize: FontSize.lg, fontWeight: FontWeight.semibold, color: Colors.textPrimary, marginHorizontal: Spacing.sm },
-
-  lobbyContent: { padding: Spacing.lg, alignItems: 'center', maxWidth: 540, alignSelf: 'center', width: '100%' },
-
-  // Preview
-  previewContainer: { width: '100%', marginBottom: Spacing.lg },
-  previewBox: {
-    width: '100%',
-    aspectRatio: 16 / 9,
-    backgroundColor: Colors.primaryMid,
-    borderRadius: BorderRadius.xl,
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  previewBoxOff: { backgroundColor: Colors.primary },
-  previewAvatar: {
+  loadingPulse: {
     width: 80,
     height: 80,
     borderRadius: 40,
     backgroundColor: Colors.highlightSubtle,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: Spacing.sm,
   },
-  previewAvatarText: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.highlight },
-  previewHelp: { fontSize: FontSize.sm, color: Colors.textLight },
-  previewControls: {
-    flexDirection: 'row',
-    justifyContent: 'center',
+  loadingText: { fontSize: FontSize.md, color: Colors.textSecondary },
+  loadingBar: {
+    width: 120,
+    height: 3,
+    backgroundColor: Colors.primaryMid,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  loadingBarFill: {
+    width: '40%',
+    height: '100%',
+    backgroundColor: Colors.highlight,
+    borderRadius: 2,
+  },
+  errorContainer: {
+    alignItems: 'center',
+    maxWidth: 320,
     gap: Spacing.md,
-    marginTop: Spacing.md,
   },
-  previewToggle: {
+  errorIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: Colors.error + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorTitle: {
+    fontSize: FontSize.xl,
+    fontWeight: FontWeight.bold,
+    color: Colors.textPrimary,
+  },
+  errorText: { fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center' },
+  errorBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm + 2,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.sm + 4,
+    backgroundColor: Colors.highlight,
     borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primaryMid,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  previewToggleOff: { backgroundColor: 'rgba(192, 57, 43, 0.15)', borderColor: Colors.error + '44' },
-  previewToggleLabel: { fontSize: FontSize.sm, color: Colors.textPrimary, fontWeight: FontWeight.medium },
-
-  // Lobby info
-  lobbyInfo: { width: '100%', marginBottom: Spacing.lg },
-  lobbyTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary, textAlign: 'center' },
-  lobbyDescription: { fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center', marginTop: Spacing.xs, lineHeight: 22 },
-  lobbyMeta: { marginTop: Spacing.md, alignItems: 'center', gap: Spacing.xs },
-  lobbyMetaRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
-  lobbyMetaText: { fontSize: FontSize.sm, color: Colors.textLight },
-
-  // Lobby agenda
-  lobbyAgenda: {
-    width: '100%',
     marginTop: Spacing.md,
-    padding: Spacing.md,
-    backgroundColor: Colors.primaryLight,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
-  lobbyAgendaTitle: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold, color: Colors.textLight, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: Spacing.sm },
-  lobbyAgendaItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.xs },
-  lobbyAgendaDot: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: Colors.highlightSubtle,
+  errorBtnText: { color: '#fff', fontWeight: FontWeight.semibold, fontSize: FontSize.md },
+
+  // ── Lobby (Clean, minimal) ────────────────────────
+  lobbyContainer: { flex: 1, backgroundColor: Colors.background },
+  lobbyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingTop: Platform.OS === 'web' ? Spacing.md : Spacing.xl + 10,
+    paddingBottom: Spacing.sm,
+  },
+  lobbyBackBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  lobbyAgendaNum: { fontSize: 10, color: Colors.highlight, fontWeight: FontWeight.bold },
-  lobbyAgendaText: { flex: 1, fontSize: FontSize.sm, color: Colors.textSecondary },
-
-  // Lobby name
-  lobbyNameSection: { width: '100%', marginBottom: Spacing.md },
-  lobbyFieldLabel: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold, color: Colors.textLight, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: Spacing.xs },
-  lobbyFieldHint: { fontSize: FontSize.xs, color: Colors.textLight, marginBottom: Spacing.sm },
-  lobbyNameInput: {
-    flexDirection: 'row',
+  lobbyContent: {
+    flexGrow: 1,
+    padding: Spacing.lg,
+    paddingTop: 0,
     alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: Colors.primaryLight,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: Spacing.md,
+    maxWidth: 480,
+    alignSelf: 'center',
+    width: '100%',
   },
-  lobbyNameField: { flex: 1, paddingVertical: Spacing.sm + 4, fontSize: FontSize.md, color: Colors.textPrimary },
 
-  // Lobby language
-  lobbyLangSection: { width: '100%', marginBottom: Spacing.lg },
-  langScroll: { marginTop: Spacing.xs },
-  langRow: { flexDirection: 'row', gap: Spacing.xs, paddingBottom: Spacing.xs },
-  langChip: {
-    flexDirection: 'row',
+  // Preview - larger, centered
+  previewWrapper: { width: '100%', marginBottom: Spacing.xl },
+  previewBox: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 24,
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primaryMid,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    overflow: 'hidden',
   },
-  langChipActive: { borderColor: Colors.highlight, backgroundColor: Colors.highlightSubtle },
-  langFlag: { fontSize: 16 },
-  langName: { fontSize: FontSize.sm, color: Colors.textSecondary },
-  langNameActive: { color: Colors.highlight, fontWeight: FontWeight.semibold },
-  langChipMore: {
+  previewBoxOff: { backgroundColor: '#111' },
+  previewOffState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  previewOffIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  previewOffText: { fontSize: FontSize.sm, color: Colors.textLight, marginTop: Spacing.sm },
+  previewAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  previewAvatarText: { fontSize: 26, fontWeight: FontWeight.bold, color: '#fff' },
+  previewControlsFloat: {
+    position: 'absolute',
+    bottom: 16,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  deviceBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deviceBtnOff: {
+    backgroundColor: 'rgba(192,57,43,0.3)',
+  },
+
+  // Lobby info
+  lobbyInfo: { width: '100%', alignItems: 'center', marginBottom: Spacing.lg },
+  lobbyTitle: {
+    fontSize: 22,
+    fontWeight: FontWeight.bold,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
+  lobbyTime: {
+    fontSize: FontSize.md,
+    color: Colors.textSecondary,
+    marginTop: 4,
+  },
+  hostBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.full,
+    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
     backgroundColor: Colors.highlightSubtle,
+    borderRadius: BorderRadius.full,
   },
-  langMoreText: { fontSize: FontSize.sm, color: Colors.highlight, fontWeight: FontWeight.medium },
+  hostBadgeText: { fontSize: FontSize.xs, color: Colors.highlight, fontWeight: FontWeight.semibold },
+
+  // Name input
+  nameInputWrapper: { width: '100%', marginBottom: Spacing.lg },
+  nameLabel: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: 6 },
+  nameInput: {
+    width: '100%',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm + 4,
+    backgroundColor: Colors.primaryLight,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    fontSize: FontSize.md,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
 
   // Join button
   joinBtn: {
+    width: '100%',
+    paddingVertical: Spacing.md + 2,
+    backgroundColor: Colors.highlight,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+  },
+  joinBtnDisabled: { opacity: 0.6 },
+  joinBtnText: { fontSize: FontSize.lg, fontWeight: FontWeight.semibold, color: '#fff' },
+
+  // Waiting participants
+  waitingInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.lg,
+  },
+  waitingAvatars: { flexDirection: 'row' },
+  waitingAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: Colors.background,
+  },
+  waitingAvatarText: { fontSize: 10, fontWeight: FontWeight.bold, color: '#fff' },
+  waitingText: { fontSize: FontSize.sm, color: Colors.textSecondary },
+
+  // ── Ended state ───────────────────────────────────
+  endedContainer: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  endedCard: {
+    alignItems: 'center',
+    maxWidth: 360,
+    gap: Spacing.sm,
+  },
+  endedIconWrap: { marginBottom: Spacing.md },
+  endedTitle: { fontSize: FontSize.title, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  endedSub: { fontSize: FontSize.lg, color: Colors.textSecondary },
+  endedDuration: { fontSize: FontSize.md, color: Colors.textLight },
+  endedActions: {
+    flexDirection: 'column',
+    gap: Spacing.sm,
+    marginTop: Spacing.xl,
+    width: '100%',
+    maxWidth: 280,
+  },
+  endedBtnPrimary: {
+    paddingVertical: Spacing.sm + 4,
+    backgroundColor: Colors.highlight,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+  },
+  endedBtnPrimaryText: { fontSize: FontSize.md, color: '#fff', fontWeight: FontWeight.semibold },
+  endedBtnSecondary: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.sm,
-    width: '100%',
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.success,
-    ...Shadow.md,
+    gap: 6,
+    paddingVertical: Spacing.sm + 4,
+    backgroundColor: Colors.primaryMid,
+    borderRadius: BorderRadius.full,
   },
-  joinBtnText: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.textWhite },
+  endedBtnSecondaryText: { fontSize: FontSize.md, color: Colors.highlight, fontWeight: FontWeight.semibold },
 
   // ── Active Room ───────────────────────────────────
   roomContainer: { flex: 1, backgroundColor: '#0a0a0a' },
 
-  // Top bar
+  // Top bar (minimal)
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.md,
-    paddingTop: Platform.OS === 'web' ? Spacing.sm : Spacing.lg,
+    paddingTop: Platform.OS === 'web' ? Spacing.sm : Spacing.lg + 10,
     paddingBottom: Spacing.sm,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     position: 'absolute',
     top: 0,
     left: 0,
@@ -1652,7 +1712,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     backgroundColor: 'rgba(46, 204, 113, 0.2)',
-    paddingHorizontal: Spacing.sm + 2,
+    paddingHorizontal: Spacing.sm,
     paddingVertical: 4,
     borderRadius: BorderRadius.full,
   },
@@ -1662,7 +1722,7 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(192, 57, 43, 0.3)',
+    backgroundColor: 'rgba(192, 57, 43, 0.25)',
     paddingHorizontal: Spacing.sm,
     paddingVertical: 3,
     borderRadius: BorderRadius.full,
@@ -1671,13 +1731,20 @@ const s = StyleSheet.create({
   recText: { fontSize: 10, fontWeight: FontWeight.bold, color: Colors.error },
   topBarTitle: { flex: 1, textAlign: 'center', fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.textPrimary, marginHorizontal: Spacing.sm },
   topBarRight: { flexDirection: 'row', alignItems: 'center' },
+  participantCount: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+  },
   participantCountText: { fontSize: FontSize.sm, color: Colors.textSecondary },
 
   // Main area
-  mainArea: { flex: 1, flexDirection: 'row', marginTop: 52, marginBottom: 80 },
+  mainArea: { flex: 1, flexDirection: 'row', paddingTop: Platform.OS === 'web' ? 56 : 72, paddingBottom: 88 },
 
   // Grid
-  gridContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  gridContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', padding: 4 },
 
   // Participant tile
@@ -1734,6 +1801,14 @@ const s = StyleSheet.create({
     borderBottomColor: Colors.borderLight,
   },
   sidePanelTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  sidePanelClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.primaryMid,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   panelScroll: { flex: 1, padding: Spacing.md },
 
   // Participant row (in panel)
@@ -1758,7 +1833,7 @@ const s = StyleSheet.create({
   participantRole: { fontSize: FontSize.xs, color: Colors.textLight, textTransform: 'capitalize' },
   participantIcons: { flexDirection: 'row', gap: Spacing.xs },
 
-  // Controls bar
+  // Controls bar (simplified)
   controlsBar: {
     position: 'absolute',
     bottom: 0,
@@ -1768,21 +1843,59 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    paddingBottom: Platform.OS === 'web' ? Spacing.md : Spacing.lg,
-    backgroundColor: 'rgba(0,0,0,0.75)',
+    paddingVertical: Spacing.sm + 4,
+    paddingBottom: Platform.OS === 'web' ? Spacing.md : Spacing.lg + 8,
+    backgroundColor: 'rgba(0,0,0,0.8)',
     gap: Spacing.xs,
     zIndex: 10,
   },
-  controlBtn: {
-    alignItems: 'center',
-    paddingHorizontal: Spacing.sm + 2,
-    paddingVertical: Spacing.xs + 2,
-    borderRadius: BorderRadius.md,
-    minWidth: 56,
+  controlsBarMobile: {
+    paddingVertical: Spacing.sm,
+    paddingBottom: Spacing.xl,
+    gap: Spacing.sm,
+    flexWrap: 'wrap',
+    justifyContent: 'space-evenly',
   },
-  controlBtnDanger: { backgroundColor: 'rgba(192, 57, 43, 0.15)' },
-  controlBtnActive: { backgroundColor: 'rgba(201, 168, 76, 0.12)' },
+  controlsMain: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  controlsSecondary: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, marginLeft: Spacing.sm },
+  
+  // Control buttons
+  controlBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  controlBtnDanger: { backgroundColor: 'rgba(192, 57, 43, 0.3)' },
+  controlBtnActive: { backgroundColor: 'rgba(201, 168, 76, 0.2)' },
+  controlBtnSmall: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  controlBtnSmallActive: { backgroundColor: 'rgba(201, 168, 76, 0.15)' },
+  
+  // Badge
+  badgeWrap: { position: 'relative' },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: Colors.highlight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: { fontSize: 10, fontWeight: FontWeight.bold, color: Colors.primary },
+
   controlBtnInner: { position: 'relative' },
   controlBadge: {
     position: 'absolute',
@@ -1805,8 +1918,8 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     backgroundColor: Colors.error,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm + 2,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm + 4,
     borderRadius: BorderRadius.full,
     marginLeft: Spacing.sm,
   },
@@ -1873,14 +1986,22 @@ const s = StyleSheet.create({
   captionEntryOriginal: { fontSize: FontSize.xs, color: Colors.textLight, fontStyle: 'italic', marginTop: 2 },
 
   // More menu
+  moreMenuOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 19,
+  },
   moreMenu: {
     position: 'absolute',
-    bottom: 90,
+    bottom: 100,
     right: Spacing.md,
     backgroundColor: Colors.surfaceElevated,
     borderRadius: BorderRadius.lg,
     padding: Spacing.sm,
-    minWidth: 260,
+    minWidth: 240,
     ...Shadow.lg,
     zIndex: 20,
   },
@@ -1913,6 +2034,35 @@ const s = StyleSheet.create({
   moreMenuAgendaHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, marginBottom: Spacing.xs },
   moreMenuAgendaTitle: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold, color: Colors.highlight, textTransform: 'uppercase' },
   moreMenuAgendaItem: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: 3, paddingLeft: Spacing.xs },
+
+  // Mobile bottom sheet
+  mobileSheetOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 50,
+    justifyContent: 'flex-end',
+  },
+  mobileSheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '75%',
+    minHeight: 300,
+    paddingBottom: Spacing.xl,
+  },
+  mobileSheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: Colors.borderLight,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
 
   // End confirm modal
   confirmOverlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'center', alignItems: 'center' },
@@ -1955,23 +2105,6 @@ const s = StyleSheet.create({
     backgroundColor: Colors.warning,
   },
   confirmLeaveText: { fontSize: FontSize.md, color: Colors.textWhite, fontWeight: FontWeight.semibold },
-
-  // ── Ended ─────────────────────────────────────────
-  endedIcon: { marginBottom: Spacing.md },
-  endedTitle: { fontSize: FontSize.title, fontWeight: FontWeight.bold, color: Colors.textPrimary },
-  endedSub: { fontSize: FontSize.lg, color: Colors.textSecondary, marginTop: Spacing.xs },
-  endedDuration: { fontSize: FontSize.md, color: Colors.textLight, marginTop: Spacing.xs },
-  endedActions: { flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.xl },
-  endedBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm + 4,
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.primaryMid,
-  },
-  endedBtnText: { fontSize: FontSize.md, color: Colors.textPrimary, fontWeight: FontWeight.semibold },
 
   // ── Language Picker Modal ─────────────────────────
   langModalOverlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'flex-end' },
