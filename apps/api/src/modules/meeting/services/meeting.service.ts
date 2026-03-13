@@ -33,6 +33,7 @@ import {
   isBackpressureError,
 } from '../../../scaling/backpressure';
 import { cleanupMeeting } from '../../../services/meeting-cleanup.service';
+import { AppError } from '../../../middleware/error-handler';
 
 // ── Constants ───────────────────────────────────────────────
 const MAX_PARTICIPANTS_DEFAULT = 100;
@@ -103,18 +104,37 @@ export class MeetingService {
       joinedAt: new Date().toISOString(),
     };
 
-    const [row] = await db('meetings')
-      .insert({
-        organization_id: request.organizationId,
-        host_id: hostId,
-        title: request.title || null,
-        description: request.description || null,
-        status: 'scheduled' as MeetingStatus,
-        participants: JSON.stringify([hostParticipant]),
-        settings: JSON.stringify(settings),
-        scheduled_at: request.scheduledAt || null,
-      })
-      .returning('*');
+    let row: any;
+    try {
+      const [result] = await db('meetings')
+        .insert({
+          organization_id: request.organizationId,
+          host_id: hostId,
+          title: request.title || null,
+          description: request.description || null,
+          status: 'scheduled' as MeetingStatus,
+          participants: JSON.stringify([hostParticipant]),
+          settings: JSON.stringify(settings),
+          scheduled_at: request.scheduledAt || null,
+        })
+        .returning('*');
+      row = result;
+    } catch (err: any) {
+      logger.error('[MEETING] DB insert failed', {
+        error: err.message,
+        code: err.code,
+        orgId: request.organizationId,
+        hostId,
+      });
+      // 23503 = foreign_key_violation, 42P01 = undefined_table
+      if (err.code === '42P01') {
+        throw new AppError('Meeting system is initializing. Please try again in a moment.', 503);
+      }
+      if (err.code === '23503') {
+        throw new AppError('Invalid organization or user reference.', 400);
+      }
+      throw new AppError('Failed to create meeting. Please try again.', 500);
+    }
 
     const meeting = meetingFromRow(row as MeetingRow);
 
@@ -147,15 +167,15 @@ export class MeetingService {
     const meeting = await this.getById(meetingId);
 
     if (!meeting) {
-      throw new Error('Meeting not found');
+      throw AppError.notFound('Meeting not found');
     }
 
     if (meeting.hostId !== userId) {
-      throw new Error('Only the host can update the meeting');
+      throw AppError.forbidden('Only the host can update the meeting');
     }
 
     if (meeting.status !== 'scheduled') {
-      throw new Error('Can only update scheduled meetings');
+      throw AppError.badRequest('Can only update scheduled meetings');
     }
 
     const updates: Record<string, any> = {};
@@ -272,15 +292,15 @@ export class MeetingService {
     const meeting = await this.getById(meetingId);
     
     if (!meeting) {
-      throw new Error('Meeting not found');
+      throw AppError.notFound('Meeting not found');
     }
 
     if (meeting.hostId !== userId) {
-      throw new Error('Only the host can start the meeting');
+      throw AppError.forbidden('Only the host can start the meeting');
     }
 
     if (meeting.status !== 'scheduled') {
-      throw new Error(`Cannot start meeting with status: ${meeting.status}`);
+      throw AppError.badRequest(`Cannot start meeting with status: ${meeting.status}`);
     }
 
     const now = new Date().toISOString();
@@ -373,7 +393,7 @@ export class MeetingService {
     const meeting = await this.getByIdWithState(meetingId);
     
     if (!meeting) {
-      throw new Error('Meeting not found');
+      throw AppError.notFound('Meeting not found');
     }
 
     // If meeting is scheduled and user is host, auto-start it
@@ -383,7 +403,7 @@ export class MeetingService {
     }
 
     if (meeting.status !== 'active') {
-      throw new Error(`Cannot join meeting with status: ${meeting.status}`);
+      throw AppError.badRequest(`Cannot join meeting with status: ${meeting.status}`);
     }
 
     // Check if user is already in meeting
@@ -397,7 +417,7 @@ export class MeetingService {
     const activeParticipants = meeting.participants.filter(p => !p.leftAt);
     const maxParticipants = meeting.settings.maxParticipants || MAX_PARTICIPANTS_DEFAULT;
     if (activeParticipants.length >= maxParticipants) {
-      throw new Error('Meeting is at capacity');
+      throw AppError.badRequest('Meeting is at capacity');
     }
 
     const now = new Date().toISOString();
@@ -456,11 +476,11 @@ export class MeetingService {
     const meeting = await this.getByIdWithState(meetingId);
     
     if (!meeting) {
-      throw new Error('Meeting not found');
+      throw AppError.notFound('Meeting not found');
     }
 
     if (meeting.status !== 'active') {
-      throw new Error(`Cannot leave meeting with status: ${meeting.status}`);
+      throw AppError.badRequest(`Cannot leave meeting with status: ${meeting.status}`);
     }
 
     const now = new Date().toISOString();
@@ -516,16 +536,16 @@ export class MeetingService {
     const meeting = await this.getById(meetingId);
     
     if (!meeting) {
-      throw new Error('Meeting not found');
+      throw AppError.notFound('Meeting not found');
     }
 
     if (meeting.status === 'ended' || meeting.status === 'cancelled') {
-      throw new Error(`Meeting already ${meeting.status}`);
+      throw AppError.badRequest(`Meeting already ${meeting.status}`);
     }
 
     // Only host can end a meeting
     if (meeting.hostId !== userId) {
-      throw new Error('Only the host can end the meeting');
+      throw AppError.forbidden('Only the host can end the meeting');
     }
 
     const now = new Date().toISOString();
@@ -710,15 +730,15 @@ export class MeetingService {
     const meeting = await this.getById(meetingId);
     
     if (!meeting) {
-      throw new Error('Meeting not found');
+      throw AppError.notFound('Meeting not found');
     }
 
     if (meeting.status !== 'scheduled') {
-      throw new Error('Can only cancel scheduled meetings');
+      throw AppError.badRequest('Can only cancel scheduled meetings');
     }
 
     if (meeting.hostId !== userId) {
-      throw new Error('Only the host can cancel the meeting');
+      throw AppError.forbidden('Only the host can cancel the meeting');
     }
 
     const now = new Date().toISOString();

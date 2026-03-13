@@ -422,6 +422,55 @@ function doPostStart(): void {
       logger.error('[STARTUP] refresh_tokens table check failed (non-fatal):', err.message);
     }
 
+    // Ensure meetings table exists (migration 029)
+    try {
+      const { db: knex } = require('./db');
+      if (!(await knex.schema.hasTable('meetings'))) {
+        // Create the meeting_status enum if it does not exist
+        await knex.raw(`
+          DO $$ BEGIN
+            CREATE TYPE meeting_status AS ENUM ('scheduled', 'active', 'ended', 'cancelled');
+          EXCEPTION WHEN duplicate_object THEN NULL;
+          END $$;
+        `);
+
+        await knex.schema.createTable('meetings', (t: any) => {
+          t.uuid('id').primary().defaultTo(knex.raw("gen_random_uuid()"));
+          t.uuid('organization_id').notNullable().references('id').inTable('organizations').onDelete('CASCADE');
+          t.uuid('host_id').notNullable().references('id').inTable('users').onDelete('CASCADE');
+          t.string('title', 255).nullable();
+          t.text('description').nullable();
+          t.specificType('status', 'meeting_status').notNullable().defaultTo('scheduled');
+          t.jsonb('participants').notNullable().defaultTo('[]');
+          t.jsonb('settings').notNullable().defaultTo('{}');
+          t.timestamp('scheduled_at').nullable();
+          t.timestamp('started_at').nullable();
+          t.timestamp('ended_at').nullable();
+          t.timestamp('created_at').notNullable().defaultTo(knex.fn.now());
+          t.timestamp('updated_at').notNullable().defaultTo(knex.fn.now());
+          t.index(['organization_id', 'status'], 'idx_meetings_org_status');
+          t.index(['host_id', 'status'], 'idx_meetings_host_status');
+          t.index(['organization_id', 'created_at'], 'idx_meetings_org_created');
+        });
+
+        // Auto-update updated_at trigger
+        await knex.raw(`
+          CREATE OR REPLACE FUNCTION update_meetings_updated_at()
+          RETURNS TRIGGER AS $$
+          BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
+          $$ LANGUAGE plpgsql;
+
+          CREATE TRIGGER trigger_meetings_updated_at
+            BEFORE UPDATE ON meetings
+            FOR EACH ROW
+            EXECUTE FUNCTION update_meetings_updated_at();
+        `);
+        logger.info('[STARTUP] ✓ Created meetings table');
+      }
+    } catch (err: any) {
+      logger.error('[STARTUP] meetings table check failed (non-fatal):', err.message);
+    }
+
     // Start recurring dues scheduler
     startScheduler();
 
