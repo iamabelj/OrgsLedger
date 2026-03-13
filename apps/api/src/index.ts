@@ -422,25 +422,55 @@ function doPostStart(): void {
       logger.error('[STARTUP] refresh_tokens table check failed (non-fatal):', err.message);
     }
 
-    // Ensure meetings table exists (migration 029)
+    // Ensure meetings table has required columns for meeting service
+    // The table may exist from legacy migrations with a different schema
     try {
       const { db: knex } = require('./db');
-      if (!(await knex.schema.hasTable('meetings'))) {
-        // Create the meeting_status enum if it does not exist
-        await knex.raw(`
-          DO $$ BEGIN
-            CREATE TYPE meeting_status AS ENUM ('scheduled', 'active', 'ended', 'cancelled');
-          EXCEPTION WHEN duplicate_object THEN NULL;
-          END $$;
-        `);
+      if (await knex.schema.hasTable('meetings')) {
+        // Add missing columns needed by the meeting service
+        const addIfMissing = async (col: string, fn: (t: any) => void) => {
+          if (!(await knex.schema.hasColumn('meetings', col))) {
+            await knex.schema.alterTable('meetings', fn);
+            logger.info(`[STARTUP] ✓ Added meetings.${col}`);
+          }
+        };
+        await addIfMissing('host_id', (t: any) => t.uuid('host_id').nullable());
+        await addIfMissing('participants', (t: any) => t.jsonb('participants').notNullable().defaultTo('[]'));
+        await addIfMissing('settings', (t: any) => t.jsonb('settings').notNullable().defaultTo('{}'));
+        await addIfMissing('scheduled_at', (t: any) => t.timestamp('scheduled_at').nullable());
+        await addIfMissing('started_at', (t: any) => t.timestamp('started_at').nullable());
+        await addIfMissing('ended_at', (t: any) => t.timestamp('ended_at').nullable());
 
+        // Make title nullable (legacy schema has NOT NULL)
+        await knex.raw('ALTER TABLE meetings ALTER COLUMN title DROP NOT NULL').catch(() => {});
+
+        // Copy data from legacy columns if they exist
+        const hasCreatedBy = await knex.schema.hasColumn('meetings', 'created_by');
+        if (hasCreatedBy) {
+          await knex.raw(`
+            UPDATE meetings SET host_id = created_by WHERE host_id IS NULL AND created_by IS NOT NULL
+          `).catch(() => {});
+        }
+        const hasScheduledStart = await knex.schema.hasColumn('meetings', 'scheduled_start');
+        if (hasScheduledStart) {
+          await knex.raw(`
+            UPDATE meetings SET scheduled_at = scheduled_start WHERE scheduled_at IS NULL AND scheduled_start IS NOT NULL
+          `).catch(() => {});
+        }
+
+        // Add host_id FK + index
+        await knex.raw(`
+          CREATE INDEX IF NOT EXISTS idx_meetings_host_status ON meetings (host_id, status)
+        `).catch(() => {});
+      } else {
+        // Table doesn't exist at all — create it fresh
         await knex.schema.createTable('meetings', (t: any) => {
           t.uuid('id').primary().defaultTo(knex.raw("gen_random_uuid()"));
           t.uuid('organization_id').notNullable().references('id').inTable('organizations').onDelete('CASCADE');
           t.uuid('host_id').notNullable().references('id').inTable('users').onDelete('CASCADE');
           t.string('title', 255).nullable();
           t.text('description').nullable();
-          t.specificType('status', 'meeting_status').notNullable().defaultTo('scheduled');
+          t.string('status').notNullable().defaultTo('scheduled');
           t.jsonb('participants').notNullable().defaultTo('[]');
           t.jsonb('settings').notNullable().defaultTo('{}');
           t.timestamp('scheduled_at').nullable();
@@ -448,24 +478,25 @@ function doPostStart(): void {
           t.timestamp('ended_at').nullable();
           t.timestamp('created_at').notNullable().defaultTo(knex.fn.now());
           t.timestamp('updated_at').notNullable().defaultTo(knex.fn.now());
-          t.index(['organization_id', 'status'], 'idx_meetings_org_status');
-          t.index(['host_id', 'status'], 'idx_meetings_host_status');
-          t.index(['organization_id', 'created_at'], 'idx_meetings_org_created');
         });
-
-        // Auto-update updated_at trigger
-        await knex.raw(`
-          CREATE OR REPLACE FUNCTION update_meetings_updated_at()
-          RETURNS TRIGGER AS $$
-          BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
-          $$ LANGUAGE plpgsql;
-
-          CREATE TRIGGER trigger_meetings_updated_at
-            BEFORE UPDATE ON meetings
-            FOR EACH ROW
-            EXECUTE FUNCTION update_meetings_updated_at();
-        `);
         logger.info('[STARTUP] ✓ Created meetings table');
+      }
+
+      // Ensure meeting_participants table exists
+      if (!(await knex.schema.hasTable('meeting_participants'))) {
+        await knex.schema.createTable('meeting_participants', (t: any) => {
+          t.uuid('id').primary().defaultTo(knex.raw("gen_random_uuid()"));
+          t.uuid('meeting_id').notNullable().references('id').inTable('meetings').onDelete('CASCADE');
+          t.uuid('user_id').notNullable();
+          t.string('role', 20).notNullable().defaultTo('participant');
+          t.string('display_name', 100).nullable();
+          t.timestamp('joined_at').notNullable().defaultTo(knex.fn.now());
+          t.timestamp('left_at').nullable();
+          t.timestamp('created_at').notNullable().defaultTo(knex.fn.now());
+          t.index(['meeting_id']);
+          t.index(['user_id']);
+        });
+        logger.info('[STARTUP] ✓ Created meeting_participants table');
       }
     } catch (err: any) {
       logger.error('[STARTUP] meetings table check failed (non-fatal):', err.message);

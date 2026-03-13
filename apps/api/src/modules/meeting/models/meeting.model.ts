@@ -130,22 +130,32 @@ export interface ActiveMeetingState {
  * Convert database row to Meeting entity
  */
 export function meetingFromRow(row: MeetingRow): Meeting {
+  let participants: MeetingParticipant[] = [];
+  if (typeof row.participants === 'string') {
+    try { participants = JSON.parse(row.participants); } catch { /* keep [] */ }
+  } else if (Array.isArray(row.participants)) {
+    participants = row.participants;
+  }
+
+  let settings: MeetingSettings = {};
+  if (typeof row.settings === 'string') {
+    try { settings = JSON.parse(row.settings); } catch { /* keep {} */ }
+  } else if (row.settings && typeof row.settings === 'object') {
+    settings = row.settings as MeetingSettings;
+  }
+
   return {
     id: row.id,
     organizationId: row.organization_id,
-    hostId: row.host_id,
+    hostId: row.host_id || (row as any).created_by || '',
     title: row.title,
     description: row.description,
     status: row.status,
-    participants: typeof row.participants === 'string' 
-      ? JSON.parse(row.participants) 
-      : row.participants,
-    settings: typeof row.settings === 'string'
-      ? JSON.parse(row.settings)
-      : row.settings,
-    scheduledAt: row.scheduled_at,
-    startedAt: row.started_at,
-    endedAt: row.ended_at,
+    participants,
+    settings,
+    scheduledAt: row.scheduled_at || (row as any).scheduled_start || null,
+    startedAt: row.started_at || (row as any).actual_start || null,
+    endedAt: row.ended_at || (row as any).actual_end || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
