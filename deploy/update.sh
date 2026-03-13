@@ -46,16 +46,22 @@ if command -v npx &> /dev/null; then
     # Build locally if Node is available on the host
     cd apps/mobile
     npm install --legacy-peer-deps 2>/dev/null || npm install
-    npx expo export --platform web 2>&1 || echo "  ⚠ Expo export failed — using existing build"
-    cd "$APP_DIR"
-    # Copy web build into API serving directory
-    node scripts/post-export-web.js 2>/dev/null || echo "  ⚠ Post-export skipped"
+    if npx expo export --platform web 2>&1; then
+        cd "$APP_DIR"
+        node scripts/post-export-web.js || echo "  ⚠ Post-export patching failed"
+    else
+        echo "  ⚠ Expo export failed — keeping existing web build"
+        cd "$APP_DIR"
+    fi
 else
     # Build inside a Docker container
-    docker run --rm -v "$APP_DIR:/app" -w /app node:20-alpine sh -c "
+    if docker run --rm -v "$APP_DIR:/app" -w /app node:20-alpine sh -c "
         cd apps/mobile && npm install --legacy-peer-deps && npx expo export --platform web
-    " 2>&1 || echo "  ⚠ Docker web build failed — using existing build"
-    node scripts/post-export-web.js 2>/dev/null || echo "  ⚠ Post-export skipped"
+    " 2>&1; then
+        node scripts/post-export-web.js || echo "  ⚠ Post-export patching failed"
+    else
+        echo "  ⚠ Docker web build failed — keeping existing web build"
+    fi
 fi
 echo "  ✓ Web frontend rebuilt"
 echo ""

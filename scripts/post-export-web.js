@@ -104,7 +104,14 @@ self.addEventListener('activate', (event) => {
   })());
 });`;
 
-// 1. Clear old web build
+// 1. Bail out if the Expo dist directory doesn't exist — never delete
+//    the existing web build when there's nothing to replace it with.
+if (!fs.existsSync(DIST) || !fs.existsSync(path.join(DIST, 'index.html'))) {
+  console.log('⚠ No Expo dist found (' + DIST + ') — keeping existing web build.');
+  process.exit(0);
+}
+
+// 2. Clear old web build (safe — we know DIST exists)
 fs.rmSync(WEB, { recursive: true, force: true });
 fs.mkdirSync(WEB, { recursive: true });
 
