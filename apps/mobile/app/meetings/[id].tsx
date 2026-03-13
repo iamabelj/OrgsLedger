@@ -934,7 +934,7 @@ export default function MeetingRoomScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* ── More menu popup ──────────────────────────── */>
+      {/* ── More menu popup ──────────────────────────── */}
       {showMoreMenu ? (
         <View style={s.moreMenu}>
           <TouchableOpacity style={s.moreMenuItem} onPress={() => { togglePanel('captions'); setCaptionsEnabled(true); }}>
