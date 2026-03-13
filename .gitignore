@@ -8,6 +8,9 @@ dist/
 !apps/api/dist/
 !packages/*/dist/
 build/
+# Allow web build assets that contain "build" in their vendor paths
+!apps/api/web/assets/**/build/
+!apps/api/web/assets/**/build/**
 .venv/
 uploads/
 env.js
