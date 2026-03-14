@@ -918,14 +918,7 @@ export default function MeetingRoomScreen() {
 
       {/* ── Captions Overlay (floating) ──────────────── */}
       {captionsEnabled && captions.length > 0 && activePanel !== 'captions' ? (
-        <View style={s.captionOverlay}>
-          {captions.slice(-2).map((c) => (
-            <View key={c.id} style={s.captionBubble}>
-              <Text style={s.captionSpeaker}>{c.speaker}</Text>
-              <Text style={s.captionText}>{c.translatedText || c.text}</Text>
-            </View>
-          ))}
-        </View>
+        <CaptionOverlay captions={captions} />
       ) : null}
 
       {/* ── Simplified Bottom Controls ───────────────── */}
@@ -1112,8 +1105,80 @@ export default function MeetingRoomScreen() {
 
 // ── Sub-components ──────────────────────────────────────
 
+// ── Caption Bubble (memoized for overlay) ───────────────
+const CaptionBubble = React.memo(function CaptionBubble({
+  caption,
+}: {
+  caption: CaptionEntry;
+}) {
+  return (
+    <View style={s.captionBubble}>
+      <Text style={s.captionSpeaker}>{caption.speaker}</Text>
+      <Text style={s.captionText}>{caption.translatedText || caption.text}</Text>
+    </View>
+  );
+});
+
+// ── Caption Overlay (memoized floating captions) ────────
+const CaptionOverlay = React.memo(function CaptionOverlay({
+  captions,
+}: {
+  captions: CaptionEntry[];
+}) {
+  // Only show last 2 captions
+  const recentCaptions = useMemo(() => captions.slice(-2), [captions]);
+  
+  return (
+    <View style={s.captionOverlay}>
+      {recentCaptions.map((c) => (
+        <CaptionBubble key={c.id} caption={c} />
+      ))}
+    </View>
+  );
+});
+
+// ── Video Element Component ─────────────────────────────
+// Memoized component to prevent video blinking from re-renders
+const VideoElement = React.memo(function VideoElement({ 
+  stream 
+}: { 
+  stream: MediaStream | null 
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+
+    // Only update srcObject if the stream actually changed
+    const newStreamId = stream?.id || null;
+    if (streamIdRef.current !== newStreamId) {
+      streamIdRef.current = newStreamId;
+      el.srcObject = stream;
+    }
+  }, [stream]);
+
+  if (Platform.OS !== 'web') return null;
+
+  return (
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted
+      style={{
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+        transform: 'scaleX(-1)',
+      } as any}
+    />
+  );
+});
+
 // ── Participant Tile ────────────────────────────────────
-function ParticipantTile({
+const ParticipantTile = React.memo(function ParticipantTile({
   participant,
   width,
   height,
@@ -1147,20 +1212,7 @@ function ParticipantTile({
     >
       {showVideo ? (
         <View style={{ flex: 1, overflow: 'hidden' }}>
-          <video
-            ref={(el: HTMLVideoElement | null) => {
-              if (el && localStream) el.srcObject = localStream;
-            }}
-            autoPlay
-            playsInline
-            muted
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-              transform: 'scaleX(-1)',
-            } as any}
-          />
+          <VideoElement stream={localStream} />
         </View>
       ) : (
         <View style={[s.tileAvatarContainer, { backgroundColor: isVideoOff !== false ? color + '22' : '#111' }]}>
@@ -1285,8 +1337,29 @@ function ParticipantsPanel({
   );
 }
 
-// ── Captions Panel ──────────────────────────────────────
-function CaptionsPanel({
+// ── Caption Entry Item (memoized to prevent blinking) ───
+const CaptionEntryItem = React.memo(function CaptionEntryItem({
+  caption,
+  showOriginal,
+}: {
+  caption: CaptionEntry;
+  showOriginal: boolean;
+}) {
+  return (
+    <View style={s.captionEntry}>
+      <Text style={s.captionEntrySpeaker}>{caption.speaker}</Text>
+      <Text style={s.captionEntryText}>
+        {caption.translatedText || caption.text}
+      </Text>
+      {caption.translatedText && showOriginal ? (
+        <Text style={s.captionEntryOriginal}>{caption.text}</Text>
+      ) : null}
+    </View>
+  );
+});
+
+// ── Captions Panel (memoized) ───────────────────────────
+const CaptionsPanel = React.memo(function CaptionsPanel({
   captions,
   selectedLanguage,
   onChangeLanguage,
@@ -1300,6 +1373,7 @@ function CaptionsPanel({
   isTranscribing?: boolean;
 }) {
   const scrollRef = useRef<ScrollView>(null);
+  const showOriginal = selectedLanguage !== 'en';
 
   useEffect(() => {
     scrollRef.current?.scrollToEnd({ animated: true });
@@ -1329,21 +1403,13 @@ function CaptionsPanel({
           </View>
         ) : (
           captions.map((c) => (
-            <View key={c.id} style={s.captionEntry}>
-              <Text style={s.captionEntrySpeaker}>{c.speaker}</Text>
-              <Text style={s.captionEntryText}>
-                {c.translatedText || c.text}
-              </Text>
-              {c.translatedText && selectedLanguage !== 'en' ? (
-                <Text style={s.captionEntryOriginal}>{c.text}</Text>
-              ) : null}
-            </View>
+            <CaptionEntryItem key={c.id} caption={c} showOriginal={showOriginal} />
           ))
         )}
       </ScrollView>
     </View>
   );
-}
+});
 
 // ── Language Picker Modal ───────────────────────────────
 function LanguagePickerModal({

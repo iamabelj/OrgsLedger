@@ -3,10 +3,12 @@
 // RESTful endpoints for meeting operations
 // ============================================================
 
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authenticate, validate, loadMembership, aiCostGuard } from '../../../middleware';
 import { meetingController } from '../controllers';
+import { translationApiService, SUPPORTED_LANGUAGES } from '../services/translation-api.service';
+import { logger } from '../../../logger';
 
 const router = Router();
 
@@ -123,6 +125,72 @@ router.post(
   authenticate,
   validate(leaveMeetingSchema),
   (req, res, next) => meetingController.leave(req, res, next)
+);
+
+// ── Translation Routes ──────────────────────────────────────
+// NOTE: These must be BEFORE /:id routes to avoid 'translation' being parsed as an ID
+
+/**
+ * GET /meetings/translation/languages
+ * Get list of supported translation languages
+ * Public endpoint (no auth required for language list)
+ */
+router.get('/translation/languages', (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    data: SUPPORTED_LANGUAGES,
+  });
+});
+
+/**
+ * POST /meetings/translation/translate
+ * Translate text on-demand for meeting captions
+ * Requires authentication
+ */
+router.post(
+  '/translation/translate',
+  authenticate,
+  async (req: Request, res: Response) => {
+    try {
+      const { text, targetLang, sourceLang } = req.body;
+
+      if (!text || typeof text !== 'string') {
+        res.status(400).json({
+          success: false,
+          error: 'text is required and must be a string',
+        });
+        return;
+      }
+
+      if (!targetLang || typeof targetLang !== 'string') {
+        res.status(400).json({
+          success: false,
+          error: 'targetLang is required and must be a string',
+        });
+        return;
+      }
+
+      const result = await translationApiService.translate(
+        text,
+        targetLang,
+        sourceLang || 'en'
+      );
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (err: any) {
+      logger.error('[TRANSLATION_ROUTE] Translation failed', {
+        error: err.message,
+        userId: req.user?.userId,
+      });
+      res.status(500).json({
+        success: false,
+        error: 'Translation failed. Please try again.',
+      });
+    }
+  }
 );
 
 /**

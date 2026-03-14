@@ -12,3 +12,4 @@ export * from './livekit-audio-bot.service';
 export * from './organization-role.service';
 export * from './meeting-invite.service';
 export * from './transcript-persistence.service';
+export * from './translation-api.service';
