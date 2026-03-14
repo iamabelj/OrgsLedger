@@ -838,15 +838,30 @@ export default function MeetingRoomScreen() {
   }
 
   // ── Render: ACTIVE MEETING ROOM ───────────────────────
-  const gridParticipants = activeParticipants.length > 0 ? activeParticipants : [
-    { userId: user?.id || '', role: 'host', joinedAt: new Date().toISOString(), displayName: displayName || 'You' },
-  ];
+  // Memoize grid participants to prevent unnecessary re-renders
+  const gridParticipants = useMemo(() => {
+    return activeParticipants.length > 0 ? activeParticipants : [
+      { userId: user?.id || '', role: 'host', joinedAt: new Date().toISOString(), displayName: displayName || 'You' },
+    ];
+  }, [activeParticipants, user?.id, displayName]);
 
-  // Smart grid layout
-  const panelWidth = activePanel && !isMobile ? Math.min(320, win.width * 0.28) : 0;
-  const gridWidth = win.width - panelWidth;
-  const gridHeight = win.height - (isMobile ? 160 : 120);
-  const { cols, rows, tileW, tileH } = calculateGridLayout(gridParticipants.length, gridWidth, gridHeight);
+  // Memoize grid layout calculations to prevent tile size changes on every render
+  const gridLayout = useMemo(() => {
+    const panelW = activePanel && !isMobile ? Math.min(320, win.width * 0.28) : 0;
+    const gWidth = win.width - panelW;
+    const gHeight = win.height - (isMobile ? 160 : 120);
+    const layout = calculateGridLayout(gridParticipants.length, gWidth, gHeight);
+    return { panelWidth: panelW, gridWidth: gWidth, gridHeight: gHeight, ...layout };
+  }, [activeParticipants.length, activePanel, isMobile, win.width, win.height, gridParticipants.length]);
+
+  const { panelWidth, gridWidth, gridHeight, cols, rows, tileW, tileH } = gridLayout;
+
+  // Memoize the stable tile dimensions
+  const stableTileW = useMemo(() => Math.min(tileW, 480), [tileW]);
+  const stableTileH = useMemo(() => Math.min(tileH, 360), [tileH]);
+
+  // Memoize localStream to prevent it from being recreated
+  const currentLocalStream = localStreamRef.current;
 
   return (
     <Pressable style={s.roomContainer} onPress={resetControlsTimer}>
@@ -873,13 +888,13 @@ export default function MeetingRoomScreen() {
               <ParticipantTile
                 key={p.userId}
                 participant={p}
-                width={Math.min(tileW, 480)}
-                height={Math.min(tileH, 360)}
+                width={stableTileW}
+                height={stableTileH}
                 colorIndex={index}
                 isCurrentUser={p.userId === user?.id}
                 isMuted={p.userId === user?.id ? isMuted : p.isMuted}
                 isVideoOff={p.userId === user?.id ? !isVideoOn : p.isVideoOff}
-                localStream={p.userId === user?.id ? localStreamRef.current : null}
+                localStream={p.userId === user?.id ? currentLocalStream : null}
               />
             ))}
           </View>

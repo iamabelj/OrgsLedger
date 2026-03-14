@@ -125,7 +125,7 @@ class TranslationApiService {
     }
 
     // Get provider from config
-    const provider = config.translation?.provider || 'mock';
+    const provider = config.translation?.provider || 'free';
     let translatedText: string;
 
     try {
@@ -136,9 +136,13 @@ class TranslationApiService {
         case 'deepl':
           translatedText = await this.translateWithDeepL(text, srcLang, tgtLang);
           break;
+        case 'mock':
+          // Mock translation for offline development
+          translatedText = `[${tgtLang.toUpperCase()}] ${text}`;
+          break;
         default:
-          // Mock translation for development
-          translatedText = this.mockTranslate(text, tgtLang);
+          // Default: use free MyMemory API (no API key required)
+          translatedText = await this.translateWithFreeApi(text, srcLang, tgtLang);
       }
 
       // Cache the result
@@ -189,8 +193,8 @@ class TranslationApiService {
         sourceLang,
         targetLang,
       });
-      // Fall back to mock translation
-      return this.mockTranslate(text, targetLang);
+      // Fall back to free API
+      return this.translateWithFreeApi(text, sourceLang, targetLang);
     }
   }
 
@@ -204,8 +208,8 @@ class TranslationApiService {
   ): Promise<string> {
     const apiKey = process.env.DEEPL_API_KEY;
     if (!apiKey) {
-      logger.warn('[TRANSLATION_API] DEEPL_API_KEY not set, falling back to mock');
-      return this.mockTranslate(text, targetLang);
+      logger.warn('[TRANSLATION_API] DEEPL_API_KEY not set, falling back to free API');
+      return this.translateWithFreeApi(text, sourceLang, targetLang);
     }
 
     try {
@@ -227,17 +231,65 @@ class TranslationApiService {
         sourceLang,
         targetLang,
       });
-      // Fall back to mock
-      return this.mockTranslate(text, targetLang);
+      // Fall back to free API
+      return this.translateWithFreeApi(text, sourceLang, targetLang);
     }
   }
 
   /**
-   * Mock translation for development/testing.
-   * Simply prefixes the text with the target language code.
+   * Translate using MyMemory free API (no API key required).
+   * Rate limited to 1000 requests/day but works for development.
    */
-  private mockTranslate(text: string, targetLang: string): string {
-    return `[${targetLang.toUpperCase()}] ${text}`;
+  private async translateWithFreeApi(
+    text: string,
+    sourceLang: string,
+    targetLang: string
+  ): Promise<string> {
+    try {
+      const langPair = `${sourceLang}|${targetLang}`;
+      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${encodeURIComponent(langPair)}`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`MyMemory API returned ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.responseStatus === 200 && data.responseData?.translatedText) {
+        const translated = data.responseData.translatedText;
+        // MyMemory sometimes returns "UNTRANSLATED" for errors
+        if (translated !== 'UNTRANSLATED' && !translated.includes('QUERY LENGTH LIMIT')) {
+          logger.debug('[TRANSLATION_API] Free API translation success', { sourceLang, targetLang });
+          return translated;
+        }
+      }
+
+      // If the response has matches, use the best one
+      if (data.matches && data.matches.length > 0) {
+        const bestMatch = data.matches.reduce((best: any, m: any) => 
+          m.quality > (best?.quality || 0) ? m : best, null);
+        if (bestMatch?.translation) {
+          return bestMatch.translation;
+        }
+      }
+
+      throw new Error('No valid translation returned');
+    } catch (err: any) {
+      logger.error('[TRANSLATION_API] Free API failed', {
+        error: err.message,
+        sourceLang,
+        targetLang,
+      });
+      // Last resort: return untranslated with marker
+      return `[${targetLang.toUpperCase()}] ${text}`;
+    }
   }
 }
 
