@@ -615,6 +615,28 @@ export default function MeetingRoomScreen() {
     setShowMoreMenu(false);
   };
 
+  // ── Memoized values (must be before any early returns) ─
+  const gridParticipants = useMemo(() => {
+    return activeParticipants.length > 0 ? activeParticipants : [
+      { userId: user?.id || '', role: 'host', joinedAt: new Date().toISOString(), displayName: displayName || 'You' },
+    ];
+  }, [activeParticipants, user?.id, displayName]);
+
+  const gridLayout = useMemo(() => {
+    const panelW = activePanel && !isMobile ? Math.min(320, win.width * 0.28) : 0;
+    const gWidth = win.width - panelW;
+    const gHeight = win.height - (isMobile ? 160 : 120);
+    const layout = calculateGridLayout(gridParticipants.length, gWidth, gHeight);
+    return { panelWidth: panelW, gridWidth: gWidth, gridHeight: gHeight, ...layout };
+  }, [activeParticipants.length, activePanel, isMobile, win.width, win.height, gridParticipants.length]);
+
+  const { panelWidth, gridWidth, gridHeight, cols, rows, tileW, tileH } = gridLayout;
+
+  const stableTileW = useMemo(() => Math.min(tileW, 480), [tileW]);
+  const stableTileH = useMemo(() => Math.min(tileH, 360), [tileH]);
+
+  const currentLocalStream = localStreamRef.current;
+
   // ── Render: Loading / Error ───────────────────────────
   if (loading) {
     return (
@@ -838,31 +860,6 @@ export default function MeetingRoomScreen() {
   }
 
   // ── Render: ACTIVE MEETING ROOM ───────────────────────
-  // Memoize grid participants to prevent unnecessary re-renders
-  const gridParticipants = useMemo(() => {
-    return activeParticipants.length > 0 ? activeParticipants : [
-      { userId: user?.id || '', role: 'host', joinedAt: new Date().toISOString(), displayName: displayName || 'You' },
-    ];
-  }, [activeParticipants, user?.id, displayName]);
-
-  // Memoize grid layout calculations to prevent tile size changes on every render
-  const gridLayout = useMemo(() => {
-    const panelW = activePanel && !isMobile ? Math.min(320, win.width * 0.28) : 0;
-    const gWidth = win.width - panelW;
-    const gHeight = win.height - (isMobile ? 160 : 120);
-    const layout = calculateGridLayout(gridParticipants.length, gWidth, gHeight);
-    return { panelWidth: panelW, gridWidth: gWidth, gridHeight: gHeight, ...layout };
-  }, [activeParticipants.length, activePanel, isMobile, win.width, win.height, gridParticipants.length]);
-
-  const { panelWidth, gridWidth, gridHeight, cols, rows, tileW, tileH } = gridLayout;
-
-  // Memoize the stable tile dimensions
-  const stableTileW = useMemo(() => Math.min(tileW, 480), [tileW]);
-  const stableTileH = useMemo(() => Math.min(tileH, 360), [tileH]);
-
-  // Memoize localStream to prevent it from being recreated
-  const currentLocalStream = localStreamRef.current;
-
   return (
     <Pressable style={s.roomContainer} onPress={resetControlsTimer}>
       {/* ── Minimal Top Bar ────────────────────────────── */}
