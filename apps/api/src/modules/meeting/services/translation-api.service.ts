@@ -260,7 +260,11 @@ class TranslationApiService {
         throw new Error(`MyMemory API returned ${response.status}`);
       }
 
-      const data = await response.json();
+      const data = await response.json() as {
+        responseStatus?: number;
+        responseData?: { translatedText?: string };
+        matches?: Array<{ quality: number; translation: string }>;
+      };
 
       if (data.responseStatus === 200 && data.responseData?.translatedText) {
         const translated = data.responseData.translatedText;
@@ -273,8 +277,8 @@ class TranslationApiService {
 
       // If the response has matches, use the best one
       if (data.matches && data.matches.length > 0) {
-        const bestMatch = data.matches.reduce((best: any, m: any) => 
-          m.quality > (best?.quality || 0) ? m : best, null);
+        const bestMatch = data.matches.reduce((best, m) => 
+          m.quality > (best?.quality || 0) ? m : best, data.matches[0]);
         if (bestMatch?.translation) {
           return bestMatch.translation;
         }

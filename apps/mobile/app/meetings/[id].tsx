@@ -1253,7 +1253,7 @@ const ParticipantTile = React.memo(function ParticipantTile({
       </View>
     </View>
   );
-}
+});
 
 // ── Control Button ──────────────────────────────────────
 function ControlButton({
