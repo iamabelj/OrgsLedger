@@ -147,7 +147,7 @@ app.use(compression({
 
 app.use(cors({
   origin: config.env === 'production'
-    ? (process.env.CORS_ORIGINS || 'https://orgsledger.com,https://app.orgsledger.com').split(',')
+    ? (process.env.CORS_ORIGINS || 'https://orgsledger.com,https://www.orgsledger.com,https://app.orgsledger.com').split(',')
     : true,
   credentials: true,
 }));
