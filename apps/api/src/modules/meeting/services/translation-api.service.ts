@@ -276,7 +276,7 @@ class TranslationApiService {
     text: string,
     targetLang: string,
     sourceLang: string = 'en'
-  ): Promise<{ translatedText: string; sourceLang: string; targetLang: string }> {
+  ): Promise<{ translatedText: string; sourceLang: string; targetLang: string; provider: string; confidence: number }> {
     // Validate inputs
     if (!text || text.trim().length === 0) {
       throw new Error('Text is required for translation');
@@ -291,7 +291,7 @@ class TranslationApiService {
     const tgtLang = targetLang.split('-')[0].toLowerCase();
 
     if (srcLang === tgtLang) {
-      return { translatedText: text, sourceLang: srcLang, targetLang: tgtLang };
+      return { translatedText: text, sourceLang: srcLang, targetLang: tgtLang, provider: 'none', confidence: 1.0 };
     }
 
     // Check cache
@@ -299,28 +299,33 @@ class TranslationApiService {
     const cached = getFromCache(cacheKey);
     if (cached) {
       logger.debug('[TRANSLATION_API] Cache hit', { srcLang, tgtLang, textLength: text.length });
-      return { translatedText: cached, sourceLang: srcLang, targetLang: tgtLang };
+      return { translatedText: cached, sourceLang: srcLang, targetLang: tgtLang, provider: 'cache', confidence: 0.85 };
     }
 
     // Get provider from config
     const provider = config.translation?.provider || 'free';
     let translatedText: string;
+    let confidence = 0.7; // Default confidence for free API
 
     try {
       switch (provider) {
         case 'google':
           translatedText = await this.translateWithGoogle(text, srcLang, tgtLang);
+          confidence = 0.95;
           break;
         case 'deepl':
           translatedText = await this.translateWithDeepL(text, srcLang, tgtLang);
+          confidence = 0.95;
           break;
         case 'mock':
           // Mock translation for offline development
           translatedText = `[${tgtLang.toUpperCase()}] ${text}`;
+          confidence = 0.0;
           break;
         default:
           // Default: use free MyMemory API (no API key required)
           translatedText = await this.translateWithFreeApi(text, srcLang, tgtLang);
+          confidence = 0.7;
       }
 
       // Cache the result
@@ -334,7 +339,7 @@ class TranslationApiService {
         translatedLength: translatedText.length,
       });
 
-      return { translatedText, sourceLang: srcLang, targetLang: tgtLang };
+      return { translatedText, sourceLang: srcLang, targetLang: tgtLang, provider, confidence };
     } catch (err: any) {
       logger.error('[TRANSLATION_API] Translation failed', {
         provider,

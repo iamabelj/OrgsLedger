@@ -3,9 +3,6 @@ node_modules/
 !apps/api/web/assets/
 !apps/api/web/assets/node_modules/
 !apps/api/web/assets/node_modules/**
-!deploy/flutter-web/assets/
-!deploy/flutter-web/assets/node_modules/
-!deploy/flutter-web/assets/node_modules/**
 
 dist/
 !apps/api/dist/
@@ -14,8 +11,6 @@ build/
 # Allow web build assets that contain "build" in their vendor paths
 !apps/api/web/assets/**/build/
 !apps/api/web/assets/**/build/**
-!deploy/flutter-web/assets/**/build/
-!deploy/flutter-web/assets/**/build/**
 .venv/
 uploads/
 env.js

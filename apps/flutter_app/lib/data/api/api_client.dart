@@ -93,10 +93,8 @@ class ApiClient {
   // ═══════════════════════════════════════════════════════
   //  AUTH
   // ═══════════════════════════════════════════════════════
-  Future<Response> login(String email, String password) => dio.post(
-    '/auth/login',
-    data: {'email': email, 'password': password, 'platform': 'flutter'},
-  );
+  Future<Response> login(String email, String password) =>
+      dio.post('/auth/login', data: {'email': email, 'password': password});
 
   Future<Response> register(Map<String, dynamic> data) =>
       dio.post('/auth/register', data: data);

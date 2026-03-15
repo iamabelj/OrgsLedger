@@ -196,19 +196,6 @@ export default function MeetingRoomScreen() {
   // End meeting confirmation
   const [showEndConfirm, setShowEndConfirm] = useState(false);
 
-  // Minutes modal
-  const [showMinutesModal, setShowMinutesModal] = useState(false);
-  const [minutesData, setMinutesData] = useState<{
-    summary?: string;
-    keyTopics?: string[];
-    decisions?: string[];
-    actionItems?: Array<{ task: string; owner?: string; deadline?: string }>;
-    participants?: string[];
-    status?: string;
-    message?: string;
-  } | null>(null);
-  const [minutesLoading, setMinutesLoading] = useState(false);
-
   // ── Animations ────────────────────────────────────────
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -861,16 +848,16 @@ export default function MeetingRoomScreen() {
                 style={s.endedBtnSecondary}
                 activeOpacity={0.85}
                 onPress={async () => {
-                  setMinutesLoading(true);
-                  setShowMinutesModal(true);
                   try {
                     const res = await api.meetings.getMinutes(id!);
                     const data = res.data?.data;
-                    setMinutesData(data);
+                    if (data?.summary) {
+                      alert(data.summary);
+                    } else {
+                      alert(data?.message || 'Minutes are still being generated.');
+                    }
                   } catch {
-                    setMinutesData({ status: 'error', message: 'Minutes not available yet.' });
-                  } finally {
-                    setMinutesLoading(false);
+                    alert('Minutes not available yet.');
                   }
                 }}
               >
@@ -880,93 +867,6 @@ export default function MeetingRoomScreen() {
             ) : null}
           </View>
         </View>
-
-        {/* Minutes Modal */}
-        <Modal visible={showMinutesModal} transparent animationType="slide" onRequestClose={() => setShowMinutesModal(false)}>
-          <View style={s.minutesModalOverlay}>
-            <View style={s.minutesModalCard}>
-              <View style={s.minutesModalHeader}>
-                <Text style={s.minutesModalTitle}>Meeting Minutes</Text>
-                <TouchableOpacity onPress={() => setShowMinutesModal(false)}>
-                  <Ionicons name="close" size={24} color={Colors.textLight} />
-                </TouchableOpacity>
-              </View>
-              <ScrollView style={s.minutesScroll} showsVerticalScrollIndicator={false}>
-                {minutesLoading ? (
-                  <View style={s.minutesLoading}>
-                    <ActivityIndicator size="large" color={Colors.highlight} />
-                    <Text style={s.minutesLoadingText}>Loading minutes...</Text>
-                  </View>
-                ) : minutesData?.status === 'pending' ? (
-                  <View style={s.minutesPending}>
-                    <Ionicons name="time-outline" size={48} color={Colors.warning} />
-                    <Text style={s.minutesPendingTitle}>Minutes Pending</Text>
-                    <Text style={s.minutesPendingText}>{minutesData.message || 'Minutes are still being generated. Please check back in a few minutes.'}</Text>
-                  </View>
-                ) : minutesData?.status === 'error' ? (
-                  <View style={s.minutesPending}>
-                    <Ionicons name="alert-circle-outline" size={48} color={Colors.error} />
-                    <Text style={s.minutesPendingTitle}>Not Available</Text>
-                    <Text style={s.minutesPendingText}>{minutesData.message || 'Minutes could not be loaded.'}</Text>
-                  </View>
-                ) : minutesData?.summary ? (
-                  <View style={s.minutesContent}>
-                    <View style={s.minutesSection}>
-                      <Text style={s.minutesSectionTitle}>Summary</Text>
-                      <Text style={s.minutesSummaryText}>{minutesData.summary}</Text>
-                    </View>
-                    {minutesData.keyTopics && minutesData.keyTopics.length > 0 ? (
-                      <View style={s.minutesSection}>
-                        <Text style={s.minutesSectionTitle}>Key Topics</Text>
-                        {minutesData.keyTopics.map((topic, i) => (
-                          <View key={i} style={s.minutesBullet}>
-                            <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
-                            <Text style={s.minutesBulletText}>{topic}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    ) : null}
-                    {minutesData.decisions && minutesData.decisions.length > 0 ? (
-                      <View style={s.minutesSection}>
-                        <Text style={s.minutesSectionTitle}>Decisions Made</Text>
-                        {minutesData.decisions.map((decision, i) => (
-                          <View key={i} style={s.minutesBullet}>
-                            <Ionicons name="flag" size={16} color={Colors.highlight} />
-                            <Text style={s.minutesBulletText}>{decision}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    ) : null}
-                    {minutesData.actionItems && minutesData.actionItems.length > 0 ? (
-                      <View style={s.minutesSection}>
-                        <Text style={s.minutesSectionTitle}>Action Items</Text>
-                        {minutesData.actionItems.map((item, i) => (
-                          <View key={i} style={s.actionItemCard}>
-                            <Text style={s.actionItemTask}>{item.task}</Text>
-                            {item.owner ? <Text style={s.actionItemMeta}>Owner: {item.owner}</Text> : null}
-                            {item.deadline ? <Text style={s.actionItemMeta}>Deadline: {item.deadline}</Text> : null}
-                          </View>
-                        ))}
-                      </View>
-                    ) : null}
-                    {minutesData.participants && minutesData.participants.length > 0 ? (
-                      <View style={s.minutesSection}>
-                        <Text style={s.minutesSectionTitle}>Participants</Text>
-                        <Text style={s.minutesParticipants}>{minutesData.participants.join(', ')}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                ) : (
-                  <View style={s.minutesPending}>
-                    <Ionicons name="document-text-outline" size={48} color={Colors.textLight} />
-                    <Text style={s.minutesPendingTitle}>No Minutes</Text>
-                    <Text style={s.minutesPendingText}>No minutes were generated for this meeting.</Text>
-                  </View>
-                )}
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
       </View>
     );
   }
@@ -1187,9 +1087,13 @@ export default function MeetingRoomScreen() {
         onSearch={setLanguageSearch}
         onSelect={(code) => {
           setSelectedLanguage(code);
+          // Clear existing translations to avoid mixed-language captions
+          if (code !== selectedLanguage) {
+            setCaptions((prev) => prev.map((c) => ({ ...c, translatedText: undefined })));
+          }
           setActivePanel(null);
           setLanguageSearch('');
-        }}
+        }}}
         onClose={() => { setActivePanel(null); setLanguageSearch(''); }}
       />
 
@@ -2340,45 +2244,4 @@ const s = StyleSheet.create({
   langItemNameActive: { color: Colors.highlight, fontWeight: FontWeight.semibold },
   langEmpty: { alignItems: 'center', padding: Spacing.xl },
   langEmptyText: { color: Colors.textLight },
-
-  // ── Minutes Modal ─────────────────────────────────
-  minutesModalOverlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'center', alignItems: 'center' },
-  minutesModalCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.xxl,
-    maxHeight: '85%',
-    width: '90%',
-    maxWidth: 500,
-    ...Shadow.lg,
-  },
-  minutesModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: Spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
-  },
-  minutesModalTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
-  minutesScroll: { padding: Spacing.lg },
-  minutesLoading: { alignItems: 'center', paddingVertical: Spacing.xxl, gap: Spacing.md },
-  minutesLoadingText: { fontSize: FontSize.md, color: Colors.textSecondary },
-  minutesPending: { alignItems: 'center', paddingVertical: Spacing.xxl, gap: Spacing.md },
-  minutesPendingTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.semibold, color: Colors.textPrimary },
-  minutesPendingText: { fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22 },
-  minutesContent: { gap: Spacing.lg },
-  minutesSection: { gap: Spacing.sm },
-  minutesSectionTitle: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.highlight, textTransform: 'uppercase', letterSpacing: 0.5 },
-  minutesSummaryText: { fontSize: FontSize.md, color: Colors.textPrimary, lineHeight: 24 },
-  minutesBullet: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-start' },
-  minutesBulletText: { flex: 1, fontSize: FontSize.md, color: Colors.textPrimary, lineHeight: 22 },
-  actionItemCard: {
-    backgroundColor: Colors.primaryLight,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.xs,
-  },
-  actionItemTask: { fontSize: FontSize.md, color: Colors.textPrimary, fontWeight: FontWeight.medium },
-  actionItemMeta: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 4 },
-  minutesParticipants: { fontSize: FontSize.md, color: Colors.textSecondary },
 });

@@ -156,8 +156,6 @@
     .nav-links a:hover { color: var(--white); }
     .nav-cta { padding: 10px 24px; background: var(--primary); color: var(--white) !important; border-radius: var(--radius-xs); font-weight: 700 !important; font-size: .85rem !important; letter-spacing: -.01em; transition: all .2s; box-shadow: 0 2px 12px rgba(37,99,235,0.3); }
     .nav-cta:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(37,99,235,0.4); }
-    .nav-login { padding: 10px 20px; background: transparent; color: var(--white) !important; border: 1px solid var(--dark-border-2); border-radius: var(--radius-xs); font-weight: 600 !important; font-size: .85rem !important; transition: all .2s; }
-    .nav-login:hover { border-color: var(--primary-light); color: var(--primary-light) !important; transform: translateY(-1px); }
     .nav-hamburger { display: none; background: none; border: none; color: var(--white); font-size: 1.6rem; cursor: pointer; padding: 4px; }
     @media (max-width: 900px) {
       .nav-links { position: fixed; top: 80px; left: 0; right: 0; background: rgba(10,15,30,0.98); backdrop-filter: blur(20px); flex-direction: column; padding: 24px; gap: 16px; display: none; border-bottom: 1px solid var(--dark-border-2); }
@@ -496,7 +494,7 @@
       <a href="#pricing">Pricing</a>
       <a href="#how-it-works">How It Works</a>
       <a href="/about">About</a>
-      <a href="/app/login" class="nav-login">Login</a>
+      <a href="/app/login" class="nav-cta" style="background:transparent;border:1.5px solid #FFC857;color:#FFC857;margin-right:8px;">Login</a>
       <a href="#pricing" class="nav-cta">Start Your Organization</a>
     </div>
     <button class="nav-hamburger" aria-label="Toggle navigation" onclick="document.getElementById('nav-links').classList.toggle('show')">&#9776;</button>

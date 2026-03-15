@@ -40,6 +40,10 @@ import {
 } from '../../../scaling/backpressure';
 import { cleanupMeeting } from '../../../services/meeting-cleanup.service';
 import { AppError } from '../../../middleware/error-handler';
+import {
+  generateMeetingMinutes,
+  TranscriptEntry as AITranscriptEntry,
+} from '../../../services/minutes-ai.service';
 
 // ── Constants ───────────────────────────────────────────────
 const MAX_PARTICIPANTS_DEFAULT = 100;
@@ -114,8 +118,7 @@ export class MeetingService {
     try {
       // scheduled_start and created_by are legacy NOT NULL columns from original schema
       // We populate both legacy and new columns for compatibility
-      // Default to 1 hour from now if no scheduled time provided
-      const scheduledTime = request.scheduledAt ? new Date(request.scheduledAt) : new Date(Date.now() + 3600000);
+      const scheduledTime = request.scheduledAt ? new Date(request.scheduledAt) : new Date();
       const [result] = await db('meetings')
         .insert({
           organization_id: request.organizationId,
@@ -197,8 +200,7 @@ export class MeetingService {
 
     let row: any;
     try {
-      // Default to 1 hour from now if no scheduled time provided
-      const scheduledTime = request.scheduledAt ? new Date(request.scheduledAt) : new Date(Date.now() + 3600000);
+      const scheduledTime = request.scheduledAt ? new Date(request.scheduledAt) : new Date();
       const [result] = await db('meetings')
         .insert({
           organization_id: request.organizationId,
@@ -771,29 +773,44 @@ export class MeetingService {
       }
 
       // Check backpressure before queueing minutes
-      const backpressureStatus = await checkMinutesBackpressure();
-      if (!backpressureStatus.allowed) {
-        logger.warn('[MEETING] Backpressure triggered, delaying minutes generation', {
-          meetingId,
-          queueUtilization: backpressureStatus.utilizationPercent.toFixed(1) + '%',
-          retryAfter: backpressureStatus.retryAfter,
-        });
-        // Still queue with a delay based on retry hint
+      let minutesQueued = false;
+      try {
+        const backpressureStatus = await checkMinutesBackpressure();
+        if (!backpressureStatus.allowed) {
+          logger.warn('[MEETING] Backpressure triggered, delaying minutes generation', {
+            meetingId,
+            queueUtilization: backpressureStatus.utilizationPercent.toFixed(1) + '%',
+            retryAfter: backpressureStatus.retryAfter,
+          });
+          // Still queue with a delay based on retry hint
+          await submitMinutesJob({
+            meetingId,
+            organizationId,
+          }, { delay: (backpressureStatus.retryAfter || 30) * 1000 });
+          minutesQueued = true;
+          
+          // Perform cold meeting eviction (cleanup Redis, WebSocket rooms, queue jobs)
+          await cleanupMeeting(meetingId, organizationId);
+          return;
+        }
+
+        // Queue minutes generation
         await submitMinutesJob({
           meetingId,
           organizationId,
-        }, { delay: (backpressureStatus.retryAfter || 30) * 1000 });
-        
-        // Perform cold meeting eviction (cleanup Redis, WebSocket rooms, queue jobs)
-        await cleanupMeeting(meetingId, organizationId);
-        return;
+        });
+        minutesQueued = true;
+      } catch (queueErr: any) {
+        logger.warn('[MEETING] Queue submission failed, will generate minutes directly', {
+          meetingId,
+          error: queueErr.message,
+        });
       }
 
-      // Queue minutes generation
-      await submitMinutesJob({
-        meetingId,
-        organizationId,
-      });
+      // Fallback: generate minutes synchronously if queue submission failed
+      if (!minutesQueued) {
+        await this.generateMinutesDirect(meetingId, organizationId);
+      }
 
       // Perform cold meeting eviction (cleanup Redis, WebSocket rooms, queue jobs)
       const cleanupResult = await cleanupMeeting(meetingId, organizationId);
@@ -812,14 +829,14 @@ export class MeetingService {
           meetingId,
           retryAfter: err.retryAfter,
         });
-        // Attempt delayed submission
+        // Attempt delayed submission, fall back to direct generation
         try {
           await submitMinutesJob({
             meetingId,
             organizationId,
           }, { delay: err.retryAfter * 1000 });
         } catch {
-          // Ignore - we tried our best
+          await this.generateMinutesDirect(meetingId, organizationId);
         }
         
         // Still perform cleanup even on backpressure
@@ -831,9 +848,109 @@ export class MeetingService {
         error: err.message,
       });
       
+      // Attempt direct minutes generation even on general failure
+      await this.generateMinutesDirect(meetingId, organizationId);
+
       // Still attempt cleanup even if finalization failed
       await cleanupMeeting(meetingId, organizationId).catch(() => {});
       // Don't throw - finalization errors shouldn't affect meeting end
+    }
+  }
+
+  /**
+   * Generate minutes directly (synchronous fallback when BullMQ/Redis is unavailable).
+   * Reads persisted transcripts from PostgreSQL and calls AI service directly.
+   */
+  private async generateMinutesDirect(
+    meetingId: string,
+    organizationId: string
+  ): Promise<void> {
+    try {
+      // Check if minutes already exist (idempotency)
+      const existing = await db('meeting_minutes')
+        .where('meeting_id', meetingId)
+        .select('id')
+        .first()
+        .catch(() => null);
+
+      if (existing) {
+        logger.info('[MEETING] Minutes already exist, skipping direct generation', { meetingId });
+        return;
+      }
+
+      // Get transcripts from PostgreSQL (persisted earlier in finalizeLiveMedia)
+      const persisted = await transcriptPersistenceService.getPersistedTranscript(meetingId);
+      const entries = persisted?.entries || [];
+
+      if (entries.length === 0) {
+        logger.warn('[MEETING] No persisted transcripts for direct minutes generation', { meetingId });
+        // Store a basic placeholder so user knows minutes couldn't be generated
+        await db('meeting_minutes')
+          .insert({
+            meeting_id: meetingId,
+            organization_id: organizationId,
+            summary: 'No transcript data was available to generate minutes for this meeting.',
+            decisions: JSON.stringify([]),
+            action_items: JSON.stringify([]),
+            transcript: JSON.stringify([]),
+            motions: JSON.stringify([]),
+            contributions: JSON.stringify([]),
+            ai_credits_used: 0,
+            status: 'completed',
+            generated_at: new Date().toISOString(),
+          })
+          .onConflict('meeting_id')
+          .ignore();
+        return;
+      }
+
+      // Convert persisted TranscriptEntry format to AI service format
+      const aiTranscripts: AITranscriptEntry[] = entries.map(e => ({
+        speaker: e.speakerName || 'Unknown',
+        speakerId: e.speakerId,
+        text: e.text,
+        timestamp: e.timestamp,
+        confidence: e.confidence,
+        language: e.language,
+      }));
+
+      // Generate minutes using AI service
+      const result = await generateMeetingMinutes({
+        meetingId,
+        transcripts: aiTranscripts,
+      });
+
+      // Store in database (same pattern as minutes.worker.ts)
+      await db('meeting_minutes')
+        .insert({
+          meeting_id: meetingId,
+          organization_id: organizationId,
+          summary: result.minutes.summary,
+          decisions: JSON.stringify(result.minutes.decisions),
+          action_items: JSON.stringify(result.minutes.actionItems),
+          transcript: JSON.stringify([]),
+          motions: JSON.stringify([]),
+          contributions: JSON.stringify(
+            result.minutes.participants.map(p => ({ speaker: p }))
+          ),
+          ai_credits_used: 1,
+          status: 'completed',
+          generated_at: result.generatedAt,
+        })
+        .onConflict('meeting_id')
+        .ignore();
+
+      logger.info('[MEETING] Minutes generated directly (fallback)', {
+        meetingId,
+        wordCount: result.wordCount,
+        chunksProcessed: result.chunksProcessed,
+      });
+    } catch (err: any) {
+      logger.warn('[MEETING] Direct minutes generation failed', {
+        meetingId,
+        error: err.message,
+      });
+      // Non-fatal — don't throw
     }
   }
 

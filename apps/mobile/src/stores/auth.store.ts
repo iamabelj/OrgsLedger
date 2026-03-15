@@ -50,7 +50,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   currentOrgId: null,
 
   login: async (email, password) => {
-    const { data } = await api.auth.login({ email, password, platform: 'mobile' });
+    const { data } = await api.auth.login({ email, password });
     const result = data.data;
 
     await storage.setItemAsync('accessToken', result.accessToken);

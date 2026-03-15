@@ -79,7 +79,6 @@ function AppShell() {
           <Stack.Screen name="events" options={{ title: 'Events' }} />
           <Stack.Screen name="polls" options={{ title: 'Polls' }} />
           <Stack.Screen name="documents" options={{ title: 'Documents' }} />
-          <Stack.Screen name="records" options={{ title: 'Records' }} />
           <Stack.Screen name="members" options={{ title: 'Members' }} />
           <Stack.Screen name="change-password" options={{ title: 'Change Password' }} />
           <Stack.Screen name="legal" options={{ headerShown: false }} />

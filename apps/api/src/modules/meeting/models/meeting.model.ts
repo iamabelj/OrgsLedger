@@ -53,7 +53,6 @@ export interface Meeting {
   endedAt?: string;
   createdAt: string;
   updatedAt: string;
-  visibilityType?: string;
 }
 
 /**
@@ -69,7 +68,6 @@ export interface MeetingRow {
   participants: string | MeetingParticipant[];
   settings: string | MeetingSettings;
   scheduled_at?: string;
-  visibility_type?: string;
   started_at?: string;
   ended_at?: string;
   created_at: string;
@@ -160,7 +158,6 @@ export function meetingFromRow(row: MeetingRow): Meeting {
     endedAt: row.ended_at || (row as any).actual_end || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    visibilityType: row.visibility_type || 'ALL_MEMBERS',
   };
 }
 

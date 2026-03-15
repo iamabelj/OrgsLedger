@@ -44,7 +44,6 @@ const communityItems: NavItem[] = [
   { label: 'Events', icon: 'calendar-outline', path: '/events' },
   { label: 'Polls', icon: 'bar-chart-outline', path: '/polls' },
   { label: 'Documents', icon: 'folder-open-outline', path: '/documents' },
-  { label: 'Records', icon: 'file-tray-full-outline', path: '/records' },
 ];
 
 const adminItems: NavItem[] = [

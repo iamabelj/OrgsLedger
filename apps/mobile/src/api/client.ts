@@ -7,19 +7,14 @@ import { Platform } from 'react-native';
 import storage from '../utils/storage';
 
 // Auto-detect API URL:
-//   Web  → use api.orgsledger.com for production, same origin for dev
+//   Web  → same origin (API serves the SPA, so /api always works)
 //   Native dev → localhost
 //   Native prod → production domain
 function getApiBaseUrl(): string {
   if (Platform.OS === 'web') {
-    // Check if running on production domain
+    // On web the Express server serves both the SPA and the API,
+    // so we always use the current origin — works for localhost AND production.
     if (typeof window !== 'undefined' && window.location) {
-      const hostname = window.location.hostname;
-      // Production: use api.orgsledger.com
-      if (hostname === 'orgsledger.com' || hostname === 'www.orgsledger.com' || hostname === 'app.orgsledger.com') {
-        return 'https://api.orgsledger.com/api';
-      }
-      // Dev/localhost: use same origin
       return `${window.location.origin}/api`;
     }
     return '/api'; // SSR / node fallback
@@ -115,8 +110,8 @@ class ApiClient {
       email: string; password: string; firstName: string; lastName: string;
       phone?: string; inviteCode: string;
     }) => this.client.post('/auth/register-with-invite', data),
-    login: (data: { email: string; password: string; platform?: string }) =>
-      this.client.post('/auth/login', { ...data, platform: data.platform || 'mobile' }),
+    login: (data: { email: string; password: string }) =>
+      this.client.post('/auth/login', { ...data, platform: Platform.OS === 'web' ? 'web' : 'mobile' }),
     me: () => this.client.get('/auth/me'),
     updateProfile: (data: any) => this.client.put('/auth/me', data),
     updatePushToken: (data: { fcmToken?: string; apnsToken?: string }) =>
@@ -324,23 +319,6 @@ class ApiClient {
       };
       agenda?: string[];
     }) => this.client.post('/meetings/create', data),
-    createWithVisibility: (data: {
-      organizationId: string;
-      title?: string;
-      description?: string;
-      scheduledAt?: string;
-      settings?: {
-        maxParticipants?: number;
-        allowRecording?: boolean;
-        waitingRoom?: boolean;
-        muteOnEntry?: boolean;
-        allowScreenShare?: boolean;
-      };
-      agenda?: string[];
-      visibilityType: 'ALL_MEMBERS' | 'EXECUTIVES' | 'COMMITTEE' | 'CUSTOM';
-      committeeId?: string;
-      participants?: string[];
-    }) => this.client.post('/meetings/create-with-visibility', data),
     join: (meetingId: string, displayName?: string) =>
       this.client.post('/meetings/join', { meetingId, displayName }),
     leave: (meetingId: string) =>
@@ -613,40 +591,6 @@ class ApiClient {
       this.client.get(`/analytics/${orgId}/member-payments`),
     receipt: (orgId: string, recordId: string) =>
       this.client.get(`/analytics/${orgId}/receipt/${recordId}`),
-  };
-
-  // ── Records (Historical) ─────────────────────────────
-  records = {
-    list: (orgId: string, params?: any) =>
-      this.client.get(`/records/${orgId}`, { params }),
-    get: (orgId: string, recordId: string) =>
-      this.client.get(`/records/${orgId}/${recordId}`),
-    create: (orgId: string, data: {
-      userId?: string;
-      recordType: string;
-      title: string;
-      description?: string;
-      amount?: number;
-      currency?: string;
-      recordDate: string;
-      category?: string;
-    }) => this.client.post(`/records/${orgId}`, data),
-    import: (orgId: string, formData: FormData) =>
-      this.client.post(`/records/${orgId}/import`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      }),
-    template: (orgId: string) =>
-      this.client.get(`/records/${orgId}/template`, { responseType: 'blob' }),
-    update: (orgId: string, recordId: string, data: any) =>
-      this.client.patch(`/records/${orgId}/${recordId}`, data),
-    delete: (orgId: string, recordId: string) =>
-      this.client.delete(`/records/${orgId}/${recordId}`),
-    deleteBatch: (orgId: string, batchId: string) =>
-      this.client.delete(`/records/${orgId}/batch/${batchId}`),
-    filters: (orgId: string) =>
-      this.client.get(`/records/${orgId}/filters`),
-    myRecords: (orgId: string, params?: any) =>
-      this.client.get(`/records/${orgId}/my-records`, { params }),
   };
 
   // ── Translation ───────────────────────────────────────
