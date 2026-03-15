@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Dimensions,
   Modal,
   Platform,
@@ -148,25 +149,37 @@ export default function MeetingsScreen() {
     loadMeetings();
   }, [loadMeetings]);
 
+  // Helper to check if a scheduled meeting is past its date
+  const isPastScheduled = useCallback((m: MeetingRecord): boolean => {
+    if (m.status !== 'scheduled') return false;
+    const scheduledTime = m.scheduledAt || m.createdAt;
+    if (!scheduledTime) return false;
+    try {
+      return parseISO(scheduledTime).getTime() < Date.now();
+    } catch {
+      return false;
+    }
+  }, []);
+
   // Filtered meetings by tab
   const filteredMeetings = useMemo(() => {
     switch (activeTab) {
       case 'upcoming':
-        return meetings.filter((m) => m.status === 'scheduled');
+        return meetings.filter((m) => m.status === 'scheduled' && !isPastScheduled(m));
       case 'active':
         return meetings.filter((m) => m.status === 'active');
       case 'past':
-        return meetings.filter((m) => m.status === 'ended' || m.status === 'cancelled');
+        return meetings.filter((m) => m.status === 'ended' || m.status === 'cancelled' || isPastScheduled(m));
       default:
         return meetings;
     }
-  }, [meetings, activeTab]);
+  }, [meetings, activeTab, isPastScheduled]);
 
   const counts = useMemo(() => ({
-    upcoming: meetings.filter((m) => m.status === 'scheduled').length,
+    upcoming: meetings.filter((m) => m.status === 'scheduled' && !isPastScheduled(m)).length,
     active: meetings.filter((m) => m.status === 'active').length,
-    past: meetings.filter((m) => m.status === 'ended' || m.status === 'cancelled').length,
-  }), [meetings]);
+    past: meetings.filter((m) => m.status === 'ended' || m.status === 'cancelled' || isPastScheduled(m)).length,
+  }), [meetings, isPastScheduled]);
 
   // ── Form helpers ──────────────────────────────────────
 
