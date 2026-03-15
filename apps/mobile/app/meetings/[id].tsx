@@ -484,6 +484,18 @@ export default function MeetingRoomScreen() {
             };
             setCaptions((prev) => [...prev.slice(-49), entry]);
 
+            // Translate if needed (non-English language selected)
+            if (selectedLanguage !== 'en' && entry.text) {
+              api.translation.translate(entry.text, selectedLanguage).then((res) => {
+                const translated = res.data?.data?.translatedText;
+                if (translated) {
+                  setCaptions((prev) =>
+                    prev.map((c) => c.id === entry.id ? { ...c, translatedText: translated } : c)
+                  );
+                }
+              }).catch(() => {});
+            }
+
             // Send to server for broadcast to others
             socketClient.emit('meeting:caption:send', {
               meetingId: id,
@@ -536,7 +548,7 @@ export default function MeetingRoomScreen() {
       speechRecognitionRef.current = null;
       setIsTranscribing(false);
     };
-  }, [phase, captionsEnabled, id, displayName, user?.displayName]);
+  }, [phase, captionsEnabled, id, displayName, user?.displayName, selectedLanguage]);
 
   // ── Keep controls always visible for seamless UX ────
   const resetControlsTimer = useCallback(() => {
