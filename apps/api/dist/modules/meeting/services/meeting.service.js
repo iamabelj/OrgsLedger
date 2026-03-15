@@ -72,7 +72,8 @@ class MeetingService {
         try {
             // scheduled_start and created_by are legacy NOT NULL columns from original schema
             // We populate both legacy and new columns for compatibility
-            const scheduledTime = request.scheduledAt ? new Date(request.scheduledAt) : new Date();
+            // Default to 1 hour from now if no scheduled time provided
+            const scheduledTime = request.scheduledAt ? new Date(request.scheduledAt) : new Date(Date.now() + 3600000);
             const [result] = await (0, db_1.default)('meetings')
                 .insert({
                 organization_id: request.organizationId,
@@ -144,7 +145,8 @@ class MeetingService {
         const visibilityType = request.visibilityType || 'ALL_MEMBERS';
         let row;
         try {
-            const scheduledTime = request.scheduledAt ? new Date(request.scheduledAt) : new Date();
+            // Default to 1 hour from now if no scheduled time provided
+            const scheduledTime = request.scheduledAt ? new Date(request.scheduledAt) : new Date(Date.now() + 3600000);
             const [result] = await (0, db_1.default)('meetings')
                 .insert({
                 organization_id: request.organizationId,

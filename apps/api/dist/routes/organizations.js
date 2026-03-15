@@ -285,7 +285,6 @@ router.get('/:orgId/members', middleware_1.authenticate, middleware_1.loadMember
             'memberships.organization_id': req.params.orgId,
             'memberships.is_active': true,
         })
-            .whereNot('users.global_role', 'super_admin')
             .select('memberships.id', 'memberships.role', 'memberships.joined_at', 'users.id as userId', 'users.email', 'users.first_name', 'users.last_name', 'users.avatar_url');
         if (search) {
             // Escape LIKE special characters to prevent injection

@@ -114,7 +114,8 @@ export class MeetingService {
     try {
       // scheduled_start and created_by are legacy NOT NULL columns from original schema
       // We populate both legacy and new columns for compatibility
-      const scheduledTime = request.scheduledAt ? new Date(request.scheduledAt) : new Date();
+      // Default to 1 hour from now if no scheduled time provided
+      const scheduledTime = request.scheduledAt ? new Date(request.scheduledAt) : new Date(Date.now() + 3600000);
       const [result] = await db('meetings')
         .insert({
           organization_id: request.organizationId,
@@ -196,7 +197,8 @@ export class MeetingService {
 
     let row: any;
     try {
-      const scheduledTime = request.scheduledAt ? new Date(request.scheduledAt) : new Date();
+      // Default to 1 hour from now if no scheduled time provided
+      const scheduledTime = request.scheduledAt ? new Date(request.scheduledAt) : new Date(Date.now() + 3600000);
       const [result] = await db('meetings')
         .insert({
           organization_id: request.organizationId,

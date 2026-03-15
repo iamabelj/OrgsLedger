@@ -347,7 +347,6 @@ router.get(
           'memberships.organization_id': req.params.orgId,
           'memberships.is_active': true,
         })
-        .whereNot('users.global_role', 'super_admin')
         .select(
           'memberships.id',
           'memberships.role',
