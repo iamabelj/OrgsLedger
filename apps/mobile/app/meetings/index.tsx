@@ -174,7 +174,7 @@ export default function MeetingsScreen() {
     if (!currentOrgId) return;
     setLoadingMembers(true);
     try {
-      const response = await api.organizations.listMembers(currentOrgId, { limit: 500 });
+      const response = await api.orgs.listMembers(currentOrgId, { limit: 500 });
       const data = response.data?.data || [];
       // Transform to simpler format
       const members = data.map((m: any) => ({

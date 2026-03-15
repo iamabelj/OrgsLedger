@@ -232,9 +232,9 @@ router.post('/:orgId/import', middleware_1.authenticate, middleware_1.loadMember
         // Generate batch ID for this import
         const batchId = require('crypto').randomUUID();
         // Get all org members for email lookup
-        const members = await (0, db_1.default)('organization_members as om')
-            .join('users as u', 'om.user_id', 'u.id')
-            .where('om.organization_id', orgId)
+        const members = await (0, db_1.default)('memberships as m')
+            .join('users as u', 'm.user_id', 'u.id')
+            .where({ 'm.organization_id': orgId, 'm.is_active': true })
             .select('u.id', 'u.email', 'u.first_name', 'u.last_name');
         const emailToUserId = new Map();
         members.forEach((m) => {
