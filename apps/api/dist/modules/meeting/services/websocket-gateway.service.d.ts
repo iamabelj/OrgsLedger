@@ -18,4 +18,13 @@ export declare function isGatewayInitialized(): boolean;
  * Call this after Socket.IO is initialized
  */
 export declare function setupMeetingRooms(io: SocketIOServer): void;
+/**
+ * Send a targeted event to a specific user.
+ * Used for meeting invites, notifications, etc.
+ */
+export declare function emitToUser(io: SocketIOServer, userId: string, event: string, data: any): void;
+/**
+ * Send a meeting event to all participants in a meeting room.
+ */
+export declare function emitToMeeting(io: SocketIOServer, meetingId: string, event: string, data: any): void;
 //# sourceMappingURL=websocket-gateway.service.d.ts.map

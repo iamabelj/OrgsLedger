@@ -47,7 +47,7 @@ class MeetingController {
     async create(req, res, next) {
         try {
             const userId = req.user.userId;
-            const { organizationId, title, description, scheduledAt, settings } = req.body;
+            const { organizationId, title, description, scheduledAt, settings, agenda } = req.body;
             if (!organizationId) {
                 res.status(400).json({
                     success: false,
@@ -61,6 +61,7 @@ class MeetingController {
                 description,
                 scheduledAt,
                 settings,
+                agenda,
             };
             const meeting = await services_1.meetingService.create(userId, request);
             res.status(201).json({
@@ -73,6 +74,115 @@ class MeetingController {
                 error: error.message,
                 userId: req.user?.userId,
             });
+            next(error);
+        }
+    }
+    /**
+     * POST /meetings/create-with-visibility
+     * Create a new meeting with role-segmented visibility.
+     * Supports ALL_MEMBERS, EXECUTIVES, COMMITTEE, or CUSTOM visibility types.
+     */
+    async createWithVisibility(req, res, next) {
+        try {
+            const userId = req.user.userId;
+            const { organizationId, title, description, scheduledAt, settings, agenda, visibilityType, committeeId, participants, } = req.body;
+            if (!organizationId) {
+                res.status(400).json({
+                    success: false,
+                    error: 'organizationId is required',
+                });
+                return;
+            }
+            // Validate visibility type
+            const validVisibilityTypes = ['ALL_MEMBERS', 'EXECUTIVES', 'COMMITTEE', 'CUSTOM'];
+            if (visibilityType && !validVisibilityTypes.includes(visibilityType)) {
+                res.status(400).json({
+                    success: false,
+                    error: `Invalid visibilityType. Must be one of: ${validVisibilityTypes.join(', ')}`,
+                });
+                return;
+            }
+            // Committee visibility requires committeeId
+            if (visibilityType === 'COMMITTEE' && !committeeId) {
+                res.status(400).json({
+                    success: false,
+                    error: 'committeeId is required for COMMITTEE visibility type',
+                });
+                return;
+            }
+            // Custom visibility requires participants list
+            if (visibilityType === 'CUSTOM' && (!participants || participants.length === 0)) {
+                res.status(400).json({
+                    success: false,
+                    error: 'participants array is required for CUSTOM visibility type',
+                });
+                return;
+            }
+            const request = {
+                organizationId,
+                title,
+                description,
+                scheduledAt,
+                settings,
+                agenda,
+                visibilityType: visibilityType || 'ALL_MEMBERS',
+                committeeId,
+                participants,
+            };
+            const meeting = await services_1.meetingService.createWithVisibility(userId, request);
+            res.status(201).json({
+                success: true,
+                data: {
+                    ...formatMeetingResponse(meeting),
+                    visibilityType: meeting.visibilityType,
+                    targetRoleId: meeting.targetRoleId,
+                    inviteCount: meeting.inviteCount,
+                },
+            });
+        }
+        catch (error) {
+            logger_1.logger.error('[MEETING_CONTROLLER] CreateWithVisibility failed', {
+                error: error.message,
+                userId: req.user?.userId,
+            });
+            next(error);
+        }
+    }
+    /**
+     * PATCH /meetings/:id
+     * Update a scheduled meeting
+     */
+    async update(req, res, next) {
+        try {
+            const userId = req.user.userId;
+            const { id } = req.params;
+            const { title, description, scheduledAt, settings, agenda } = req.body;
+            const meeting = await services_1.meetingService.update(id, userId, {
+                title,
+                description,
+                scheduledAt,
+                settings,
+                agenda,
+            });
+            res.json({
+                success: true,
+                data: formatMeetingResponse(meeting),
+            });
+        }
+        catch (error) {
+            logger_1.logger.error('[MEETING_CONTROLLER] Update failed', {
+                error: error.message,
+                meetingId: req.params.id,
+                userId: req.user?.userId,
+            });
+            if (error.message === 'Meeting not found') {
+                res.status(404).json({ success: false, error: error.message });
+                return;
+            }
+            if (error.message.includes('Only the host') || error.message.includes('Can only update')) {
+                res.status(403).json({ success: false, error: error.message });
+                return;
+            }
             next(error);
         }
     }
@@ -378,6 +488,7 @@ class MeetingController {
      * GET /meetings/:id/minutes
      * Get AI-generated meeting minutes
      * Requires authentication + meeting access
+     * Only invited participants can view minutes (unless visibility is ALL_MEMBERS)
      */
     async getMinutes(req, res, next) {
         try {
@@ -391,6 +502,20 @@ class MeetingController {
                     error: 'Meeting not found',
                 });
                 return;
+            }
+            // Check access: user must be host, invited, or meeting is ALL_MEMBERS
+            const isHost = meeting.hostId === userId;
+            const visibilityType = meeting.visibilityType || 'ALL_MEMBERS';
+            if (!isHost && visibilityType !== 'ALL_MEMBERS') {
+                // Check if user is invited
+                const isInvited = await services_1.meetingInviteService.isInvited(id, userId);
+                if (!isInvited) {
+                    res.status(403).json({
+                        success: false,
+                        error: 'You do not have access to these meeting minutes',
+                    });
+                    return;
+                }
             }
             // Get minutes from service
             const minutes = await services_1.meetingService.getMinutes(id);

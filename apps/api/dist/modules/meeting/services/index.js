@@ -24,4 +24,8 @@ __exportStar(require("./websocket-gateway.service"), exports);
 __exportStar(require("./livekit-token.service"), exports);
 __exportStar(require("./transcription.service"), exports);
 __exportStar(require("./livekit-audio-bot.service"), exports);
+__exportStar(require("./organization-role.service"), exports);
+__exportStar(require("./meeting-invite.service"), exports);
+__exportStar(require("./transcript-persistence.service"), exports);
+__exportStar(require("./translation-api.service"), exports);
 //# sourceMappingURL=index.js.map

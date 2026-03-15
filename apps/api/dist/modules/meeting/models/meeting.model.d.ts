@@ -44,6 +44,7 @@ export interface Meeting {
     endedAt?: string;
     createdAt: string;
     updatedAt: string;
+    visibilityType?: string;
 }
 /**
  * Database row representation (snake_case)
@@ -58,6 +59,7 @@ export interface MeetingRow {
     participants: string | MeetingParticipant[];
     settings: string | MeetingSettings;
     scheduled_at?: string;
+    visibility_type?: string;
     started_at?: string;
     ended_at?: string;
     created_at: string;
@@ -72,6 +74,7 @@ export interface CreateMeetingRequest {
     description?: string;
     scheduledAt?: string;
     settings?: MeetingSettings;
+    agenda?: string[];
 }
 /**
  * Join meeting request payload
@@ -85,6 +88,16 @@ export interface JoinMeetingRequest {
  */
 export interface LeaveMeetingRequest {
     meetingId: string;
+}
+/**
+ * Update meeting request payload
+ */
+export interface UpdateMeetingRequest {
+    title?: string;
+    description?: string;
+    scheduledAt?: string | null;
+    settings?: Partial<MeetingSettings>;
+    agenda?: string[];
 }
 /**
  * Active meeting state stored in Redis

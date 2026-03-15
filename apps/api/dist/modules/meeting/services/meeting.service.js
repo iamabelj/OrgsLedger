@@ -3,6 +3,7 @@
 // OrgsLedger API — Meeting Service
 // Core business logic for meeting operations
 // Event-driven architecture with Redis state management
+// Supports role-segmented meetings with visibility types
 // ============================================================
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
@@ -16,9 +17,12 @@ const meeting_cache_service_1 = require("./meeting-cache.service");
 const event_bus_service_1 = require("./event-bus.service");
 const livekit_audio_bot_service_1 = require("./livekit-audio-bot.service");
 const livekit_token_service_1 = require("./livekit-token.service");
+const meeting_invite_service_1 = require("./meeting-invite.service");
+const transcript_persistence_service_1 = require("./transcript-persistence.service");
 const transcript_queue_1 = require("../../../queues/transcript.queue");
 const backpressure_1 = require("../../../scaling/backpressure");
 const meeting_cleanup_service_1 = require("../../../services/meeting-cleanup.service");
+const error_handler_1 = require("../../../middleware/error-handler");
 // ── Constants ───────────────────────────────────────────────
 const MAX_PARTICIPANTS_DEFAULT = 100;
 /**
@@ -57,24 +61,50 @@ class MeetingService {
             muteOnEntry: true,
             allowScreenShare: true,
             ...request.settings,
+            ...(request.agenda && request.agenda.length > 0 ? { agenda: request.agenda } : {}),
         };
         const hostParticipant = {
             userId: hostId,
             role: 'host',
             joinedAt: new Date().toISOString(),
         };
-        const [row] = await (0, db_1.default)('meetings')
-            .insert({
-            organization_id: request.organizationId,
-            host_id: hostId,
-            title: request.title || null,
-            description: request.description || null,
-            status: 'scheduled',
-            participants: JSON.stringify([hostParticipant]),
-            settings: JSON.stringify(settings),
-            scheduled_at: request.scheduledAt || null,
-        })
-            .returning('*');
+        let row;
+        try {
+            // scheduled_start and created_by are legacy NOT NULL columns from original schema
+            // We populate both legacy and new columns for compatibility
+            const scheduledTime = request.scheduledAt ? new Date(request.scheduledAt) : new Date();
+            const [result] = await (0, db_1.default)('meetings')
+                .insert({
+                organization_id: request.organizationId,
+                host_id: hostId,
+                created_by: hostId, // legacy required column
+                title: request.title || 'Untitled Meeting',
+                description: request.description || null,
+                status: 'scheduled',
+                participants: JSON.stringify([hostParticipant]),
+                settings: JSON.stringify(settings),
+                scheduled_at: scheduledTime,
+                scheduled_start: scheduledTime, // legacy required column
+            })
+                .returning('*');
+            row = result;
+        }
+        catch (err) {
+            logger_1.logger.error('[MEETING] DB insert failed', {
+                error: err.message,
+                code: err.code,
+                orgId: request.organizationId,
+                hostId,
+            });
+            // 23503 = foreign_key_violation, 42P01 = undefined_table
+            if (err.code === '42P01') {
+                throw new error_handler_1.AppError('Meeting system is initializing. Please try again in a moment.', 503);
+            }
+            if (err.code === '23503') {
+                throw new error_handler_1.AppError('Invalid organization or user reference.', 400);
+            }
+            throw new error_handler_1.AppError('Failed to create meeting. Please try again.', 500);
+        }
         const meeting = (0, models_1.meetingFromRow)(row);
         logger_1.logger.info('[MEETING] Created', {
             meetingId: meeting.id,
@@ -90,6 +120,155 @@ class MeetingService {
             data: { hostId, title: meeting.title },
         });
         return meeting;
+    }
+    /**
+     * Create a new meeting with role-segmented visibility.
+     * Auto-populates meeting_invites based on visibility type.
+     */
+    async createWithVisibility(hostId, request) {
+        const settings = {
+            maxParticipants: MAX_PARTICIPANTS_DEFAULT,
+            allowRecording: false,
+            waitingRoom: false,
+            muteOnEntry: true,
+            allowScreenShare: true,
+            enableTranscription: true,
+            ...request.settings,
+            ...(request.agenda && request.agenda.length > 0 ? { agenda: request.agenda } : {}),
+        };
+        const hostParticipant = {
+            userId: hostId,
+            role: 'host',
+            joinedAt: new Date().toISOString(),
+        };
+        const visibilityType = request.visibilityType || 'ALL_MEMBERS';
+        let row;
+        try {
+            const scheduledTime = request.scheduledAt ? new Date(request.scheduledAt) : new Date();
+            const [result] = await (0, db_1.default)('meetings')
+                .insert({
+                organization_id: request.organizationId,
+                host_id: hostId,
+                created_by: hostId,
+                title: request.title || 'Untitled Meeting',
+                description: request.description || null,
+                status: 'scheduled',
+                participants: JSON.stringify([hostParticipant]),
+                settings: JSON.stringify(settings),
+                scheduled_at: scheduledTime,
+                scheduled_start: scheduledTime,
+                visibility_type: visibilityType,
+                target_role_id: request.committeeId || null,
+            })
+                .returning('*');
+            row = result;
+        }
+        catch (err) {
+            logger_1.logger.error('[MEETING] DB insert failed', {
+                error: err.message,
+                code: err.code,
+                orgId: request.organizationId,
+                hostId,
+            });
+            if (err.code === '42P01') {
+                throw new error_handler_1.AppError('Meeting system is initializing. Please try again in a moment.', 503);
+            }
+            if (err.code === '23503') {
+                throw new error_handler_1.AppError('Invalid organization or user reference.', 400);
+            }
+            throw new error_handler_1.AppError('Failed to create meeting. Please try again.', 500);
+        }
+        const meeting = (0, models_1.meetingFromRow)(row);
+        // Auto-populate invites based on visibility type
+        let inviteCount = 0;
+        try {
+            inviteCount = await meeting_invite_service_1.meetingInviteService.populateInvitesForVisibility(meeting.id, meeting.organizationId, hostId, visibilityType, {
+                committeeId: request.committeeId,
+                customParticipants: request.participants,
+            });
+        }
+        catch (err) {
+            logger_1.logger.warn('[MEETING] Failed to populate invites', {
+                meetingId: meeting.id,
+                error: err.message,
+            });
+            // Don't fail meeting creation - invites can be added later
+        }
+        logger_1.logger.info('[MEETING] Created with visibility', {
+            meetingId: meeting.id,
+            orgId: meeting.organizationId,
+            hostId: meeting.hostId,
+            visibilityType,
+            inviteCount,
+        });
+        // Emit event
+        await emitMeetingEvent({
+            type: 'meeting:created',
+            meetingId: meeting.id,
+            organizationId: meeting.organizationId,
+            timestamp: meeting.createdAt,
+            data: {
+                hostId,
+                title: meeting.title,
+                visibilityType,
+                inviteCount,
+            },
+        });
+        // Return extended meeting with visibility info
+        return {
+            ...meeting,
+            visibilityType,
+            targetRoleId: request.committeeId,
+            inviteCount,
+        };
+    }
+    /**
+     * Update a scheduled meeting (host only)
+     */
+    async update(meetingId, userId, request) {
+        const meeting = await this.getById(meetingId);
+        if (!meeting) {
+            throw error_handler_1.AppError.notFound('Meeting not found');
+        }
+        if (meeting.hostId !== userId) {
+            throw error_handler_1.AppError.forbidden('Only the host can update the meeting');
+        }
+        if (meeting.status !== 'scheduled') {
+            throw error_handler_1.AppError.badRequest('Can only update scheduled meetings');
+        }
+        const updates = {};
+        if (request.title !== undefined) {
+            updates.title = request.title || null;
+        }
+        if (request.description !== undefined) {
+            updates.description = request.description || null;
+        }
+        if (request.scheduledAt !== undefined) {
+            updates.scheduled_at = request.scheduledAt || null;
+        }
+        if (request.settings || request.agenda !== undefined) {
+            const mergedSettings = { ...meeting.settings };
+            if (request.settings) {
+                Object.assign(mergedSettings, request.settings);
+            }
+            if (request.agenda !== undefined) {
+                mergedSettings.agenda = request.agenda;
+            }
+            updates.settings = JSON.stringify(mergedSettings);
+        }
+        if (Object.keys(updates).length === 0) {
+            return meeting;
+        }
+        const [row] = await (0, db_1.default)('meetings')
+            .where({ id: meetingId })
+            .update(updates)
+            .returning('*');
+        const updatedMeeting = (0, models_1.meetingFromRow)(row);
+        logger_1.logger.info('[MEETING] Updated', {
+            meetingId,
+            fields: Object.keys(updates),
+        });
+        return updatedMeeting;
     }
     /**
      * Get meeting by ID
@@ -147,13 +326,13 @@ class MeetingService {
     async start(meetingId, userId) {
         const meeting = await this.getById(meetingId);
         if (!meeting) {
-            throw new Error('Meeting not found');
+            throw error_handler_1.AppError.notFound('Meeting not found');
         }
         if (meeting.hostId !== userId) {
-            throw new Error('Only the host can start the meeting');
+            throw error_handler_1.AppError.forbidden('Only the host can start the meeting');
         }
         if (meeting.status !== 'scheduled') {
-            throw new Error(`Cannot start meeting with status: ${meeting.status}`);
+            throw error_handler_1.AppError.badRequest(`Cannot start meeting with status: ${meeting.status}`);
         }
         const now = new Date().toISOString();
         // Update in database
@@ -225,7 +404,7 @@ class MeetingService {
     async join(meetingId, userId, displayName) {
         const meeting = await this.getByIdWithState(meetingId);
         if (!meeting) {
-            throw new Error('Meeting not found');
+            throw error_handler_1.AppError.notFound('Meeting not found');
         }
         // If meeting is scheduled and user is host, auto-start it
         if (meeting.status === 'scheduled' && meeting.hostId === userId) {
@@ -233,7 +412,7 @@ class MeetingService {
             return startedMeeting;
         }
         if (meeting.status !== 'active') {
-            throw new Error(`Cannot join meeting with status: ${meeting.status}`);
+            throw error_handler_1.AppError.badRequest(`Cannot join meeting with status: ${meeting.status}`);
         }
         // Check if user is already in meeting
         const existingParticipant = meeting.participants.find(p => p.userId === userId);
@@ -245,7 +424,7 @@ class MeetingService {
         const activeParticipants = meeting.participants.filter(p => !p.leftAt);
         const maxParticipants = meeting.settings.maxParticipants || MAX_PARTICIPANTS_DEFAULT;
         if (activeParticipants.length >= maxParticipants) {
-            throw new Error('Meeting is at capacity');
+            throw error_handler_1.AppError.badRequest('Meeting is at capacity');
         }
         const now = new Date().toISOString();
         // Add or update participant
@@ -294,10 +473,10 @@ class MeetingService {
     async leave(meetingId, userId) {
         const meeting = await this.getByIdWithState(meetingId);
         if (!meeting) {
-            throw new Error('Meeting not found');
+            throw error_handler_1.AppError.notFound('Meeting not found');
         }
         if (meeting.status !== 'active') {
-            throw new Error(`Cannot leave meeting with status: ${meeting.status}`);
+            throw error_handler_1.AppError.badRequest(`Cannot leave meeting with status: ${meeting.status}`);
         }
         const now = new Date().toISOString();
         // Mark participant as left
@@ -339,14 +518,14 @@ class MeetingService {
     async end(meetingId, userId) {
         const meeting = await this.getById(meetingId);
         if (!meeting) {
-            throw new Error('Meeting not found');
+            throw error_handler_1.AppError.notFound('Meeting not found');
         }
         if (meeting.status === 'ended' || meeting.status === 'cancelled') {
-            throw new Error(`Meeting already ${meeting.status}`);
+            throw error_handler_1.AppError.badRequest(`Meeting already ${meeting.status}`);
         }
         // Only host can end a meeting
         if (meeting.hostId !== userId) {
-            throw new Error('Only the host can end the meeting');
+            throw error_handler_1.AppError.forbidden('Only the host can end the meeting');
         }
         const now = new Date().toISOString();
         // Get final participant state from Redis (source of truth during active meeting)
@@ -403,6 +582,22 @@ class MeetingService {
             await (0, livekit_audio_bot_service_1.stopAudioBot)(meetingId);
             // Delete LiveKit room
             await (0, livekit_token_service_1.deleteRoom)(meetingId);
+            // Persist transcripts from Redis to PostgreSQL
+            try {
+                const transcriptResult = await transcript_persistence_service_1.transcriptPersistenceService.persistMeetingTranscript(meetingId, organizationId);
+                logger_1.logger.info('[MEETING] Transcripts persisted', {
+                    meetingId,
+                    wordCount: transcriptResult.wordCount,
+                    speakerCount: transcriptResult.speakerCount,
+                });
+            }
+            catch (transcriptErr) {
+                // Log warning but don't fail - minutes can still generate from Redis
+                logger_1.logger.warn('[MEETING] Failed to persist transcripts', {
+                    meetingId,
+                    error: transcriptErr.message,
+                });
+            }
             // Check backpressure before queueing minutes
             const backpressureStatus = await (0, backpressure_1.checkMinutesBackpressure)();
             if (!backpressureStatus.allowed) {
@@ -502,13 +697,13 @@ class MeetingService {
     async cancel(meetingId, userId) {
         const meeting = await this.getById(meetingId);
         if (!meeting) {
-            throw new Error('Meeting not found');
+            throw error_handler_1.AppError.notFound('Meeting not found');
         }
         if (meeting.status !== 'scheduled') {
-            throw new Error('Can only cancel scheduled meetings');
+            throw error_handler_1.AppError.badRequest('Can only cancel scheduled meetings');
         }
         if (meeting.hostId !== userId) {
-            throw new Error('Only the host can cancel the meeting');
+            throw error_handler_1.AppError.forbidden('Only the host can cancel the meeting');
         }
         const now = new Date().toISOString();
         const [row] = await (0, db_1.default)('meetings')

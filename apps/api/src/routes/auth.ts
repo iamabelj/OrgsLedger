@@ -81,21 +81,44 @@ const registerWithInviteSchema = z.object({
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+  platform: z.enum(['web', 'mobile', 'flutter']).optional(),
 });
 
 // ── Helpers ─────────────────────────────────────────────────
-function generateTokens(userId: string, email: string, globalRole: string) {
+
+/**
+ * Get platform-specific token expiry
+ * - Web: 7 days (shorter for security)
+ * - Mobile/Flutter: 30 days (better UX for native apps)
+ */
+function getTokenExpiry(platform?: string): { accessExpiry: string; refreshExpiry: string } {
+  if (platform === 'mobile' || platform === 'flutter') {
+    return {
+      accessExpiry: '24h',  // 24 hours access token
+      refreshExpiry: '30d', // 30 days refresh token for mobile
+    };
+  }
+  // Web defaults
+  return {
+    accessExpiry: config.jwt.expiresIn || '1h',
+    refreshExpiry: '7d', // 7 days for web
+  };
+}
+
+function generateTokens(userId: string, email: string, globalRole: string, platform?: string) {
+  const { accessExpiry, refreshExpiry } = getTokenExpiry(platform);
+  
   const accessToken = jwt.sign(
     { userId, email, globalRole },
     config.jwt.secret,
-    { expiresIn: config.jwt.expiresIn as any }
+    { expiresIn: accessExpiry as any }
   );
   const refreshToken = jwt.sign(
     { userId, type: 'refresh' },
     config.jwt.refreshSecret,
-    { expiresIn: config.jwt.refreshExpiresIn as any }
+    { expiresIn: refreshExpiry as any }
   );
-  return { accessToken, refreshToken };
+  return { accessToken, refreshToken, accessExpiry, refreshExpiry };
 }
 
 /**
@@ -768,7 +791,7 @@ router.post('/register-with-invite', validate(registerWithInviteSchema), async (
 // ── Login ───────────────────────────────────────────────────
 router.post('/login', validate(loginSchema), async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, platform } = req.body;
 
     const user = await db('users').where({ email }).first();
     if (!user || !user.is_active) {
@@ -812,9 +835,9 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
       failed_login_attempts: 0,
       locked_until: null,
     });
-    logger.info('[AUTH] Login success', { email, userId: user.id, role: user.global_role, ip: req.ip });
+    logger.info('[AUTH] Login success', { email, userId: user.id, role: user.global_role, ip: req.ip, platform });
 
-    const tokens = generateTokens(user.id, user.email, user.global_role);
+    const tokens = generateTokens(user.id, user.email, user.global_role, platform);
 
     // Store refresh token for rotation/revocation
     await storeRefreshToken(user.id, tokens.refreshToken, {

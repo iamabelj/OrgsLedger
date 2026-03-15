@@ -9,6 +9,8 @@ exports.initializeWebSocketGateway = initializeWebSocketGateway;
 exports.shutdownWebSocketGateway = shutdownWebSocketGateway;
 exports.isGatewayInitialized = isGatewayInitialized;
 exports.setupMeetingRooms = setupMeetingRooms;
+exports.emitToUser = emitToUser;
+exports.emitToMeeting = emitToMeeting;
 const logger_1 = require("../../../logger");
 const registry_1 = require("../../../services/registry");
 const event_bus_service_1 = require("./event-bus.service");
@@ -103,7 +105,93 @@ function setupMeetingRooms(io) {
                 });
             }
         });
+        // Subscribe to user-specific events (invites, notifications)
+        socket.on('user:subscribe', (userId) => {
+            if (userId && typeof userId === 'string') {
+                socket.join(`user:${userId}`);
+                logger_1.logger.debug('[WS_GATEWAY] Socket subscribed to user events', {
+                    socketId: socket.id,
+                    userId,
+                });
+            }
+        });
+        // Unsubscribe from user-specific events
+        socket.on('user:unsubscribe', (userId) => {
+            if (userId && typeof userId === 'string') {
+                socket.leave(`user:${userId}`);
+                logger_1.logger.debug('[WS_GATEWAY] Socket unsubscribed from user events', {
+                    socketId: socket.id,
+                    userId,
+                });
+            }
+        });
+        // Handle live captions from participants (browser speech recognition)
+        socket.on('meeting:caption:send', (data) => {
+            if (!data?.meetingId || !data?.text)
+                return;
+            // Broadcast caption to all participants in the meeting room (except sender)
+            socket.to(`meeting:${data.meetingId}`).emit('meeting:caption', {
+                meetingId: data.meetingId,
+                speaker: data.speaker || 'Unknown',
+                text: data.text,
+                timestamp: Date.now(),
+            });
+            logger_1.logger.debug('[WS_GATEWAY] Caption broadcasted', {
+                meetingId: data.meetingId,
+                speaker: data.speaker,
+                textLength: data.text.length,
+            });
+        });
+        // Handle participant state updates (hand raise, reactions, etc.)
+        socket.on('meeting:participant-state', (data) => {
+            if (!data?.meetingId || !data?.userId)
+                return;
+            // Broadcast state to all participants (including sender)
+            io.to(`meeting:${data.meetingId}`).emit('meeting:participant-state-changed', {
+                meetingId: data.meetingId,
+                userId: data.userId,
+                state: data.state,
+                timestamp: Date.now(),
+            });
+            logger_1.logger.debug('[WS_GATEWAY] Participant state broadcasted', {
+                meetingId: data.meetingId,
+                userId: data.userId,
+                state: data.state,
+            });
+        });
+        // Handle transcript visibility toggle (enable/disable live captions)
+        socket.on('meeting:transcript-visibility', (data) => {
+            if (!data?.meetingId)
+                return;
+            // Broadcast visibility preference to all participants
+            socket.to(`meeting:${data.meetingId}`).emit('meeting:transcript-visibility-changed', {
+                meetingId: data.meetingId,
+                visible: data.visible,
+                timestamp: Date.now(),
+            });
+        });
     });
     logger_1.logger.info('[WS_GATEWAY] Meeting room handlers registered');
+}
+/**
+ * Send a targeted event to a specific user.
+ * Used for meeting invites, notifications, etc.
+ */
+function emitToUser(io, userId, event, data) {
+    io.to(`user:${userId}`).emit(event, data);
+    logger_1.logger.debug('[WS_GATEWAY] Emitted to user', {
+        userId,
+        event,
+    });
+}
+/**
+ * Send a meeting event to all participants in a meeting room.
+ */
+function emitToMeeting(io, meetingId, event, data) {
+    io.to(`meeting:${meetingId}`).emit(event, data);
+    logger_1.logger.debug('[WS_GATEWAY] Emitted to meeting', {
+        meetingId,
+        event,
+    });
 }
 //# sourceMappingURL=websocket-gateway.service.js.map

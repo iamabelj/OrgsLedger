@@ -6,6 +6,17 @@ export declare class MeetingController {
      */
     create(req: Request, res: Response, next: NextFunction): Promise<void>;
     /**
+     * POST /meetings/create-with-visibility
+     * Create a new meeting with role-segmented visibility.
+     * Supports ALL_MEMBERS, EXECUTIVES, COMMITTEE, or CUSTOM visibility types.
+     */
+    createWithVisibility(req: Request, res: Response, next: NextFunction): Promise<void>;
+    /**
+     * PATCH /meetings/:id
+     * Update a scheduled meeting
+     */
+    update(req: Request, res: Response, next: NextFunction): Promise<void>;
+    /**
      * POST /meetings/join
      * Join an existing meeting
      */
@@ -49,6 +60,7 @@ export declare class MeetingController {
      * GET /meetings/:id/minutes
      * Get AI-generated meeting minutes
      * Requires authentication + meeting access
+     * Only invited participants can view minutes (unless visibility is ALL_MEMBERS)
      */
     getMinutes(req: Request, res: Response, next: NextFunction): Promise<void>;
     /**

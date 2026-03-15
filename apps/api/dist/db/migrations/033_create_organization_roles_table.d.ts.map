@@ -1,0 +1,1 @@
+{"version":3,"file":"033_create_organization_roles_table.d.ts","sourceRoot":"","sources":["../../../src/db/migrations/033_create_organization_roles_table.ts"],"names":[],"mappings":"AAKA,OAAO,EAAE,IAAI,EAAE,MAAM,MAAM,CAAC;AAE5B,wBAAsB,EAAE,CAAC,IAAI,EAAE,IAAI,GAAG,OAAO,CAAC,IAAI,CAAC,CAkElD;AAED,wBAAsB,IAAI,CAAC,IAAI,EAAE,IAAI,GAAG,OAAO,CAAC,IAAI,CAAC,CAKpD"}

@@ -5,7 +5,7 @@ export declare const DOMAINS: {
     readonly LOCALHOST: "localhost";
     readonly LOOPBACK: "127.0.0.1";
 };
-export declare const LANDING_HOSTS: readonly ["orgsledger.com", "www.orgsledger.com"];
+export declare const LANDING_HOSTS: readonly ["orgsledger.com", "www.orgsledger.com", "localhost", "127.0.0.1"];
 /** Check whether a Host header belongs to the landing / marketing domain */
 export declare function isLandingHost(host: string): boolean;
 export declare const ROLES: {

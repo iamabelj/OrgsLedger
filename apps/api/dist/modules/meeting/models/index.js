@@ -18,4 +18,5 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./meeting.model"), exports);
+__exportStar(require("./meeting-system.types"), exports);
 //# sourceMappingURL=index.js.map

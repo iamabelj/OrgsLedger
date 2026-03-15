@@ -17,6 +17,8 @@ exports.DOMAINS = {
 exports.LANDING_HOSTS = [
     exports.DOMAINS.LANDING,
     exports.DOMAINS.LANDING_WWW,
+    exports.DOMAINS.LOCALHOST,
+    exports.DOMAINS.LOOPBACK,
 ];
 /** Check whether a Host header belongs to the landing / marketing domain */
 function isLandingHost(host) {

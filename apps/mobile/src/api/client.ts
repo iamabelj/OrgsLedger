@@ -110,8 +110,8 @@ class ApiClient {
       email: string; password: string; firstName: string; lastName: string;
       phone?: string; inviteCode: string;
     }) => this.client.post('/auth/register-with-invite', data),
-    login: (data: { email: string; password: string }) =>
-      this.client.post('/auth/login', data),
+    login: (data: { email: string; password: string; platform?: string }) =>
+      this.client.post('/auth/login', { ...data, platform: data.platform || 'mobile' }),
     me: () => this.client.get('/auth/me'),
     updateProfile: (data: any) => this.client.put('/auth/me', data),
     updatePushToken: (data: { fcmToken?: string; apnsToken?: string }) =>
@@ -319,6 +319,23 @@ class ApiClient {
       };
       agenda?: string[];
     }) => this.client.post('/meetings/create', data),
+    createWithVisibility: (data: {
+      organizationId: string;
+      title?: string;
+      description?: string;
+      scheduledAt?: string;
+      settings?: {
+        maxParticipants?: number;
+        allowRecording?: boolean;
+        waitingRoom?: boolean;
+        muteOnEntry?: boolean;
+        allowScreenShare?: boolean;
+      };
+      agenda?: string[];
+      visibilityType: 'ALL_MEMBERS' | 'EXECUTIVES' | 'COMMITTEE' | 'CUSTOM';
+      committeeId?: string;
+      participants?: string[];
+    }) => this.client.post('/meetings/create-with-visibility', data),
     join: (meetingId: string, displayName?: string) =>
       this.client.post('/meetings/join', { meetingId, displayName }),
     leave: (meetingId: string) =>
@@ -591,6 +608,40 @@ class ApiClient {
       this.client.get(`/analytics/${orgId}/member-payments`),
     receipt: (orgId: string, recordId: string) =>
       this.client.get(`/analytics/${orgId}/receipt/${recordId}`),
+  };
+
+  // ── Records (Historical) ─────────────────────────────
+  records = {
+    list: (orgId: string, params?: any) =>
+      this.client.get(`/records/${orgId}`, { params }),
+    get: (orgId: string, recordId: string) =>
+      this.client.get(`/records/${orgId}/${recordId}`),
+    create: (orgId: string, data: {
+      userId?: string;
+      recordType: string;
+      title: string;
+      description?: string;
+      amount?: number;
+      currency?: string;
+      recordDate: string;
+      category?: string;
+    }) => this.client.post(`/records/${orgId}`, data),
+    import: (orgId: string, formData: FormData) =>
+      this.client.post(`/records/${orgId}/import`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }),
+    template: (orgId: string) =>
+      this.client.get(`/records/${orgId}/template`, { responseType: 'blob' }),
+    update: (orgId: string, recordId: string, data: any) =>
+      this.client.patch(`/records/${orgId}/${recordId}`, data),
+    delete: (orgId: string, recordId: string) =>
+      this.client.delete(`/records/${orgId}/${recordId}`),
+    deleteBatch: (orgId: string, batchId: string) =>
+      this.client.delete(`/records/${orgId}/batch/${batchId}`),
+    filters: (orgId: string) =>
+      this.client.get(`/records/${orgId}/filters`),
+    myRecords: (orgId: string, params?: any) =>
+      this.client.get(`/records/${orgId}/my-records`, { params }),
   };
 
   // ── Translation ───────────────────────────────────────

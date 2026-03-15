@@ -1,4 +1,4 @@
-import { Meeting, MeetingStatus, CreateMeetingRequest } from '../models';
+import { Meeting, MeetingStatus, CreateMeetingRequest, UpdateMeetingRequest, CreateMeetingWithVisibilityRequest, MeetingWithVisibility } from '../models';
 export type MeetingEventType = 'meeting:created' | 'meeting:started' | 'meeting:ended' | 'meeting:cancelled' | 'meeting:participant:joined' | 'meeting:participant:left';
 export interface MeetingEvent {
     type: MeetingEventType;
@@ -12,6 +12,15 @@ export declare class MeetingService {
      * Create a new meeting
      */
     create(hostId: string, request: CreateMeetingRequest): Promise<Meeting>;
+    /**
+     * Create a new meeting with role-segmented visibility.
+     * Auto-populates meeting_invites based on visibility type.
+     */
+    createWithVisibility(hostId: string, request: CreateMeetingWithVisibilityRequest): Promise<MeetingWithVisibility>;
+    /**
+     * Update a scheduled meeting (host only)
+     */
+    update(meetingId: string, userId: string, request: UpdateMeetingRequest): Promise<Meeting>;
     /**
      * Get meeting by ID
      */

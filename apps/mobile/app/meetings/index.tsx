@@ -110,6 +110,13 @@ export default function MeetingsScreen() {
   const [agendaItems, setAgendaItems] = useState<string[]>([]);
   const [newAgendaItem, setNewAgendaItem] = useState('');
 
+  // Member selection state (for new meetings)
+  const [orgMembers, setOrgMembers] = useState<{ id: string; firstName?: string; lastName?: string; email: string }[]>([]);
+  const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set());
+  const [selectAllMembers, setSelectAllMembers] = useState(true);
+  const [memberSearch, setMemberSearch] = useState('');
+  const [loadingMembers, setLoadingMembers] = useState(false);
+
   // Action loading per meeting
   const [actionLoading, setActionLoading] = useState<Record<string, string>>({});
 
@@ -163,6 +170,28 @@ export default function MeetingsScreen() {
 
   // ── Form helpers ──────────────────────────────────────
 
+  const loadOrgMembers = useCallback(async () => {
+    if (!currentOrgId) return;
+    setLoadingMembers(true);
+    try {
+      const response = await api.organizations.listMembers(currentOrgId, { limit: 500 });
+      const data = response.data?.data || [];
+      // Transform to simpler format
+      const members = data.map((m: any) => ({
+        id: m.user_id || m.userId || m.id,
+        firstName: m.first_name || m.firstName || '',
+        lastName: m.last_name || m.lastName || '',
+        email: m.user?.email || m.email || '',
+      }));
+      setOrgMembers(members);
+    } catch {
+      // Silent fail - show empty member list
+      setOrgMembers([]);
+    } finally {
+      setLoadingMembers(false);
+    }
+  }, [currentOrgId]);
+
   const resetForm = () => {
     setTitle('');
     setDescription('');
@@ -171,10 +200,14 @@ export default function MeetingsScreen() {
     setAgendaItems([]);
     setNewAgendaItem('');
     setEditMeetingId(null);
+    setSelectedMembers(new Set());
+    setSelectAllMembers(true);
+    setMemberSearch('');
   };
 
   const openCreate = () => {
     resetForm();
+    loadOrgMembers();
     setModalMode('create');
   };
 
@@ -216,6 +249,44 @@ export default function MeetingsScreen() {
     setAgendaItems((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Filtered members based on search
+  const filteredMembers = useMemo(() => {
+    if (!memberSearch.trim()) return orgMembers;
+    const q = memberSearch.toLowerCase();
+    return orgMembers.filter(
+      (m) =>
+        m.firstName?.toLowerCase().includes(q) ||
+        m.lastName?.toLowerCase().includes(q) ||
+        m.email?.toLowerCase().includes(q)
+    );
+  }, [orgMembers, memberSearch]);
+
+  const toggleMember = (memberId: string) => {
+    setSelectedMembers((prev) => {
+      const next = new Set(prev);
+      if (next.has(memberId)) {
+        next.delete(memberId);
+      } else {
+        next.add(memberId);
+      }
+      return next;
+    });
+    // If manually toggling, turn off "select all"
+    setSelectAllMembers(false);
+  };
+
+  const handleSelectAll = () => {
+    if (selectAllMembers) {
+      // Turn off - clear all selections
+      setSelectedMembers(new Set());
+      setSelectAllMembers(false);
+    } else {
+      // Turn on - select everyone
+      setSelectedMembers(new Set(orgMembers.map((m) => m.id)));
+      setSelectAllMembers(true);
+    }
+  };
+
   const buildScheduledAt = (): string | undefined => {
     if (!scheduledDate) return undefined;
     const time = scheduledTime || '09:00';
@@ -242,14 +313,34 @@ export default function MeetingsScreen() {
 
     setSubmitting(true);
     try {
-      await api.meetings.create({
-        organizationId: currentOrgId,
-        title: title.trim(),
-        description: description.trim() || undefined,
-        scheduledAt: buildScheduledAt(),
-        settings: {},
-        agenda: agendaItems.length > 0 ? agendaItems : undefined,
-      });
+      // Determine visibility type based on selection
+      const isAllSelected = selectAllMembers || selectedMembers.size === 0 || selectedMembers.size === orgMembers.length;
+      
+      if (isAllSelected) {
+        // All members - use ALL_MEMBERS visibility
+        await api.meetings.createWithVisibility({
+          organizationId: currentOrgId,
+          title: title.trim(),
+          description: description.trim() || undefined,
+          scheduledAt: buildScheduledAt(),
+          settings: {},
+          agenda: agendaItems.length > 0 ? agendaItems : undefined,
+          visibilityType: 'ALL_MEMBERS',
+        });
+      } else {
+        // Custom selection - use CUSTOM visibility with participant IDs
+        await api.meetings.createWithVisibility({
+          organizationId: currentOrgId,
+          title: title.trim(),
+          description: description.trim() || undefined,
+          scheduledAt: buildScheduledAt(),
+          settings: {},
+          agenda: agendaItems.length > 0 ? agendaItems : undefined,
+          visibilityType: 'CUSTOM',
+          participants: Array.from(selectedMembers),
+        });
+      }
+      
       closeModal();
       showAlert('Meeting Created', 'Your meeting has been scheduled.');
       await loadMeetings();
@@ -617,6 +708,90 @@ export default function MeetingsScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
+
+              {/* Participants Section - Only for create mode */}
+              {modalMode === 'create' && (
+                <>
+                  <Text style={styles.fieldLabel}>PARTICIPANTS</Text>
+                  <View style={styles.participantsContainer}>
+                    {/* Select All Toggle */}
+                    <TouchableOpacity style={styles.selectAllRow} onPress={handleSelectAll}>
+                      <View style={[styles.memberCheckbox, selectAllMembers && styles.memberCheckboxChecked]}>
+                        {selectAllMembers && <Ionicons name="checkmark" size={14} color="#fff" />}
+                      </View>
+                      <Text style={styles.selectAllText}>
+                        {selectAllMembers ? 'All Members Selected' : 'Select All Members'}
+                      </Text>
+                      <Text style={styles.memberCount}>
+                        {selectAllMembers ? orgMembers.length : selectedMembers.size} / {orgMembers.length}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Search Box */}
+                    <View style={styles.memberSearchBox}>
+                      <Ionicons name="search" size={16} color={Colors.textLight} />
+                      <TextInput
+                        style={styles.memberSearchInput}
+                        value={memberSearch}
+                        onChangeText={setMemberSearch}
+                        placeholder="Search members..."
+                        placeholderTextColor={Colors.textLight}
+                      />
+                      {memberSearch ? (
+                        <TouchableOpacity onPress={() => setMemberSearch('')}>
+                          <Ionicons name="close-circle" size={18} color={Colors.textLight} />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+
+                    {/* Member List */}
+                    {loadingMembers ? (
+                      <View style={styles.memberListLoading}>
+                        <ActivityIndicator size="small" color={Colors.highlight} />
+                        <Text style={styles.memberListLoadingText}>Loading members...</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.memberList}>
+                        {filteredMembers.length === 0 ? (
+                          <Text style={styles.noMembersText}>
+                            {memberSearch ? 'No members match your search' : 'No members found'}
+                          </Text>
+                        ) : (
+                          filteredMembers.map((member) => {
+                            const isChecked = selectAllMembers || selectedMembers.has(member.id);
+                            const name = `${member.firstName || ''} ${member.lastName || ''}`.trim() || member.email;
+                            return (
+                              <TouchableOpacity
+                                key={member.id}
+                                style={styles.memberRow}
+                                onPress={() => toggleMember(member.id)}
+                              >
+                                <View style={[styles.memberCheckbox, isChecked && styles.memberCheckboxChecked]}>
+                                  {isChecked && <Ionicons name="checkmark" size={14} color="#fff" />}
+                                </View>
+                                <View style={styles.memberInfo}>
+                                  <Text style={styles.memberName} numberOfLines={1}>{name}</Text>
+                                  {member.email && name !== member.email ? (
+                                    <Text style={styles.memberEmail} numberOfLines={1}>{member.email}</Text>
+                                  ) : null}
+                                </View>
+                              </TouchableOpacity>
+                            );
+                          })
+                        )}
+                      </View>
+                    )}
+
+                    {/* Info note */}
+                    <View style={styles.participantNote}>
+                      <Ionicons name="information-circle-outline" size={14} color={Colors.textLight} />
+                      <Text style={styles.participantNoteText}>
+                        Only selected participants will be able to view meeting minutes
+                      </Text>
+                    </View>
+                  </View>
+                </>
+              )}
 
               {/* Actions */}
               <View style={styles.modalActions}>
@@ -1058,6 +1233,78 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs + 2,
   },
   agendaAddBtn: { padding: 2 },
+
+  // Participants selection
+  participantsContainer: {
+    backgroundColor: Colors.primaryLight,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  selectAllRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+    marginBottom: Spacing.sm,
+  },
+  selectAllText: { flex: 1, fontSize: FontSize.md, color: Colors.textPrimary, fontWeight: FontWeight.medium },
+  memberCount: { fontSize: FontSize.sm, color: Colors.textLight },
+  memberSearchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.primaryMid,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  memberSearchInput: {
+    flex: 1,
+    fontSize: FontSize.sm,
+    color: Colors.textPrimary,
+    paddingVertical: Spacing.sm,
+  },
+  memberList: { maxHeight: 200 },
+  memberListLoading: { alignItems: 'center', padding: Spacing.lg, gap: Spacing.sm },
+  memberListLoadingText: { fontSize: FontSize.sm, color: Colors.textLight },
+  noMembersText: { fontSize: FontSize.sm, color: Colors.textLight, textAlign: 'center', padding: Spacing.md },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.xs + 4,
+  },
+  memberCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memberCheckboxChecked: {
+    backgroundColor: Colors.highlight,
+    borderColor: Colors.highlight,
+  },
+  memberInfo: { flex: 1 },
+  memberName: { fontSize: FontSize.sm, color: Colors.textPrimary },
+  memberEmail: { fontSize: FontSize.xs, color: Colors.textLight },
+  participantNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginTop: Spacing.sm,
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.borderLight,
+  },
+  participantNoteText: { flex: 1, fontSize: FontSize.xs, color: Colors.textLight },
 
   // Modal actions
   modalActions: {

@@ -10,24 +10,41 @@ exports.meetingToRow = meetingToRow;
  * Convert database row to Meeting entity
  */
 function meetingFromRow(row) {
+    let participants = [];
+    if (typeof row.participants === 'string') {
+        try {
+            participants = JSON.parse(row.participants);
+        }
+        catch { /* keep [] */ }
+    }
+    else if (Array.isArray(row.participants)) {
+        participants = row.participants;
+    }
+    let settings = {};
+    if (typeof row.settings === 'string') {
+        try {
+            settings = JSON.parse(row.settings);
+        }
+        catch { /* keep {} */ }
+    }
+    else if (row.settings && typeof row.settings === 'object') {
+        settings = row.settings;
+    }
     return {
         id: row.id,
         organizationId: row.organization_id,
-        hostId: row.host_id,
+        hostId: row.host_id || row.created_by || '',
         title: row.title,
         description: row.description,
         status: row.status,
-        participants: typeof row.participants === 'string'
-            ? JSON.parse(row.participants)
-            : row.participants,
-        settings: typeof row.settings === 'string'
-            ? JSON.parse(row.settings)
-            : row.settings,
-        scheduledAt: row.scheduled_at,
-        startedAt: row.started_at,
-        endedAt: row.ended_at,
+        participants,
+        settings,
+        scheduledAt: row.scheduled_at || row.scheduled_start || null,
+        startedAt: row.started_at || row.actual_start || null,
+        endedAt: row.ended_at || row.actual_end || null,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
+        visibilityType: row.visibility_type || 'ALL_MEMBERS',
     };
 }
 /**

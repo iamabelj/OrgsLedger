@@ -46,6 +46,7 @@ const announcements_1 = __importDefault(require("./routes/announcements"));
 const events_1 = __importDefault(require("./routes/events"));
 const polls_1 = __importDefault(require("./routes/polls"));
 const documents_1 = __importDefault(require("./routes/documents"));
+const records_1 = __importDefault(require("./routes/records"));
 const analytics_1 = __importDefault(require("./routes/analytics"));
 const expenses_1 = __importDefault(require("./routes/expenses"));
 const subscriptions_1 = __importDefault(require("./routes/subscriptions"));
@@ -294,6 +295,7 @@ app.use('/api/announcements', announcements_1.default);
 app.use('/api/events', events_1.default);
 app.use('/api/polls', polls_1.default);
 app.use('/api/documents', documents_1.default);
+app.use('/api/records', records_1.default);
 app.use('/api/analytics', analytics_1.default);
 app.use('/api/expenses', expenses_1.default);
 app.use('/api/subscriptions', subscriptions_1.default);
@@ -384,6 +386,83 @@ function doPostStart() {
         }
         catch (err) {
             logger_1.logger.error('[STARTUP] refresh_tokens table check failed (non-fatal):', err.message);
+        }
+        // Ensure meetings table has required columns for meeting service
+        // The table may exist from legacy migrations with a different schema
+        try {
+            const { db: knex } = require('./db');
+            if (await knex.schema.hasTable('meetings')) {
+                // Add missing columns needed by the meeting service
+                const addIfMissing = async (col, fn) => {
+                    if (!(await knex.schema.hasColumn('meetings', col))) {
+                        await knex.schema.alterTable('meetings', fn);
+                        logger_1.logger.info(`[STARTUP] ✓ Added meetings.${col}`);
+                    }
+                };
+                await addIfMissing('host_id', (t) => t.uuid('host_id').nullable());
+                await addIfMissing('participants', (t) => t.jsonb('participants').notNullable().defaultTo('[]'));
+                await addIfMissing('settings', (t) => t.jsonb('settings').notNullable().defaultTo('{}'));
+                await addIfMissing('scheduled_at', (t) => t.timestamp('scheduled_at').nullable());
+                await addIfMissing('started_at', (t) => t.timestamp('started_at').nullable());
+                await addIfMissing('ended_at', (t) => t.timestamp('ended_at').nullable());
+                // Make title nullable (legacy schema has NOT NULL)
+                await knex.raw('ALTER TABLE meetings ALTER COLUMN title DROP NOT NULL').catch(() => { });
+                // Copy data from legacy columns if they exist
+                const hasCreatedBy = await knex.schema.hasColumn('meetings', 'created_by');
+                if (hasCreatedBy) {
+                    await knex.raw(`
+            UPDATE meetings SET host_id = created_by WHERE host_id IS NULL AND created_by IS NOT NULL
+          `).catch(() => { });
+                }
+                const hasScheduledStart = await knex.schema.hasColumn('meetings', 'scheduled_start');
+                if (hasScheduledStart) {
+                    await knex.raw(`
+            UPDATE meetings SET scheduled_at = scheduled_start WHERE scheduled_at IS NULL AND scheduled_start IS NOT NULL
+          `).catch(() => { });
+                }
+                // Add host_id FK + index
+                await knex.raw(`
+          CREATE INDEX IF NOT EXISTS idx_meetings_host_status ON meetings (host_id, status)
+        `).catch(() => { });
+            }
+            else {
+                // Table doesn't exist at all — create it fresh
+                await knex.schema.createTable('meetings', (t) => {
+                    t.uuid('id').primary().defaultTo(knex.raw("gen_random_uuid()"));
+                    t.uuid('organization_id').notNullable().references('id').inTable('organizations').onDelete('CASCADE');
+                    t.uuid('host_id').notNullable().references('id').inTable('users').onDelete('CASCADE');
+                    t.string('title', 255).nullable();
+                    t.text('description').nullable();
+                    t.string('status').notNullable().defaultTo('scheduled');
+                    t.jsonb('participants').notNullable().defaultTo('[]');
+                    t.jsonb('settings').notNullable().defaultTo('{}');
+                    t.timestamp('scheduled_at').nullable();
+                    t.timestamp('started_at').nullable();
+                    t.timestamp('ended_at').nullable();
+                    t.timestamp('created_at').notNullable().defaultTo(knex.fn.now());
+                    t.timestamp('updated_at').notNullable().defaultTo(knex.fn.now());
+                });
+                logger_1.logger.info('[STARTUP] ✓ Created meetings table');
+            }
+            // Ensure meeting_participants table exists
+            if (!(await knex.schema.hasTable('meeting_participants'))) {
+                await knex.schema.createTable('meeting_participants', (t) => {
+                    t.uuid('id').primary().defaultTo(knex.raw("gen_random_uuid()"));
+                    t.uuid('meeting_id').notNullable().references('id').inTable('meetings').onDelete('CASCADE');
+                    t.uuid('user_id').notNullable();
+                    t.string('role', 20).notNullable().defaultTo('participant');
+                    t.string('display_name', 100).nullable();
+                    t.timestamp('joined_at').notNullable().defaultTo(knex.fn.now());
+                    t.timestamp('left_at').nullable();
+                    t.timestamp('created_at').notNullable().defaultTo(knex.fn.now());
+                    t.index(['meeting_id']);
+                    t.index(['user_id']);
+                });
+                logger_1.logger.info('[STARTUP] ✓ Created meeting_participants table');
+            }
+        }
+        catch (err) {
+            logger_1.logger.error('[STARTUP] meetings table check failed (non-fatal):', err.message);
         }
         // Start recurring dues scheduler
         (0, scheduler_service_1.startScheduler)();

@@ -115,12 +115,32 @@ const registerWithInviteSchema = zod_1.z.object({
 const loginSchema = zod_1.z.object({
     email: zod_1.z.string().email(),
     password: zod_1.z.string().min(1),
+    platform: zod_1.z.enum(['web', 'mobile', 'flutter']).optional(),
 });
 // ── Helpers ─────────────────────────────────────────────────
-function generateTokens(userId, email, globalRole) {
-    const accessToken = jsonwebtoken_1.default.sign({ userId, email, globalRole }, config_1.config.jwt.secret, { expiresIn: config_1.config.jwt.expiresIn });
-    const refreshToken = jsonwebtoken_1.default.sign({ userId, type: 'refresh' }, config_1.config.jwt.refreshSecret, { expiresIn: config_1.config.jwt.refreshExpiresIn });
-    return { accessToken, refreshToken };
+/**
+ * Get platform-specific token expiry
+ * - Web: 7 days (shorter for security)
+ * - Mobile/Flutter: 30 days (better UX for native apps)
+ */
+function getTokenExpiry(platform) {
+    if (platform === 'mobile' || platform === 'flutter') {
+        return {
+            accessExpiry: '24h', // 24 hours access token
+            refreshExpiry: '30d', // 30 days refresh token for mobile
+        };
+    }
+    // Web defaults
+    return {
+        accessExpiry: config_1.config.jwt.expiresIn || '1h',
+        refreshExpiry: '7d', // 7 days for web
+    };
+}
+function generateTokens(userId, email, globalRole, platform) {
+    const { accessExpiry, refreshExpiry } = getTokenExpiry(platform);
+    const accessToken = jsonwebtoken_1.default.sign({ userId, email, globalRole }, config_1.config.jwt.secret, { expiresIn: accessExpiry });
+    const refreshToken = jsonwebtoken_1.default.sign({ userId, type: 'refresh' }, config_1.config.jwt.refreshSecret, { expiresIn: refreshExpiry });
+    return { accessToken, refreshToken, accessExpiry, refreshExpiry };
 }
 /**
  * Store a refresh token hash in the DB for rotation/revocation.
@@ -727,7 +747,7 @@ router.post('/register-with-invite', (0, middleware_1.validate)(registerWithInvi
 // ── Login ───────────────────────────────────────────────────
 router.post('/login', (0, middleware_1.validate)(loginSchema), async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { email, password, platform } = req.body;
         const user = await (0, db_1.default)('users').where({ email }).first();
         if (!user || !user.is_active) {
             logger_1.logger.warn('[AUTH] Login failed - user not found or inactive', { email, ip: req.ip, exists: !!user, active: user?.is_active });
@@ -767,8 +787,8 @@ router.post('/login', (0, middleware_1.validate)(loginSchema), async (req, res) 
             failed_login_attempts: 0,
             locked_until: null,
         });
-        logger_1.logger.info('[AUTH] Login success', { email, userId: user.id, role: user.global_role, ip: req.ip });
-        const tokens = generateTokens(user.id, user.email, user.global_role);
+        logger_1.logger.info('[AUTH] Login success', { email, userId: user.id, role: user.global_role, ip: req.ip, platform });
+        const tokens = generateTokens(user.id, user.email, user.global_role, platform);
         // Store refresh token for rotation/revocation
         await storeRefreshToken(user.id, tokens.refreshToken, {
             ip: req.ip,

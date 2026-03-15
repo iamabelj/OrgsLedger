@@ -5,7 +5,7 @@
 // ============================================================
 
 import { Request, Response, NextFunction } from 'express';
-import { meetingService } from '../services';
+import { meetingService, meetingInviteService } from '../services';
 import { 
   CreateMeetingRequest, 
   MeetingStatus,
@@ -564,6 +564,7 @@ export class MeetingController {
    * GET /meetings/:id/minutes
    * Get AI-generated meeting minutes
    * Requires authentication + meeting access
+   * Only invited participants can view minutes (unless visibility is ALL_MEMBERS)
    */
   async getMinutes(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -579,6 +580,22 @@ export class MeetingController {
           error: 'Meeting not found',
         });
         return;
+      }
+
+      // Check access: user must be host, invited, or meeting is ALL_MEMBERS
+      const isHost = meeting.hostId === userId;
+      const visibilityType = meeting.visibilityType || 'ALL_MEMBERS';
+      
+      if (!isHost && visibilityType !== 'ALL_MEMBERS') {
+        // Check if user is invited
+        const isInvited = await meetingInviteService.isInvited(id, userId);
+        if (!isInvited) {
+          res.status(403).json({
+            success: false,
+            error: 'You do not have access to these meeting minutes',
+          });
+          return;
+        }
       }
 
       // Get minutes from service
