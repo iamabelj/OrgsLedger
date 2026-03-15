@@ -442,6 +442,8 @@ function doPostStart(): void {
         await addIfMissing('scheduled_at', (t: any) => t.timestamp('scheduled_at').nullable());
         await addIfMissing('started_at', (t: any) => t.timestamp('started_at').nullable());
         await addIfMissing('ended_at', (t: any) => t.timestamp('ended_at').nullable());
+        await addIfMissing('visibility_type', (t: any) => t.string('visibility_type', 50).nullable().defaultTo('ALL_MEMBERS'));
+        await addIfMissing('target_role_id', (t: any) => t.uuid('target_role_id').nullable());
 
         // Make title nullable (legacy schema has NOT NULL)
         await knex.raw('ALTER TABLE meetings ALTER COLUMN title DROP NOT NULL').catch(() => {});
@@ -478,10 +480,31 @@ function doPostStart(): void {
           t.timestamp('scheduled_at').nullable();
           t.timestamp('started_at').nullable();
           t.timestamp('ended_at').nullable();
+          t.string('visibility_type', 50).nullable().defaultTo('ALL_MEMBERS');
+          t.uuid('target_role_id').nullable();
           t.timestamp('created_at').notNullable().defaultTo(knex.fn.now());
           t.timestamp('updated_at').notNullable().defaultTo(knex.fn.now());
         });
         logger.info('[STARTUP] ✓ Created meetings table');
+      }
+
+      // Ensure meeting_invites table exists
+      if (!(await knex.schema.hasTable('meeting_invites'))) {
+        await knex.schema.createTable('meeting_invites', (t: any) => {
+          t.uuid('id').primary().defaultTo(knex.raw("gen_random_uuid()"));
+          t.uuid('meeting_id').notNullable().references('id').inTable('meetings').onDelete('CASCADE');
+          t.uuid('user_id').notNullable().references('id').inTable('users').onDelete('CASCADE');
+          t.string('role', 50).notNullable().defaultTo('participant');
+          t.uuid('invited_by').nullable();
+          t.string('status', 50).notNullable().defaultTo('pending');
+          t.timestamp('invited_at').notNullable().defaultTo(knex.fn.now());
+          t.timestamp('responded_at').nullable();
+          t.timestamp('created_at').notNullable().defaultTo(knex.fn.now());
+          t.timestamp('updated_at').notNullable().defaultTo(knex.fn.now());
+          t.unique(['meeting_id', 'user_id']);
+          t.index(['user_id', 'status']);
+        });
+        logger.info('[STARTUP] ✓ Created meeting_invites table');
       }
 
       // Ensure meeting_participants table exists
