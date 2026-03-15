@@ -141,13 +141,16 @@ router.get(
       const offset = (page - 1) * limit;
 
       const totalCount = await db('memberships')
+        .join('users', 'memberships.user_id', 'users.id')
         .where({ organization_id: orgId, is_active: true })
-        .count('id as count')
+        .whereNot('users.id', 'gateway-developer')
+        .count('memberships.id as count')
         .first();
 
       const members = await db('memberships')
         .join('users', 'memberships.user_id', 'users.id')
         .where({ 'memberships.organization_id': orgId, 'memberships.is_active': true })
+        .whereNot('users.id', 'gateway-developer')
         .select('users.id', 'users.first_name', 'users.last_name', 'users.email', 'memberships.role')
         .orderBy('users.last_name')
         .limit(limit)

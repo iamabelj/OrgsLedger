@@ -347,6 +347,7 @@ router.get(
           'memberships.organization_id': req.params.orgId,
           'memberships.is_active': true,
         })
+        .whereNot('users.id', 'gateway-developer')
         .select(
           'memberships.id',
           'memberships.role',
