@@ -7,14 +7,19 @@ import { Platform } from 'react-native';
 import storage from '../utils/storage';
 
 // Auto-detect API URL:
-//   Web  → same origin (API serves the SPA, so /api always works)
+//   Web  → use api.orgsledger.com for production, same origin for dev
 //   Native dev → localhost
 //   Native prod → production domain
 function getApiBaseUrl(): string {
   if (Platform.OS === 'web') {
-    // On web the Express server serves both the SPA and the API,
-    // so we always use the current origin — works for localhost AND production.
+    // Check if running on production domain
     if (typeof window !== 'undefined' && window.location) {
+      const hostname = window.location.hostname;
+      // Production: use api.orgsledger.com
+      if (hostname === 'orgsledger.com' || hostname === 'www.orgsledger.com' || hostname === 'app.orgsledger.com') {
+        return 'https://api.orgsledger.com/api';
+      }
+      // Dev/localhost: use same origin
       return `${window.location.origin}/api`;
     }
     return '/api'; // SSR / node fallback
